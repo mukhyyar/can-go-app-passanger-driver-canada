@@ -1,0 +1,3476 @@
+﻿[ +972 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[   +8 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[ +429 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[  +11 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[ +220 ms] Skipping pub get: version match.
+[  +25 ms] executing: [D:\xampp\htdocs\get-transfer\mobile\apps\passenger/] D:\flutter\src\flutter\bin\cache\dart-sdk\bin\dart pub --suppress-analytics deps --json
+[ +836 ms] {
+             "root": "passenger",
+             "packages": [
+               {
+                 "name": "passenger",
+                 "version": "1.0.0+1",
+                 "kind": "root",
+                 "source": "root",
+                 "dependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl",
+                   "flutter_test",
+                   "flutter_lints"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl"
+                 ],
+                 "devDependencies": [
+                   "flutter_test",
+                   "flutter_lints"
+                 ]
+               },
+               {
+                 "name": "flutter_lints",
+                 "version": "5.0.0",
+                 "kind": "dev",
+                 "source": "hosted",
+                 "dependencies": [
+                   "lints"
+                 ],
+                 "directDependencies": [
+                   "lints"
+                 ]
+               },
+               {
+                 "name": "lints",
+                 "version": "5.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "flutter_test",
+                 "version": "0.0.0",
+                 "kind": "dev",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "vm_service",
+                 "version": "15.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "term_glyph",
+                 "version": "1.2.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "string_scanner",
+                 "version": "1.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span"
+                 ],
+                 "directDependencies": [
+                   "source_span"
+                 ]
+               },
+               {
+                 "name": "source_span",
+                 "version": "1.10.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "path",
+                 "version": "1.9.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "collection",
+                 "version": "1.19.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "stream_channel",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async"
+                 ],
+                 "directDependencies": [
+                   "async"
+                 ]
+               },
+               {
+                 "name": "async",
+                 "version": "2.13.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "meta",
+                 "version": "1.16.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "material_color_utilities",
+                 "version": "0.11.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "leak_tracker_testing",
+                 "version": "3.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "matcher",
+                 "version": "0.12.17",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ]
+               },
+               {
+                 "name": "test_api",
+                 "version": "0.7.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "stack_trace",
+                 "version": "1.12.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "path"
+                 ]
+               },
+               {
+                 "name": "boolean_selector",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ],
+                 "directDependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ]
+               },
+               {
+                 "name": "leak_tracker",
+                 "version": "10.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "clock",
+                 "version": "1.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "characters",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "leak_tracker_flutter_testing",
+                 "version": "3.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "flutter",
+                 "version": "0.0.0",
+                 "kind": "direct",
+                 "source": "sdk",
+                 "dependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ],
+                 "directDependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ]
+               },
+               {
+                 "name": "sky_engine",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "vector_math",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "fake_async",
+                 "version": "1.3.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "intl",
+                 "version": "0.20.2",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "gt_mock",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter",
+                   "http"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "http"
+                 ]
+               },
+               {
+                 "name": "http",
+                 "version": "1.6.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "web",
+                 "version": "1.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "http_parser",
+                 "version": "4.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ]
+               },
+               {
+                 "name": "typed_data",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "gt_ui",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "shared_preferences",
+                 "version": "2.5.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_windows",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_platform_interface",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "plugin_platform_interface",
+                 "version": "2.1.8",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "path_provider_windows",
+                 "version": "2.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_platform_interface",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "platform",
+                 "version": "3.1.6",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "ffi",
+                 "version": "2.2.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "file",
+                 "version": "7.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_web",
+                 "version": "2.4.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "flutter_web_plugins",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_linux",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_linux",
+                 "version": "2.2.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ]
+               },
+               {
+                 "name": "xdg_directories",
+                 "version": "1.1.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_foundation",
+                 "version": "2.5.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_android",
+                 "version": "2.4.13",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "provider",
+                 "version": "6.1.5+1",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ]
+               },
+               {
+                 "name": "nested",
+                 "version": "1.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "go_router",
+                 "version": "15.1.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "logging",
+                 "version": "1.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "cupertino_icons",
+                 "version": "1.0.8",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               }
+             ],
+             "sdks": [
+               {
+                 "name": "Dart",
+                 "version": "3.8.1"
+               },
+               {
+                 "name": "Flutter",
+                 "version": "3.32.2"
+               }
+             ],
+             "executables": []
+           }
+[ +225 ms] Found plugin path_provider_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[  +20 ms] Found plugin path_provider_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[  +21 ms] Found plugin shared_preferences at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.3\
+[   +4 ms] Found plugin shared_preferences_android at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.13\
+[  +10 ms] Found plugin shared_preferences_foundation at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.4\
+[  +16 ms] Found plugin shared_preferences_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +7 ms] Found plugin shared_preferences_web at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +7 ms] Found plugin shared_preferences_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[ +109 ms] executing: [D:\xampp\htdocs\get-transfer\mobile\apps\passenger/] D:\flutter\src\flutter\bin\cache\dart-sdk\bin\dart pub --suppress-analytics deps --json
+[ +866 ms] {
+             "root": "passenger",
+             "packages": [
+               {
+                 "name": "passenger",
+                 "version": "1.0.0+1",
+                 "kind": "root",
+                 "source": "root",
+                 "dependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl",
+                   "flutter_test",
+                   "flutter_lints"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl"
+                 ],
+                 "devDependencies": [
+                   "flutter_test",
+                   "flutter_lints"
+                 ]
+               },
+               {
+                 "name": "flutter_lints",
+                 "version": "5.0.0",
+                 "kind": "dev",
+                 "source": "hosted",
+                 "dependencies": [
+                   "lints"
+                 ],
+                 "directDependencies": [
+                   "lints"
+                 ]
+               },
+               {
+                 "name": "lints",
+                 "version": "5.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "flutter_test",
+                 "version": "0.0.0",
+                 "kind": "dev",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "vm_service",
+                 "version": "15.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "term_glyph",
+                 "version": "1.2.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "string_scanner",
+                 "version": "1.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span"
+                 ],
+                 "directDependencies": [
+                   "source_span"
+                 ]
+               },
+               {
+                 "name": "source_span",
+                 "version": "1.10.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "path",
+                 "version": "1.9.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "collection",
+                 "version": "1.19.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "stream_channel",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async"
+                 ],
+                 "directDependencies": [
+                   "async"
+                 ]
+               },
+               {
+                 "name": "async",
+                 "version": "2.13.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "meta",
+                 "version": "1.16.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "material_color_utilities",
+                 "version": "0.11.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "leak_tracker_testing",
+                 "version": "3.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "matcher",
+                 "version": "0.12.17",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ]
+               },
+               {
+                 "name": "test_api",
+                 "version": "0.7.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "stack_trace",
+                 "version": "1.12.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "path"
+                 ]
+               },
+               {
+                 "name": "boolean_selector",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ],
+                 "directDependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ]
+               },
+               {
+                 "name": "leak_tracker",
+                 "version": "10.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "clock",
+                 "version": "1.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "characters",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "leak_tracker_flutter_testing",
+                 "version": "3.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "flutter",
+                 "version": "0.0.0",
+                 "kind": "direct",
+                 "source": "sdk",
+                 "dependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ],
+                 "directDependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ]
+               },
+               {
+                 "name": "sky_engine",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "vector_math",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "fake_async",
+                 "version": "1.3.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "intl",
+                 "version": "0.20.2",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "gt_mock",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter",
+                   "http"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "http"
+                 ]
+               },
+               {
+                 "name": "http",
+                 "version": "1.6.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "web",
+                 "version": "1.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "http_parser",
+                 "version": "4.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ]
+               },
+               {
+                 "name": "typed_data",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "gt_ui",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "shared_preferences",
+                 "version": "2.5.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_windows",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_platform_interface",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "plugin_platform_interface",
+                 "version": "2.1.8",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "path_provider_windows",
+                 "version": "2.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_platform_interface",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "platform",
+                 "version": "3.1.6",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "ffi",
+                 "version": "2.2.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "file",
+                 "version": "7.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_web",
+                 "version": "2.4.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "flutter_web_plugins",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_linux",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_linux",
+                 "version": "2.2.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ]
+               },
+               {
+                 "name": "xdg_directories",
+                 "version": "1.1.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_foundation",
+                 "version": "2.5.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_android",
+                 "version": "2.4.13",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "provider",
+                 "version": "6.1.5+1",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ]
+               },
+               {
+                 "name": "nested",
+                 "version": "1.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "go_router",
+                 "version": "15.1.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "logging",
+                 "version": "1.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "cupertino_icons",
+                 "version": "1.0.8",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               }
+             ],
+             "sdks": [
+               {
+                 "name": "Dart",
+                 "version": "3.8.1"
+               },
+               {
+                 "name": "Flutter",
+                 "version": "3.32.2"
+               }
+             ],
+             "executables": []
+           }
+[ +153 ms] Found plugin path_provider_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +7 ms] Found plugin path_provider_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[  +12 ms] Found plugin shared_preferences at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.3\
+[   +4 ms] Found plugin shared_preferences_android at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.13\
+[   +3 ms] Found plugin shared_preferences_foundation at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.4\
+[   +4 ms] Found plugin shared_preferences_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +5 ms] Found plugin shared_preferences_web at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +3 ms] Found plugin shared_preferences_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[  +71 ms] executing: [D:\xampp\htdocs\get-transfer\mobile\apps\passenger/] D:\flutter\src\flutter\bin\cache\dart-sdk\bin\dart pub --suppress-analytics deps --json
+[ +951 ms] {
+             "root": "passenger",
+             "packages": [
+               {
+                 "name": "passenger",
+                 "version": "1.0.0+1",
+                 "kind": "root",
+                 "source": "root",
+                 "dependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl",
+                   "flutter_test",
+                   "flutter_lints"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl"
+                 ],
+                 "devDependencies": [
+                   "flutter_test",
+                   "flutter_lints"
+                 ]
+               },
+               {
+                 "name": "flutter_lints",
+                 "version": "5.0.0",
+                 "kind": "dev",
+                 "source": "hosted",
+                 "dependencies": [
+                   "lints"
+                 ],
+                 "directDependencies": [
+                   "lints"
+                 ]
+               },
+               {
+                 "name": "lints",
+                 "version": "5.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "flutter_test",
+                 "version": "0.0.0",
+                 "kind": "dev",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "vm_service",
+                 "version": "15.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "term_glyph",
+                 "version": "1.2.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "string_scanner",
+                 "version": "1.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span"
+                 ],
+                 "directDependencies": [
+                   "source_span"
+                 ]
+               },
+               {
+                 "name": "source_span",
+                 "version": "1.10.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "path",
+                 "version": "1.9.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "collection",
+                 "version": "1.19.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "stream_channel",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async"
+                 ],
+                 "directDependencies": [
+                   "async"
+                 ]
+               },
+               {
+                 "name": "async",
+                 "version": "2.13.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "meta",
+                 "version": "1.16.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "material_color_utilities",
+                 "version": "0.11.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "leak_tracker_testing",
+                 "version": "3.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "matcher",
+                 "version": "0.12.17",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ]
+               },
+               {
+                 "name": "test_api",
+                 "version": "0.7.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "stack_trace",
+                 "version": "1.12.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "path"
+                 ]
+               },
+               {
+                 "name": "boolean_selector",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ],
+                 "directDependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ]
+               },
+               {
+                 "name": "leak_tracker",
+                 "version": "10.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "clock",
+                 "version": "1.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "characters",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "leak_tracker_flutter_testing",
+                 "version": "3.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "flutter",
+                 "version": "0.0.0",
+                 "kind": "direct",
+                 "source": "sdk",
+                 "dependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ],
+                 "directDependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ]
+               },
+               {
+                 "name": "sky_engine",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "vector_math",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "fake_async",
+                 "version": "1.3.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "intl",
+                 "version": "0.20.2",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "gt_mock",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter",
+                   "http"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "http"
+                 ]
+               },
+               {
+                 "name": "http",
+                 "version": "1.6.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "web",
+                 "version": "1.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "http_parser",
+                 "version": "4.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ]
+               },
+               {
+                 "name": "typed_data",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "gt_ui",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "shared_preferences",
+                 "version": "2.5.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_windows",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_platform_interface",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "plugin_platform_interface",
+                 "version": "2.1.8",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "path_provider_windows",
+                 "version": "2.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_platform_interface",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "platform",
+                 "version": "3.1.6",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "ffi",
+                 "version": "2.2.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "file",
+                 "version": "7.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_web",
+                 "version": "2.4.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "flutter_web_plugins",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_linux",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_linux",
+                 "version": "2.2.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ]
+               },
+               {
+                 "name": "xdg_directories",
+                 "version": "1.1.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_foundation",
+                 "version": "2.5.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_android",
+                 "version": "2.4.13",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "provider",
+                 "version": "6.1.5+1",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ]
+               },
+               {
+                 "name": "nested",
+                 "version": "1.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "go_router",
+                 "version": "15.1.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "logging",
+                 "version": "1.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "cupertino_icons",
+                 "version": "1.0.8",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               }
+             ],
+             "sdks": [
+               {
+                 "name": "Dart",
+                 "version": "3.8.1"
+               },
+               {
+                 "name": "Flutter",
+                 "version": "3.32.2"
+               }
+             ],
+             "executables": []
+           }
+[ +206 ms] Found plugin path_provider_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +5 ms] Found plugin path_provider_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[  +11 ms] Found plugin shared_preferences at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.3\
+[   +2 ms] Found plugin shared_preferences_android at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.13\
+[   +3 ms] Found plugin shared_preferences_foundation at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.4\
+[   +4 ms] Found plugin shared_preferences_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +6 ms] Found plugin shared_preferences_web at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +3 ms] Found plugin shared_preferences_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[  +55 ms] Generating D:\xampp\htdocs\get-transfer\mobile\apps\passenger\android\app\src\main\java\io\flutter\plugins\GeneratedPluginRegistrant.java
+[ +179 ms] Launching lib\main.dart on Web Server in debug mode...
+[ +380 ms] Initializing file store
+[  +18 ms] Skipping target: gen_localizations
+[   +9 ms] Skipping target: gen_dart_plugin_registrant
+[   +3 ms] Skipping target: _composite
+[   +3 ms] complete
+[   +2 ms] Updating assets
+[ +390 ms] Waiting for connection from debug service on Web Server...
+[  +18 ms] executing: [D:\xampp\htdocs\get-transfer\mobile\apps\passenger/] D:\flutter\src\flutter\bin\cache\dart-sdk\bin\dart pub --suppress-analytics deps --json
+[+1175 ms] {
+             "root": "passenger",
+             "packages": [
+               {
+                 "name": "passenger",
+                 "version": "1.0.0+1",
+                 "kind": "root",
+                 "source": "root",
+                 "dependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl",
+                   "flutter_test",
+                   "flutter_lints"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "cupertino_icons",
+                   "go_router",
+                   "provider",
+                   "shared_preferences",
+                   "gt_ui",
+                   "gt_mock",
+                   "intl"
+                 ],
+                 "devDependencies": [
+                   "flutter_test",
+                   "flutter_lints"
+                 ]
+               },
+               {
+                 "name": "flutter_lints",
+                 "version": "5.0.0",
+                 "kind": "dev",
+                 "source": "hosted",
+                 "dependencies": [
+                   "lints"
+                 ],
+                 "directDependencies": [
+                   "lints"
+                 ]
+               },
+               {
+                 "name": "lints",
+                 "version": "5.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "flutter_test",
+                 "version": "0.0.0",
+                 "kind": "dev",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "test_api",
+                   "matcher",
+                   "path",
+                   "fake_async",
+                   "clock",
+                   "stack_trace",
+                   "vector_math",
+                   "leak_tracker_flutter_testing",
+                   "async",
+                   "boolean_selector",
+                   "characters",
+                   "collection",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "material_color_utilities",
+                   "meta",
+                   "source_span",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "vm_service",
+                 "version": "15.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "term_glyph",
+                 "version": "1.2.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "string_scanner",
+                 "version": "1.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span"
+                 ],
+                 "directDependencies": [
+                   "source_span"
+                 ]
+               },
+               {
+                 "name": "source_span",
+                 "version": "1.10.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "path",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "path",
+                 "version": "1.9.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "collection",
+                 "version": "1.19.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "stream_channel",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async"
+                 ],
+                 "directDependencies": [
+                   "async"
+                 ]
+               },
+               {
+                 "name": "async",
+                 "version": "2.13.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "meta",
+                 "version": "1.16.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "material_color_utilities",
+                 "version": "0.11.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "leak_tracker_testing",
+                 "version": "3.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "leak_tracker",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "matcher",
+                 "version": "0.12.17",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "meta",
+                   "stack_trace",
+                   "term_glyph",
+                   "test_api"
+                 ]
+               },
+               {
+                 "name": "test_api",
+                 "version": "0.7.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "boolean_selector",
+                   "collection",
+                   "meta",
+                   "source_span",
+                   "stack_trace",
+                   "stream_channel",
+                   "string_scanner",
+                   "term_glyph"
+                 ]
+               },
+               {
+                 "name": "stack_trace",
+                 "version": "1.12.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "path"
+                 ]
+               },
+               {
+                 "name": "boolean_selector",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ],
+                 "directDependencies": [
+                   "source_span",
+                   "string_scanner"
+                 ]
+               },
+               {
+                 "name": "leak_tracker",
+                 "version": "10.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection",
+                   "meta",
+                   "path",
+                   "vm_service"
+                 ]
+               },
+               {
+                 "name": "clock",
+                 "version": "1.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "characters",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "leak_tracker_flutter_testing",
+                 "version": "3.0.9",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "leak_tracker",
+                   "leak_tracker_testing",
+                   "matcher",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "flutter",
+                 "version": "0.0.0",
+                 "kind": "direct",
+                 "source": "sdk",
+                 "dependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ],
+                 "directDependencies": [
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math",
+                   "sky_engine"
+                 ]
+               },
+               {
+                 "name": "sky_engine",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "vector_math",
+                 "version": "2.1.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "fake_async",
+                 "version": "1.3.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "intl",
+                 "version": "0.20.2",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "clock",
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "gt_mock",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter",
+                   "http"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "http"
+                 ]
+               },
+               {
+                 "name": "http",
+                 "version": "1.6.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "async",
+                   "http_parser",
+                   "meta",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "web",
+                 "version": "1.1.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "http_parser",
+                 "version": "4.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "source_span",
+                   "string_scanner",
+                   "typed_data"
+                 ]
+               },
+               {
+                 "name": "typed_data",
+                 "version": "1.4.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection"
+                 ],
+                 "directDependencies": [
+                   "collection"
+                 ]
+               },
+               {
+                 "name": "gt_ui",
+                 "version": "0.0.1",
+                 "kind": "direct",
+                 "source": "path",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "shared_preferences",
+                 "version": "2.5.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_android",
+                   "shared_preferences_foundation",
+                   "shared_preferences_linux",
+                   "shared_preferences_platform_interface",
+                   "shared_preferences_web",
+                   "shared_preferences_windows"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_windows",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "path_provider_windows",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_platform_interface",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "plugin_platform_interface",
+                 "version": "2.1.8",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "path_provider_windows",
+                 "version": "2.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_platform_interface",
+                 "version": "2.1.2",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "platform",
+                   "plugin_platform_interface"
+                 ]
+               },
+               {
+                 "name": "platform",
+                 "version": "3.1.6",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "ffi",
+                 "version": "2.2.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "file",
+                 "version": "7.0.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_web",
+                 "version": "2.4.3",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "flutter_web_plugins",
+                   "shared_preferences_platform_interface",
+                   "web"
+                 ]
+               },
+               {
+                 "name": "flutter_web_plugins",
+                 "version": "0.0.0",
+                 "kind": "transitive",
+                 "source": "sdk",
+                 "dependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "characters",
+                   "collection",
+                   "material_color_utilities",
+                   "meta",
+                   "vector_math"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_linux",
+                 "version": "2.4.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "file",
+                   "flutter",
+                   "path",
+                   "path_provider_linux",
+                   "path_provider_platform_interface",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "path_provider_linux",
+                 "version": "2.2.1",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ],
+                 "directDependencies": [
+                   "ffi",
+                   "flutter",
+                   "path",
+                   "path_provider_platform_interface",
+                   "xdg_directories"
+                 ]
+               },
+               {
+                 "name": "xdg_directories",
+                 "version": "1.1.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "meta",
+                   "path"
+                 ],
+                 "directDependencies": [
+                   "meta",
+                   "path"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_foundation",
+                 "version": "2.5.4",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "shared_preferences_android",
+                 "version": "2.4.13",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ],
+                 "directDependencies": [
+                   "flutter",
+                   "shared_preferences_platform_interface"
+                 ]
+               },
+               {
+                 "name": "provider",
+                 "version": "6.1.5+1",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "nested"
+                 ]
+               },
+               {
+                 "name": "nested",
+                 "version": "1.0.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [
+                   "flutter"
+                 ],
+                 "directDependencies": [
+                   "flutter"
+                 ]
+               },
+               {
+                 "name": "go_router",
+                 "version": "15.1.3",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ],
+                 "directDependencies": [
+                   "collection",
+                   "flutter",
+                   "flutter_web_plugins",
+                   "logging",
+                   "meta"
+                 ]
+               },
+               {
+                 "name": "logging",
+                 "version": "1.3.0",
+                 "kind": "transitive",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               },
+               {
+                 "name": "cupertino_icons",
+                 "version": "1.0.8",
+                 "kind": "direct",
+                 "source": "hosted",
+                 "dependencies": [],
+                 "directDependencies": []
+               }
+             ],
+             "sdks": [
+               {
+                 "name": "Dart",
+                 "version": "3.8.1"
+               },
+               {
+                 "name": "Flutter",
+                 "version": "3.32.2"
+               }
+             ],
+             "executables": []
+           }
+[ +180 ms] Found plugin path_provider_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +8 ms] Found plugin path_provider_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[  +14 ms] Found plugin shared_preferences at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.3\
+[   +3 ms] Found plugin shared_preferences_android at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.13\
+[   +4 ms] Found plugin shared_preferences_foundation at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.4\
+[   +4 ms] Found plugin shared_preferences_linux at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +6 ms] Found plugin shared_preferences_web at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +3 ms] Found plugin shared_preferences_windows at C:\Users\mukhy\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[ +398 ms] shaderc command: [D:\flutter\src\flutter\bin\cache\artifacts\engine\windows-x64\impellerc.exe, --sksl, --iplr, --json, --sl=build\flutter_assets\shaders/ink_sparkle.frag, --spirv=build\flutter_assets\shaders/ink_sparkle.frag.spirv, --input=D:\flutter\src\flutter\packages\flutter\lib\src\material\shaders\ink_sparkle.frag, --input-type=frag, --include=D:\flutter\src\flutter\packages\flutter\lib\src\material\shaders, --include=D:\flutter\src\flutter\bin\cache\artifacts\engine\windows-x64\shader_lib]
+[ +960 ms] <- reset
+[  +10 ms] D:\flutter\src\flutter\bin\cache\dart-sdk\bin\dartaotruntime.exe D:\flutter\src\flutter\bin\cache\dart-sdk\bin\snapshots\frontend_server_aot.dart.snapshot --sdk-root D:\flutter\src\flutter\bin\cache\flutter_web_sdk/ --incremental --target=dartdevc --experimental-emit-debug-metadata -DFLUTTER_VERSION=3.32.2 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=8defaa71a7 -DFLUTTER_ENGINE_REVISION=1091508939 -DFLUTTER_DART_VERSION=3.8.1 --output-dill C:\Users\mukhy\AppData\Local\Temp\flutter_tools.38650dd6\flutter_tool.6c829129\app.dill --packages D:\xampp\htdocs\get-transfer\mobile\apps\passenger\.dart_tool\package_config.json -Ddart.vm.profile=false -Ddart.vm.product=false --enable-asserts --track-widget-creation --filesystem-root C:\Users\mukhy\AppData\Local\Temp\flutter_tools.38650dd6\flutter_tools.dbbc5166 --filesystem-scheme org-dartlang-app --initialize-from-dill build\35f7230de2d6cfa06a9bd9725e41ea1b.cache.dill.track.dill --platform file:///D:/flutter/src/flutter/bin/cache/flutter_web_sdk/kernel/ddc_outline.dill --verbosity=error
+[ +154 ms] <- compile org-dartlang-app:/web_entrypoint.dart
+[+30631 ms] Waiting for connection from debug service on Web Server... (completed in 33.6s)
+[   +1 ms] Synced 53.8MB.
+[   +1 ms] <- accept
+[        ] Caching compiled dill
+[  +68 ms] lib\main.dart is being served at http://127.0.0.1:49625
+[        ] The web-server device requires the Dart Debug Chrome extension for debugging. Consider using the Chrome or Edge devices for an improved development workflow.
+[  +12 ms] Flutter run key commands.
+[   +4 ms] R Hot restart.
+[   +2 ms] h List all available interactive commands.
+[   +1 ms] d Detach (terminate "flutter run" but leave application running).
+[        ] c Clear the screen
+[        ] q Quit (terminate the application on the device).

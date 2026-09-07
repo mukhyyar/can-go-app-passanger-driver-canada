@@ -1,0 +1,17 @@
+name: gt_mock
+description: Local mock data layer for Get Transfer prototypes
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

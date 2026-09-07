@@ -1,0 +1,44 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/doc/api/
+*.iml
+
+# Android
+**/android/.gradle/
+**/android/local.properties
+**/.kotlin/
+
+# IDE / OS
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.err.log
+*.out.log
+
+# Secrets / signing
+.env
+.env.*
+!.env.example
+**/key.properties
+**/*.jks
+**/*.keystore
+**/google-services.json
+**/GoogleService-Info.plist
+
+# Coverage
+coverage/
+.firebase/
+
+# Oversized local capture media (GitHub 100MB limit)
+*.mp4
+*.mov
+*.webm

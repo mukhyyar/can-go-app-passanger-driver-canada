@@ -1,0 +1,279 @@
+import 'package:flutter/material.dart';
+import 'package:gt_ui/gt_ui.dart';
+
+import 'menu_panel.dart';
+
+final GlobalKey<ScaffoldState> driverShellKey = GlobalKey<ScaffoldState>();
+
+/// Opens the driver side menu overlay (same pattern as passenger).
+Future<void> openDriverMenu([BuildContext? context]) async {
+  final ctx = context ?? driverShellKey.currentContext;
+  if (ctx == null || !ctx.mounted) return;
+  await showGeneralDialog<void>(
+    context: ctx,
+    useRootNavigator: true,
+    barrierDismissible: true,
+    barrierLabel: 'Close menu',
+    barrierColor: Colors.black54,
+    transitionDuration: const Duration(milliseconds: 280),
+    pageBuilder: (context, animation, secondaryAnimation) {
+      final width = MediaQuery.sizeOf(context).width.clamp(280.0, 360.0);
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Material(
+          color: Colors.white,
+          child: SizedBox(
+            width: width,
+            height: double.infinity,
+            child: const DriverMenuPanel(inDrawer: true),
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(-1, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      );
+    },
+  );
+}
+
+/// Soft brand header matching passenger book header (logo + title + actions).
+class DriverBrandHeader extends StatelessWidget {
+  const DriverBrandHeader({
+    super.key,
+    required this.subtitle,
+    this.onProfileTap,
+    this.showMenu = true,
+  });
+
+  final String subtitle;
+  final VoidCallback? onProfileTap;
+  final bool showMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 8, 0, 0),
+      padding: const EdgeInsets.fromLTRB(6, 8, 8, 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFFFFFFF),
+            Color(0xFFFFF8F8),
+            Color(0xFFF8EAEA),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: GtColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: GtColors.brand.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          if (showMenu) ...[
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => openDriverMenu(context),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: GtColors.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.menu_rounded, color: GtColors.text),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+          ],
+          const CanGoLogo(size: 44),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'CAN-GO',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                    color: GtColors.text,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: GtColors.textSecondary.withValues(alpha: 0.95),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onProfileTap ?? () => openDriverMenu(context),
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: GtColors.soft,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: GtColors.brand.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.person_outline_rounded,
+                  color: GtColors.brand,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact branded top bar for secondary screens (chats, rides, etc.).
+class DriverPageHeader extends StatelessWidget {
+  const DriverPageHeader({
+    super.key,
+    required this.title,
+    this.trailing,
+  });
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Row(
+        children: [
+          const CanGoLogo(size: 36),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: GtColors.text,
+              ),
+            ),
+          ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+/// Soft overview metric chip used on the driver dashboard.
+class DriverStatChip extends StatelessWidget {
+  const DriverStatChip({
+    super.key,
+    required this.label,
+    required this.value,
+    this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: GtColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: GtColors.brand.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 16, color: GtColors.brand),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: GtColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: GtColors.text,
+                height: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
