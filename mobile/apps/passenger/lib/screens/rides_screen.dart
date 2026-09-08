@@ -91,6 +91,8 @@ class _RideList extends StatelessWidget {
         return 'Waiting for offers';
       case RideStatus.chooseOffer:
         return 'Choose an offer';
+      case RideStatus.paymentPending:
+        return 'Payment pending';
       case RideStatus.booked:
         return 'Booked';
       case RideStatus.past:
@@ -106,6 +108,8 @@ class _RideList extends StatelessWidget {
         return GtColors.orange;
       case RideStatus.chooseOffer:
         return GtColors.green;
+      case RideStatus.paymentPending:
+        return GtColors.orange;
       case RideStatus.booked:
         return GtColors.greenDark;
       case RideStatus.past:

@@ -1,0 +1,844 @@
+// CAN-GO Phase 0 schema foundation.
+// PostGIS geometry columns for zones/locations are managed via raw SQL migrations
+// alongside Prisma (see prisma/sql/). Do not drop PostGIS extensions.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, pgcrypto]
+}
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum DriverApprovalStatus {
+  PENDING_KYC
+  IN_REVIEW
+  ACTION_REQUIRED
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum RideStatus {
+  WAITING_FOR_OFFERS
+  OFFER_SELECTION
+  PAYMENT_PENDING
+  BOOKED
+  DRIVER_EN_ROUTE
+  DRIVER_ARRIVED
+  TRIP_STARTED
+  IN_PROGRESS
+  COMPLETED
+  PASSENGER_CANCELLED
+  DRIVER_CANCELLED
+  ADMIN_CANCELLED
+  NO_SHOW
+  PAYMENT_FAILED
+  EXPIRED
+}
+
+enum DocumentReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_RESUBMISSION
+}
+
+enum OfferStatus {
+  ACTIVE
+  SELECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum RatingModerationStatus {
+  VISIBLE
+  PENDING_REVIEW
+  HIDDEN
+}
+
+enum AppRole {
+  PASSENGER
+  DRIVER
+  PASSENGER_WEB
+}
+
+enum RefundType {
+  FULL
+  PARTIAL
+}
+
+enum SupportCaseStatus {
+  OPEN
+  ASSIGNED
+  ESCALATED
+  RESOLVED
+}
+
+enum SupportCaseType {
+  GENERAL
+  DISPUTE
+  KYC
+  BILLING
+  SAFETY
+}
+
+model AdminRole {
+  id          String                @id @default(cuid())
+  slug        String                @unique
+  name        String
+  description String                @default("")
+  isSystem    Boolean               @default(true)
+  permissions AdminRolePermission[]
+  users       User[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+}
+
+model AdminRolePermission {
+  id         String    @id @default(cuid())
+  roleId     String
+  role       AdminRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission String
+
+  @@unique([roleId, permission])
+  @@index([permission])
+}
+
+model User {
+  id                   String                @id @default(cuid())
+  email                String?               @unique
+  phoneE164            String?               @unique
+  phoneVerifiedAt      DateTime?
+  passwordHash         String?
+  role                 UserRole
+  isSuspended          Boolean               @default(false)
+  adminTotpSecret      String?
+  adminTotpEnabled     Boolean               @default(false)
+  adminRoleId          String?
+  adminRole            AdminRole?            @relation(fields: [adminRoleId], references: [id])
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  passengerProfile     PassengerProfile?
+  driverProfile        DriverProfile?
+  refreshTokens        RefreshToken[]
+  sessions             UserSession[]
+  deviceTokens         DeviceToken[]
+  otpChallenges        OtpChallenge[]
+  notificationDeliveries NotificationDelivery[]
+  auditLogs            AuditLog[]            @relation("AuditActor")
+  ratingsGiven         Rating[]              @relation("RatingsGiven")
+  ratingsReceived      Rating[]              @relation("RatingsReceived")
+  impersonationsIssued ImpersonationSession[] @relation("ImpersonationAdmin")
+  impersonationsTarget ImpersonationSession[] @relation("ImpersonationTarget")
+  refundsRequested     Refund[]              @relation("RefundRequester")
+  casesAssigned        SupportCase[]         @relation("CaseAssignee")
+  casesCreated         SupportCase[]         @relation("CaseCreator")
+  riskFlags            RiskFlag[]
+  watchlistEntries     WatchlistEntry[]      @relation("WatchlistUser")
+  watchlistCreated     WatchlistEntry[]      @relation("WatchlistActor")
+  kycAssignments       DriverProfile[]       @relation("KycAssignee")
+  kycNotesAuthored     KycReviewNote[]
+}
+
+model PassengerProfile {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName       String    @default("")
+  language       String    @default("English")
+  currency       String    @default("USD")
+  isVip          Boolean   @default(false)
+  vipRequestedAt DateTime?
+  referralCode   String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  rides          Ride[]
+  savedPlaces    SavedPlace[]
+  supportCases   SupportCase[]
+}
+
+model DriverProfile {
+  id                 String                @id @default(cuid())
+  userId             String                @unique
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName           String                @default("")
+  legalName          String                @default("")
+  isIndividual       Boolean               @default(true)
+  approvalStatus     DriverApprovalStatus  @default(PENDING_KYC)
+  isActivated        Boolean               @default(false)
+  baseLocation       String                @default("")
+  baseLatitude       Float?
+  baseLongitude      Float?
+  referredByCode     String?
+  kycAssignedToId    String?
+  kycAssignedTo      User?                 @relation("KycAssignee", fields: [kycAssignedToId], references: [id], onDelete: SetNull)
+  kycAssignedAt      DateTime?
+  kycSubmittedAt     DateTime?
+  kycDecidedAt       DateTime?
+  kycDecisionNote    String?
+  kycDecisionReason  String?
+  kycCustomerMessage String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  vehicles           Vehicle[]
+  documents          DriverDocument[]
+  operatingZones     OperatingZone[]
+  offers             Offer[]
+  locationCurrent    DriverLocationCurrent?
+  dayOffs            DriverDayOff[]
+  supportCases       SupportCase[]
+  reviewNotes        KycReviewNote[]
+
+  @@index([approvalStatus, updatedAt])
+  @@index([kycAssignedToId])
+  @@index([kycSubmittedAt])
+}
+
+model KycReviewNote {
+  id             String        @id @default(cuid())
+  driverId       String
+  driver         DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User          @relation(fields: [authorId], references: [id])
+  body           String
+  customerFacing Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+
+  @@index([driverId, createdAt])
+}
+
+model Vehicle {
+  id               String   @id @default(cuid())
+  driverId         String
+  driver           DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  name             String
+  plate            String
+  vehicleClass     String
+  amenitiesJson    Json     @default("{}")
+  autocancelBefore Int      @default(10)
+  autocancelAfter  Int      @default(10)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  documents        DriverDocument[]
+}
+
+model DriverDocument {
+  id                  String               @id @default(cuid())
+  driverId            String
+  driver              DriverProfile        @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId           String?
+  vehicle             Vehicle?             @relation(fields: [vehicleId], references: [id])
+  docType             String
+  storageKey          String
+  mimeType            String
+  sizeBytes           Int
+  status              DocumentReviewStatus @default(PENDING)
+  rejectionReason     String?
+  resubmissionReason  String?
+  customerMessage     String?
+  expiresAt           DateTime?
+  reviewedAt          DateTime?
+  reviewedById        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([driverId, docType, createdAt])
+  @@index([status])
+}
+
+model OperatingZone {
+  id        String   @id @default(cuid())
+  driverId  String
+  driver    DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  name      String
+  zoneType  String
+  /// GeoJSON coordinates / circle params; PostGIS `geom` column is managed in
+  /// prisma/sql/phase1b_operating_zone_geom.sql (re-apply after `db push`).
+  geoJson   Json
+  radiusKm  Float?
+  geom      Unsupported("geometry")?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ride {
+  id              String     @id @default(cuid())
+  passengerId     String
+  passenger       PassengerProfile @relation(fields: [passengerId], references: [id])
+  status          RideStatus @default(WAITING_FOR_OFFERS)
+  serviceType     String
+  fromLabel       String
+  toLabel         String?
+  fromLat         Float
+  fromLng         Float
+  toLat           Float?
+  toLng           Float?
+  pickupAt        DateTime
+  vehicleClassIds String[]
+  adults          Int        @default(1)
+  childSeatsJson  Json       @default("{}")
+  flight          String?
+  signage         String?
+  comment         String?
+  promoCode       String?
+  currency        String     @default("USD")
+  priceSnapshot   Json?
+  selectedOfferId String?    @unique
+  selectedOffer   Offer?     @relation("SelectedOffer", fields: [selectedOfferId], references: [id])
+  assignedDriverId String?
+  idempotencyKey  String?    @unique
+  requestExpiresAt DateTime?
+  paymentExpiresAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  offers          Offer[]    @relation("RideOffers")
+  events          RideEvent[]
+  payments        Payment[]
+  ratings         Rating[]
+  locationSamples TripLocationSample[]
+  chatThread      ChatThread?
+  supportCases    SupportCase[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([serviceType, createdAt])
+  @@index([passengerId, createdAt])
+  @@index([assignedDriverId, createdAt])
+  @@index([promoCode])
+}
+
+model RideEvent {
+  id        String   @id @default(cuid())
+  rideId    String
+  ride      Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  fromStatus RideStatus?
+  toStatus  RideStatus
+  actorType String
+  actorId   String?
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([rideId, createdAt])
+}
+
+model Offer {
+  id           String   @id @default(cuid())
+  rideId       String
+  ride         Ride     @relation("RideOffers", fields: [rideId], references: [id], onDelete: Cascade)
+  driverId     String
+  driver       DriverProfile @relation(fields: [driverId], references: [id])
+  bidAmount    Decimal  @db.Decimal(12, 2)
+  currency     String
+  priceSnapshot Json
+  status       OfferStatus @default(ACTIVE)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  selectedFor  Ride?    @relation("SelectedOffer")
+
+  @@index([rideId])
+  @@index([driverId])
+  @@index([status, expiresAt])
+}
+
+model FareRule {
+  id                     String   @id @default(cuid())
+  serviceType            String
+  vehicleClass           String   @default("*")
+  currency               String   @default("USD")
+  baseFare               Decimal  @db.Decimal(12, 2)
+  perKm                  Decimal  @db.Decimal(12, 2)
+  perMinute              Decimal  @db.Decimal(12, 2)
+  perHour                Decimal  @db.Decimal(12, 2) @default(0)
+  minFare                Decimal  @db.Decimal(12, 2)
+  minBidMultiplier       Decimal  @db.Decimal(6, 3) @default(0.800)
+  maxBidMultiplier       Decimal  @db.Decimal(6, 3) @default(1.500)
+  platformCommissionPct  Decimal  @db.Decimal(6, 3) @default(15)
+  taxPct                 Decimal  @db.Decimal(6, 3) @default(0)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([serviceType, vehicleClass, currency])
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  rideId          String
+  ride            Ride     @relation(fields: [rideId], references: [id])
+  provider        String
+  providerRef     String?
+  amount          Decimal  @db.Decimal(12, 2)
+  currency        String
+  status          String
+  idempotencyKey  String?  @unique
+  rawWebhookLast  Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  refunds         Refund[]
+  supportCases    SupportCase[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([provider, createdAt])
+  @@index([rideId])
+}
+
+model Rating {
+  id               String                 @id @default(cuid())
+  rideId           String
+  ride             Ride                   @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  fromUserId       String
+  fromUser         User                   @relation("RatingsGiven", fields: [fromUserId], references: [id])
+  toUserId         String
+  toUser           User                   @relation("RatingsReceived", fields: [toUserId], references: [id])
+  stars            Int
+  comment          String?
+  moderationStatus RatingModerationStatus @default(VISIBLE)
+  moderatedAt      DateTime?
+  moderatedById    String?
+  moderationNote   String?
+  createdAt        DateTime               @default(now())
+
+  @@unique([rideId, fromUserId])
+  @@index([moderationStatus, createdAt])
+  @@index([createdAt])
+  @@index([toUserId, createdAt])
+}
+
+/// Phase 2 promo codes (validated server-side on ride create).
+model PromoCode {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  percentOff Float?
+  amountOff  Float?
+  currency   String    @default("USD")
+  maxUses    Int?
+  usedCount  Int       @default(0)
+  active     Boolean   @default(true)
+  startsAt   DateTime?
+  endsAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+/// CMS pages: site copy, FAQs, legal, and app/blog articles. Editable from Admin.
+model CmsPage {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  kind      String   @default("page") // page | faq | legal | app
+  title     String
+  bodyMd    String
+  category  String?
+  published Boolean  @default(true)
+  sortOrder Int      @default(0)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([kind, published, sortOrder])
+}
+
+/// Ride chat thread (one per ride).
+model ChatThread {
+  id        String        @id @default(cuid())
+  rideId    String        @unique
+  ride      Ride          @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+  messages  ChatMessage[]
+  supportCases SupportCase[]
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  threadId  String
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId  String
+  body      String
+  flagged   Boolean    @default(false)
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+/// Latest known driver position (Redis mirrors this for live map).
+model DriverLocationCurrent {
+  id         String   @id @default(cuid())
+  driverId   String   @unique
+  driver     DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  lat        Float
+  lng        Float
+  heading    Float?
+  speedMps   Float?
+  accuracyM  Float?
+  geom       Unsupported("geometry")?
+  recordedAt DateTime
+  updatedAt  DateTime @updatedAt
+}
+
+/// Downsampled trail during active trip (dispute / replay).
+model TripLocationSample {
+  id         String   @id @default(cuid())
+  rideId     String
+  ride       Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  driverId   String
+  lat        Float
+  lng        Float
+  heading    Float?
+  speedMps   Float?
+  geom       Unsupported("geometry")?
+  recordedAt DateTime @default(now())
+
+  @@index([rideId, recordedAt])
+  @@index([driverId, recordedAt])
+}
+
+model SavedPlace {
+  id          String   @id @default(cuid())
+  passengerId String
+  passenger   PassengerProfile @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  label       String
+  address     String
+  lat         Float
+  lng         Float
+  createdAt   DateTime @default(now())
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  familyId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model UserSession {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String?
+  userAgent  String?
+  ip         String?
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  platform   String
+  appRole    AppRole
+  deviceId   String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model OtpChallenge {
+  id        String    @id @default(cuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneE164 String
+  purpose   String
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([phoneE164, purpose])
+}
+
+model NotificationDelivery {
+  id           String   @id @default(cuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  deviceToken  String?
+  channel      String
+  templateKey  String?
+  title        String?
+  body         String?
+  dataJson     Json     @default("{}")
+  provider     String   @default("fcm")
+  providerMsgId String?
+  status       String
+  errorCode    String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action     String
+  resource   String?
+  resourceId String?
+  meta       Json     @default("{}")
+  before     Json?
+  after      Json?
+  reason     String?
+  device     String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([resource, resourceId])
+}
+
+model ImpersonationSession {
+  id           String    @id @default(cuid())
+  adminId      String
+  admin        User      @relation("ImpersonationAdmin", fields: [adminId], references: [id])
+  targetUserId String
+  target       User      @relation("ImpersonationTarget", fields: [targetUserId], references: [id])
+  reason       String
+  readOnly     Boolean   @default(true)
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  revokedAt    DateTime?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([expiresAt])
+}
+
+model Refund {
+  id              String     @id @default(cuid())
+  paymentId       String
+  payment         Payment    @relation(fields: [paymentId], references: [id])
+  amount          Decimal    @db.Decimal(12, 2)
+  currency        String
+  type            RefundType
+  reason          String
+  internalNote    String?
+  status          String
+  gatewayRefundId String?
+  gatewayResponse Json?
+  requestedById   String
+  requestedBy     User       @relation("RefundRequester", fields: [requestedById], references: [id])
+  approvedById    String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([paymentId])
+  @@index([createdAt])
+}
+
+model SupportCase {
+  id                 String            @id @default(cuid())
+  title              String
+  type               SupportCaseType   @default(GENERAL)
+  status             SupportCaseStatus @default(OPEN)
+  slaDueAt           DateTime?
+  assigneeId         String?
+  assignee           User?             @relation("CaseAssignee", fields: [assigneeId], references: [id])
+  createdById        String
+  createdBy          User              @relation("CaseCreator", fields: [createdById], references: [id])
+  passengerProfileId String?
+  passenger          PassengerProfile? @relation(fields: [passengerProfileId], references: [id])
+  driverProfileId    String?
+  driver             DriverProfile?    @relation(fields: [driverProfileId], references: [id])
+  rideId             String?
+  ride               Ride?             @relation(fields: [rideId], references: [id])
+  paymentId          String?
+  payment            Payment?          @relation(fields: [paymentId], references: [id])
+  chatThreadId       String?
+  chatThread         ChatThread?       @relation(fields: [chatThreadId], references: [id])
+  notes              SupportCaseNote[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([status, createdAt])
+  @@index([assigneeId, status])
+}
+
+model SupportCaseNote {
+  id        String      @id @default(cuid())
+  caseId    String
+  case      SupportCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorId  String
+  body      String
+  internal  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+}
+
+model RiskFlag {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String
+  severity  String
+  score     Int      @default(0)
+  detail    Json     @default("{}")
+  open      Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, open])
+  @@index([severity, open])
+}
+
+model WatchlistEntry {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation("WatchlistUser", fields: [userId], references: [id], onDelete: Cascade)
+  reason      String
+  createdById String
+  createdBy   User     @relation("WatchlistActor", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model NotificationTemplate {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  channel   String
+  title     String
+  body      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model NotificationCampaign {
+  id          String    @id @default(cuid())
+  title       String
+  channel     String
+  segment     String
+  city        String?
+  templateKey String?
+  bodyTitle   String
+  bodyText    String
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  status      String    @default("DRAFT")
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, scheduledAt])
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String   @default("")
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
+model ApiErrorEvent {
+  id        String   @id @default(cuid())
+  source    String
+  message   String
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model IdempotencyKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  scope     String
+  response  Json?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+model WebhookEvent {
+  id           String   @id @default(cuid())
+  provider     String
+  eventId      String
+  payload      Json
+  processedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
+
+/// Phase 3 — driver calendar day-off (blocks matching for that local date).
+model DriverDayOff {
+  id        String        @id @default(cuid())
+  driverId  String
+  driver    DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  date      DateTime      @db.Date
+  note      String?
+  createdAt DateTime      @default(now())
+
+  @@unique([driverId, date])
+  @@index([date])
+}
+
+/// Phase 3 — referral redemptions (passenger or driver invite codes).
+model ReferralRedemption {
+  id           String   @id @default(cuid())
+  code         String
+  referrerId   String
+  refereeId    String   @unique
+  role         String
+  creditAmount Float    @default(0)
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now())
+
+  @@index([code])
+  @@index([referrerId])
+}
+
+/// Saved analytics filter views and custom report definitions (admin-owned).
+model AnalyticsSavedView {
+  id        String   @id @default(cuid())
+  adminId   String
+  name      String
+  kind      String   @default("filter")
+  query     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([adminId, kind])
+}
+
+/// Phase 3 — curated experience / car-rental catalog items.
+model CatalogItem {
+  id           String   @id @default(cuid())
+  serviceType  String
+  slug         String   @unique
+  title        String
+  description  String
+  city         String   @default("")
+  basePrice    Float
+  currency     String   @default("USD")
+  durationHours Float?
+  active       Boolean  @default(true)
+  meta         Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([serviceType, active])
+}

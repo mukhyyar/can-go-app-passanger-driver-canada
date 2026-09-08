@@ -17,9 +17,13 @@ dependencies:
     path: ../../packages/gt_ui
   gt_mock:
     path: ../../packages/gt_mock
+  gt_api:
+    path: ../../packages/gt_api
   intl: ^0.20.2
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
+  image_picker: ^1.1.2
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

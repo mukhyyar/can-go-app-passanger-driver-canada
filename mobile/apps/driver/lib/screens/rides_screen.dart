@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
+import '../state/app_state.dart';
 import 'brand_chrome.dart';
 
 class RidesScreen extends StatefulWidget {
@@ -223,10 +225,22 @@ class _RidesScreenState extends State<RidesScreen>
             width: double.infinity,
             height: 48,
             child: OutlinedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Day off added (demo)')),
-                );
+              onPressed: () async {
+                final s = context.read<AppState>();
+                final date =
+                    '${_day.year.toString().padLeft(4, '0')}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+                try {
+                  await s.api.driver.addDayOff(date);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Day off added for $date')),
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Day off failed: $e')),
+                  );
+                }
               },
               style: OutlinedButton.styleFrom(
                 backgroundColor: Colors.white,

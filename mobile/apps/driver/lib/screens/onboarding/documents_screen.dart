@@ -1,12 +1,55 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
 
-class DocumentsScreen extends StatelessWidget {
+class DocumentsScreen extends StatefulWidget {
   const DocumentsScreen({super.key});
+
+  @override
+  State<DocumentsScreen> createState() => _DocumentsScreenState();
+}
+
+class _DocumentsScreenState extends State<DocumentsScreen> {
+  bool _busy = false;
+
+  Future<void> _pickAndUpload(String docType) async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (file == null || !mounted) return;
+    final app = context.read<AppState>();
+    setState(() => _busy = true);
+    try {
+      final bytes = await file.readAsBytes();
+      if (docType == 'vehicle_registration' || docType == 'vehicle_photo') {
+        await app.ensureVehicle();
+      }
+      await app.uploadKycBytes(
+        docType: docType,
+        bytes: bytes,
+        filename: file.name,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Uploaded $docType')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,12 +61,10 @@ class DocumentsScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
         ),
-        actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
-        ],
       ),
       body: Column(
         children: [
+          if (_busy) const LinearProgressIndicator(),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
@@ -43,8 +84,11 @@ class DocumentsScreen extends StatelessWidget {
                       ),
                       SizedBox(height: 6),
                       Text(
-                        'Upload files in format: JPEG, PNG, PDF. Maximum file size is 25 MB.',
-                        style: TextStyle(color: GtColors.textSecondary, fontSize: 13),
+                        'Upload JPEG/PNG/PDF. Files go to private storage for Admin KYC.',
+                        style: TextStyle(
+                          color: GtColors.textSecondary,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
@@ -55,23 +99,14 @@ class DocumentsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Your selfie (face photo) with your driving license',
+                        'Selfie with driving license',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 10),
                       if (s.selfieUploaded)
-                        Container(
-                          width: 88,
-                          height: 88,
-                          decoration: BoxDecoration(
-                            color: GtColors.soft,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: GtColors.border),
-                          ),
-                          child: const Icon(Icons.person, size: 40, color: GtColors.textMuted),
-                        )
+                        _doneThumb(Icons.person)
                       else
-                        _plusBox(() {}),
+                        _plusBox(() => _pickAndUpload('selfie')),
                     ],
                   ),
                 ),
@@ -81,22 +116,33 @@ class DocumentsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Vehicle photo with Vehicle Registration Certificate and license plate legible',
+                        'Driving license',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      if (s.licenseUploaded)
+                        _doneThumb(Icons.badge_outlined)
+                      else
+                        _plusBox(() => _pickAndUpload('license')),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                GtCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Vehicle registration',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 10),
                       if (s.vehicleDocUploaded)
-                        Container(
-                          width: 88,
-                          height: 88,
-                          decoration: BoxDecoration(
-                            color: GtColors.soft,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.description, size: 36),
-                        )
+                        _doneThumb(Icons.description)
                       else
-                        _plusBox(() => s.markVehicleDocUploaded()),
+                        _plusBox(
+                          () => _pickAndUpload('vehicle_registration'),
+                        ),
                     ],
                   ),
                 ),
@@ -107,7 +153,9 @@ class DocumentsScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: GtGreenButton(
               label: 'Next',
-              onPressed: () => context.push('/onboarding/photos'),
+              onPressed: _busy
+                  ? null
+                  : () => context.push('/onboarding/photos'),
             ),
           ),
         ],
@@ -115,17 +163,31 @@ class DocumentsScreen extends StatelessWidget {
     );
   }
 
-  static Widget _plusBox(VoidCallback onTap) {
+  Widget _doneThumb(IconData icon) {
+    return Container(
+      width: 88,
+      height: 88,
+      decoration: BoxDecoration(
+        color: GtColors.soft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: GtColors.border),
+      ),
+      child: Icon(icon, size: 40, color: GtColors.textMuted),
+    );
+  }
+
+  Widget _plusBox(VoidCallback onTap) {
     return InkWell(
-      onTap: onTap,
+      onTap: _busy ? null : onTap,
       child: Container(
         width: 88,
         height: 88,
         decoration: BoxDecoration(
           color: GtColors.bgGrey,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: GtColors.border),
         ),
-        child: const Icon(Icons.add, size: 36),
+        child: const Icon(Icons.add, size: 32),
       ),
     );
   }

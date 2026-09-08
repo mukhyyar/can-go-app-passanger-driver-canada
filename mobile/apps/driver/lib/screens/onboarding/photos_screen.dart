@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
@@ -128,7 +129,29 @@ class _PhotosScreenState extends State<PhotosScreen> {
                 ),
                 if (s.vehiclePhotoCount < 6)
                   InkWell(
-                    onTap: s.markVehiclePhotoAdded,
+                    onTap: () async {
+                      final picker = ImagePicker();
+                      final file = await picker.pickImage(
+                        source: ImageSource.gallery,
+                        imageQuality: 85,
+                      );
+                      if (file == null || !context.mounted) return;
+                      try {
+                        await s.ensureVehicle();
+                        final bytes = await file.readAsBytes();
+                        await s.uploadKycBytes(
+                          docType: 'vehicle_photo',
+                          bytes: bytes,
+                          filename: file.name,
+                        );
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Upload failed: $e')),
+                          );
+                        }
+                      }
+                    },
                     child: Container(
                       width: 100,
                       height: 100,

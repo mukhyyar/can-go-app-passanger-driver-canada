@@ -37,17 +37,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _pay() async {
     setState(() => _loading = true);
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
     final app = context.read<AppState>();
-    app.selectOffer(widget.rideId, widget.offerId);
-    app.setShellTab(1);
-    setState(() => _loading = false);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Payment successful — ride booked')),
-    );
-    context.go('/');
+    try {
+      await app.selectOffer(widget.rideId, widget.offerId);
+      await app.paySelectedOffer(widget.rideId);
+      if (!mounted) return;
+      app.setShellTab(1);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payment successful — ride booked')),
+      );
+      context.go('/');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override

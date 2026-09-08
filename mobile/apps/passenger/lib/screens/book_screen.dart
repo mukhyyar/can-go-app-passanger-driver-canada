@@ -160,7 +160,7 @@ class BookScreen extends StatelessWidget {
                         state.serviceType == ServiceType.carRental)
                     ? Icons.open_in_new
                     : null,
-                onPressed: () {
+                onPressed: () async {
                   if (state.from == null &&
                       state.serviceType != ServiceType.experiences &&
                       state.serviceType != ServiceType.carRental) {
@@ -186,8 +186,16 @@ class BookScreen extends StatelessWidget {
                   if (state.from == null) {
                     state.setFrom(MockData.places.first);
                   }
-                  final req = state.createBookingRequest();
-                  context.push('/waiting/${req.id}');
+                  try {
+                    final req = await state.createBookingRequestAsync();
+                    if (!context.mounted) return;
+                    context.push('/waiting/${req.id}');
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Booking failed: $e')),
+                    );
+                  }
                 },
               ),
             ),

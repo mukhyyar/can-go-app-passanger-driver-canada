@@ -114,18 +114,17 @@ class DriverMenuPanel extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _PromoCard(
-              title: s.isActivated ? 'You are live' : 'Activate your account',
+              title: s.isActivated ? 'You are live' : 'Awaiting activation',
               subtitle: s.isActivated
                   ? 'Offer prices on new transfer requests'
-                  : 'Complete profile and wait for partner review',
-              actionLabel: s.isActivated ? 'Open' : 'Toggle',
+                  : 'Upload KYC docs — Admin activates your account',
+              actionLabel: s.isActivated ? 'Open' : 'Documents',
               onAction: () {
-                if (!s.isActivated) {
-                  s.setActivated(true);
-                  _toast(context, 'Account activated (demo)');
-                } else {
-                  if (inDrawer) Navigator.of(context).pop();
+                if (inDrawer) Navigator.of(context).pop();
+                if (s.isActivated) {
                   context.go('/');
+                } else {
+                  context.push('/onboarding/documents');
                 }
               },
             ),
@@ -137,16 +136,33 @@ class DriverMenuPanel extends StatelessWidget {
               onAction: () => _toast(context, 'Invite link (demo)'),
             ),
             const SizedBox(height: 16),
-            SwitchListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.verified_outlined, color: GtColors.brand),
-              title: const Text(
-                'Activate account',
-                style: TextStyle(fontWeight: FontWeight.w600),
+              leading: Icon(
+                s.isActivated ? Icons.verified : Icons.hourglass_empty,
+                color: GtColors.brand,
               ),
-              subtitle: const Text('Demo toggle'),
-              value: s.isActivated,
-              onChanged: (v) => s.setActivated(v),
+              title: Text(
+                s.isActivated ? 'Activated partner' : 'Pending Admin KYC',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(
+                s.isActivated
+                    ? 'Server activation status'
+                    : 'Cannot self-activate — wait for review',
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () async {
+                  await s.refreshMe();
+                  if (context.mounted) {
+                    _toast(
+                      context,
+                      s.isActivated ? 'Activated' : 'Still pending',
+                    );
+                  }
+                },
+              ),
             ),
             const Divider(height: 24, color: GtColors.border),
             _MenuTile(
@@ -156,7 +172,7 @@ class DriverMenuPanel extends StatelessWidget {
               onTap: () async {
                 if (inDrawer) Navigator.of(context).pop();
                 await s.signOut();
-                if (context.mounted) context.go('/onboarding/profile');
+                if (context.mounted) context.go('/auth');
               },
               showDivider: false,
             ),

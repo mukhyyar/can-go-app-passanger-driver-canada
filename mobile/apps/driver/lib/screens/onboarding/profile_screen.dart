@@ -318,8 +318,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: GtGreenButton(
               label: 'Next',
               onPressed: s.profileValidEnough
-                  ? () {
+                  ? () async {
                       _sync(s);
+                      final code = _referral.text.trim();
+                      if (s.hasReferral && code.isNotEmpty) {
+                        try {
+                          await s.api.auth.redeemReferral(code);
+                        } catch (_) {
+                          // Non-blocking: continue onboarding even if code invalid.
+                        }
+                      }
+                      if (!context.mounted) return;
                       context.push('/onboarding/location');
                     }
                   : null,

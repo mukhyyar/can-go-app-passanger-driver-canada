@@ -16,40 +16,40 @@ class WaitingScreen extends StatefulWidget {
 }
 
 class _WaitingScreenState extends State<WaitingScreen> {
-  Timer? _timer;
+  Timer? _pulse;
+  Timer? _poll;
   int _step = 0;
   bool _refreshed = false;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(milliseconds: 700), (_) {
+    _pulse = Timer.periodic(const Duration(milliseconds: 700), (_) {
       if (!mounted) return;
       setState(() => _step = (_step + 1).clamp(0, 3));
     });
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() => _refreshed = true);
-      context.read<AppState>().refresh();
-      final ride = context.read<AppState>().rideById(widget.rideId);
-      if (ride != null && ride.status == RideStatus.chooseOffer) {
-        context.go('/offers/${widget.rideId}');
-      }
-    });
-    // Also check after mock status flips (~3s)
-    Future.delayed(const Duration(seconds: 3, milliseconds: 200), () {
-      if (!mounted) return;
-      context.read<AppState>().refresh();
-      final ride = context.read<AppState>().rideById(widget.rideId);
-      if (ride != null && ride.status == RideStatus.chooseOffer) {
-        context.go('/offers/${widget.rideId}');
-      }
-    });
+    _poll = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+    Future.delayed(const Duration(milliseconds: 400), _refresh);
+  }
+
+  Future<void> _refresh() async {
+    final app = context.read<AppState>();
+    await app.refreshRidesFromServer();
+    if (!mounted) return;
+    setState(() => _refreshed = true);
+    final ride = app.rideById(widget.rideId);
+    if (ride != null &&
+        (ride.status == RideStatus.chooseOffer ||
+            (ride.offerCount > 0) ||
+            ride.serverStatus == 'OFFER_SELECTION')) {
+      context.go('/offers/${widget.rideId}');
+    }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _pulse?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 

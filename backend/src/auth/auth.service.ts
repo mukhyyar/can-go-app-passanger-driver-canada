@@ -1,0 +1,642 @@
+import { createHmac, createHash, randomBytes } from 'crypto';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { UserRole } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { PasswordService } from './password.service';
+import { TokensService } from './tokens.service';
+import type { AuthUser } from './decorators/current-user.decorator';
+import { OTP_PROVIDER } from '../providers/otp/otp-provider.interface';
+import type { OtpProvider } from '../providers/otp/otp-provider.interface';
+import {
+  AdminTotpDisableDto,
+  AdminTotpEnableDto,
+  LoginDto,
+  OtpSendDto,
+  OtpVerifyDto,
+  PasswordResetConfirmDto,
+  PasswordResetRequestDto,
+  RegisterDto,
+} from './dto/auth.dto';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passwords: PasswordService,
+    private readonly tokens: TokensService,
+    private readonly config: ConfigService,
+    @Inject(OTP_PROVIDER) private readonly otp: OtpProvider,
+  ) {}
+
+  private async requireDb() {
+    if (!(await this.prisma.isReady())) {
+      throw new ServiceUnavailableException(
+        'Database unavailable. Start Postgres (docker compose up -d) and run migrations.',
+      );
+    }
+  }
+
+  private assertPassengerOrDriverRole(role: UserRole) {
+    if (role !== UserRole.PASSENGER && role !== UserRole.DRIVER) {
+      throw new BadRequestException(
+        'Public registration allows PASSENGER or DRIVER only',
+      );
+    }
+  }
+
+  async register(
+    dto: RegisterDto,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
+    await this.requireDb();
+    this.assertPassengerOrDriverRole(dto.role);
+
+    const email = dto.email.trim().toLowerCase();
+    const phoneE164 = dto.phoneE164.trim();
+
+    const existing = await this.prisma.user.findFirst({
+      where: { OR: [{ email }, { phoneE164 }] },
+    });
+    if (existing) {
+      throw new ConflictException('Email or phone already registered');
+    }
+
+    const passwordHash = await this.passwords.hash(dto.password);
+    const fullName = dto.fullName?.trim() ?? '';
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        phoneE164,
+        passwordHash,
+        role: dto.role,
+        ...(dto.role === UserRole.PASSENGER
+          ? {
+              passengerProfile: {
+                create: { fullName },
+              },
+            }
+          : {
+              driverProfile: {
+                create: {
+                  fullName,
+                  approvalStatus: 'PENDING_KYC',
+                  isActivated: false,
+                },
+              },
+            }),
+      },
+    });
+
+    const challenge = await this.otp.issue(phoneE164, 'verify_phone');
+
+    await this.audit(user.id, 'auth.register', 'User', user.id, meta?.ip);
+
+    return {
+      userId: user.id,
+      role: user.role,
+      requiresPhoneVerification: true,
+      challengeId: challenge.challengeId,
+      expiresAt: challenge.expiresAt,
+      ...(challenge.debugCode ? { debugCode: challenge.debugCode } : {}),
+      message: 'Verify phone OTP to complete registration and receive tokens',
+    };
+  }
+
+  async verifyOtp(
+    dto: OtpVerifyDto,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
+    await this.requireDb();
+    const result = await this.otp.verify(dto.challengeId, dto.code);
+    if (!result.ok || !result.phoneE164) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { phoneE164: result.phoneE164 },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found for this phone');
+    }
+    if (user.isSuspended) {
+      throw new ForbiddenException('Account suspended');
+    }
+
+    if (
+      result.purpose === 'verify_phone' ||
+      result.purpose === 'register' ||
+      result.purpose === 'login'
+    ) {
+      if (!user.phoneVerifiedAt) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { phoneVerifiedAt: new Date() },
+        });
+      }
+    }
+
+    const tokens = await this.tokens.issueSession({
+      userId: user.id,
+      role: user.role,
+      deviceId: dto.deviceId,
+      userAgent: meta?.userAgent,
+      ip: meta?.ip,
+    });
+
+    await this.audit(user.id, 'auth.otp_verify', 'User', user.id, meta?.ip);
+
+    return {
+      user: this.publicUser(user),
+      ...tokens,
+    };
+  }
+
+  async sendOtp(dto: OtpSendDto) {
+    await this.requireDb();
+    // Rate limit is at controller (Throttler)
+    if (dto.purpose === 'verify_phone' || dto.purpose === 'login') {
+      const user = await this.prisma.user.findUnique({
+        where: { phoneE164: dto.phoneE164 },
+      });
+      if (!user) {
+        // Avoid phone enumeration for login; still ok for verify after register
+        if (dto.purpose === 'login') {
+          return {
+            ok: true,
+            message: 'If the account exists, an OTP was sent',
+          };
+        }
+      }
+    }
+
+    const challenge = await this.otp.issue(dto.phoneE164, dto.purpose);
+    return {
+      challengeId: challenge.challengeId,
+      expiresAt: challenge.expiresAt,
+      ...(challenge.debugCode ? { debugCode: challenge.debugCode } : {}),
+    };
+  }
+
+  async login(dto: LoginDto, meta?: { userAgent?: string; ip?: string }) {
+    await this.requireDb();
+    if (!dto.email && !dto.phoneE164) {
+      throw new BadRequestException('email or phoneE164 required');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: dto.email
+        ? { email: dto.email.trim().toLowerCase() }
+        : { phoneE164: dto.phoneE164!.trim() },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+
+    if (!user?.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const ok = await this.passwords.verify(user.passwordHash, dto.password);
+    if (!ok) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.isSuspended) {
+      throw new ForbiddenException('Account suspended');
+    }
+
+    if (
+      (user.role === UserRole.PASSENGER || user.role === UserRole.DRIVER) &&
+      !user.phoneVerifiedAt
+    ) {
+      const challenge = await this.otp.issue(
+        user.phoneE164!,
+        'verify_phone',
+      );
+      throw new ForbiddenException({
+        code: 'PHONE_NOT_VERIFIED',
+        message: 'Phone verification required',
+        challengeId: challenge.challengeId,
+        expiresAt: challenge.expiresAt,
+        ...(challenge.debugCode ? { debugCode: challenge.debugCode } : {}),
+      });
+    }
+
+    if (
+      (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN) &&
+      this.config.get<boolean>('admin.totpEnforce') === true &&
+      !user.adminTotpEnabled
+    ) {
+      throw new UnauthorizedException({
+        code: 'TOTP_SETUP_REQUIRED',
+        message: 'Admin 2FA enrollment required before login',
+      });
+    }
+
+    if (
+      (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN) &&
+      user.adminTotpEnabled
+    ) {
+      if (!dto.totpCode) {
+        throw new UnauthorizedException({
+          code: 'TOTP_REQUIRED',
+          message: 'Admin 2FA code required',
+        });
+      }
+      const valid = this.verifyTotp(user.adminTotpSecret!, dto.totpCode);
+      if (!valid) {
+        throw new UnauthorizedException('Invalid 2FA code');
+      }
+    }
+
+    const tokens = await this.tokens.issueSession({
+      userId: user.id,
+      role: user.role,
+      deviceId: dto.deviceId,
+      userAgent: meta?.userAgent,
+      ip: meta?.ip,
+    });
+
+    await this.audit(user.id, 'auth.login', 'User', user.id, meta?.ip);
+    return { user: this.publicUser(user), ...tokens };
+  }
+
+  async refresh(refreshToken: string, meta?: { userAgent?: string; ip?: string }) {
+    await this.requireDb();
+    return this.tokens.rotateRefresh(refreshToken, meta);
+  }
+
+  async logout(userId: string | undefined, refreshToken?: string) {
+    await this.requireDb();
+    if (refreshToken) {
+      await this.tokens.revokeRefresh(refreshToken);
+    }
+    if (userId) {
+      await this.audit(userId, 'auth.logout', 'User', userId);
+    }
+    return { ok: true };
+  }
+
+  async logoutAll(userId: string) {
+    await this.requireDb();
+    await this.tokens.revokeAllForUser(userId);
+    await this.audit(userId, 'auth.logout_all', 'User', userId);
+    return { ok: true };
+  }
+
+  async me(userId: string, actor?: AuthUser) {
+    await this.requireDb();
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        passengerProfile: true,
+        driverProfile: true,
+        adminRole: { include: { permissions: true } },
+      },
+    });
+    if (!user) throw new NotFoundException();
+    const permissions =
+      user.role === UserRole.SUPER_ADMIN
+        ? ['*']
+        : (user.adminRole?.permissions.map((p) => p.permission) ??
+          actor?.permissions ??
+          []);
+    return {
+      ...this.publicUser(user),
+      permissions,
+      adminRole: user.adminRole
+        ? { slug: user.adminRole.slug, name: user.adminRole.name }
+        : null,
+      impersonation: actor?.impersonation,
+    };
+  }
+
+  async listSessions(userId: string) {
+    await this.requireDb();
+    return this.prisma.userSession.findMany({
+      where: { userId, revokedAt: null },
+      orderBy: { lastSeenAt: 'desc' },
+      select: {
+        id: true,
+        deviceId: true,
+        userAgent: true,
+        ip: true,
+        lastSeenAt: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async revokeSession(userId: string, sessionId: string) {
+    await this.requireDb();
+    const session = await this.prisma.userSession.findFirst({
+      where: { id: sessionId, userId },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+    await this.prisma.userSession.update({
+      where: { id: sessionId },
+      data: { revokedAt: new Date() },
+    });
+    await this.audit(userId, 'auth.session_revoke', 'UserSession', sessionId);
+    return { ok: true };
+  }
+
+  async requestPasswordReset(dto: PasswordResetRequestDto) {
+    await this.requireDb();
+    const user = await this.prisma.user.findFirst({
+      where: dto.email
+        ? { email: dto.email.trim().toLowerCase() }
+        : { phoneE164: dto.phoneE164!.trim() },
+    });
+
+    // Always generic response (no enumeration)
+    if (!user?.phoneE164) {
+      return { ok: true, message: 'If the account exists, an OTP was sent' };
+    }
+
+    const challenge = await this.otp.issue(user.phoneE164, 'password_reset');
+    return {
+      ok: true,
+      challengeId: challenge.challengeId,
+      expiresAt: challenge.expiresAt,
+      ...(challenge.debugCode ? { debugCode: challenge.debugCode } : {}),
+      message: 'If the account exists, an OTP was sent',
+    };
+  }
+
+  async confirmPasswordReset(dto: PasswordResetConfirmDto) {
+    await this.requireDb();
+    const result = await this.otp.verify(dto.challengeId, dto.code);
+    if (!result.ok || result.purpose !== 'password_reset' || !result.phoneE164) {
+      throw new UnauthorizedException('Invalid or expired OTP');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { phoneE164: result.phoneE164 },
+    });
+    if (!user) throw new NotFoundException();
+
+    const passwordHash = await this.passwords.hash(dto.newPassword);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+    await this.tokens.revokeAllForUser(user.id);
+    await this.audit(user.id, 'auth.password_reset', 'User', user.id);
+    return { ok: true };
+  }
+
+  /** Admin 2FA-ready: stores TOTP secret; enforcement happens on login when enabled. */
+  async adminTotpSetup(userId: string) {
+    await this.requireDb();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException();
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Admin only');
+    }
+
+    // Simple TOTP secret (base32-ish). Production should use otplib; Phase 1a scaffolds storage.
+    const secret = randomBytes(20).toString('hex');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { adminTotpSecret: secret, adminTotpEnabled: false },
+    });
+
+    return {
+      secret,
+      otpauthUrl: `otpauth://totp/CAN-GO:${user.email}?secret=${secret}&issuer=CAN-GO`,
+      enabled: false,
+      note: 'Call POST /auth/admin/2fa/enable with a valid code to enforce 2FA on login',
+    };
+  }
+
+  async adminTotpEnable(userId: string, dto: AdminTotpEnableDto) {
+    await this.requireDb();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.adminTotpSecret) {
+      throw new BadRequestException('Run 2FA setup first');
+    }
+    if (!this.verifyTotp(user.adminTotpSecret, dto.code)) {
+      throw new UnauthorizedException('Invalid 2FA code');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { adminTotpEnabled: true },
+    });
+    await this.audit(userId, 'auth.admin_2fa_enable', 'User', userId);
+    return { enabled: true };
+  }
+
+  async adminTotpDisable(userId: string, dto: AdminTotpDisableDto) {
+    await this.requireDb();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.passwordHash) throw new NotFoundException();
+    const ok = await this.passwords.verify(user.passwordHash, dto.password);
+    if (!ok) throw new UnauthorizedException('Invalid password');
+    if (user.adminTotpEnabled && user.adminTotpSecret) {
+      if (!this.verifyTotp(user.adminTotpSecret, dto.code)) {
+        throw new UnauthorizedException('Invalid 2FA code');
+      }
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { adminTotpEnabled: false, adminTotpSecret: null },
+    });
+    await this.audit(userId, 'auth.admin_2fa_disable', 'User', userId);
+    return { enabled: false };
+  }
+
+  /**
+   * Lightweight TOTP verification (30s window, SHA1 HMAC).
+   * Sufficient for 2FA-ready architecture; can swap to otplib later.
+   */
+  private verifyTotp(secretHex: string, code: string): boolean {
+    try {
+      const key = Buffer.from(secretHex, 'hex');
+      const step = 30;
+      const now = Math.floor(Date.now() / 1000);
+      for (const w of [0, -1, 1]) {
+        const counter = Math.floor(now / step) + w;
+        const buf = Buffer.alloc(8);
+        buf.writeBigUInt64BE(BigInt(counter));
+        const hmac = createHmac('sha1', key).update(buf).digest();
+        const offset = hmac[hmac.length - 1] & 0xf;
+        const bin =
+          ((hmac[offset] & 0x7f) << 24) |
+          ((hmac[offset + 1] & 0xff) << 16) |
+          ((hmac[offset + 2] & 0xff) << 8) |
+          (hmac[offset + 3] & 0xff);
+        const otp = String(bin % 1_000_000).padStart(6, '0');
+        if (otp === code) return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  async consumeImpersonation(
+    rawToken: string,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
+    await this.requireDb();
+    if (!rawToken?.trim()) {
+      throw new BadRequestException('token required');
+    }
+    const tokenHash = createHash('sha256').update(rawToken.trim()).digest('hex');
+    const session = await this.prisma.impersonationSession.findUnique({
+      where: { tokenHash },
+      include: { target: true, admin: true },
+    });
+    if (!session || session.revokedAt) {
+      throw new UnauthorizedException('Invalid impersonation token');
+    }
+    if (session.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException('Impersonation token expired');
+    }
+    if (session.consumedAt) {
+      throw new UnauthorizedException('Impersonation token already used');
+    }
+    if (session.target.isSuspended) {
+      throw new ForbiddenException('Target account is suspended');
+    }
+
+    await this.prisma.impersonationSession.update({
+      where: { id: session.id },
+      data: { consumedAt: new Date() },
+    });
+
+    const tokens = await this.tokens.issueImpersonationAccess({
+      targetUserId: session.targetUserId,
+      targetRole: session.target.role,
+      adminId: session.adminId,
+      impersonationSessionId: session.id,
+      readOnly: session.readOnly,
+      expiresAt: session.expiresAt,
+      userAgent: meta?.userAgent,
+      ip: meta?.ip,
+    });
+
+    await this.audit(
+      session.adminId,
+      'USER_IMPERSONATE_CONSUME',
+      'User',
+      session.targetUserId,
+      meta?.ip,
+    );
+
+    return {
+      ...tokens,
+      user: this.publicUser({
+        ...session.target,
+        passengerProfile: null,
+        driverProfile: null,
+      }),
+    };
+  }
+
+  async endImpersonation(actor: AuthUser) {
+    await this.requireDb();
+    const impSid = actor.impersonation?.sessionId;
+    if (!impSid) {
+      throw new BadRequestException('Not an impersonation session');
+    }
+    await this.prisma.impersonationSession.update({
+      where: { id: impSid },
+      data: { revokedAt: new Date() },
+    });
+    if (actor.sessionId) {
+      await this.prisma.userSession.update({
+        where: { id: actor.sessionId },
+        data: { revokedAt: new Date() },
+      });
+    }
+    await this.audit(
+      actor.impersonation?.by,
+      'USER_IMPERSONATE_END',
+      'User',
+      actor.id,
+    );
+    return { ok: true, adminUrl: this.config.get<string>('admin.adminWebBase') };
+  }
+
+  private publicUser(user: {
+    id: string;
+    email: string | null;
+    phoneE164: string | null;
+    phoneVerifiedAt: Date | null;
+    role: UserRole;
+    isSuspended: boolean;
+    adminTotpEnabled: boolean;
+    passengerProfile?: {
+      id: string;
+      fullName: string;
+      isVip?: boolean;
+      referralCode?: string | null;
+    } | null;
+    driverProfile?: {
+      id: string;
+      fullName: string;
+      approvalStatus: string;
+      isActivated: boolean;
+    } | null;
+  }) {
+    return {
+      id: user.id,
+      email: user.email,
+      phoneE164: user.phoneE164,
+      phoneVerifiedAt: user.phoneVerifiedAt,
+      role: user.role,
+      isSuspended: user.isSuspended,
+      adminTotpEnabled: user.adminTotpEnabled,
+      passenger: user.passengerProfile
+        ? {
+            id: user.passengerProfile.id,
+            fullName: user.passengerProfile.fullName,
+            isVip: user.passengerProfile.isVip ?? false,
+            referralCode: user.passengerProfile.referralCode ?? null,
+          }
+        : undefined,
+      driver: user.driverProfile
+        ? {
+            id: user.driverProfile.id,
+            fullName: user.driverProfile.fullName,
+            approvalStatus: user.driverProfile.approvalStatus,
+            isActivated: user.driverProfile.isActivated,
+          }
+        : undefined,
+    };
+  }
+
+  private async audit(
+    actorId: string | undefined,
+    action: string,
+    resource?: string,
+    resourceId?: string,
+    ip?: string,
+  ) {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId,
+          action,
+          resource,
+          resourceId,
+          ip,
+        },
+      });
+    } catch {
+      // non-fatal
+    }
+  }
+}

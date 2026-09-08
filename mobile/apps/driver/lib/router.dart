@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import 'screens/auth_screen.dart';
 import 'screens/chat_detail_screen.dart';
 import 'screens/chats_screen.dart';
 import 'screens/instructions_screen.dart';
@@ -25,12 +26,25 @@ GoRouter createRouter(AppState appState) {
       if (!appState.loaded) return null;
       final loc = state.matchedLocation;
       final onboarding = loc.startsWith('/onboarding');
-      if (!appState.onboardedComplete && !onboarding) {
+      final isAuth = loc == '/auth';
+      if (!appState.isAuthenticated && !isAuth) {
+        return '/auth';
+      }
+      if (appState.isAuthenticated && isAuth) {
+        return appState.onboardedComplete ? '/' : '/onboarding/profile';
+      }
+      if (appState.isAuthenticated &&
+          !appState.onboardedComplete &&
+          !onboarding) {
         return '/onboarding/profile';
       }
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/auth',
+        builder: (_, __) => const AuthScreen(),
+      ),
       GoRoute(
         path: '/onboarding/profile',
         builder: (_, __) => const ProfileScreen(),

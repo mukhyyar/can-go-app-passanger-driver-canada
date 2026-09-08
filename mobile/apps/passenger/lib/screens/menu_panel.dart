@@ -108,7 +108,18 @@ class MenuPanel extends StatelessWidget {
               title: 'Request a VIP account',
               subtitle: 'Access to premium services',
               actionLabel: 'Request',
-              onAction: () => _toast(context, 'VIP request sent (demo)'),
+              onAction: () async {
+                try {
+                  await context.read<AppState>().api.auth.requestVip();
+                  if (context.mounted) {
+                    _toast(context, 'VIP request submitted');
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    _toast(context, 'VIP request failed: $e');
+                  }
+                }
+              },
             ),
             const SizedBox(height: 10),
             _PromoCard(

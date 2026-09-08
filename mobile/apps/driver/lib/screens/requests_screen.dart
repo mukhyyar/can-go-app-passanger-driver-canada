@@ -25,6 +25,9 @@ class _RequestsScreenState extends State<RequestsScreen>
     _tabs.addListener(() {
       if (mounted) setState(() {});
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AppState>().refreshOpenRequests();
+    });
   }
 
   @override
@@ -119,8 +122,11 @@ class _RequestsScreenState extends State<RequestsScreen>
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final newReqs = s.repo.newRequests;
-    final offers = s.repo.myOffers;
+    final newReqs =
+        s.isAuthenticated ? s.openRequests : s.repo.newRequests;
+    final offers = s.isAuthenticated
+        ? s.openRequests.where((r) => r.hasOffer).toList()
+        : s.repo.myOffers;
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,

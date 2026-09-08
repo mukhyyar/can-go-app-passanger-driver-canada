@@ -1,0 +1,57 @@
+# CAN-GO local infrastructure (Phase 0)
+# Requires Docker Desktop. Do not commit real secrets.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: cango-postgres
+    environment:
+      POSTGRES_USER: cango
+      POSTGRES_PASSWORD: cango
+      POSTGRES_DB: cango
+    ports:
+      # Host 5432 often occupied by local Postgres; use 5433 from the host.
+      - '5433:5432'
+    volumes:
+      - cango_pg_data:/var/lib/postgresql/data
+      - ./backend/prisma/init-postgis.sql:/docker-entrypoint-initdb.d/01-postgis.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cango -d cango']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: cango-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: cango-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: cango
+      MINIO_ROOT_PASSWORD: cangominio
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - cango_minio_data:/data
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: cango-mailhog
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  cango_pg_data:
+  cango_minio_data:

@@ -28,11 +28,20 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+secrets/**
+!secrets/README.md
+!secrets/.gitignore
 **/key.properties
 **/*.jks
 **/*.keystore
 **/google-services.json
 **/GoogleService-Info.plist
+**/firebase-adminsdk*.json
+**/serviceAccount*.json
+backend/node_modules/
+backend/dist/
+apps/**/node_modules/
+apps/**/.next/
 
 # Coverage
 coverage/

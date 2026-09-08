@@ -44,9 +44,18 @@ class MapPickScreen extends StatelessWidget {
                 onPressed: () {
                   final app = context.read<AppState>();
                   final field = app.locationField;
-                  final place = field == 'to'
-                      ? MockData.places[1]
-                      : MockData.places[0];
+                  // Use the pin currently shown on the map (existing coords /
+                  // last selection) — never hardcode MockData.places.
+                  final place = Place(
+                    id: pin.id.isNotEmpty
+                        ? pin.id
+                        : 'pin-${pin.lat}-${pin.lng}',
+                    label: pin.label.isNotEmpty
+                        ? pin.label
+                        : '${pin.lat.toStringAsFixed(5)}, ${pin.lng.toStringAsFixed(5)}',
+                    lat: pin.lat,
+                    lng: pin.lng,
+                  );
                   if (Navigator.of(context).canPop()) {
                     Navigator.of(context).pop();
                   }

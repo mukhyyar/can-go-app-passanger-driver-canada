@@ -13,7 +13,7 @@ class OffersScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final ride = state.rideById(rideId);
-    final offers = state.repo.offersFor(rideId);
+    final offers = state.offersFor(rideId);
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,

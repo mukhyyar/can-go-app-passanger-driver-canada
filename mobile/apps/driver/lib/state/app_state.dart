@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,9 +9,9 @@ class AppState extends ChangeNotifier {
   AppState();
 
   final MockRepository repo = MockRepository.instance;
+  final CanGoSession api = CanGoSession();
 
   static const _kOnboarded = 'driver_onboarded';
-  static const _kActivated = 'driver_activated';
   static const _kOperatingZones = 'driver_operating_zones';
   static const _kBaseLat = 'driver_base_lat';
   static const _kBaseLng = 'driver_base_lng';
@@ -18,7 +19,9 @@ class AppState extends ChangeNotifier {
 
   bool loaded = false;
   bool onboardedComplete = false;
+  bool isAuthenticated = false;
   bool isActivated = false;
+  Map<String, dynamic>? me;
 
   bool isIndividual = true;
   String fullName = '';
@@ -44,7 +47,7 @@ class AppState extends ChangeNotifier {
     'Air conditioner': false,
   };
 
-  String defaultDriverName = 'Syed Mukhyyar Hussain Rizvi';
+  String defaultDriverName = 'Driver';
   int autocancelBefore = 10;
   int autocancelAfter = 10;
 
@@ -52,18 +55,18 @@ class AppState extends ChangeNotifier {
   String outpaymentCurrency = 'USD';
   String bankCountry = 'Canada';
 
-  bool selfieUploaded = true;
+  bool selfieUploaded = false;
+  bool licenseUploaded = false;
   bool vehicleDocUploaded = false;
   int vehiclePhotoCount = 0;
   bool photoRequirementsSeen = false;
+  String? primaryVehicleId;
+
+  List<DriverRequest> openRequests = [];
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     onboardedComplete = prefs.getBool(_kOnboarded) ?? false;
-    isActivated = prefs.getBool(_kActivated) ?? false;
-    repo.driver.isActivated = isActivated;
-    fullName = repo.driver.fullName;
-    defaultDriverName = repo.driver.fullName;
     baseLocation =
         prefs.getString(_kBaseLocation) ?? repo.driver.baseLocation;
     baseLatitude = prefs.getDouble(_kBaseLat) ?? repo.driver.baseLatitude;
@@ -71,11 +74,166 @@ class AppState extends ChangeNotifier {
     repo.driver.baseLocation = baseLocation;
     repo.driver.baseLatitude = baseLatitude;
     repo.driver.baseLongitude = baseLongitude;
-    isIndividual = repo.driver.isIndividual;
     operatingZones = _decodeZones(prefs.getString(_kOperatingZones));
     repo.driver.operatingZones = List<OperatingZone>.from(operatingZones);
+
+    isAuthenticated = await api.isAuthenticated();
+    if (isAuthenticated) {
+      try {
+        await refreshMe();
+        await syncDocumentsStatus();
+        if (isActivated) {
+          await refreshOpenRequests();
+        }
+      } catch (_) {
+        isAuthenticated = false;
+        await api.clear();
+      }
+    }
+
     loaded = true;
     notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> register({
+    required String email,
+    required String password,
+    required String phoneE164,
+    String? fullName,
+  }) {
+    return api.auth.register(
+      email: email,
+      password: password,
+      phoneE164: phoneE164,
+      role: 'DRIVER',
+      fullName: fullName,
+    );
+  }
+
+  Future<void> verifyOtp({
+    required String challengeId,
+    required String code,
+  }) async {
+    await api.auth.verifyOtp(challengeId: challengeId, code: code);
+    isAuthenticated = true;
+    await refreshMe();
+    notifyListeners();
+  }
+
+  Future<void> login({
+    required String email,
+    required String password,
+  }) async {
+    await api.auth.login(email: email, password: password);
+    isAuthenticated = true;
+    await refreshMe();
+    if (isActivated) await refreshOpenRequests();
+    notifyListeners();
+  }
+
+  Future<void> refreshMe() async {
+    me = await api.auth.me();
+    final driver = me?['driver'] as Map<String, dynamic>?;
+    if (driver != null) {
+      isActivated = driver['isActivated'] == true;
+      repo.driver.isActivated = isActivated;
+      final name = driver['fullName'] as String?;
+      if (name != null && name.isNotEmpty) {
+        fullName = name;
+        repo.driver.fullName = name;
+        defaultDriverName = name;
+      }
+    }
+  }
+
+  Future<void> syncDocumentsStatus() async {
+    if (!isAuthenticated) return;
+    try {
+      final status = await api.driver.documentsStatus();
+      isActivated = status['isActivated'] == true;
+      repo.driver.isActivated = isActivated;
+      final checklist = status['checklist'];
+      if (checklist is Map) {
+        final required = checklist['required'];
+        if (required is List) {
+          for (final row in required.whereType<Map>()) {
+            final type = row['docType'] as String?;
+            final approved = row['approved'] == true;
+            // Treat presence of any upload via documents list below.
+            if (type == 'selfie' && approved) selfieUploaded = true;
+            if (type == 'license' && approved) licenseUploaded = true;
+            if (type == 'vehicle_registration' && approved) {
+              vehicleDocUploaded = true;
+            }
+          }
+        }
+        final photos = checklist['vehiclePhotosApproved'];
+        if (photos is num) {
+          vehiclePhotoCount = photos.toInt().clamp(0, 6);
+        }
+      }
+      final docs = status['documents'];
+      if (docs is List) {
+        vehiclePhotoCount = 0;
+        for (final d in docs.whereType<Map>()) {
+          final type = d['docType'] as String?;
+          if (type == 'selfie') selfieUploaded = true;
+          if (type == 'license') licenseUploaded = true;
+          if (type == 'vehicle_registration') vehicleDocUploaded = true;
+          if (type == 'vehicle_photo') {
+            vehiclePhotoCount = (vehiclePhotoCount + 1).clamp(0, 6);
+          }
+        }
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('syncDocumentsStatus: $e');
+    }
+  }
+
+  Future<void> uploadKycBytes({
+    required String docType,
+    required Uint8List bytes,
+    required String filename,
+    String? vehicleId,
+  }) async {
+    await api.driver.uploadDocument(
+      docType: docType,
+      bytes: bytes,
+      filename: filename,
+      vehicleId: vehicleId ?? primaryVehicleId,
+    );
+    if (docType == 'selfie') selfieUploaded = true;
+    if (docType == 'license') licenseUploaded = true;
+    if (docType == 'vehicle_registration') vehicleDocUploaded = true;
+    if (docType == 'vehicle_photo') {
+      vehiclePhotoCount = (vehiclePhotoCount + 1).clamp(0, 6);
+    }
+    notifyListeners();
+  }
+
+  Future<void> ensureVehicle() async {
+    if (primaryVehicleId != null) return;
+    final v = await api.driver.createVehicle(
+      name: 'Primary',
+      plate: 'TEMP-${DateTime.now().millisecondsSinceEpoch % 100000}',
+      vehicleClass: 'sedan',
+    );
+    primaryVehicleId = v['id'] as String?;
+  }
+
+  Future<void> refreshOpenRequests() async {
+    if (!isAuthenticated || !isActivated) return;
+    try {
+      final list = await api.driver.openRequests();
+      openRequests = list
+          .whereType<Map>()
+          .map((e) => driverRequestFromServer(Map<String, dynamic>.from(e)))
+          .toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('refreshOpenRequests: $e');
+    }
   }
 
   List<OperatingZone> _decodeZones(String? raw) {
@@ -83,7 +241,8 @@ class AppState extends ChangeNotifier {
     try {
       final list = jsonDecode(raw) as List<dynamic>;
       return list
-          .map((e) => OperatingZone.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) =>
+              OperatingZone.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
     } catch (_) {
       return [];
@@ -97,11 +256,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Activation is server-side only (Admin KYC). Kept for UI compatibility.
   Future<void> setActivated(bool value) async {
-    isActivated = value;
-    repo.driver.isActivated = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kActivated, value);
+    await refreshMe();
     notifyListeners();
   }
 
@@ -164,13 +321,47 @@ class AppState extends ChangeNotifier {
     await prefs.setDouble(_kBaseLng, baseLongitude);
   }
 
-  /// Prototype local save. Replace body with `POST /driver/operating-zones`.
+  Map<String, dynamic> _zoneToGeoJson(OperatingZone z) {
+    if (z.isCircle && z.center != null && z.radiusKm != null) {
+      return {
+        'center': [z.center!.longitude, z.center!.latitude],
+        'radiusKm': z.radiusKm,
+      };
+    }
+    final ring = z.coordinates
+        .map((c) => [c.longitude, c.latitude])
+        .toList();
+    if (ring.isNotEmpty &&
+        (ring.first[0] != ring.last[0] || ring.first[1] != ring.last[1])) {
+      ring.add(List<double>.from(ring.first));
+    }
+    return {
+      'type': 'Polygon',
+      'coordinates': [ring],
+    };
+  }
+
   Future<void> saveOperatingZones(List<OperatingZone> zones) async {
     operatingZones = List<OperatingZone>.from(zones);
     repo.driver.operatingZones = List<OperatingZone>.from(zones);
     final prefs = await SharedPreferences.getInstance();
     final payload = jsonEncode(zones.map((z) => z.toJson()).toList());
     await prefs.setString(_kOperatingZones, payload);
+
+    if (isAuthenticated) {
+      for (final z in zones) {
+        try {
+          await api.driver.createZone(
+            name: z.name,
+            zoneType: z.isCircle ? 'circle' : 'polygon',
+            geoJson: _zoneToGeoJson(z),
+            radiusKm: z.radiusKm,
+          );
+        } catch (e) {
+          debugPrint('save zone ${z.name}: $e');
+        }
+      }
+    }
     notifyListeners();
   }
 
@@ -230,14 +421,23 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    await api.auth.logout();
+    await api.clear();
+    isAuthenticated = false;
+    isActivated = false;
+    me = null;
     await setOnboarded(false);
-    await setActivated(false);
     acceptedTerms = false;
     selectedLanguages.clear();
     notifyListeners();
   }
 
-  void submitOffer(String requestId, double price) {
+  Future<void> submitOffer(String requestId, double price) async {
+    if (isAuthenticated) {
+      await api.driver.createOffer(requestId, bidAmount: price);
+      await refreshOpenRequests();
+      return;
+    }
     repo.submitDriverOffer(requestId, price);
     notifyListeners();
   }

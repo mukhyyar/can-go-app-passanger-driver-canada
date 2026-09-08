@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 import 'package:passenger/screens/account_screen.dart';
+import 'package:passenger/screens/auth_screen.dart';
 import 'package:passenger/screens/location_screen.dart';
 import 'package:passenger/screens/map_pick_screen.dart';
 import 'package:passenger/screens/offer_detail_screen.dart';
@@ -19,7 +20,16 @@ GoRouter createRouter(AppState state) {
     redirect: (context, goState) {
       if (!state.ready) return null;
       final loc = goState.matchedLocation;
-      if (!state.onboarded && loc != '/onboarding') return '/onboarding';
+      final isAuth = loc == '/auth';
+      if (!state.isAuthenticated && !isAuth && loc != '/onboarding') {
+        return '/auth';
+      }
+      if (state.isAuthenticated && isAuth) return '/';
+      if (state.isAuthenticated &&
+          !state.onboarded &&
+          loc != '/onboarding') {
+        return '/onboarding';
+      }
       if (state.onboarded && loc == '/onboarding') return '/';
       return null;
     },
@@ -27,6 +37,10 @@ GoRouter createRouter(AppState state) {
       GoRoute(
         path: '/',
         builder: (_, __) => const Shell(),
+      ),
+      GoRoute(
+        path: '/auth',
+        builder: (_, __) => const AuthScreen(),
       ),
       GoRoute(
         path: '/onboarding',

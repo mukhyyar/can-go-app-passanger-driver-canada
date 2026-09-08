@@ -1,0 +1,17 @@
+name: gt_api
+description: CAN-GO Nest API client (auth, marketplace, KYC, trips)
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.6.0
+  shared_preferences: ^2.5.3
+  flutter_secure_storage: ^9.2.4
+
+dev_dependencies:
+  flutter_lints: ^5.0.0

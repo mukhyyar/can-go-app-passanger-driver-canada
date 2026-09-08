@@ -111,7 +111,14 @@ class Review {
   final String? fromLanguage;
 }
 
-enum RideStatus { waitingOffers, chooseOffer, booked, past, cancelled }
+enum RideStatus {
+  waitingOffers,
+  chooseOffer,
+  paymentPending,
+  booked,
+  past,
+  cancelled,
+}
 
 class RideRequest {
   RideRequest({
@@ -126,6 +133,7 @@ class RideRequest {
     this.offerCount = 0,
     this.returnLabel,
     this.selectedOfferId,
+    this.serverStatus,
   });
 
   final String id;
@@ -139,6 +147,8 @@ class RideRequest {
   int offerCount;
   final String? returnLabel;
   String? selectedOfferId;
+  /// Canonical Nest status when wired to API.
+  String? serverStatus;
 }
 
 class DriverRequest {
