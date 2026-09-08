@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import '../../state/driver_settings_mappers.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,6 +20,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _tax;
   late final TextEditingController _address;
   late final TextEditingController _referral;
+  bool _loaded = false;
+  String? _error;
 
   @override
   void initState() {
@@ -30,14 +32,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _tax = TextEditingController();
     _address = TextEditingController();
     _referral = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final s = context.read<AppState>();
+      if (s.isAuthenticated) {
+        try {
+          await s.loadDriverProfile();
+        } catch (_) {}
+      }
+      if (!mounted) return;
       _name.text = s.fullName;
       _legal.text = s.legalName;
       _reg.text = s.registrationNumber;
       _tax.text = s.taxpayerId;
       _address.text = s.address;
       _referral.text = s.referralCode;
+      setState(() => _loaded = true);
     });
   }
 
@@ -64,278 +73,297 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openLanguages(AppState s) async {
+    String query = '';
     await showGtSheet(
       context: context,
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Languages your drivers speak',
-                style: TextStyle(
-                  color: GtColors.orange,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Maximum number of selections: 6',
-                style: TextStyle(color: GtColors.textSecondary, fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: MediaQuery.of(context).size.height * 0.55,
-                child: ListView.builder(
-                  itemCount: MockData.languages.length,
-                  itemBuilder: (_, i) {
-                    final lang = MockData.languages[i];
-                    return Consumer<AppState>(
-                      builder: (_, state, __) {
-                        final on = state.selectedLanguages.contains(lang);
-                        return SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(lang),
-                          value: on,
-                          activeColor: GtColors.green,
-                          onChanged: (_) => state.toggleLanguage(lang),
+        child: StatefulBuilder(
+          builder: (context, setSheet) {
+            final entries = kDriverLanguages.entries
+                .where((e) =>
+                    query.isEmpty ||
+                    e.value.toLowerCase().contains(query.toLowerCase()) ||
+                    e.key.toLowerCase().contains(query.toLowerCase()))
+                .toList();
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Languages you speak',
+                    style: TextStyle(
+                      color: GtColors.brand,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Selected ${s.selectedLanguages.length}/6',
+                    style: const TextStyle(
+                      color: GtColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Search languages',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (v) => setSheet(() => query = v),
+                  ),
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.45,
+                    child: ListView.builder(
+                      itemCount: entries.length,
+                      itemBuilder: (_, i) {
+                        final code = entries[i].key;
+                        final label = entries[i].value;
+                        return Consumer<AppState>(
+                          builder: (_, state, __) {
+                            final on =
+                                state.selectedLanguages.contains(code);
+                            return CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text('$label ($code)'),
+                              value: on,
+                              activeColor: GtColors.brand,
+                              onChanged: (_) => state.toggleLanguage(code),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                  GtGreenButton(
+                    label: 'Done',
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
+  Future<void> _continue(AppState s) async {
+    _sync(s);
+    setState(() => _error = null);
+    if (s.isAuthenticated) {
+      try {
+        await s.saveDriverProfile();
+      } catch (e) {
+        setState(() => _error = e.toString());
+        return;
+      }
+    }
+    if (!mounted) return;
+    if (s.onboardedComplete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile saved')),
+      );
+      context.pop();
+    } else {
+      context.push('/onboarding/location');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    final settingsMode = s.onboardedComplete;
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CanGoLogo(size: 22),
-            SizedBox(width: 8),
-            Text('New carrier profile'),
+            const CanGoLogo(size: 22),
+            const SizedBox(width: 8),
+            Text(settingsMode ? 'Carrier profile' : 'New carrier profile'),
           ],
         ),
-        actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
-        ],
+        leading: settingsMode
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.pop(),
+              )
+            : null,
       ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFFFFFF),
-                  Color(0xFFFFF8F8),
-                  Color(0xFFF8EAEA),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: GtColors.border),
-              boxShadow: [
-                BoxShadow(
-                  color: GtColors.brand.withValues(alpha: 0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const Row(
+      body: !_loaded
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                CanGoLogo(size: 72),
-                SizedBox(width: 12),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text(_error!,
+                        style: const TextStyle(color: GtColors.red)),
+                  ),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     children: [
-                      Text(
-                        'CAN-GO Driver',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          letterSpacing: 0.3,
-                        ),
+                      _entityTile(
+                        selected: s.isIndividual,
+                        title: 'Individual',
+                        subtitle: 'Private person / sole driver',
+                        onTap: () => s.setIndividual(true),
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Carrier onboarding · same brand as passenger',
+                      const SizedBox(height: 8),
+                      _entityTile(
+                        selected: !s.isIndividual,
+                        title: 'Legal entity',
+                        subtitle: 'Company or sole proprietor',
+                        onTap: () => s.setIndividual(false),
+                      ),
+                      const SizedBox(height: 16),
+                      GtUnderlineField(
+                        hint: s.isIndividual
+                            ? 'Full legal name'
+                            : "Contact person's full name",
+                        controller: _name,
+                      ),
+                      if (!s.isIndividual) ...[
+                        GtUnderlineField(
+                          hint: 'Business / legal name',
+                          controller: _legal,
+                        ),
+                        GtUnderlineField(
+                          hint: 'Registration / company number',
+                          controller: _reg,
+                        ),
+                      ],
+                      GtUnderlineField(
+                        hint: 'Taxpayer identification number',
+                        controller: _tax,
+                      ),
+                      const SizedBox(height: 8),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Languages spoken'),
+                        subtitle: Text(
+                          s.selectedLanguages.isEmpty
+                              ? 'Select up to 6'
+                              : s.selectedLanguages
+                                  .map((c) => kDriverLanguages[c] ?? c)
+                                  .join(', '),
+                        ),
+                        trailing: const Icon(Icons.keyboard_arrow_down),
+                        onTap: () => _openLanguages(s),
+                      ),
+                      const Divider(),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: s.hasReferral,
+                        activeColor: GtColors.brand,
+                        title: const Text('I have a referral code'),
+                        onChanged: s.referralImmutable
+                            ? null
+                            : (v) =>
+                                s.updateProfile(hasReferral: v ?? false),
+                      ),
+                      if (s.hasReferral || s.referralImmutable)
+                        GtUnderlineField(
+                          hint: 'Referral code',
+                          controller: _referral,
+                          readOnly: s.referralImmutable,
+                        ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Registration address',
                         style: TextStyle(
                           color: GtColors.textSecondary,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
-                          height: 1.3,
+                          fontSize: 13,
                         ),
                       ),
+                      GtUnderlineField(
+                        hint: 'Address',
+                        controller: _address,
+                      ),
+                      InkWell(
+                        onTap: () {
+                          _sync(s);
+                          context.push('/onboarding/location');
+                        },
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            hintText: 'Base location of your transport',
+                            border: UnderlineInputBorder(),
+                            suffixIcon: Icon(Icons.keyboard_arrow_down),
+                          ),
+                          child: Text(
+                            s.baseLocation.isEmpty ? '' : s.baseLocation,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
+                      ),
+                      if (s.email.isNotEmpty || s.phoneE164.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        if (s.phoneE164.isNotEmpty)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.phone_outlined),
+                            title: Text(s.phoneE164),
+                            subtitle: const Text('Phone'),
+                          ),
+                        if (s.email.isNotEmpty)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.email_outlined),
+                            title: Text(s.email),
+                            subtitle: const Text('Email'),
+                          ),
+                      ],
+                      if (!settingsMode) ...[
+                        const SizedBox(height: 16),
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          value: s.acceptedTerms,
+                          activeColor: GtColors.brand,
+                          title: const Text.rich(
+                            TextSpan(
+                              text: 'I have read and accepted ',
+                              children: [
+                                TextSpan(
+                                  text: 'CAN-GO Service License Contract',
+                                  style: TextStyle(
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          onChanged: (v) =>
+                              s.updateProfile(acceptedTerms: v ?? false),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              children: [
-                _entityTile(
-                  selected: s.isIndividual,
-                  title: 'Individual',
-                  subtitle: 'private person',
-                  onTap: () => s.setIndividual(true),
-                ),
-                const SizedBox(height: 8),
-                _entityTile(
-                  selected: !s.isIndividual,
-                  title: 'Legal entity',
-                  subtitle: 'company or sole proprietor',
-                  onTap: () => s.setIndividual(false),
-                ),
-                const SizedBox(height: 20),
-                const _SectionHeader(icon: Icons.info_outline, label: 'Info'),
-                GtUnderlineField(
-                  hint: 'Your full name',
-                  controller: _name,
-                ),
-                if (!s.isIndividual) ...[
-                  GtUnderlineField(
-                    hint: "Business or person's full legal name",
-                    controller: _legal,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: GtGreenButton(
+                    label: s.profileSaving
+                        ? 'Saving…'
+                        : (settingsMode ? 'Save' : 'Next'),
+                    onPressed: s.profileSaving
+                        ? null
+                        : (settingsMode || s.profileValidEnough)
+                            ? () => _continue(s)
+                            : null,
                   ),
-                  GtUnderlineField(
-                    hint:
-                        'Registration number of the Company or Sole Proprietor (self-employed)',
-                    controller: _reg,
-                  ),
-                ],
-                GtUnderlineField(
-                  hint: 'Taxpayer identification number',
-                  controller: _tax,
-                ),
-                const SizedBox(height: 8),
-                InkWell(
-                  onTap: () => _openLanguages(s),
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      hintText: 'Languages your drivers speak',
-                      border: UnderlineInputBorder(),
-                      suffixIcon: Icon(Icons.keyboard_arrow_down),
-                    ),
-                    child: Text(
-                      s.selectedLanguages.isEmpty
-                          ? ''
-                          : s.selectedLanguages.join(', '),
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Maximum number of selections: 6',
-                  style: TextStyle(color: GtColors.textSecondary, fontSize: 12),
-                ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  value: s.hasReferral,
-                  activeColor: GtColors.green,
-                  title: const Text('I have a referral code'),
-                  onChanged: (v) => s.updateProfile(hasReferral: v ?? false),
-                ),
-                if (s.hasReferral)
-                  GtUnderlineField(
-                    hint: 'Referral code',
-                    controller: _referral,
-                  ),
-                const SizedBox(height: 12),
-                const _SectionHeader(icon: Icons.place_outlined, label: 'Address'),
-                GtUnderlineField(
-                  hint: 'Registration address and postal code',
-                  controller: _address,
-                ),
-                InkWell(
-                  onTap: () {
-                    _sync(s);
-                    context.push('/onboarding/location');
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      hintText: 'Base location of your transport',
-                      border: UnderlineInputBorder(),
-                      suffixIcon: Icon(Icons.keyboard_arrow_down),
-                    ),
-                    child: Text(
-                      s.baseLocation.isEmpty ? '' : s.baseLocation,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  value: s.acceptedTerms,
-                  activeColor: GtColors.green,
-                  title: const Text.rich(
-                    TextSpan(
-                      text: 'I have read and accepted ',
-                      children: [
-                        TextSpan(
-                          text: 'CAN-GO Service License Contract',
-                          style: TextStyle(
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  onChanged: (v) => s.updateProfile(acceptedTerms: v ?? false),
                 ),
               ],
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: GtGreenButton(
-              label: 'Next',
-              onPressed: s.profileValidEnough
-                  ? () async {
-                      _sync(s);
-                      final code = _referral.text.trim();
-                      if (s.hasReferral && code.isNotEmpty) {
-                        try {
-                          await s.api.auth.redeemReferral(code);
-                        } catch (_) {
-                          // Non-blocking: continue onboarding even if code invalid.
-                        }
-                      }
-                      if (!context.mounted) return;
-                      context.push('/onboarding/location');
-                    }
-                  : null,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -368,12 +396,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
                   Text(
                     subtitle,
                     style: const TextStyle(
                       color: GtColors.textSecondary,
-                      fontSize: 13,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -381,26 +410,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: GtColors.textSecondary),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
       ),
     );
   }

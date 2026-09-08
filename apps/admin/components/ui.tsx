@@ -13,8 +13,10 @@ export function Chip({
 export function statusTone(s?: string) {
   const v = (s ?? '').toUpperCase();
   if (/(COMPLET|APPROV|ACTIVE|SUCCEED|ONLINE|VISIBLE|RESOLVED|UP)/.test(v)) return 'ok' as const;
-  if (/(PEND|WAIT|BOOK|REVIEW|DRAFT)/.test(v)) return 'warn' as const;
-  if (/(CANCEL|FAIL|REJECT|SUSPEND|CRIT|HIDDEN|DOWN)/.test(v)) return 'bad' as const;
+  if (/(PEND|WAIT|BOOK|REVIEW|DRAFT|OFFER|SCHEDULE|EN_ROUTE|ARRIVED|PROGRESS|SEARCH)/.test(v))
+    return 'warn' as const;
+  if (/(CANCEL|FAIL|REJECT|SUSPEND|CRIT|HIDDEN|DOWN|EXPIRED|NO_SHOW|UNFULFIL)/.test(v))
+    return 'bad' as const;
   return 'info' as const;
 }
 
@@ -70,4 +72,60 @@ export function Modal({
 
 export function Empty({ text }: { text: string }) {
   return <p className="muted">{text}</p>;
+}
+
+export function EmptyState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="empty-state">
+      <strong>{title}</strong>
+      {description ? <p className="muted">{description}</p> : null}
+      {action}
+    </div>
+  );
+}
+
+export function Drawer({
+  title,
+  onClose,
+  children,
+  width,
+  footer,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  width?: number | string;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="drawer-back" onClick={onClose} role="presentation">
+      <aside
+        className="drawer"
+        style={width ? { width } : undefined}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="drawer-head">
+          <h3 id="drawer-title" style={{ margin: 0 }}>
+            {title}
+          </h3>
+          <button className="btn ghost sm" type="button" onClick={onClose} aria-label="Close drawer">
+            Close
+          </button>
+        </div>
+        <div className="drawer-body">{children}</div>
+        {footer ? <div className="drawer-foot">{footer}</div> : null}
+      </aside>
+    </div>
+  );
 }

@@ -1,5 +1,6 @@
 import {
   averageMs,
+  buildEligibility,
   buildVerificationChecks,
   canApproveKyc,
   docIndicator,
@@ -8,6 +9,7 @@ import {
   formatDuration,
   kycStatusLabel,
   percentChange,
+  pickLatestByType,
   progressFromDocs,
   tabForApprovalStatus,
   waitingSla,
@@ -39,6 +41,117 @@ describe('kyc-ops.logic', () => {
     expect(progress.required).toBe(4);
     expect(progress.percent).toBe(75);
     expect(progress.readyForKycApproval).toBe(false);
+  });
+
+  it('ignores SUPERSEDED docs when computing progress', () => {
+    const progress = progressFromDocs([
+      {
+        docType: 'selfie',
+        status: 'APPROVED',
+        lifecycleStatus: 'SUPERSEDED',
+        versionNumber: 1,
+      },
+      {
+        docType: 'selfie',
+        status: 'PENDING',
+        lifecycleStatus: 'CURRENT',
+        versionNumber: 2,
+      },
+      {
+        docType: 'license',
+        status: 'APPROVED',
+        lifecycleStatus: 'CURRENT',
+        versionNumber: 1,
+      },
+      {
+        docType: 'vehicle_registration',
+        status: 'APPROVED',
+        lifecycleStatus: 'CURRENT',
+        versionNumber: 1,
+      },
+      {
+        docType: 'vehicle_photo',
+        status: 'APPROVED',
+        lifecycleStatus: 'CURRENT',
+        versionNumber: 1,
+      },
+    ]);
+    expect(progress.readyForKycApproval).toBe(false);
+    expect(progress.approved).toBe(3);
+  });
+
+  it('pickLatestByType prefers higher versionNumber among CURRENT docs', () => {
+    const latest = pickLatestByType([
+      {
+        docType: 'license',
+        status: 'REJECTED',
+        lifecycleStatus: 'CURRENT',
+        versionNumber: 1,
+        createdAt: new Date('2026-01-01'),
+      },
+      {
+        docType: 'license',
+        status: 'APPROVED',
+        lifecycleStatus: 'CURRENT',
+        versionNumber: 3,
+        createdAt: new Date('2026-01-02'),
+      },
+      {
+        docType: 'license',
+        status: 'PENDING',
+        lifecycleStatus: 'SUPERSEDED',
+        versionNumber: 99,
+        createdAt: new Date('2026-01-03'),
+      },
+    ]);
+    expect(latest.license?.status).toBe('APPROVED');
+    expect(latest.license?.versionNumber).toBe(3);
+  });
+
+  it('buildEligibility fails when mandatory docs missing or expired', () => {
+    const now = new Date('2026-09-08T12:00:00Z');
+    const missing = buildEligibility({
+      docs: [
+        { docType: 'selfie', status: 'APPROVED', lifecycleStatus: 'CURRENT' },
+      ],
+      now,
+    });
+    expect(missing.allPass).toBe(false);
+    expect(missing.items.find((i) => i.id === 'licence')?.result).toBe('fail');
+    expect(missing.items.find((i) => i.id === 'activation')?.result).toBe(
+      'fail',
+    );
+
+    const expired = buildEligibility({
+      docs: [
+        { docType: 'selfie', status: 'APPROVED', lifecycleStatus: 'CURRENT' },
+        {
+          docType: 'license',
+          status: 'APPROVED',
+          lifecycleStatus: 'CURRENT',
+          expiresAt: new Date('2026-01-01'),
+        },
+        {
+          docType: 'vehicle_registration',
+          status: 'APPROVED',
+          lifecycleStatus: 'CURRENT',
+        },
+        {
+          docType: 'vehicle_photo',
+          status: 'APPROVED',
+          lifecycleStatus: 'CURRENT',
+        },
+      ],
+      now,
+    });
+    expect(expired.progress.expiredMandatory).toBe(true);
+    expect(expired.allPass).toBe(false);
+    expect(expired.items.find((i) => i.id === 'licence_valid')?.result).toBe(
+      'fail',
+    );
+    expect(expired.items.find((i) => i.id === 'no_expired')?.result).toBe(
+      'fail',
+    );
   });
 
   it('blocks KYC approval until required docs plus vehicle photo pass', () => {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
@@ -37,13 +38,14 @@ class _RequestsScreenState extends State<RequestsScreen>
     super.dispose();
   }
 
-  Future<void> _onOffer(DriverRequest req) async {
+  Future<void> _openRequest(DriverRequest req) async {
     final s = context.read<AppState>();
     if (!s.isActivated) {
       await showDialog<void>(
         context: context,
         builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: const Text(
             'You will be able to offer your price after activation. Please, fill in your profile and contact us: partner@can-go.ca',
           ),
@@ -57,73 +59,15 @@ class _RequestsScreenState extends State<RequestsScreen>
       );
       return;
     }
-
-    final priceCtrl = TextEditingController();
-    final submitted = await showGtSheet<bool>(
-      context: context,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          12,
-          20,
-          24 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Offer price',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            TextField(
-              controller: priceCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Your price (US\$)',
-                border: UnderlineInputBorder(),
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: GtColors.brand),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            GtGreenButton(
-              label: 'Submit',
-              onPressed: () {
-                final p = double.tryParse(priceCtrl.text.trim());
-                if (p == null || p <= 0) return;
-                s.submitOffer(req.id, p);
-                Navigator.pop(context, true);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-    if (submitted == true && mounted) {
-      _tabs.animateTo(1);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offer submitted')),
-      );
-    }
+    if (!mounted) return;
+    context.push('/request/${req.id}');
   }
 
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final newReqs =
-        s.isAuthenticated ? s.openRequests : s.repo.newRequests;
+    final all = s.isAuthenticated ? s.openRequests : s.repo.newRequests;
+    final newReqs = all.where((r) => !r.hasOffer).toList();
     final offers = s.isAuthenticated
         ? s.openRequests.where((r) => r.hasOffer).toList()
         : s.repo.myOffers;
@@ -270,7 +214,8 @@ class _RequestsScreenState extends State<RequestsScreen>
       itemBuilder: (_, i) => _RequestCard(
         request: items[i],
         showPrice: showPrice,
-        onOffer: () => _onOffer(items[i]),
+        onOffer: () => _openRequest(items[i]),
+        onOpen: () => _openRequest(items[i]),
       ),
     );
   }
@@ -322,11 +267,13 @@ class _RequestCard extends StatelessWidget {
   const _RequestCard({
     required this.request,
     required this.onOffer,
+    required this.onOpen,
     this.showPrice = false,
   });
 
   final DriverRequest request;
   final VoidCallback onOffer;
+  final VoidCallback onOpen;
   final bool showPrice;
 
   @override
@@ -334,6 +281,7 @@ class _RequestCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GtCard(
+        onTap: onOpen,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

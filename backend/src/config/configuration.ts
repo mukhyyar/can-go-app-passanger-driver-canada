@@ -14,6 +14,30 @@ export default () => ({
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
   },
+  oauth: {
+    googleClientIds: (
+      process.env.GOOGLE_OAUTH_CLIENT_IDS ??
+      process.env.GOOGLE_OAUTH_CLIENT_ID ??
+      ''
+    )
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    appleClientIds: (
+      process.env.APPLE_CLIENT_IDS ??
+      process.env.APPLE_CLIENT_ID ??
+      ''
+    )
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    /** Local/dev only — never enabled when NODE_ENV is production. */
+    localMock:
+      process.env.NODE_ENV !== 'production' &&
+      (process.env.NODE_ENV === 'local' ||
+        process.env.NODE_ENV === 'development' ||
+        process.env.OAUTH_LOCAL_MOCK === 'true'),
+  },
   providers: {
     payment: process.env.PAYMENT_PROVIDER ?? 'dev',
     payout: process.env.PAYOUT_PROVIDER ?? 'dev',
@@ -52,6 +76,21 @@ export default () => ({
     /** Emergency only — bypasses STAGING_E2E_PASSED (still logged loudly). */
     allowProdWithoutStagingE2e:
       process.env.ALLOW_PROD_WITHOUT_STAGING_E2E === 'true',
+  },
+  /**
+   * Ride marketplace lifecycle (see ride-lifecycle.ts).
+   * Request expiry is pickupAt + unfulfilledGrace — never createdAt + fixed TTL.
+   */
+  rideLifecycle: {
+    unfulfilledGraceMinutes: parseInt(
+      process.env.RIDE_UNFULFILLED_GRACE_MINUTES ?? '60',
+      10,
+    ),
+    paymentTtlMinutes: parseInt(process.env.RIDE_PAYMENT_TTL_MINUTES ?? '15', 10),
+    immediateThresholdMinutes: parseInt(
+      process.env.RIDE_IMMEDIATE_THRESHOLD_MINUTES ?? '120',
+      10,
+    ),
   },
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID ?? 'can-go-platform',

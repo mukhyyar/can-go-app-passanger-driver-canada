@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:gt_mock/gt_mock.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
@@ -17,7 +18,14 @@ class _PhotosScreenState extends State<PhotosScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowRequirements());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final s = context.read<AppState>();
+      if (s.isAuthenticated) {
+        await s.loadDriverVehicles();
+        await s.syncDocumentsStatus();
+      }
+      if (mounted) await _maybeShowRequirements();
+    });
   }
 
   Future<void> _maybeShowRequirements() async {
@@ -74,8 +82,22 @@ class _PhotosScreenState extends State<PhotosScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final vehicle = s.repo.driver.vehicleName;
-    final plate = s.repo.driver.plate;
+    DriverVehicle? current;
+    for (final v in s.vehicles) {
+      if (v.id == s.primaryVehicleId) {
+        current = v;
+        break;
+      }
+    }
+    current ??= s.vehicles.isNotEmpty ? s.vehicles.first : null;
+    final vehicle = current?.name.isNotEmpty == true
+        ? current!.name
+        : (s.repo.driver.vehicleName.isNotEmpty
+            ? s.repo.driver.vehicleName
+            : 'Your vehicle');
+    final plate = current?.plate.isNotEmpty == true
+        ? current!.plate
+        : (s.repo.driver.plate.isNotEmpty ? s.repo.driver.plate : '—');
 
     return Scaffold(
       appBar: AppBar(
@@ -86,10 +108,19 @@ class _PhotosScreenState extends State<PhotosScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => context.push('/onboarding/edit-vehicle'),
+            onPressed: () {
+              if (s.onboardedComplete) {
+                context.pop();
+              } else {
+                context.push('/onboarding/edit-vehicle');
+              }
+            },
             child: const Text(
               'Done',
-              style: TextStyle(color: GtColors.orange, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                color: GtColors.brand,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -99,7 +130,10 @@ class _PhotosScreenState extends State<PhotosScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(vehicle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            Text(
+              vehicle,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -107,7 +141,10 @@ class _PhotosScreenState extends State<PhotosScreen> {
                 color: GtColors.bgGrey,
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Text(plate, style: const TextStyle(fontWeight: FontWeight.w600)),
+              child: Text(
+                plate,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
             const SizedBox(height: 24),
             Wrap(
@@ -124,7 +161,11 @@ class _PhotosScreenState extends State<PhotosScreen> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: GtColors.border),
                     ),
-                    child: const Icon(Icons.directions_car, size: 36, color: GtColors.textMuted),
+                    child: const Icon(
+                      Icons.directions_car,
+                      size: 36,
+                      color: GtColors.textMuted,
+                    ),
                   ),
                 ),
                 if (s.vehiclePhotoCount < 6)

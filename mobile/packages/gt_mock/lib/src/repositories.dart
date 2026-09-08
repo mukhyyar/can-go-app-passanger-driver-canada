@@ -102,8 +102,8 @@ class MockRepository {
     );
   }
 
-  /// Popular / sample places when the search box is empty.
-  List<Place> suggestedPlaces() => MockData.places;
+  /// No canned suggestions — callers should show the user's own history.
+  List<Place> suggestedPlaces() => const [];
 
   /// Live worldwide place search (Photon / OpenStreetMap).
   /// Falls back to filtered mock places if the network request fails.

@@ -42,6 +42,10 @@ export const CANCELLED: RideStatus[] = [
   RideStatus.PASSENGER_CANCELLED,
   RideStatus.DRIVER_CANCELLED,
   RideStatus.ADMIN_CANCELLED,
+];
+
+/** Unfulfilled / missed — distinct from passenger/driver cancellation. */
+export const UNFULFILLED: RideStatus[] = [
   RideStatus.EXPIRED,
   RideStatus.NO_SHOW,
 ];
@@ -49,6 +53,12 @@ export const CANCELLED: RideStatus[] = [
 export const FAILED_EXPIRED: RideStatus[] = [
   RideStatus.PAYMENT_FAILED,
   RideStatus.EXPIRED,
+];
+
+/** Legacy bucket used where ops historically bundled cancel + unfulfilled. Prefer CANCELLED vs UNFULFILLED. */
+export const CANCELLED_OR_UNFULFILLED: RideStatus[] = [
+  ...CANCELLED,
+  ...UNFULFILLED,
 ];
 
 export function parseAnalyticsQuery(q: Record<string, string | undefined>): AnalyticsQuery {

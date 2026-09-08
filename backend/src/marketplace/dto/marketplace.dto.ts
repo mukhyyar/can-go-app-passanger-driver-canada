@@ -2,6 +2,8 @@ import {
 
   IsArray,
 
+  IsBoolean,
+
   IsIn,
 
   IsInt,
@@ -287,17 +289,39 @@ export class CreateRideDto {
 
 
   @IsOptional()
-
   @IsString()
-
   comment?: string;
 
-
+  @IsOptional()
+  @IsBoolean()
+  isRoundTrip?: boolean;
 
   @IsOptional()
-
   @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}T/)
+  returnAt?: string;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  pickupWaitMin?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  returnWaitMin?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requiredOptions?: string[];
+
+  @IsOptional()
+  @IsString()
   promoCode?: string;
 
 
@@ -339,69 +363,155 @@ export class CreateRideDto {
 
 
   @IsOptional()
-
   @IsString()
-
   catalogItemId?: string;
-
 }
-
-
 
 export class CreateOfferDto {
-
+  /**
+   * Combined passenger-facing bid. Optional when outboundPrice is provided.
+   * For round-trips prefer outboundPrice + returnPrice.
+   */
+  @IsOptional()
   @Type(() => Number)
-
   @IsNumber()
-
   @Min(1)
-
-  bidAmount!: number;
-
-
+  bidAmount?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  outboundPrice?: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  returnPrice?: number;
+
+  @IsOptional()
   @IsString()
-
   currency?: string;
 
-
-
   @IsOptional()
-
   @IsString()
-
   vehicleId?: string;
 
-}
-
-
-
-export class CreatePaymentIntentDto {
-
-  @IsString()
-
-  rideId!: string;
-
-
+  /** Validity window in seconds — must be one of OFFER_VALIDITY_OPTIONS_SECONDS. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  validForSeconds?: number;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  selectedOptions?: string[];
 
+  @IsOptional()
   @IsString()
-
   idempotencyKey?: string;
-
 }
 
+export class UpdateOfferDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  outboundPrice?: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  returnPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  bidAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  vehicleId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  validForSeconds?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  selectedOptions?: string[];
+
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+}
+
+export class CreatePaymentIntentDto {
+  @IsString()
+  rideId!: string;
+
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+
+  /** FULL | PARTIAL — backend computes amounts; client must not send charge amounts. */
+  @IsOptional()
+  @IsIn(['FULL', 'PARTIAL'])
+  paymentMode?: 'FULL' | 'PARTIAL';
+
+  @IsOptional()
+  @IsIn(['GOOGLE_PAY', 'APPLE_PAY', 'CARD'])
+  paymentMethod?: 'GOOGLE_PAY' | 'APPLE_PAY' | 'CARD';
+
+  @IsOptional()
+  @IsString()
+  termsVersion?: string;
+
+  @IsOptional()
+  @IsString()
+  policyVersion?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  termsAccepted?: boolean;
+
+  @IsOptional()
+  @IsString()
+  platform?: string;
+}
 
 export class SelectOfferDto {
+  @IsString()
+  offerId!: string;
+}
+
+export class PaymentQuoteDto {
+  @IsString()
+  rideId!: string;
 
   @IsString()
-
   offerId!: string;
 
+  @IsOptional()
+  @IsIn(['FULL', 'PARTIAL'])
+  paymentMode?: 'FULL' | 'PARTIAL';
+
+  @IsOptional()
+  @IsString()
+  platform?: string;
+}
+
+export class ValidateBookDto {
+  @IsString()
+  offerId!: string;
 }
 
 

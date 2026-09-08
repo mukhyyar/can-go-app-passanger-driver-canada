@@ -6,8 +6,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DocumentLifecycleStatus,
   DocumentReviewStatus,
   DriverApprovalStatus,
+  KycFlagType,
   Prisma,
   UserRole,
 } from '@prisma/client';
@@ -17,6 +19,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import type { AuthUser } from '../auth/decorators/current-user.decorator';
 import {
   DOC_TYPE_LABELS,
+  DRIVER_DOC_TYPES,
+  KYC_FLAG_TYPES,
   KYC_REJECT_REASON_LABELS,
   QUEUE_DOC_TYPES,
   REQUIRED_DOC_TYPES,
@@ -26,8 +30,10 @@ import {
   type ResubmissionReason,
 } from './documents.constants';
 import {
+  activeDocs,
   approvalStatusesForTab,
   averageMs,
+  buildEligibility,
   buildVerificationChecks,
   canApproveKyc,
   docIndicator,
@@ -41,6 +47,7 @@ import {
   progressFromDocs,
   waitingSla,
 } from './kyc-ops.logic';
+import { KycDocumentsService } from './kyc-documents.service';
 import type {
   AddKycNoteDto,
   ApproveKycDto,
@@ -51,6 +58,15 @@ import type {
   RequestResubmissionDto,
   ReviewDocumentDto,
 } from './dto/drivers.dto';
+import type {
+  ActivateDriverDto,
+  AddKycFlagDto,
+  ClearKycFlagDto,
+  EditApplicantDto,
+  ReopenKycDto,
+  ResetKycDto,
+  SuspendDriverDto,
+} from './dto/kyc-enterprise.dto';
 
 export type KycListQuery = {
   tab?: string;
@@ -82,6 +98,7 @@ export class KycOpsService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly notifications: NotificationsService,
+    private readonly kycDocs: KycDocumentsService,
   ) {}
 
   async listQueue(query: KycListQuery) {
@@ -146,15 +163,21 @@ export class KycOpsService {
         } catch {
           url = undefined;
         }
-        return { ...this.serializeDoc(doc), url };
+        return { ...this.kycDocs.serializeDoc(doc), url };
       }),
     );
-    const latest = pickLatestByType(docs);
-    const progress = progressFromDocs(docs);
+    const currentDocs = activeDocs(docs);
+    const latest = pickLatestByType(currentDocs);
+    const progress = progressFromDocs(currentDocs);
+    const eligibility = buildEligibility({
+      docs: currentDocs,
+      approvalStatus: driver.approvalStatus,
+      overrideUsed: driver.kycOverrideUsed,
+    });
     const primaryVehicle = driver.vehicles[0] ?? null;
     const lastSeen = driver.user.sessions[0]?.lastSeenAt ?? null;
     const checks = buildVerificationChecks({
-      docs,
+      docs: currentDocs,
       profileName: driver.fullName,
       vehiclePlate: primaryVehicle?.plate ?? null,
     });
@@ -172,7 +195,80 @@ export class KycOpsService {
     }));
     const audit = await this.buildAudit(driver);
     const neighbors = await this.neighbors(driver.id);
-    const checklist = this.workspaceChecklist(latest);
+    const checklist = this.workspaceChecklist(latest, docs);
+
+    const versionsByGroup: Record<
+      string,
+      Array<{
+        id: string;
+        versionNumber: number;
+        lifecycleStatus: string;
+        status: string;
+        createdAt: Date;
+        uploadSource: string;
+        expiresAt: Date | null;
+        docType: string;
+      }>
+    > = {};
+    for (const doc of docs) {
+      const gid = doc.documentGroupId;
+      if (!versionsByGroup[gid]) versionsByGroup[gid] = [];
+      versionsByGroup[gid].push({
+        id: doc.id,
+        versionNumber: doc.versionNumber,
+        lifecycleStatus: doc.lifecycleStatus,
+        status: doc.status,
+        createdAt: doc.createdAt,
+        uploadSource: doc.uploadSource,
+        expiresAt: doc.expiresAt,
+        docType: doc.docType,
+      });
+    }
+    for (const gid of Object.keys(versionsByGroup)) {
+      versionsByGroup[gid].sort((a, b) => b.versionNumber - a.versionNumber);
+    }
+
+    const caseHealth = {
+      current: currentDocs.length,
+      superseded: docs.filter(
+        (d) => d.lifecycleStatus === DocumentLifecycleStatus.SUPERSEDED,
+      ).length,
+      archived: docs.filter(
+        (d) => d.lifecycleStatus === DocumentLifecycleStatus.ARCHIVED,
+      ).length,
+      softDeleted: docs.filter(
+        (d) => d.lifecycleStatus === DocumentLifecycleStatus.SOFT_DELETED,
+      ).length,
+      pendingReview: currentDocs.filter(
+        (d) => d.status === DocumentReviewStatus.PENDING,
+      ).length,
+      approved: currentDocs.filter(
+        (d) => d.status === DocumentReviewStatus.APPROVED,
+      ).length,
+      rejected: currentDocs.filter(
+        (d) => d.status === DocumentReviewStatus.REJECTED,
+      ).length,
+      needsResubmission: currentDocs.filter(
+        (d) => d.status === DocumentReviewStatus.NEEDS_RESUBMISSION,
+      ).length,
+      activeFlags: driver.kycFlags.length,
+    };
+
+    const documentTypes = DRIVER_DOC_TYPES.map((t) => ({
+      id: t,
+      label: DOC_TYPE_LABELS[t],
+      required: REQUIRED_DOC_TYPES.includes(t),
+      queue: QUEUE_DOC_TYPES.includes(t),
+    }));
+
+    const flags = driver.kycFlags.map((f) => ({
+      id: f.id,
+      flagType: f.flagType,
+      reason: f.reason,
+      note: f.note,
+      createdById: f.createdById,
+      createdAt: f.createdAt,
+    }));
 
     return {
       id: driver.id,
@@ -184,6 +280,17 @@ export class KycOpsService {
       approvalStatus: driver.approvalStatus,
       isActivated: driver.isActivated,
       baseLocation: driver.baseLocation,
+      dateOfBirth: driver.dateOfBirth,
+      addressLine1: driver.addressLine1,
+      addressLine2: driver.addressLine2,
+      city: driver.city,
+      province: driver.province,
+      postalCode: driver.postalCode,
+      country: driver.country,
+      licenceNumber: driver.licenceNumber,
+      licenceJurisdiction: driver.licenceJurisdiction,
+      licenceIssueDate: driver.licenceIssueDate,
+      licenceExpiryDate: driver.licenceExpiryDate,
       createdAt: driver.createdAt,
       updatedAt: driver.updatedAt,
       kycAssignedAt: driver.kycAssignedAt,
@@ -192,6 +299,12 @@ export class KycOpsService {
       kycDecisionNote: driver.kycDecisionNote,
       kycDecisionReason: driver.kycDecisionReason,
       kycCustomerMessage: driver.kycCustomerMessage,
+      kycOverrideUsed: driver.kycOverrideUsed,
+      kycOverrideReason: driver.kycOverrideReason,
+      kycOverrideAt: driver.kycOverrideAt,
+      kycOverrideById: driver.kycOverrideById,
+      suspensionReason: driver.suspensionReason,
+      suspendedAt: driver.suspendedAt,
       reviewer: driver.kycAssignedTo
         ? {
             id: driver.kycAssignedTo.id,
@@ -226,14 +339,21 @@ export class KycOpsService {
           latest.vehicle_registration?.status === 'APPROVED' &&
           latest.vehicle_photo?.status === 'APPROVED',
         requiredDocumentsComplete: progress.readyForKycApproval,
+        ...eligibility,
       },
       verificationChecks: checks,
       signals,
       notes,
       audit,
       neighbors,
+      flags,
+      documentTypes,
+      versionsByGroup,
+      caseHealth,
       canApproveKyc: canApproveKyc(progress, false),
-      canActivate: progress.readyForKycApproval && driver.approvalStatus === DriverApprovalStatus.APPROVED,
+      canActivate:
+        progress.readyForKycApproval &&
+        driver.approvalStatus === DriverApprovalStatus.APPROVED,
     };
   }
 
@@ -294,6 +414,11 @@ export class KycOpsService {
       where: { id: documentId },
     });
     if (!doc) throw new NotFoundException('Document not found');
+    if (doc.lifecycleStatus !== DocumentLifecycleStatus.CURRENT) {
+      throw new BadRequestException(
+        'Historical document versions are read-only. Review the CURRENT version.',
+      );
+    }
     const driver = await this.requireDriver(doc.driverId);
     this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
 
@@ -470,22 +595,55 @@ export class KycOpsService {
       });
     }
 
+    // When docs are fully ready, activate in the same step so the driver
+    // status updates immediately after admin Approve KYC (no separate click).
+    const activateNow = progress.readyForKycApproval;
     const updated = await this.prisma.driverProfile.update({
       where: { id: driverId },
       data: {
         approvalStatus: DriverApprovalStatus.APPROVED,
+        ...(activateNow ? { isActivated: true } : {}),
         kycDecidedAt: new Date(),
         kycDecisionNote: dto.note?.trim() || null,
         kycDecisionReason: override ? dto.overrideReason!.trim() : null,
+        ...(override
+          ? {
+              kycOverrideUsed: true,
+              kycOverrideReason: dto.overrideReason!.trim(),
+              kycOverrideAt: new Date(),
+              kycOverrideById: actor.id,
+            }
+          : {
+              kycOverrideUsed: false,
+              kycOverrideReason: null,
+              kycOverrideAt: null,
+              kycOverrideById: null,
+            }),
       },
     });
     await this.audit(actor.id, 'admin.kyc.approve', 'DriverProfile', driverId, ip, {
       previousStatus: driver.approvalStatus,
       newStatus: updated.approvalStatus,
+      previousActivated: driver.isActivated,
+      newActivated: updated.isActivated,
       override,
       reason: dto.overrideReason ?? null,
       note: dto.note ?? null,
     });
+    if (override) {
+      await this.audit(actor.id, 'KYC_OVERRIDE_USED', 'DriverProfile', driverId, ip, {
+        kind: 'kyc_approve',
+        reason: dto.overrideReason ?? null,
+        note: dto.note ?? null,
+      });
+    }
+    await this.notifyDriver(
+      driver.userId,
+      activateNow ? 'You are approved and activated' : 'Your KYC was approved',
+      activateNow
+        ? 'Admin approved your documents. You can now receive transfer requests.'
+        : 'Admin approved your KYC. Activation may still be pending.',
+    );
     return this.getWorkspace(driverId);
   }
 
@@ -539,36 +697,73 @@ export class KycOpsService {
     };
   }
 
-  async activate(actor: AuthUser, driverId: string, ip?: string) {
+  async activate(
+    actor: AuthUser,
+    driverId: string,
+    dto: ActivateDriverDto = {},
+    ip?: string,
+  ) {
     this.assertCanActivate(actor);
     const driver = await this.requireDriver(driverId);
+    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
     const docs = await this.prisma.driverDocument.findMany({
       where: { driverId },
       orderBy: { createdAt: 'desc' },
     });
     const progress = progressFromDocs(docs);
-    if (!progress.readyForKycApproval) {
+    const override = dto.override === true;
+    if (override) {
+      this.assertCanOverride(actor);
+      if (!dto.overrideReason?.trim() || dto.overrideReason.trim().length < 8) {
+        throw new BadRequestException(
+          'overrideReason is required (min 8 characters)',
+        );
+      }
+    }
+    if (!progress.readyForKycApproval && !override) {
       throw new BadRequestException({
         message:
           'Required documents + at least 1 vehicle photo must be approved',
         progress,
       });
     }
-    const data: Prisma.DriverProfileUpdateInput = { isActivated: true };
+    const data: Prisma.DriverProfileUpdateInput = {
+      isActivated: true,
+      ...(override
+        ? {
+            kycOverrideUsed: true,
+            kycOverrideReason: dto.overrideReason!.trim(),
+            kycOverrideAt: new Date(),
+            kycOverrideById: actor.id,
+          }
+        : {}),
+    };
     if (driver.approvalStatus !== DriverApprovalStatus.APPROVED) {
       data.approvalStatus = DriverApprovalStatus.APPROVED;
       data.kycDecidedAt = new Date();
+      if (dto.note?.trim()) data.kycDecisionNote = dto.note.trim();
+      if (override) data.kycDecisionReason = dto.overrideReason!.trim();
     }
     const updated = await this.prisma.driverProfile.update({
       where: { id: driverId },
       data,
     });
-    await this.audit(actor.id, 'admin.driver.activate', 'DriverProfile', driverId, ip, {
-      previousStatus: driver.approvalStatus,
-      newStatus: updated.approvalStatus,
-      previousActivated: driver.isActivated,
-      newActivated: true,
-    });
+    await this.audit(
+      actor.id,
+      override ? 'DRIVER_ACTIVATED_WITH_OVERRIDE' : 'admin.driver.activate',
+      'DriverProfile',
+      driverId,
+      ip,
+      {
+        previousStatus: driver.approvalStatus,
+        newStatus: updated.approvalStatus,
+        previousActivated: driver.isActivated,
+        newActivated: true,
+        override,
+        reason: dto.overrideReason ?? null,
+        note: dto.note ?? null,
+      },
+    );
     return {
       id: updated.id,
       approvalStatus: updated.approvalStatus,
@@ -634,13 +829,14 @@ export class KycOpsService {
       include: { documents: true },
     });
     if (!driver) return;
+    const current = activeDocs(driver.documents);
     const data: Prisma.DriverProfileUpdateInput = {};
     if (!driver.kycSubmittedAt) data.kycSubmittedAt = new Date();
     if (driver.approvalStatus === DriverApprovalStatus.REJECTED) {
       data.approvalStatus = DriverApprovalStatus.PENDING_KYC;
       data.kycDecidedAt = null;
     } else if (driver.approvalStatus === DriverApprovalStatus.ACTION_REQUIRED) {
-      const needs = driver.documents.some(
+      const needs = current.some(
         (d) => d.status === DocumentReviewStatus.NEEDS_RESUBMISSION,
       );
       if (!needs) {
@@ -652,6 +848,396 @@ export class KycOpsService {
     if (Object.keys(data).length) {
       await this.prisma.driverProfile.update({ where: { id: driverId }, data });
     }
+  }
+
+  async editApplicant(
+    actor: AuthUser,
+    driverId: string,
+    dto: EditApplicantDto,
+    ip?: string,
+  ) {
+    this.assertCanEdit(actor);
+    const driver = await this.loadDriver(driverId);
+    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
+
+    const before = {
+      fullName: driver.fullName,
+      legalName: driver.legalName,
+      email: driver.user.email,
+      phoneE164: driver.user.phoneE164,
+      dateOfBirth: driver.dateOfBirth,
+      addressLine1: driver.addressLine1,
+      addressLine2: driver.addressLine2,
+      city: driver.city,
+      province: driver.province,
+      postalCode: driver.postalCode,
+      country: driver.country,
+      baseLocation: driver.baseLocation,
+      licenceNumber: driver.licenceNumber,
+      licenceJurisdiction: driver.licenceJurisdiction,
+      licenceIssueDate: driver.licenceIssueDate,
+      licenceExpiryDate: driver.licenceExpiryDate,
+    };
+
+    const profileData: Prisma.DriverProfileUpdateInput = {};
+    if (dto.fullName !== undefined) profileData.fullName = dto.fullName.trim();
+    if (dto.legalName !== undefined) profileData.legalName = dto.legalName.trim();
+    if (dto.dateOfBirth !== undefined) {
+      profileData.dateOfBirth = dto.dateOfBirth
+        ? new Date(dto.dateOfBirth)
+        : null;
+    }
+    if (dto.addressLine1 !== undefined) profileData.addressLine1 = dto.addressLine1;
+    if (dto.addressLine2 !== undefined) profileData.addressLine2 = dto.addressLine2;
+    if (dto.city !== undefined) profileData.city = dto.city;
+    if (dto.province !== undefined) profileData.province = dto.province;
+    if (dto.postalCode !== undefined) profileData.postalCode = dto.postalCode;
+    if (dto.country !== undefined) profileData.country = dto.country;
+    if (dto.baseLocation !== undefined) profileData.baseLocation = dto.baseLocation;
+    if (dto.licenceNumber !== undefined) profileData.licenceNumber = dto.licenceNumber;
+    if (dto.licenceJurisdiction !== undefined) {
+      profileData.licenceJurisdiction = dto.licenceJurisdiction;
+    }
+    if (dto.licenceIssueDate !== undefined) {
+      profileData.licenceIssueDate = dto.licenceIssueDate
+        ? new Date(dto.licenceIssueDate)
+        : null;
+    }
+    if (dto.licenceExpiryDate !== undefined) {
+      profileData.licenceExpiryDate = dto.licenceExpiryDate
+        ? new Date(dto.licenceExpiryDate)
+        : null;
+    }
+
+    const userData: Prisma.UserUpdateInput = {};
+    if (dto.email !== undefined) userData.email = dto.email.trim() || null;
+    if (dto.phoneE164 !== undefined) {
+      userData.phoneE164 = dto.phoneE164.trim() || null;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(userData).length) {
+        await tx.user.update({
+          where: { id: driver.userId },
+          data: userData,
+        });
+      }
+      await tx.driverProfile.update({
+        where: { id: driverId },
+        data: {
+          ...profileData,
+          updatedAt: new Date(),
+        },
+      });
+    });
+
+    const afterDriver = await this.loadDriver(driverId);
+    const after = {
+      fullName: afterDriver.fullName,
+      legalName: afterDriver.legalName,
+      email: afterDriver.user.email,
+      phoneE164: afterDriver.user.phoneE164,
+      dateOfBirth: afterDriver.dateOfBirth,
+      addressLine1: afterDriver.addressLine1,
+      addressLine2: afterDriver.addressLine2,
+      city: afterDriver.city,
+      province: afterDriver.province,
+      postalCode: afterDriver.postalCode,
+      country: afterDriver.country,
+      baseLocation: afterDriver.baseLocation,
+      licenceNumber: afterDriver.licenceNumber,
+      licenceJurisdiction: afterDriver.licenceJurisdiction,
+      licenceIssueDate: afterDriver.licenceIssueDate,
+      licenceExpiryDate: afterDriver.licenceExpiryDate,
+    };
+
+    await this.audit(
+      actor.id,
+      'KYC_APPLICANT_CHANGED',
+      'DriverProfile',
+      driverId,
+      ip,
+      { before, after, reason: dto.reason },
+    );
+    return this.getWorkspace(driverId);
+  }
+
+  async reopenKyc(
+    actor: AuthUser,
+    driverId: string,
+    dto: ReopenKycDto,
+    ip?: string,
+  ) {
+    this.assertCanReopen(actor);
+    const driver = await this.requireDriver(driverId);
+    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
+    const previous = {
+      approvalStatus: driver.approvalStatus,
+      kycDecidedAt: driver.kycDecidedAt,
+      kycDecisionNote: driver.kycDecisionNote,
+      kycDecisionReason: driver.kycDecisionReason,
+      kycCustomerMessage: driver.kycCustomerMessage,
+      isActivated: driver.isActivated,
+    };
+    await this.prisma.driverProfile.update({
+      where: { id: driverId },
+      data: {
+        approvalStatus: DriverApprovalStatus.IN_REVIEW,
+        isActivated: false,
+        kycDecidedAt: null,
+        kycDecisionNote: dto.note?.trim() || null,
+        kycDecisionReason: null,
+        kycCustomerMessage: null,
+        kycAssignedToId: actor.id,
+        kycAssignedAt: new Date(),
+      },
+    });
+    await this.audit(actor.id, 'KYC_REOPENED', 'DriverProfile', driverId, ip, {
+      before: previous,
+      reason: dto.reason,
+      note: dto.note ?? null,
+      previousStatus: previous.approvalStatus,
+      newStatus: DriverApprovalStatus.IN_REVIEW,
+    });
+    return this.getWorkspace(driverId);
+  }
+
+  async resetKycReview(
+    actor: AuthUser,
+    driverId: string,
+    dto: ResetKycDto,
+    ip?: string,
+  ) {
+    this.assertCanOverride(actor);
+    const driver = await this.requireDriver(driverId);
+    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
+    const previous = {
+      approvalStatus: driver.approvalStatus,
+      kycAssignedToId: driver.kycAssignedToId,
+      kycAssignedAt: driver.kycAssignedAt,
+      kycDecidedAt: driver.kycDecidedAt,
+      kycDecisionNote: driver.kycDecisionNote,
+      kycDecisionReason: driver.kycDecisionReason,
+      kycCustomerMessage: driver.kycCustomerMessage,
+      kycOverrideUsed: driver.kycOverrideUsed,
+      isActivated: driver.isActivated,
+    };
+    await this.prisma.driverProfile.update({
+      where: { id: driverId },
+      data: {
+        approvalStatus: DriverApprovalStatus.PENDING_KYC,
+        isActivated: false,
+        kycAssignedToId: null,
+        kycAssignedAt: null,
+        kycReviewStartedAt: null,
+        kycDecidedAt: null,
+        kycDecisionNote: dto.note?.trim() || null,
+        kycDecisionReason: null,
+        kycCustomerMessage: null,
+        kycOverrideUsed: false,
+        kycOverrideReason: null,
+        kycOverrideAt: null,
+        kycOverrideById: null,
+      },
+    });
+    await this.audit(actor.id, 'KYC_RESET', 'DriverProfile', driverId, ip, {
+      before: previous,
+      reason: dto.reason,
+      note: dto.note ?? null,
+      previousStatus: previous.approvalStatus,
+      newStatus: DriverApprovalStatus.PENDING_KYC,
+    });
+    return this.getWorkspace(driverId);
+  }
+
+  async addFlag(
+    actor: AuthUser,
+    driverId: string,
+    dto: AddKycFlagDto,
+    ip?: string,
+  ) {
+    this.assertCanReview(actor);
+    await this.requireDriver(driverId);
+    if (!KYC_FLAG_TYPES.includes(dto.flagType)) {
+      throw new BadRequestException('Invalid flagType');
+    }
+    const flag = await this.prisma.kycFlag.create({
+      data: {
+        driverId,
+        flagType: dto.flagType as KycFlagType,
+        reason: dto.reason.trim(),
+        note: dto.note?.trim() || null,
+        createdById: actor.id,
+      },
+    });
+    await this.audit(actor.id, 'KYC_FLAG_ADDED', 'KycFlag', flag.id, ip, {
+      driverId,
+      flagType: flag.flagType,
+      reason: dto.reason,
+      note: dto.note ?? null,
+    });
+    return {
+      id: flag.id,
+      flagType: flag.flagType,
+      reason: flag.reason,
+      note: flag.note,
+      createdById: flag.createdById,
+      createdAt: flag.createdAt,
+    };
+  }
+
+  async clearFlag(
+    actor: AuthUser,
+    driverId: string,
+    flagId: string,
+    dto: ClearKycFlagDto = {},
+    ip?: string,
+  ) {
+    this.assertCanReview(actor);
+    const flag = await this.prisma.kycFlag.findFirst({
+      where: { id: flagId, driverId },
+    });
+    if (!flag) throw new NotFoundException('Flag not found');
+    if (flag.clearedAt) {
+      throw new BadRequestException('Flag already cleared');
+    }
+    const updated = await this.prisma.kycFlag.update({
+      where: { id: flagId },
+      data: {
+        clearedAt: new Date(),
+        clearedById: actor.id,
+      },
+    });
+    await this.audit(actor.id, 'KYC_FLAG_CLEARED', 'KycFlag', flagId, ip, {
+      driverId,
+      flagType: flag.flagType,
+      reason: dto.reason ?? null,
+    });
+    return {
+      id: updated.id,
+      flagType: updated.flagType,
+      clearedAt: updated.clearedAt,
+      clearedById: updated.clearedById,
+    };
+  }
+
+  async suspendDriver(
+    actor: AuthUser,
+    driverId: string,
+    dto: SuspendDriverDto,
+    ip?: string,
+  ) {
+    this.assertCanSuspend(actor);
+    const driver = await this.requireDriver(driverId);
+    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: driver.userId },
+        data: { isSuspended: true },
+      });
+      return tx.driverProfile.update({
+        where: { id: driverId },
+        data: {
+          approvalStatus: DriverApprovalStatus.SUSPENDED,
+          isActivated: false,
+          suspensionReason: dto.reason.trim(),
+          suspendedAt: new Date(),
+        },
+      });
+    });
+    await this.audit(actor.id, 'DRIVER_SUSPENDED', 'DriverProfile', driverId, ip, {
+      previousStatus: driver.approvalStatus,
+      newStatus: updated.approvalStatus,
+      reason: dto.reason,
+      note: dto.note ?? null,
+    });
+    return this.getWorkspace(driverId);
+  }
+
+  async unsuspendDriver(
+    actor: AuthUser,
+    driverId: string,
+    dto: SuspendDriverDto,
+    ip?: string,
+  ) {
+    this.assertCanSuspend(actor);
+    const driver = await this.requireDriver(driverId);
+    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: driver.userId },
+        data: { isSuspended: false },
+      });
+      return tx.driverProfile.update({
+        where: { id: driverId },
+        data: {
+          approvalStatus: DriverApprovalStatus.PENDING_KYC,
+          suspensionReason: null,
+          suspendedAt: null,
+        },
+      });
+    });
+    await this.audit(actor.id, 'DRIVER_UNSUSPENDED', 'DriverProfile', driverId, ip, {
+      previousStatus: driver.approvalStatus,
+      newStatus: updated.approvalStatus,
+      reason: dto.reason,
+      note: dto.note ?? null,
+    });
+    return this.getWorkspace(driverId);
+  }
+
+  async exportSummary(driverId: string) {
+    const workspace = await this.getWorkspace(driverId);
+    return {
+      exportedAt: new Date().toISOString(),
+      driverId: workspace.id,
+      shortId: workspace.shortId,
+      fullName: workspace.fullName,
+      legalName: workspace.legalName,
+      approvalStatus: workspace.approvalStatus,
+      isActivated: workspace.isActivated,
+      user: workspace.user,
+      identity: {
+        dateOfBirth: workspace.dateOfBirth,
+        addressLine1: workspace.addressLine1,
+        addressLine2: workspace.addressLine2,
+        city: workspace.city,
+        province: workspace.province,
+        postalCode: workspace.postalCode,
+        country: workspace.country,
+        licenceNumber: workspace.licenceNumber,
+        licenceJurisdiction: workspace.licenceJurisdiction,
+        licenceIssueDate: workspace.licenceIssueDate,
+        licenceExpiryDate: workspace.licenceExpiryDate,
+      },
+      progress: workspace.progress,
+      eligibility: workspace.eligibility,
+      checklist: workspace.checklist,
+      caseHealth: workspace.caseHealth,
+      flags: workspace.flags,
+      documents: workspace.documents.map((d) => ({
+        id: d.id,
+        docType: d.docType,
+        label: d.label,
+        status: d.status,
+        lifecycleStatus: d.lifecycleStatus,
+        versionNumber: d.versionNumber,
+        documentGroupId: d.documentGroupId,
+        uploadSource: d.uploadSource,
+        expiresAt: d.expiresAt,
+        documentNumber: d.documentNumber,
+        createdAt: d.createdAt,
+        reviewedAt: d.reviewedAt,
+      })),
+      versionsByGroup: workspace.versionsByGroup,
+      vehicles: workspace.vehicles,
+      kycOverrideUsed: workspace.kycOverrideUsed,
+      kycOverrideReason: workspace.kycOverrideReason,
+      suspensionReason: workspace.suspensionReason,
+      suspendedAt: workspace.suspendedAt,
+      decidedAt: workspace.kycDecidedAt,
+      decisionReason: workspace.kycDecisionReason,
+    };
   }
 
   // --- internals ---
@@ -1009,7 +1595,7 @@ export class KycOpsService {
             },
           },
         },
-        documents: { orderBy: { createdAt: 'desc' } },
+        documents: { orderBy: [{ versionNumber: 'desc' }, { createdAt: 'desc' }] },
         vehicles: true,
         operatingZones: true,
         kycAssignedTo: { select: { id: true, email: true } },
@@ -1017,6 +1603,10 @@ export class KycOpsService {
           orderBy: { createdAt: 'desc' },
           take: 50,
           include: { author: { select: { id: true, email: true } } },
+        },
+        kycFlags: {
+          where: { clearedAt: null },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -1120,7 +1710,7 @@ export class KycOpsService {
         detail: `${rejects} previous rejection${rejects === 1 ? '' : 's'}`,
       });
     }
-    for (const doc of driver.documents) {
+    for (const doc of activeDocs(driver.documents)) {
       const band = expiryBand(doc.expiresAt);
       if (band === 'expired') {
         signals.push({
@@ -1227,6 +1817,38 @@ export class KycOpsService {
         return 'Internal note added';
       case 'driver.document.upload':
         return 'Document uploaded';
+      case 'KYC_APPLICANT_CHANGED':
+        return 'Applicant details changed';
+      case 'KYC_REOPENED':
+        return 'KYC reopened';
+      case 'KYC_RESET':
+        return 'KYC review reset';
+      case 'KYC_OVERRIDE_USED':
+        return 'Manual override used';
+      case 'DRIVER_ACTIVATED_WITH_OVERRIDE':
+        return 'Activated with override';
+      case 'DRIVER_SUSPENDED':
+        return 'Driver suspended';
+      case 'DRIVER_UNSUSPENDED':
+        return 'Driver unsuspended';
+      case 'KYC_FLAG_ADDED':
+        return 'KYC flag added';
+      case 'KYC_FLAG_CLEARED':
+        return 'KYC flag cleared';
+      case 'KYC_DOCUMENT_UPLOADED':
+        return 'Document uploaded by admin';
+      case 'KYC_DOCUMENT_VERSION_CREATED':
+        return 'Document version created';
+      case 'KYC_DOCUMENT_REPLACED':
+        return 'Document replaced';
+      case 'KYC_METADATA_CHANGED':
+        return 'Document metadata changed';
+      case 'KYC_DOCUMENT_ARCHIVED':
+        return 'Document archived';
+      case 'KYC_DOCUMENT_RESTORED':
+        return 'Document restored';
+      case 'KYC_DOCUMENT_SOFT_DELETED':
+        return 'Document soft-deleted';
       default:
         if (action.includes('impersonat')) return 'Admin logged in as driver';
         return action.replace(/[._]/g, ' ');
@@ -1239,14 +1861,38 @@ export class KycOpsService {
   }
 
   private workspaceChecklist(
-    latest: Record<string, { status: string } | undefined>,
+    latest: Record<
+      string,
+      | {
+          id?: string;
+          status: string;
+          documentGroupId?: string;
+          uploadSource?: string | null;
+          expiresAt?: Date | null;
+          expiryLabel?: string | null;
+          lifecycleStatus?: string | null;
+        }
+      | undefined
+    >,
+    allDocs: Array<{ documentGroupId: string }>,
   ) {
-    return QUEUE_DOC_TYPES.map((t) => ({
-      docType: t,
-      label: DOC_TYPE_LABELS[t],
-      status: latest[t]?.status ?? 'MISSING',
-      indicator: docIndicator(latest[t]?.status),
-    }));
+    return QUEUE_DOC_TYPES.map((t) => {
+      const doc = latest[t];
+      const versionCount = doc?.documentGroupId
+        ? allDocs.filter((d) => d.documentGroupId === doc.documentGroupId).length
+        : 0;
+      return {
+        docType: t,
+        label: DOC_TYPE_LABELS[t],
+        status: doc?.status ?? 'MISSING',
+        indicator: docIndicator(doc?.status),
+        documentId: doc?.id ?? null,
+        versionCount,
+        uploadSource: doc?.uploadSource ?? null,
+        expiryLabel: doc?.expiryLabel ?? expiryLabel(doc?.expiresAt ?? null),
+        lifecycleStatus: doc?.lifecycleStatus ?? null,
+      };
+    });
   }
 
   private async neighbors(driverId: string) {
@@ -1263,42 +1909,8 @@ export class KycOpsService {
     };
   }
 
-  serializeDoc(doc: {
-    id: string;
-    driverId: string;
-    vehicleId: string | null;
-    docType: string;
-    mimeType: string;
-    sizeBytes: number;
-    status: DocumentReviewStatus;
-    rejectionReason: string | null;
-    resubmissionReason?: string | null;
-    customerMessage?: string | null;
-    expiresAt: Date | null;
-    reviewedAt: Date | null;
-    reviewedById: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-  }) {
-    return {
-      id: doc.id,
-      driverId: doc.driverId,
-      vehicleId: doc.vehicleId,
-      docType: doc.docType,
-      label: DOC_TYPE_LABELS[doc.docType as DriverDocType] ?? doc.docType,
-      mimeType: doc.mimeType,
-      sizeBytes: doc.sizeBytes,
-      status: doc.status,
-      rejectionReason: doc.rejectionReason,
-      resubmissionReason: doc.resubmissionReason ?? null,
-      customerMessage: doc.customerMessage ?? null,
-      expiresAt: doc.expiresAt,
-      expiryLabel: expiryLabel(doc.expiresAt),
-      reviewedAt: doc.reviewedAt,
-      reviewedById: doc.reviewedById,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-    };
+  serializeDoc(doc: Parameters<KycDocumentsService['serializeDoc']>[0]) {
+    return this.kycDocs.serializeDoc(doc);
   }
 
   private assertFresh(updatedAt: Date, expected?: string) {
@@ -1325,6 +1937,38 @@ export class KycOpsService {
   private assertCanReview(user: AuthUser) {
     if (this.hasPerm(user, 'kyc.review') || this.hasPerm(user, 'kyc.approve')) return;
     throw new ForbiddenException('Missing permission kyc.review');
+  }
+
+  private assertCanEdit(user: AuthUser) {
+    if (
+      this.hasPerm(user, 'kyc.edit') ||
+      this.hasPerm(user, 'kyc.approve')
+    ) {
+      return;
+    }
+    throw new ForbiddenException('Missing permission kyc.edit');
+  }
+
+  private assertCanReopen(user: AuthUser) {
+    if (
+      this.hasPerm(user, 'kyc.reopen') ||
+      this.hasPerm(user, 'kyc.override') ||
+      this.hasPerm(user, 'kyc.approve')
+    ) {
+      return;
+    }
+    throw new ForbiddenException('Missing permission kyc.reopen');
+  }
+
+  private assertCanSuspend(user: AuthUser) {
+    if (
+      this.hasPerm(user, 'drivers.suspend') ||
+      this.hasPerm(user, 'users.suspend') ||
+      this.hasPerm(user, 'kyc.override')
+    ) {
+      return;
+    }
+    throw new ForbiddenException('Missing permission drivers.suspend');
   }
 
   private assertCanApprove(user: AuthUser) {
@@ -1380,12 +2024,18 @@ export class KycOpsService {
           resourceId,
           ip,
           reason: typeof meta?.reason === 'string' ? meta.reason : undefined,
-          before: meta?.previousStatus
-            ? ({ status: meta.previousStatus } as Prisma.InputJsonValue)
-            : undefined,
-          after: meta?.newStatus
-            ? ({ status: meta.newStatus } as Prisma.InputJsonValue)
-            : undefined,
+          before:
+            meta?.before !== undefined
+              ? (meta.before as Prisma.InputJsonValue)
+              : meta?.previousStatus
+                ? ({ status: meta.previousStatus } as Prisma.InputJsonValue)
+                : undefined,
+          after:
+            meta?.after !== undefined
+              ? (meta.after as Prisma.InputJsonValue)
+              : meta?.newStatus
+                ? ({ status: meta.newStatus } as Prisma.InputJsonValue)
+                : undefined,
           meta: (meta ?? {}) as Prisma.InputJsonValue,
         },
       });

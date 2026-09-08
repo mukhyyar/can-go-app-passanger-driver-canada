@@ -70,6 +70,7 @@ class MapPickScreen extends StatelessWidget {
                     } else {
                       app.setFrom(place);
                     }
+                    app.addPlaceToSearchHistory(place);
                   });
                 },
               ),

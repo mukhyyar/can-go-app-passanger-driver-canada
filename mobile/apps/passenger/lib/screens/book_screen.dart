@@ -186,6 +186,11 @@ class BookScreen extends StatelessWidget {
                   if (state.from == null) {
                     state.setFrom(MockData.places.first);
                   }
+                  if (!state.isAuthenticated) {
+                    if (!context.mounted) return;
+                    context.push('/auth');
+                    return;
+                  }
                   try {
                     final req = await state.createBookingRequestAsync();
                     if (!context.mounted) return;
@@ -293,7 +298,14 @@ class _BookHeader extends StatelessWidget {
           Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => openPassengerMenu(context),
+              onTap: () {
+                final app = context.read<AppState>();
+                if (app.isAuthenticated) {
+                  openPassengerMenu(context);
+                } else {
+                  context.push('/auth');
+                }
+              },
               borderRadius: BorderRadius.circular(22),
               child: Container(
                 width: 40,

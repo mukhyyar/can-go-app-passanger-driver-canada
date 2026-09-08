@@ -174,6 +174,202 @@ export class CreateVehicleDto {
   @IsString()
   @MinLength(1)
   vehicleClass!: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  year?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  passengerSeats?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  luggagePlaces?: number;
+
+  @IsOptional()
+  @IsObject()
+  amenities?: Record<string, unknown>;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  autocancelBefore?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  autocancelAfter?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateVehicleDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  plate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  vehicleClass?: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  year?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  passengerSeats?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  luggagePlaces?: number | null;
+
+  @IsOptional()
+  @IsObject()
+  amenities?: Record<string, unknown>;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  autocancelBefore?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  autocancelAfter?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isDefault?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateDriverProfileDto {
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  legalName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isIndividual?: boolean;
+
+  @IsOptional()
+  @IsString()
+  registrationNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  taxpayerId?: string;
+
+  @IsOptional()
+  @IsString()
+  addressLine1?: string;
+
+  @IsOptional()
+  @IsString()
+  addressLine2?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  province?: string;
+
+  @IsOptional()
+  @IsString()
+  postalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  baseLocation?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  baseLatitude?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  baseLongitude?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  languages?: string[];
+
+  /** Only accepted when referredByCode is currently empty. */
+  @IsOptional()
+  @IsString()
+  referralCode?: string;
+}
+
+export class UpdatePaymentDetailsDto {
+  @IsOptional()
+  @IsString()
+  billingPeriod?: string;
+
+  @IsOptional()
+  @IsString()
+  outpaymentCurrency?: string;
+
+  @IsOptional()
+  @IsString()
+  bankCountry?: string;
+
+  @IsOptional()
+  @IsString()
+  payoutMethod?: string;
+
+  @IsOptional()
+  @IsString()
+  accountHolderName?: string;
+
+  /** Last 4 digits or masked value only — never full account numbers. */
+  @IsOptional()
+  @IsString()
+  accountMask?: string;
 }
 
 export class UpsertZoneDto {

@@ -5,6 +5,23 @@ export const API_BASE =
 
 export const TOKEN_KEY = 'cango_web_tokens';
 
+export class ApiError extends Error {
+  status: number;
+  body: Record<string, unknown>;
+
+  constructor(message: string, status: number, body: Record<string, unknown> = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+
+  get code(): string | undefined {
+    const c = this.body.code;
+    return typeof c === 'string' ? c : undefined;
+  }
+}
+
 export function readTokens(): Tokens | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -45,7 +62,17 @@ export async function api<T = unknown>(
     }
   }
   if (!res.ok) {
-    throw new Error(extractError(data, res.status));
+    const body =
+      data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
+    // Nest sometimes nests the payload under message when using object exceptions
+    const nested =
+      body.message && typeof body.message === 'object' && !Array.isArray(body.message)
+        ? (body.message as Record<string, unknown>)
+        : body;
+    throw new ApiError(extractError(data, res.status), res.status, {
+      ...body,
+      ...nested,
+    });
   }
   return data as T;
 }
@@ -56,6 +83,10 @@ function extractError(data: unknown, status: number): string {
     const msg = rec.message;
     if (Array.isArray(msg)) return msg.map(String).join(', ');
     if (typeof msg === 'string' && msg.trim()) return msg;
+    if (msg && typeof msg === 'object') {
+      const inner = (msg as Record<string, unknown>).message;
+      if (typeof inner === 'string' && inner.trim()) return inner;
+    }
     if (typeof rec.error === 'string') return rec.error;
   }
   return `HTTP ${status}`;

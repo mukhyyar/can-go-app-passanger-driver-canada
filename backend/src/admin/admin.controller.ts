@@ -23,11 +23,19 @@ import { AdminOpsService } from './admin.service';
 import { AdminRbacService } from './rbac.service';
 import {
   BroadcastDto,
+  BulkSuspendDto,
   CaseCreateDto,
   FareRuleDto,
   ImpersonateDto,
+  LoginLinkDto,
   RefundDto,
+  ResetPasswordDto,
   SuspendDto,
+  UserAnonymizeDto,
+  UserArchiveDto,
+  UserDeleteDto,
+  UserNoteDto,
+  UserTagDto,
 } from './admin.dto';
 
 @Controller('admin')
@@ -66,14 +74,68 @@ export class AdminOpsController {
     return this.ops.search(q ?? '');
   }
 
+  @Get('users/stats')
+  @RequirePermission('users.view')
+  userStats() {
+    return this.ops.userStats();
+  }
+
   @Get('users')
   @RequirePermission('users.view')
   users(
     @Query('role') role?: string,
     @Query('q') q?: string,
     @Query('suspended') suspended?: string,
+    @Query('status') status?: string,
+    @Query('kyc') kyc?: string,
+    @Query('phoneVerified') phoneVerified?: string,
+    @Query('watchlisted') watchlisted?: string,
+    @Query('vip') vip?: string,
+    @Query('hasOpenCase') hasOpenCase?: string,
+    @Query('registeredFrom') registeredFrom?: string,
+    @Query('registeredTo') registeredTo?: string,
+    @Query('lastActiveFrom') lastActiveFrom?: string,
+    @Query('lastActiveTo') lastActiveTo?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: string,
   ) {
-    return this.ops.listUsers({ role, q, suspended });
+    return this.ops.listUsers({
+      role,
+      q,
+      suspended,
+      status,
+      kyc,
+      phoneVerified,
+      watchlisted,
+      vip,
+      hasOpenCase,
+      registeredFrom,
+      registeredTo,
+      lastActiveFrom,
+      lastActiveTo,
+      page: page != null && page !== '' ? Number(page) : undefined,
+      pageSize: pageSize != null && pageSize !== '' ? Number(pageSize) : undefined,
+      sort,
+      order,
+    });
+  }
+
+  @Post('users/bulk-suspend')
+  @RequirePermission('users.suspend')
+  bulkSuspend(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: BulkSuspendDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.bulkSetSuspended(
+      user.id,
+      dto.userIds,
+      dto.isSuspended,
+      dto.reason,
+      req.ip,
+    );
   }
 
   @Get('users/:id/360')
@@ -93,6 +155,56 @@ export class AdminOpsController {
     return this.ops.setSuspended(user.id, id, dto.isSuspended, dto.reason, req.ip);
   }
 
+  @Post('users/:id/reset-password')
+  @RequirePermission('users.reset_password')
+  resetPassword(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.resetUserPassword(user.id, id, dto, req.ip);
+  }
+
+  @Get('users/:id/lifecycle')
+  @RequirePermission('users.view')
+  userLifecycle(@Param('id') id: string) {
+    return this.ops.getUserLifecycleImpact(id);
+  }
+
+  @Post('users/:id/archive')
+  @RequirePermission('users.archive')
+  archiveUser(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UserArchiveDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.archiveUser(user.id, id, dto, req.ip);
+  }
+
+  @Post('users/:id/anonymize')
+  @RequirePermission('users.anonymize')
+  anonymizeUser(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UserAnonymizeDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.anonymizeUser(user.id, id, dto, req.ip);
+  }
+
+  @Post('users/:id/delete')
+  @RequirePermission('users.delete')
+  deleteUser(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UserDeleteDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.permanentlyDeleteUser(user.id, id, dto, req.ip);
+  }
+
   @Post('users/:id/impersonate')
   @RequirePermission('users.impersonate')
   impersonate(
@@ -105,6 +217,78 @@ export class AdminOpsController {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
     });
+  }
+
+  @Get('users/:id/notes')
+  @RequirePermission('users.view')
+  userNotes(@Param('id') id: string) {
+    return this.ops.listUserNotes(id);
+  }
+
+  @Post('users/:id/notes')
+  @RequirePermission('users.view')
+  addUserNote(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UserNoteDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.addUserNote(user.id, id, dto, req.ip);
+  }
+
+  @Get('users/:id/tags')
+  @RequirePermission('users.view')
+  userTags(@Param('id') id: string) {
+    return this.ops.listUserTags(id);
+  }
+
+  @Post('users/:id/tags')
+  @RequirePermission('users.view')
+  addUserTag(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UserTagDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.assignUserTag(user.id, id, dto, req.ip);
+  }
+
+  @Delete('users/:id/tags/:tagId')
+  @RequirePermission('users.view')
+  removeUserTag(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('tagId') tagId: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.removeUserTag(user.id, id, tagId, req.ip);
+  }
+
+  @Get('users/:id/login-links')
+  @RequirePermission('users.impersonate')
+  listLoginLinks(@Param('id') id: string) {
+    return this.ops.listLoginLinks(id);
+  }
+
+  @Post('users/:id/login-links')
+  @RequirePermission('users.impersonate')
+  createLoginLink(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: LoginLinkDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.issueLoginLink(user.id, id, dto, { ip: req.ip });
+  }
+
+  @Post('users/login-links/:linkId/revoke')
+  @RequirePermission('users.impersonate')
+  revokeLoginLink(
+    @CurrentUser() user: AuthUser,
+    @Param('linkId') linkId: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.revokeLoginLink(user.id, linkId, req.ip);
   }
 
   @Get('drivers')

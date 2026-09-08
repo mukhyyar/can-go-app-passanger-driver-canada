@@ -148,6 +148,9 @@ export type LatestDoc = {
   docType: string;
   status: string;
   expiresAt?: Date | null;
+  lifecycleStatus?: string | null;
+  versionNumber?: number;
+  createdAt?: Date | string;
 };
 
 export function docIndicator(status: string | undefined): DocIndicator {
@@ -158,10 +161,28 @@ export function docIndicator(status: string | undefined): DocIndicator {
   return 'pending';
 }
 
+/** Prefer CURRENT lifecycle versions; ignore soft-deleted/archived for eligibility. */
+export function activeDocs<T extends LatestDoc>(docs: T[]): T[] {
+  return docs.filter((d) => {
+    const life = d.lifecycleStatus ?? 'CURRENT';
+    return life === 'CURRENT';
+  });
+}
+
 export function pickLatestByType<T extends LatestDoc>(docs: T[]): Record<string, T | undefined> {
+  const active = activeDocs(docs);
   const map: Record<string, T | undefined> = {};
   for (const type of QUEUE_DOC_TYPES) {
-    const matches = docs.filter((d) => d.docType === type);
+    const matches = active
+      .filter((d) => d.docType === type)
+      .sort((a, b) => {
+        const va = a.versionNumber ?? 0;
+        const vb = b.versionNumber ?? 0;
+        if (vb !== va) return vb - va;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
     map[type] = matches[0];
   }
   return map;
@@ -174,18 +195,116 @@ export function progressFromDocs(docs: LatestDoc[]) {
   const vehicleApproved = latest.vehicle_photo?.status === 'APPROVED';
   const totalRequired = REQUIRED_DOC_TYPES.length + 1;
   const approvedTotal = approvedRequired + (vehicleApproved ? 1 : 0);
+  const expiredMandatory = REQUIRED_DOC_TYPES.some((t) => {
+    const d = latest[t];
+    if (!d?.expiresAt) return false;
+    return new Date(d.expiresAt).getTime() < Date.now();
+  });
   return {
     approved: approvedTotal,
     required: totalRequired,
     percent: Math.round((approvedTotal / totalRequired) * 100),
     requiredComplete: approvedRequired === REQUIRED_DOC_TYPES.length,
     vehicleVerified: vehicleApproved,
-    readyForKycApproval: approvedRequired === REQUIRED_DOC_TYPES.length && vehicleApproved,
+    readyForKycApproval:
+      approvedRequired === REQUIRED_DOC_TYPES.length &&
+      vehicleApproved &&
+      !expiredMandatory,
+    expiredMandatory,
   };
 }
 
-export function canApproveKyc(progress: { readyForKycApproval: boolean }, override?: boolean) {
+export function canApproveKyc(
+  progress: { readyForKycApproval: boolean },
+  override?: boolean,
+) {
   return progress.readyForKycApproval || override === true;
+}
+
+export function buildEligibility(input: {
+  docs: LatestDoc[];
+  approvalStatus?: string;
+  overrideUsed?: boolean;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const progress = progressFromDocs(input.docs);
+  const latest = pickLatestByType(input.docs);
+  const items: Array<{
+    id: string;
+    label: string;
+    result: 'pass' | 'fail' | 'warn';
+    docType?: string;
+    detail?: string;
+  }> = [];
+
+  items.push({
+    id: 'identity',
+    label: 'Identity verified',
+    result: latest.selfie?.status === 'APPROVED' ? 'pass' : 'fail',
+    docType: 'selfie',
+  });
+  items.push({
+    id: 'licence',
+    label: 'Licence verified',
+    result: latest.license?.status === 'APPROVED' ? 'pass' : 'fail',
+    docType: 'license',
+  });
+  const licExp = latest.license?.expiresAt
+    ? new Date(latest.license.expiresAt).getTime() < now.getTime()
+    : false;
+  items.push({
+    id: 'licence_valid',
+    label: 'Licence valid',
+    result: !latest.license ? 'fail' : licExp ? 'fail' : 'pass',
+    docType: 'license',
+    detail: licExp ? 'Driving licence expired' : undefined,
+  });
+  items.push({
+    id: 'vehicle',
+    label: 'Vehicle verified',
+    result:
+      latest.vehicle_registration?.status === 'APPROVED' &&
+      latest.vehicle_photo?.status === 'APPROVED'
+        ? 'pass'
+        : 'fail',
+    docType: 'vehicle_registration',
+  });
+  items.push({
+    id: 'required_complete',
+    label: 'Required documents complete',
+    result: progress.requiredComplete ? 'pass' : 'fail',
+  });
+  items.push({
+    id: 'mandatory_approved',
+    label: 'Mandatory documents approved',
+    result: progress.readyForKycApproval ? 'pass' : 'fail',
+  });
+  items.push({
+    id: 'no_expired',
+    label: 'No expired mandatory document',
+    result: progress.expiredMandatory ? 'fail' : 'pass',
+  });
+  items.push({
+    id: 'activation',
+    label: 'Driver meets activation requirements',
+    result: progress.readyForKycApproval ? 'pass' : 'fail',
+  });
+
+  if (input.overrideUsed && input.approvalStatus === 'APPROVED') {
+    items.push({
+      id: 'manual_override',
+      label: 'Approved via manual override',
+      result: 'warn',
+      detail: 'MANUAL OVERRIDE',
+    });
+  }
+
+  return {
+    items,
+    allPass: items.filter((i) => i.id !== 'manual_override').every((i) => i.result === 'pass'),
+    progress,
+  };
 }
 
 export function buildVerificationChecks(input: {

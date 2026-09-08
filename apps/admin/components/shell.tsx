@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { hasPermission } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { NAV } from '../lib/nav';
+import { isNavActive, NAV } from '../lib/nav';
 import { CommandPalette } from './palette';
 import { DriverNotices } from './notices';
 import { BrandLogo } from './brand-logo';
@@ -13,15 +13,24 @@ import { BrandLogo } from './brand-logo';
 export function Shell({ children }: { children: React.ReactNode }) {
   const { me, logout, ready, token } = useAuth();
   const path = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [palette, setPalette] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [hash, setHash] = useState('');
 
   useEffect(() => {
     if (!ready) return;
     if (!token) router.replace('/login');
   }, [ready, token, router]);
+
+  useEffect(() => {
+    const syncHash = () => setHash(window.location.hash);
+    syncHash();
+    window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
+  }, [path, searchParams]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -62,11 +71,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="nav-group" key={g.id}>
               {!collapsed && <h3>{g.label}</h3>}
               {items.map((i) => {
-                const hrefPath = i.href.split('?')[0];
-                const active =
-                  hrefPath === '/'
-                    ? path === '/'
-                    : path === hrefPath || path.startsWith(hrefPath + '/');
+                const active = isNavActive(i.href, path, searchParams, hash);
                 return (
                   <Link
                     key={g.id + i.href + i.label}

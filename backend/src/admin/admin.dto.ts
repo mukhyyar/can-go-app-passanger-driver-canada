@@ -1,5 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsNumber,
   IsOptional,
@@ -24,6 +27,102 @@ export class SuspendDto {
   @IsString()
   @MinLength(4)
   reason!: string;
+}
+
+export class ResetPasswordDto {
+  /** If omitted, a temporary password is generated and returned once. */
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  newPassword?: string;
+
+  @IsString()
+  @MinLength(4)
+  reason!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  revokeSessions?: boolean;
+}
+
+export class BulkSuspendDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  userIds!: string[];
+
+  @IsBoolean()
+  isSuspended!: boolean;
+
+  @IsString()
+  @MinLength(4)
+  reason!: string;
+}
+
+export class UserNoteDto {
+  @IsString()
+  @MinLength(2)
+  body!: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  priority?: string;
+}
+
+export class UserTagDto {
+  @IsString()
+  @MinLength(2)
+  label!: string;
+}
+
+export class LoginLinkDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  expiresInMinutes?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  singleUse?: boolean;
+}
+
+export class UserArchiveDto {
+  @IsString()
+  @MinLength(4)
+  reason!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  unarchive?: boolean;
+}
+
+export class UserAnonymizeDto {
+  @IsString()
+  @MinLength(4)
+  reason!: string;
+
+  @IsString()
+  @MinLength(4)
+  confirmName!: string;
+}
+
+export class UserDeleteDto {
+  @IsString()
+  @MinLength(4)
+  reason!: string;
+
+  @IsString()
+  @MinLength(4)
+  confirmName!: string;
 }
 
 export class RefundDto {

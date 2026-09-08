@@ -139,3 +139,55 @@ export class ConsumeImpersonationDto {
   @MinLength(16)
   token!: string;
 }
+
+export class OAuthGoogleDto {
+  /** Google GIS credential (ID token). Required unless local mock fields are sent. */
+  @ValidateIf((o: OAuthGoogleDto) => !o.email)
+  @IsString()
+  @MinLength(20)
+  idToken?: string;
+
+  /** Local/dev mock only — ignored (and rejected) outside local mock mode. */
+  @ValidateIf((o: OAuthGoogleDto) => !o.idToken)
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  deviceId?: string;
+}
+
+export class OAuthAppleDto {
+  @ValidateIf((o: OAuthAppleDto) => !o.email)
+  @IsString()
+  @MinLength(20)
+  idToken?: string;
+
+  @ValidateIf((o: OAuthAppleDto) => !o.idToken)
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  deviceId?: string;
+}
+
+export class OAuthLinkPhoneDto {
+  @IsString()
+  @MinLength(20)
+  linkToken!: string;
+
+  @IsString()
+  @Matches(/^\+[1-9]\d{7,14}$/, {
+    message: 'phoneE164 must be E.164 (e.g. +14165551234)',
+  })
+  phoneE164!: string;
+}

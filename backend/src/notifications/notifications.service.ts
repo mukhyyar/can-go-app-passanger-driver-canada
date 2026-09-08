@@ -12,6 +12,10 @@ export type PushPayload = {
   templateKey: string;
   /** Deep-link friendly data (all string values for FCM). */
   data: Record<string, string>;
+  /** Optional rich media (vehicle thumbnail). */
+  imageUrl?: string;
+  /** Deduplicate deliveries for the same logical event. */
+  eventId?: string;
 };
 
 @Injectable()
@@ -102,10 +106,33 @@ export class NotificationsService {
 
   /** Send FCM to all device tokens for a user; cleans invalid tokens. */
   async sendToUser(payload: PushPayload) {
+    if (payload.eventId && (await this.prisma.isReady())) {
+      const prior = await this.prisma.notificationDelivery.findFirst({
+        where: {
+          userId: payload.userId,
+          templateKey: payload.templateKey,
+          status: 'sent',
+          dataJson: {
+            path: ['eventId'],
+            equals: payload.eventId,
+          },
+        },
+      });
+      if (prior) {
+        return { sent: 0, skipped: true, reason: 'duplicate_event' };
+      }
+    }
+
     const messaging = this.firebase.messaging();
     const tokens = await this.prisma.deviceToken.findMany({
       where: { userId: payload.userId },
     });
+
+    const dataWithEvent = {
+      ...payload.data,
+      ...(payload.eventId ? { eventId: payload.eventId } : {}),
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    };
 
     if (!tokens.length) {
       await this.logDelivery({
@@ -114,7 +141,7 @@ export class NotificationsService {
         templateKey: payload.templateKey,
         title: payload.title,
         body: payload.body,
-        dataJson: payload.data,
+        dataJson: { ...dataWithEvent, eventId: payload.eventId },
         status: 'skipped_no_token',
       });
       return { sent: 0, skipped: true };
@@ -129,7 +156,7 @@ export class NotificationsService {
           templateKey: payload.templateKey,
           title: payload.title,
           body: payload.body,
-          dataJson: payload.data,
+          dataJson: { ...dataWithEvent, eventId: payload.eventId },
           status: 'skipped_fcm_unconfigured',
         });
       }
@@ -144,14 +171,29 @@ export class NotificationsService {
       try {
         const msgId = await messaging.send({
           token: t.token,
-          notification: { title: payload.title, body: payload.body },
-          data: {
-            ...payload.data,
-            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          notification: {
+            title: payload.title,
+            body: payload.body,
+            ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
           },
-          android: { priority: 'high' },
+          data: dataWithEvent,
+          android: {
+            priority: 'high',
+            ...(payload.imageUrl
+              ? { notification: { imageUrl: payload.imageUrl } }
+              : {}),
+          },
           apns: {
-            payload: { aps: { sound: 'default', contentAvailable: true } },
+            payload: {
+              aps: {
+                sound: 'default',
+                contentAvailable: true,
+                mutableContent: !!payload.imageUrl,
+              },
+            },
+            ...(payload.imageUrl
+              ? { fcmOptions: { imageUrl: payload.imageUrl } }
+              : {}),
           },
         });
         sent += 1;
@@ -162,7 +204,7 @@ export class NotificationsService {
           templateKey: payload.templateKey,
           title: payload.title,
           body: payload.body,
-          dataJson: payload.data,
+          dataJson: { ...dataWithEvent, eventId: payload.eventId },
           status: 'sent',
           providerMsgId: msgId,
         });
@@ -178,7 +220,7 @@ export class NotificationsService {
           templateKey: payload.templateKey,
           title: payload.title,
           body: payload.body,
-          dataJson: payload.data,
+          dataJson: { ...dataWithEvent, eventId: payload.eventId },
           status: 'failed',
           errorCode: code,
         });
@@ -201,6 +243,9 @@ export class NotificationsService {
     status: string;
     title: string;
     body: string;
+    data?: Record<string, string>;
+    imageUrl?: string;
+    eventId?: string;
   }) {
     const results = [];
     for (const userId of input.userIds) {
@@ -210,15 +255,48 @@ export class NotificationsService {
           title: input.title,
           body: input.body,
           templateKey: `ride.${input.status.toLowerCase()}`,
+          imageUrl: input.imageUrl,
+          eventId: input.eventId,
           data: {
-            type: 'ride.status',
+            type: input.data?.type ?? 'ride.status',
             rideId: input.rideId,
             status: input.status,
-            deepLink: `/rides/${input.rideId}`,
+            deepLink: input.data?.deepLink ?? `/rides/${input.rideId}`,
+            ...(input.data ?? {}),
           },
         }),
       );
     }
     return results;
+  }
+
+  /** Passenger-facing new offer push with structured navigation payload. */
+  async notifyNewOffer(input: {
+    userId: string;
+    rideId: string;
+    offerId: string;
+    driverId: string;
+    vehicleId?: string | null;
+    title: string;
+    body: string;
+    imageUrl?: string | null;
+  }) {
+    return this.sendToUser({
+      userId: input.userId,
+      title: input.title,
+      body: input.body,
+      templateKey: 'ride.offer_received',
+      imageUrl: input.imageUrl ?? undefined,
+      eventId: `offer.created.${input.offerId}`,
+      data: {
+        type: 'ride_offer',
+        rideRequestId: input.rideId,
+        rideId: input.rideId,
+        offerId: input.offerId,
+        driverId: input.driverId,
+        vehicleId: input.vehicleId ?? '',
+        deepLink: `/offers/${input.rideId}?offerId=${input.offerId}`,
+      },
+    });
   }
 }

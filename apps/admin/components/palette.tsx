@@ -53,6 +53,7 @@ export function CommandPalette({
     const ql = q.toLowerCase();
     const cmds: Array<{ href: string; title: string; perm: string; keys: string[] }> = [
       { href: '/users', title: 'Login as user…', perm: 'users.impersonate', keys: ['login', 'impersonate'] },
+      { href: '/users', title: 'Reset user password…', perm: 'users.reset_password', keys: ['reset', 'password'] },
       { href: '/refunds', title: 'Issue refund…', perm: 'payments.refund', keys: ['refund'] },
       { href: '/suspended', title: 'Suspend account…', perm: 'users.suspend', keys: ['suspend'] },
     ];

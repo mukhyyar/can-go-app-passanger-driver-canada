@@ -54,11 +54,32 @@ enum DocumentReviewStatus {
   NEEDS_RESUBMISSION
 }
 
+/// Version / retention lifecycle — independent of review status.
+enum DocumentLifecycleStatus {
+  CURRENT
+  SUPERSEDED
+  ARCHIVED
+  SOFT_DELETED
+}
+
+enum KycFlagType {
+  FRAUD_CONCERN
+  IDENTITY_MISMATCH
+  DUPLICATE_ACCOUNT
+  DOCUMENT_CONCERN
+  HIGH_RISK
+  MANUAL_REVIEW
+  VIP_ESCALATION
+  OTHER
+}
+
 enum OfferStatus {
   ACTIVE
   SELECTED
   EXPIRED
   WITHDRAWN
+  SUPERSEDED
+  REJECTED
 }
 
 enum RatingModerationStatus {
@@ -123,6 +144,8 @@ model User {
   passwordHash         String?
   role                 UserRole
   isSuspended          Boolean               @default(false)
+  archivedAt           DateTime?
+  anonymizedAt         DateTime?
   adminTotpSecret      String?
   adminTotpEnabled     Boolean               @default(false)
   adminRoleId          String?
@@ -149,6 +172,26 @@ model User {
   watchlistCreated     WatchlistEntry[]      @relation("WatchlistActor")
   kycAssignments       DriverProfile[]       @relation("KycAssignee")
   kycNotesAuthored     KycReviewNote[]
+  oauthAccounts        OAuthAccount[]
+  internalNotes        UserInternalNote[]    @relation("UserNotesTarget")
+  internalNotesAuthored UserInternalNote[]   @relation("UserNotesAuthor")
+  tagAssignments       UserTagAssignment[]
+  loginLinksIssued     UserLoginLink[]       @relation("LoginLinkAdmin")
+  loginLinksTarget     UserLoginLink[]       @relation("LoginLinkTarget")
+}
+
+model OAuthAccount {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider        String
+  providerSubject String
+  email           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([provider, providerSubject])
+  @@index([userId])
 }
 
 model PassengerProfile {
@@ -169,36 +212,66 @@ model PassengerProfile {
 }
 
 model DriverProfile {
-  id                 String                @id @default(cuid())
-  userId             String                @unique
-  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName           String                @default("")
-  legalName          String                @default("")
-  isIndividual       Boolean               @default(true)
-  approvalStatus     DriverApprovalStatus  @default(PENDING_KYC)
-  isActivated        Boolean               @default(false)
-  baseLocation       String                @default("")
-  baseLatitude       Float?
-  baseLongitude      Float?
-  referredByCode     String?
-  kycAssignedToId    String?
-  kycAssignedTo      User?                 @relation("KycAssignee", fields: [kycAssignedToId], references: [id], onDelete: SetNull)
-  kycAssignedAt      DateTime?
-  kycSubmittedAt     DateTime?
-  kycDecidedAt       DateTime?
-  kycDecisionNote    String?
-  kycDecisionReason  String?
-  kycCustomerMessage String?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  vehicles           Vehicle[]
-  documents          DriverDocument[]
-  operatingZones     OperatingZone[]
-  offers             Offer[]
-  locationCurrent    DriverLocationCurrent?
-  dayOffs            DriverDayOff[]
-  supportCases       SupportCase[]
-  reviewNotes        KycReviewNote[]
+  id                   String                @id @default(cuid())
+  userId               String                @unique
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName             String                @default("")
+  legalName            String                @default("")
+  isIndividual         Boolean               @default(true)
+  approvalStatus       DriverApprovalStatus  @default(PENDING_KYC)
+  isActivated          Boolean               @default(false)
+  baseLocation         String                @default("")
+  baseLatitude         Float?
+  baseLongitude        Float?
+  referredByCode       String?
+  /// Optional identity fields managed from KYC console (audited on change).
+  dateOfBirth          DateTime?
+  addressLine1         String                @default("")
+  addressLine2         String                @default("")
+  city                 String                @default("")
+  province             String                @default("")
+  postalCode           String                @default("")
+  country              String                @default("")
+  licenceNumber        String                @default("")
+  licenceJurisdiction  String                @default("")
+  licenceIssueDate     DateTime?
+  licenceExpiryDate    DateTime?
+  kycAssignedToId      String?
+  kycAssignedTo        User?                 @relation("KycAssignee", fields: [kycAssignedToId], references: [id], onDelete: SetNull)
+  kycAssignedAt        DateTime?
+  kycReviewStartedAt   DateTime?
+  kycSubmittedAt       DateTime?
+  kycDecidedAt         DateTime?
+  kycDecisionNote      String?
+  kycDecisionReason    String?
+  kycCustomerMessage   String?
+  kycOverrideUsed      Boolean               @default(false)
+  kycOverrideReason    String?
+  kycOverrideAt        DateTime?
+  kycOverrideById      String?
+  suspensionReason     String?
+  suspendedAt          DateTime?
+  /// Public passenger-facing languages the driver speaks (ISO/short codes), e.g. ["EN","FR"].
+  languagesJson        Json                  @default("[]")
+  /// Business registration / company number (legal entity / sole proprietor).
+  registrationNumber   String                @default("")
+  /// Taxpayer identification number (individual or entity).
+  taxpayerId           String                @default("")
+  /// Driver payout preferences (currency, billing period, bank country, masked account).
+  /// Never store raw banking credentials here.
+  payoutSettingsJson   Json                  @default("{}")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  vehicles             Vehicle[]
+  documents            DriverDocument[]
+  operatingZones       OperatingZone[]
+  offers               Offer[]
+  locationCurrent      DriverLocationCurrent?
+  dayOffs              DriverDayOff[]
+  supportCases         SupportCase[]
+  reviewNotes          KycReviewNote[]
+  kycFlags             KycFlag[]
+  requestDismissals    RequestDismissal[]
 
   @@index([approvalStatus, updatedAt])
   @@index([kycAssignedToId])
@@ -225,36 +298,90 @@ model Vehicle {
   name             String
   plate            String
   vehicleClass     String
+  color            String   @default("")
+  year             Int?
+  passengerSeats   Int?
+  luggagePlaces    Int?
   amenitiesJson    Json     @default("{}")
   autocancelBefore Int      @default(10)
   autocancelAfter  Int      @default(10)
+  /// Soft eligibility gate for marketplace offers.
+  isActive         Boolean  @default(true)
+  /// At most one default vehicle per driver (enforced in service transaction).
+  isDefault        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   documents        DriverDocument[]
+  offers           Offer[]
+
+  @@index([driverId, isDefault])
+  @@index([driverId, plate])
 }
 
 model DriverDocument {
-  id                  String               @id @default(cuid())
-  driverId            String
-  driver              DriverProfile        @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  vehicleId           String?
-  vehicle             Vehicle?             @relation(fields: [vehicleId], references: [id])
-  docType             String
-  storageKey          String
-  mimeType            String
-  sizeBytes           Int
-  status              DocumentReviewStatus @default(PENDING)
-  rejectionReason     String?
-  resubmissionReason  String?
-  customerMessage     String?
-  expiresAt           DateTime?
-  reviewedAt          DateTime?
-  reviewedById        String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                   String                  @id @default(cuid())
+  driverId             String
+  driver               DriverProfile           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId            String?
+  vehicle              Vehicle?                @relation(fields: [vehicleId], references: [id])
+  /// Logical document group — all versions of the same document share this id.
+  documentGroupId      String
+  docType              String
+  customLabel          String?
+  versionNumber        Int                     @default(1)
+  lifecycleStatus      DocumentLifecycleStatus @default(CURRENT)
+  previousVersionId    String?
+  previousVersion      DriverDocument?         @relation("DocumentVersions", fields: [previousVersionId], references: [id], onDelete: SetNull)
+  nextVersions         DriverDocument[]        @relation("DocumentVersions")
+  storageKey           String
+  originalFilename     String?
+  mimeType             String
+  sizeBytes            Int
+  checksumSha256       String?
+  status               DocumentReviewStatus    @default(PENDING)
+  rejectionReason      String?
+  resubmissionReason   String?
+  customerMessage      String?
+  documentNumber       String?
+  issueDate            DateTime?
+  expiresAt            DateTime?
+  issuingJurisdiction  String?
+  /// DRIVER_APP | ADMIN_PORTAL | EMAIL | SUPPORT | IN_PERSON | MANUAL_VERIFICATION | MIGRATION | API | OTHER
+  uploadSource         String                  @default("DRIVER_APP")
+  sourceReference      String?
+  adminNote            String?
+  uploadedById         String?
+  /// DRIVER | ADMIN | SYSTEM
+  uploadedByType       String                  @default("DRIVER")
+  reviewedAt           DateTime?
+  reviewedById         String?
+  softDeletedAt        DateTime?
+  softDeletedById      String?
+  archivedAt           DateTime?
+  archivedById         String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
 
   @@index([driverId, docType, createdAt])
+  @@index([driverId, documentGroupId, versionNumber])
+  @@index([driverId, docType, lifecycleStatus])
   @@index([status])
+  @@index([lifecycleStatus])
+}
+
+model KycFlag {
+  id         String        @id @default(cuid())
+  driverId   String
+  driver     DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  flagType   KycFlagType
+  reason     String
+  note       String?
+  clearedAt  DateTime?
+  clearedById String?
+  createdById String
+  createdAt  DateTime      @default(now())
+
+  @@index([driverId, clearedAt])
 }
 
 model OperatingZone {
@@ -285,12 +412,21 @@ model Ride {
   toLat           Float?
   toLng           Float?
   pickupAt        DateTime
+  /// Round-trip return pickup time when [isRoundTrip] is true.
+  returnAt        DateTime?
+  isRoundTrip     Boolean    @default(false)
+  /// Free waiting allowance at pickup (minutes), e.g. airport meet.
+  pickupWaitMin   Int?
+  /// Free waiting allowance on return leg (minutes).
+  returnWaitMin   Int?
   vehicleClassIds String[]
   adults          Int        @default(1)
   childSeatsJson  Json       @default("{}")
   flight          String?
   signage         String?
   comment         String?
+  /// Passenger-required options (e.g. name_sign, wheelchair). Derived + explicit.
+  requiredOptions Json       @default("[]")
   promoCode       String?
   currency        String     @default("USD")
   priceSnapshot   Json?
@@ -300,6 +436,8 @@ model Ride {
   idempotencyKey  String?    @unique
   requestExpiresAt DateTime?
   paymentExpiresAt DateTime?
+  /// Passenger offer-list view counter (informational).
+  viewCount       Int        @default(0)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   offers          Offer[]    @relation("RideOffers")
@@ -309,6 +447,8 @@ model Ride {
   locationSamples TripLocationSample[]
   chatThread      ChatThread?
   supportCases    SupportCase[]
+  dismissals      RequestDismissal[]
+  offerHistory    OfferHistory[]
 
   @@index([createdAt])
   @@index([status, createdAt])
@@ -333,22 +473,76 @@ model RideEvent {
 }
 
 model Offer {
-  id           String   @id @default(cuid())
-  rideId       String
-  ride         Ride     @relation("RideOffers", fields: [rideId], references: [id], onDelete: Cascade)
-  driverId     String
-  driver       DriverProfile @relation(fields: [driverId], references: [id])
-  bidAmount    Decimal  @db.Decimal(12, 2)
-  currency     String
-  priceSnapshot Json
-  status       OfferStatus @default(ACTIVE)
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
-  selectedFor  Ride?    @relation("SelectedOffer")
+  id                String      @id @default(cuid())
+  rideId            String
+  ride              Ride        @relation("RideOffers", fields: [rideId], references: [id], onDelete: Cascade)
+  driverId          String
+  driver            DriverProfile @relation(fields: [driverId], references: [id])
+  vehicleId         String?
+  vehicle           Vehicle?    @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  /// Passenger-facing outbound bid (A → B).
+  outboundPrice     Decimal     @db.Decimal(12, 2)
+  /// Passenger-facing return bid (B → A); null for one-way.
+  returnPrice       Decimal?    @db.Decimal(12, 2)
+  /// Combined bid (= outbound + return). Kept for payment freeze compatibility.
+  bidAmount         Decimal     @db.Decimal(12, 2)
+  currency          String
+  priceSnapshot     Json
+  selectedOptions   Json        @default("[]")
+  validForSeconds   Int
+  status            OfferStatus @default(ACTIVE)
+  expiresAt         DateTime
+  version           Int         @default(1)
+  supersedesOfferId String?
+  supersedesOffer   Offer?      @relation("OfferSupersede", fields: [supersedesOfferId], references: [id], onDelete: SetNull)
+  supersededBy      Offer[]     @relation("OfferSupersede")
+  idempotencyKey    String?     @unique
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  withdrawnAt       DateTime?
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
+  expiredAt         DateTime?
+  selectedFor       Ride?       @relation("SelectedOffer")
+  history           OfferHistory[]
 
   @@index([rideId])
   @@index([driverId])
+  @@index([vehicleId])
   @@index([status, expiresAt])
+  @@index([rideId, driverId, status])
+}
+
+/// Immutable audit trail for offer create / edit / withdraw / accept.
+model OfferHistory {
+  id        String   @id @default(cuid())
+  offerId   String?
+  offer     Offer?   @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  rideId    String
+  ride      Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  driverId  String
+  action    String
+  beforeJson Json?
+  afterJson  Json?
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  @@index([rideId, createdAt])
+  @@index([driverId, createdAt])
+  @@index([offerId, createdAt])
+}
+
+/// Per-driver soft dismiss of an open request (Skip). Does not cancel the ride.
+model RequestDismissal {
+  id        String        @id @default(cuid())
+  rideId    String
+  ride      Ride          @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  driverId  String
+  driver    DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@unique([rideId, driverId])
+  @@index([driverId, createdAt])
 }
 
 model FareRule {
@@ -381,8 +575,18 @@ model Payment {
   amount          Decimal  @db.Decimal(12, 2)
   currency        String
   status          String
+  /// FULL | PARTIAL — authoritative mode chosen at intent creation.
+  paymentMode     String   @default("FULL")
+  onlineAmount    Decimal? @db.Decimal(12, 2)
+  cashAmount      Decimal? @db.Decimal(12, 2)
+  cashCurrency    String?
+  paymentMethod   String?
+  termsVersion    String?
+  policyVersion   String?
+  termsAcceptedAt DateTime?
   idempotencyKey  String?  @unique
   rawWebhookLast  Json?
+  metaJson        Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   refunds         Refund[]
@@ -712,6 +916,62 @@ model WatchlistEntry {
   createdById String
   createdBy   User     @relation("WatchlistActor", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
+}
+
+model UserInternalNote {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("UserNotesTarget", fields: [userId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("UserNotesAuthor", fields: [authorId], references: [id])
+  category  String   @default("General")
+  priority  String   @default("normal")
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([authorId])
+}
+
+model UserTag {
+  id          String             @id @default(cuid())
+  slug        String             @unique
+  label       String
+  color       String             @default("#5c5c5c")
+  createdAt   DateTime           @default(now())
+  assignments UserTagAssignment[]
+}
+
+model UserTagAssignment {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagId      String
+  tag        UserTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, tagId])
+  @@index([tagId])
+}
+
+model UserLoginLink {
+  id          String    @id @default(cuid())
+  targetUserId String
+  targetUser  User      @relation("LoginLinkTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  adminId     String
+  admin       User      @relation("LoginLinkAdmin", fields: [adminId], references: [id])
+  tokenHash   String    @unique
+  reason      String
+  singleUse   Boolean   @default(true)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([expiresAt])
 }
 
 model NotificationTemplate {

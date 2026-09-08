@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
@@ -19,12 +20,31 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  bool _saveCard = true;
-  bool _loading = false;
-  final _card = TextEditingController(text: '4111 1111 1111 1111');
-  final _expiry = TextEditingController(text: '12/28');
-  final _cvc = TextEditingController(text: '123');
-  final _name = TextEditingController(text: 'John Smith');
+  bool _loadingQuote = true;
+  bool _paying = false;
+  bool _termsAccepted = false;
+  String _paymentMode = 'FULL';
+  String _paymentMethod = 'CARD';
+  String? _error;
+  Map<String, dynamic>? _quote;
+  final _card = TextEditingController();
+  final _expiry = TextEditingController();
+  final _cvc = TextEditingController();
+  final _name = TextEditingController();
+  String? _idempotencyKey;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final name = context.read<AppState>().me?['fullName']?.toString().trim();
+      if (name != null && name.isNotEmpty) {
+        _name.text = name;
+      }
+      _loadQuote();
+    });
+  }
 
   @override
   void dispose() {
@@ -35,25 +55,106 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.dispose();
   }
 
-  Future<void> _pay() async {
-    setState(() => _loading = true);
+  Future<void> _loadQuote({String? mode}) async {
+    setState(() {
+      _loadingQuote = true;
+      _error = null;
+    });
     final app = context.read<AppState>();
     try {
-      await app.selectOffer(widget.rideId, widget.offerId);
-      await app.paySelectedOffer(widget.rideId);
-      if (!mounted) return;
-      app.setShellTab(1);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Payment successful — ride booked')),
+      try {
+        await app.validateBook(widget.rideId, widget.offerId);
+      } catch (_) {
+        // Already PAYMENT_PENDING / recovering — quote endpoint still works.
+      }
+      final quote = await app.getPaymentQuote(
+        widget.rideId,
+        widget.offerId,
+        paymentMode: mode ?? _paymentMode,
+        platform: kIsWeb ? 'web' : defaultTargetPlatform.name,
       );
-      context.go('/');
+      if (!mounted) return;
+      final methods = _methodsFromQuote(quote);
+      var method = _paymentMethod;
+      if (!methods.contains(method)) {
+        method = methods.contains('CARD')
+            ? 'CARD'
+            : (methods.isNotEmpty ? methods.first : 'CARD');
+      }
+      setState(() {
+        _quote = quote;
+        _paymentMode = quote['paymentMode']?.toString() ?? _paymentMode;
+        _paymentMethod = method;
+        _loadingQuote = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loadingQuote = false;
+      });
+    }
+  }
+
+  List<String> _methodsFromQuote(Map<String, dynamic> quote) {
+    final raw = quote['paymentMethods'];
+    var methods = <String>[];
+    if (raw is List) {
+      methods = raw.map((e) => e.toString().toUpperCase()).toList();
+    }
+    if (methods.isEmpty) methods = ['CARD'];
+    // On web prefer card-only UX (wallet buttons are platform-specific).
+    if (kIsWeb) {
+      methods = methods.where((m) => m == 'CARD').toList();
+      if (methods.isEmpty) methods = ['CARD'];
+    }
+    return methods;
+  }
+
+  bool get _partialEnabled {
+    final q = _quote;
+    if (q == null) return false;
+    return q['partialEnabled'] == true;
+  }
+
+  double _num(dynamic v) => (v is num) ? v.toDouble() : 0;
+
+  String _currency(Map<String, dynamic> q, String key, [String fallback = 'USD']) {
+    return q[key]?.toString() ??
+        q['totalCurrency']?.toString() ??
+        q['currency']?.toString() ??
+        fallback;
+  }
+
+  Future<void> _setMode(String mode) async {
+    if (_paying || mode == _paymentMode) return;
+    setState(() => _paymentMode = mode);
+    await _loadQuote(mode: mode);
+  }
+
+  Future<void> _pay() async {
+    if (_paying || !_termsAccepted || _quote == null) return;
+    setState(() => _paying = true);
+    _idempotencyKey ??=
+        'pay-${widget.rideId}-${widget.offerId}-${DateTime.now().millisecondsSinceEpoch}';
+    final app = context.read<AppState>();
+    try {
+      await app.pay(
+        rideId: widget.rideId,
+        offerId: widget.offerId,
+        paymentMode: _paymentMode,
+        paymentMethod: _paymentMethod,
+        termsAccepted: _termsAccepted,
+        idempotencyKey: _idempotencyKey,
+      );
+      if (!mounted) return;
+      context.go('/booking-confirmed/${widget.rideId}');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Payment failed: $e')),
       );
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _paying = false);
     }
   }
 
@@ -61,92 +162,297 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Widget build(BuildContext context) {
     final offer =
         context.watch<AppState>().offerByIds(widget.rideId, widget.offerId);
+    final quote = _quote;
+    final onlineAmount = quote != null ? _num(quote['onlineAmount']) : 0.0;
+    final cashAmount = quote != null ? _num(quote['cashAmount']) : 0.0;
+    final totalAmount = quote != null ? _num(quote['totalAmount']) : (offer?.price ?? 0);
+    final currency = quote != null
+        ? _currency(quote, 'onlineCurrency', offer?.currency ?? 'USD')
+        : (offer?.currency ?? 'USD');
+    final methods = quote != null ? _methodsFromQuote(quote) : const ['CARD'];
+    final policy = quote?['cancellationPolicy'];
+    final policyBody = policy is Map
+        ? (policy['body']?.toString() ?? '')
+        : (quote?['cancellationPolicy']?.toString() ??
+            'The ride is not refundable in case of cancellation.');
 
     return Scaffold(
-      backgroundColor: Colors.black54,
-      body: Align(
-        alignment: Alignment.bottomCenter,
-        child: Container(
-          width: double.infinity,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: GtColors.border,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+      backgroundColor: GtColors.bgGrey,
+      appBar: AppBar(
+        title: const Text('Payment'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: _loadingQuote
+          ? const Center(
+              child: CircularProgressIndicator(color: GtColors.brand),
+            )
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        GtGreenButton(
+                          label: 'Retry',
+                          onPressed: () => _loadQuote(),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Payment',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    if (offer != null)
+                      GtCard(
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 72,
+                                height: 54,
+                                child: offer.imageUrl != null
+                                    ? Image.network(
+                                        offer.imageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            const ColoredBox(
+                                          color: GtColors.bgGrey,
+                                          child: Icon(Icons.directions_car),
+                                        ),
+                                      )
+                                    : const ColoredBox(
+                                        color: GtColors.bgGrey,
+                                        child: Icon(Icons.directions_car),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    offer.displayName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    offer.vehicleClass,
+                                    style: const TextStyle(
+                                      color: GtColors.textSecondary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: () => context.pop(),
-                        icon: const Icon(Icons.close),
+                    const SizedBox(height: 16),
+                    Text(
+                      formatMoney(totalAmount, currency),
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Text(
+                      'Total for this ride',
+                      style: TextStyle(color: GtColors.textSecondary),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'How would you like to pay?',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    _modeTile(
+                      title: 'Pay in full',
+                      subtitle: formatMoney(totalAmount, currency),
+                      selected: _paymentMode == 'FULL',
+                      onTap: () => _setMode('FULL'),
+                    ),
+                    if (_partialEnabled)
+                      _modeTile(
+                        title: 'Part now, rest in cash',
+                        subtitle:
+                            'Pay ${formatMoney(onlineAmount, currency)} now · ${formatMoney(cashAmount, currency)} to driver',
+                        selected: _paymentMode == 'PARTIAL',
+                        onTap: () => _setMode('PARTIAL'),
+                      ),
+                    if (_paymentMode == 'PARTIAL' && cashAmount > 0) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Remaining ${formatMoney(cashAmount, currency)} is paid in cash to the driver.',
+                        style: const TextStyle(
+                          color: GtColors.textSecondary,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
-                  ),
-                  Text(
-                    'Total ${offer?.priceLabel ?? ''}',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Payment method',
+                      style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _field('Card number', _card, TextInputType.number),
-                  Row(
-                    children: [
-                      Expanded(child: _field('Expiry', _expiry, TextInputType.datetime)),
-                      const SizedBox(width: 12),
-                      Expanded(child: _field('CVC', _cvc, TextInputType.number)),
-                    ],
-                  ),
-                  _field('Name on card', _name, TextInputType.name),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Save card for next trips'),
-                    value: _saveCard,
-                    activeColor: GtColors.green,
-                    onChanged: (v) => setState(() => _saveCard = v),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_loading)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(color: GtColors.green),
+                    const SizedBox(height: 8),
+                    ...methods.map((m) {
+                      final label = switch (m) {
+                        'GOOGLE_PAY' => 'Google Pay',
+                        'APPLE_PAY' => 'Apple Pay',
+                        _ => 'Card',
+                      };
+                      return RadioListTile<String>(
+                        value: m,
+                        groupValue: _paymentMethod,
+                        activeColor: GtColors.brand,
+                        title: Text(label),
+                        onChanged: _paying
+                            ? null
+                            : (v) {
+                                if (v == null) return;
+                                setState(() => _paymentMethod = v);
+                              },
+                      );
+                    }),
+                    if (_paymentMethod == 'CARD') ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Card details (dev — not charged)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: GtColors.textMuted,
+                        ),
                       ),
-                    )
-                  else
-                    GtGreenButton(
-                      label: 'PAY ${offer?.priceLabel ?? ''}',
-                      onPressed: _pay,
+                      const SizedBox(height: 8),
+                      _field('Card number', _card, TextInputType.number),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _field(
+                              'Expiry',
+                              _expiry,
+                              TextInputType.datetime,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _field('CVC', _cvc, TextInputType.number),
+                          ),
+                        ],
+                      ),
+                      _field('Name on card', _name, TextInputType.name),
+                    ],
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Cancellation policy',
+                      style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                ],
+                    const SizedBox(height: 6),
+                    Text(
+                      policyBody,
+                      style: const TextStyle(
+                        color: GtColors.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: GtColors.brand,
+                      value: _termsAccepted,
+                      onChanged: _paying
+                          ? null
+                          : (v) =>
+                              setState(() => _termsAccepted = v ?? false),
+                      title: const Text(
+                        'I accept the terms of service and cancellation policy',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_paying)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(
+                            color: GtColors.green,
+                          ),
+                        ),
+                      )
+                    else
+                      GtGreenButton(
+                        label:
+                            'Pay ${formatMoney(onlineAmount > 0 ? onlineAmount : totalAmount, currency)}',
+                        onPressed: _termsAccepted ? _pay : null,
+                      ),
+                  ],
+                ),
+    );
+  }
+
+  Widget _modeTile({
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: _paying ? null : onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected ? GtColors.brand : GtColors.border,
+                width: selected ? 2 : 1,
               ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: selected ? GtColors.brand : GtColors.textMuted,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: GtColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -160,12 +466,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       child: TextField(
         controller: c,
         keyboardType: type,
+        enabled: !_paying,
         decoration: InputDecoration(
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: GtColors.orange),
+            borderSide: const BorderSide(color: GtColors.brand),
           ),
         ),
       ),

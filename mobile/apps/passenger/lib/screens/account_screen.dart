@@ -10,7 +10,28 @@ class AccountScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final p = state.repo.passenger;
+
+    if (!state.isAuthenticated) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/auth');
+      });
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final fullName = _display(
+      state.me?['fullName']?.toString() ?? state.repo.passenger.fullName,
+      empty: 'Add name',
+    );
+    final email = _display(
+      state.me?['email']?.toString() ?? state.repo.passenger.email,
+      empty: 'Add email',
+    );
+    final phoneRaw = state.me?['phoneE164']?.toString() ??
+        state.me?['phone']?.toString() ??
+        state.repo.passenger.phone;
+    final phone = _display(phoneRaw, empty: 'Add phone');
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
@@ -30,7 +51,7 @@ class AccountScreen extends StatelessWidget {
                 _row(
                   context,
                   label: 'Full name',
-                  value: p.fullName,
+                  value: fullName,
                   field: 'fullName',
                   title: 'Full name',
                 ),
@@ -38,7 +59,7 @@ class AccountScreen extends StatelessWidget {
                 _row(
                   context,
                   label: 'Email',
-                  value: p.email,
+                  value: email,
                   field: 'email',
                   title: 'Email',
                 ),
@@ -46,14 +67,30 @@ class AccountScreen extends StatelessWidget {
                 _row(
                   context,
                   label: 'Phone',
-                  value: p.phone.isEmpty ? 'Add phone' : p.phone,
+                  value: phone,
                   field: 'phone',
                   title: 'Phone',
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
+          GtCard(
+            onTap: () async {
+              await state.logout();
+              if (context.mounted) context.go('/');
+            },
+            child: const Center(
+              child: Text(
+                'Log out',
+                style: TextStyle(
+                  color: GtColors.text,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           GtCard(
             onTap: () => _confirmDelete(context, state),
             child: const Center(
@@ -69,6 +106,11 @@ class AccountScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _display(String? value, {required String empty}) {
+    final v = value?.trim() ?? '';
+    return v.isEmpty ? empty : v;
   }
 
   Widget _row(
@@ -89,10 +131,12 @@ class AccountScreen extends StatelessWidget {
       onTap: () {
         final state = context.read<AppState>();
         final current = field == 'fullName'
-            ? state.repo.passenger.fullName
+            ? (state.me?['fullName']?.toString() ?? state.repo.passenger.fullName)
             : field == 'email'
-                ? state.repo.passenger.email
-                : state.repo.passenger.phone;
+                ? (state.me?['email']?.toString() ?? state.repo.passenger.email)
+                : (state.me?['phoneE164']?.toString() ??
+                    state.me?['phone']?.toString() ??
+                    state.repo.passenger.phone);
         context.push('/edit-field', extra: {
           'title': title,
           'value': current,
@@ -108,7 +152,7 @@ class AccountScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete account?'),
         content: const Text(
-          'This demo will clear your local profile data. This cannot be undone in the prototype.',
+          'This will sign you out and clear local profile data on this device.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -122,9 +166,9 @@ class AccountScreen extends StatelessWidget {
     if (ok == true && context.mounted) {
       state.deleteAccountSim();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account deleted (demo)')),
+        const SnackBar(content: Text('Signed out')),
       );
-      context.pop();
+      context.go('/');
     }
   }
 }
@@ -176,6 +220,16 @@ class _EditFieldScreenState extends State<EditFieldScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<AppState>();
+    if (!state.isAuthenticated) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/auth');
+      });
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),

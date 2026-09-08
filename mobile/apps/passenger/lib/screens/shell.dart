@@ -61,7 +61,9 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
-    final index = context.watch<AppState>().shellTabIndex;
+    final app = context.watch<AppState>();
+    final index = app.shellTabIndex;
+    final offerBadge = app.unreadOfferBadge;
 
     return Scaffold(
       key: passengerShellKey,
@@ -76,12 +78,19 @@ class _ShellState extends State<Shell> {
       ),
       bottomNavigationBar: GtBottomNav(
         index: index,
-        onTap: (i) => context.read<AppState>().setShellTab(i),
-        items: const [
-          GtNavItem(icon: Icons.add_circle_outline, label: 'Book'),
-          GtNavItem(icon: Icons.alt_route, label: 'Rides'),
-          GtNavItem(icon: Icons.headset_mic_outlined, label: 'Support'),
-          GtNavItem(icon: Icons.settings_outlined, label: 'Settings'),
+        onTap: (i) {
+          app.setShellTab(i);
+          if (i == 1) app.refreshRidesFromServer();
+        },
+        items: [
+          const GtNavItem(icon: Icons.add_circle_outline, label: 'Book'),
+          GtNavItem(
+            icon: Icons.alt_route,
+            label: 'Rides',
+            badge: offerBadge > 99 ? 99 : offerBadge,
+          ),
+          const GtNavItem(icon: Icons.headset_mic_outlined, label: 'Support'),
+          const GtNavItem(icon: Icons.settings_outlined, label: 'Settings'),
         ],
       ),
     );

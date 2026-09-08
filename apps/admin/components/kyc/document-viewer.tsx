@@ -1,36 +1,75 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DOC_TYPE_LABELS,
   bytesLabel,
   formatWhen,
+  kycStatusLabel,
+  sourceLabel,
   type DocType,
+  type DocVersionSummary,
   type KycDocument,
   type VerificationCheck,
 } from '../../lib/kyc';
 import { KycStatusBadge } from './status';
 
-export function DocumentViewer({
-  doc,
-  checks,
-  canDecide,
-  onApprove,
-  onResubmit,
-  onReject,
-}: {
-  doc: KycDocument | null;
-  checks: VerificationCheck[];
-  canDecide: boolean;
+export type DocViewerActions = {
   onApprove: () => void;
   onResubmit: () => void;
   onReject: () => void;
+  onEditMetadata: () => void;
+  onUploadVersion: () => void;
+  onArchive: () => void;
+  onRestore: () => void;
+  onSoftDelete: () => void;
+  onOverride: () => void;
+  onCopyId: () => void;
+  onDownload: () => void;
+  onSelectVersion: (versionId: string) => void;
+};
+
+export function DocumentViewer({
+  doc,
+  versions,
+  checks,
+  canDecide,
+  canHistory,
+  canUpload,
+  canEditMeta,
+  canArchive,
+  canRestore,
+  canDelete,
+  canOverride,
+  readOnly,
+  onAction,
+}: {
+  doc: KycDocument | null;
+  versions: DocVersionSummary[];
+  checks: VerificationCheck[];
+  canDecide: boolean;
+  canHistory: boolean;
+  canUpload: boolean;
+  canEditMeta: boolean;
+  canArchive: boolean;
+  canRestore: boolean;
+  canDelete: boolean;
+  canOverride: boolean;
+  readOnly: boolean;
+  onAction: DocViewerActions;
 }) {
   const [zoom, setZoom] = useState(1);
   const [rot, setRot] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
   const stageRef = useRef<HTMLDivElement>(null);
   const isImage = Boolean(doc?.mimeType?.startsWith('image/'));
   const isPdf = doc?.mimeType === 'application/pdf';
+
+  useEffect(() => {
+    setZoom(1);
+    setRot(0);
+  }, [doc?.id]);
 
   const fit = useCallback(() => setZoom(1), []);
   const fullscreen = useCallback(() => {
@@ -40,6 +79,14 @@ export function DocumentViewer({
     else void el.requestFullscreen();
   }, []);
 
+  const versionIndex = useMemo(() => {
+    if (!doc) return -1;
+    return versions.findIndex((v) => v.id === doc.id);
+  }, [doc, versions]);
+
+  const prevVersion = versionIndex >= 0 ? versions[versionIndex + 1] : undefined;
+  const nextVersion = versionIndex > 0 ? versions[versionIndex - 1] : undefined;
+
   const meta = useMemo(() => {
     if (!doc) return [];
     const rows: Array<{ label: string; value: string }> = [
@@ -47,12 +94,19 @@ export function DocumentViewer({
       { label: 'Type', value: doc.mimeType },
       { label: 'Size', value: bytesLabel(doc.sizeBytes) },
       { label: 'Status', value: doc.status },
+      { label: 'Lifecycle', value: kycStatusLabel(doc.lifecycleStatus) },
+      { label: 'Source', value: sourceLabel(doc.uploadSource) },
+      { label: 'Version', value: `V${doc.versionNumber}` },
     ];
+    if (doc.originalFilename) rows.push({ label: 'Filename', value: doc.originalFilename });
+    if (doc.documentNumber) rows.push({ label: 'Doc #', value: doc.documentNumber });
+    if (doc.issueDate) rows.push({ label: 'Issued', value: formatWhen(doc.issueDate) });
     if (doc.expiresAt) rows.push({ label: 'Expiry', value: formatWhen(doc.expiresAt) });
+    if (doc.issuingJurisdiction) rows.push({ label: 'Jurisdiction', value: doc.issuingJurisdiction });
+    if (doc.sourceReference) rows.push({ label: 'Source ref', value: doc.sourceReference });
+    if (doc.adminNote) rows.push({ label: 'Admin note', value: doc.adminNote });
     if (doc.rejectionReason) rows.push({ label: 'Reviewer note', value: doc.rejectionReason });
-    if (doc.docType === 'vehicle_registration' || doc.docType === 'vehicle_photo') {
-      /* plate/VIN live on the vehicle snapshot, not OCR */
-    }
+    if (doc.checksumSha256) rows.push({ label: 'Checksum', value: doc.checksumSha256.slice(0, 16) + '…' });
     return rows;
   }, [doc]);
 
@@ -64,55 +118,189 @@ export function DocumentViewer({
     );
   }
 
+  const decideEnabled = canDecide && !readOnly && doc.isCurrent;
+
   return (
     <section className="kyc-viewer" aria-label="Document inspection">
+      {readOnly && (
+        <div className="kyc-readonly-banner" role="status">
+          Historical version — read only. Approve, reject, and edit are disabled.
+        </div>
+      )}
       <header className="kyc-viewer-head">
         <div>
           <h2>{doc.label || DOC_TYPE_LABELS[doc.docType as DocType] || doc.docType}</h2>
-          <div className="row">
+          <div className="row kyc-viewer-badges">
             <KycStatusBadge status={doc.status} />
+            <span className="kyc-ver-badge">V{doc.versionNumber}</span>
+            <span className={`kyc-life-badge ${(doc.lifecycleStatus || '').toLowerCase()}`}>
+              {doc.isCurrent ? 'CURRENT' : kycStatusLabel(doc.lifecycleStatus)}
+            </span>
+            <span className="muted">{sourceLabel(doc.uploadSource)}</span>
             <span className="muted">Uploaded {formatWhen(doc.createdAt)}</span>
             {doc.expiryLabel ? <span className="kyc-expiry">{doc.expiryLabel}</span> : null}
           </div>
         </div>
-        <DocumentToolbar
-          zoom={zoom}
-          onZoom={setZoom}
-          onFit={fit}
-          onRotate={(d) => setRot((r) => r + d)}
-          onFullscreen={fullscreen}
-          url={doc.url}
-        />
-      </header>
-
-      <div className="kyc-viewer-stage" ref={stageRef}>
-        {!doc.url ? (
-          <div className="kyc-viewer-missing">
-            <p>Document preview unavailable.</p>
-          </div>
-        ) : isImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={doc.url}
-            alt={doc.label}
-            style={{ transform: `scale(${zoom}) rotate(${rot}deg)` }}
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <button
+            className="btn ghost sm"
+            type="button"
+            disabled={!prevVersion}
+            onClick={() => prevVersion && onAction.onSelectVersion(prevVersion.id)}
+            title="Previous version"
+          >
+            ← Prev ver
+          </button>
+          <button
+            className="btn ghost sm"
+            type="button"
+            disabled={!nextVersion}
+            onClick={() => nextVersion && onAction.onSelectVersion(nextVersion.id)}
+            title="Next version"
+          >
+            Next ver →
+          </button>
+          <DocumentToolbar
+            zoom={zoom}
+            onZoom={setZoom}
+            onFit={fit}
+            onRotate={(d) => setRot((r) => r + d)}
+            onFullscreen={fullscreen}
+            url={doc.url}
           />
-        ) : isPdf ? (
-          <iframe title={doc.label} src={doc.url} className="kyc-pdf" />
-        ) : (
-          <div className="kyc-viewer-missing">
-            <p>Preview not available for this file type.</p>
-            {doc.url && (
-              <a className="btn sm" href={doc.url} target="_blank" rel="noreferrer">
-                Open original
-              </a>
+          <div className="kyc-menu-wrap">
+            <button className="btn ghost sm" type="button" onClick={() => setMenuOpen((o) => !o)} aria-label="Document actions">
+              More
+            </button>
+            {menuOpen && (
+              <div className="kyc-pop right" onMouseLeave={() => setMenuOpen(false)}>
+                {canHistory && (
+                  <button type="button" className="menu-item" onClick={() => { setShowHistory(true); setMenuOpen(false); }}>
+                    View history
+                  </button>
+                )}
+                <button type="button" className="menu-item" onClick={() => { onAction.onDownload(); setMenuOpen(false); }}>
+                  Download
+                </button>
+                <button type="button" className="menu-item" onClick={() => { onAction.onCopyId(); setMenuOpen(false); }}>
+                  Copy ID
+                </button>
+                {decideEnabled && (
+                  <>
+                    <button type="button" className="menu-item" onClick={() => { onAction.onApprove(); setMenuOpen(false); }}>
+                      Approve
+                    </button>
+                    <button type="button" className="menu-item" onClick={() => { onAction.onReject(); setMenuOpen(false); }}>
+                      Reject
+                    </button>
+                    <button type="button" className="menu-item" onClick={() => { onAction.onResubmit(); setMenuOpen(false); }}>
+                      Request replacement
+                    </button>
+                  </>
+                )}
+                {canUpload && doc.isCurrent && (
+                  <button type="button" className="menu-item" onClick={() => { onAction.onUploadVersion(); setMenuOpen(false); }}>
+                    Upload new version
+                  </button>
+                )}
+                {canEditMeta && doc.isCurrent && (
+                  <button type="button" className="menu-item" onClick={() => { onAction.onEditMetadata(); setMenuOpen(false); }}>
+                    Edit metadata
+                  </button>
+                )}
+                {canArchive && doc.isCurrent && doc.lifecycleStatus !== 'ARCHIVED' && (
+                  <button type="button" className="menu-item" onClick={() => { onAction.onArchive(); setMenuOpen(false); }}>
+                    Archive
+                  </button>
+                )}
+                {canRestore && (doc.lifecycleStatus === 'ARCHIVED' || doc.lifecycleStatus === 'SOFT_DELETED' || doc.isHistorical) && (
+                  <button type="button" className="menu-item" onClick={() => { onAction.onRestore(); setMenuOpen(false); }}>
+                    Restore
+                  </button>
+                )}
+                {canDelete && doc.lifecycleStatus !== 'SOFT_DELETED' && (
+                  <button type="button" className="menu-item" onClick={() => { onAction.onSoftDelete(); setMenuOpen(false); }}>
+                    Soft delete
+                  </button>
+                )}
+                {canOverride && (
+                  <button type="button" className="menu-item" onClick={() => { onAction.onOverride(); setMenuOpen(false); }}>
+                    Override
+                  </button>
+                )}
+              </div>
             )}
           </div>
+        </div>
+      </header>
+
+      <div className="kyc-viewer-body">
+        <div className="kyc-viewer-stage" ref={stageRef}>
+          {!doc.url ? (
+            <div className="kyc-viewer-missing">
+              <p>Document preview unavailable.</p>
+            </div>
+          ) : isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={doc.url}
+              alt={doc.label}
+              style={{ transform: `scale(${zoom}) rotate(${rot}deg)` }}
+            />
+          ) : isPdf ? (
+            <iframe title={doc.label} src={doc.url} className="kyc-pdf" />
+          ) : (
+            <div className="kyc-viewer-missing">
+              <p>Preview not available for this file type.</p>
+              {doc.url && (
+                <a className="btn sm" href={doc.url} target="_blank" rel="noreferrer">
+                  Open original
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+
+        {canHistory && showHistory && (
+          <aside className="kyc-version-panel">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h3 style={{ margin: 0 }}>Version history</h3>
+              <button className="btn ghost sm" type="button" onClick={() => setShowHistory(false)}>
+                Hide
+              </button>
+            </div>
+            <ul className="kyc-version-list">
+              {versions.map((v) => (
+                <li key={v.id}>
+                  <button
+                    type="button"
+                    className={v.id === doc.id ? 'on' : ''}
+                    onClick={() => onAction.onSelectVersion(v.id)}
+                  >
+                    <span className="kyc-ver-badge">V{v.versionNumber}</span>
+                    <span className={`kyc-life-badge ${(v.lifecycleStatus || '').toLowerCase()}`}>
+                      {v.lifecycleStatus}
+                    </span>
+                    <span className="muted">{formatWhen(v.createdAt)}</span>
+                    <span className="muted">{sourceLabel(v.uploadSource)}</span>
+                    <span className="muted">{v.status}</span>
+                  </button>
+                </li>
+              ))}
+              {!versions.length && <li className="muted">No versions.</li>}
+            </ul>
+          </aside>
         )}
       </div>
 
+      {!showHistory && canHistory && (
+        <button className="btn ghost sm" type="button" onClick={() => setShowHistory(true)} style={{ marginTop: 8 }}>
+          Show version history
+        </button>
+      )}
+
       <div className="kyc-viewer-meta">
-        <div>
+        <div className="kyc-inspector">
           <h3>Document information</h3>
           <dl className="kyc-dl">
             {meta.map((m) => (
@@ -122,7 +310,6 @@ export function DocumentViewer({
               </div>
             ))}
           </dl>
-          <p className="muted kyc-ocr-note">OCR fields will appear here when extraction is enabled.</p>
         </div>
         <div>
           <h3>Verification checks</h3>
@@ -141,15 +328,15 @@ export function DocumentViewer({
         </div>
       </div>
 
-      {canDecide && (
+      {decideEnabled && (
         <div className="kyc-doc-actions">
-          <button className="btn sm" type="button" onClick={onApprove} title="Approve selected document (A)">
+          <button className="btn sm" type="button" onClick={onAction.onApprove} title="Approve selected document (A)">
             Approve Document
           </button>
-          <button className="btn ghost sm" type="button" onClick={onResubmit} title="Request resubmission (R)">
+          <button className="btn ghost sm" type="button" onClick={onAction.onResubmit} title="Request resubmission (R)">
             Request Resubmission
           </button>
-          <button className="btn danger sm" type="button" onClick={onReject}>
+          <button className="btn danger sm" type="button" onClick={onAction.onReject}>
             Reject Document
           </button>
         </div>

@@ -39,50 +39,45 @@ class MenuPanel extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8E8DE),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '0 $unitWord collected in $rides rides',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: GtColors.text,
+            if (state.isAuthenticated) ...[
+              Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8E8DE),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '0 $unitWord collected in $rides rides',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: GtColors.text,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
+            ],
             _MenuTile(
               icon: Icons.account_circle_outlined,
-              label: 'Log in or sign up',
+              label: state.isAuthenticated
+                  ? (state.me?['fullName']?.toString().trim().isNotEmpty == true
+                      ? state.me!['fullName'].toString()
+                      : 'My account')
+                  : 'Log in or sign up',
               onTap: () {
                 if (inDrawer) Navigator.of(context).pop();
-                context.push('/account');
+                context.push(
+                  state.isAuthenticated ? '/account' : '/auth',
+                );
               },
             ),
             _MenuTile(
               icon: Icons.notifications_outlined,
               label: 'Notifications',
               onTap: () => _toggleNotifications(context, state),
-            ),
-            _MenuTile(
-              icon: Icons.format_list_bulleted,
-              label: 'Trip types',
-              onTap: () => _toast(context, 'Trip types (demo)'),
-            ),
-            _MenuTile(
-              icon: Icons.people_outline,
-              label: 'Users',
-              onTap: () {
-                if (inDrawer) Navigator.of(context).pop();
-                context.push('/account');
-              },
             ),
             _MenuTile(
               icon: Icons.monetization_on_outlined,
@@ -109,8 +104,14 @@ class MenuPanel extends StatelessWidget {
               subtitle: 'Access to premium services',
               actionLabel: 'Request',
               onAction: () async {
+                final app = context.read<AppState>();
+                if (!app.isAuthenticated) {
+                  if (inDrawer) Navigator.of(context).pop();
+                  context.push('/auth');
+                  return;
+                }
                 try {
-                  await context.read<AppState>().api.auth.requestVip();
+                  await app.api.auth.requestVip();
                   if (context.mounted) {
                     _toast(context, 'VIP request submitted');
                   }
@@ -126,7 +127,7 @@ class MenuPanel extends StatelessWidget {
               title: 'Join as a driver!',
               subtitle: 'Download the application and earn with us',
               actionLabel: 'Download',
-              onAction: () => _toast(context, 'Driver app link (demo)'),
+              onAction: () => _toast(context, 'Driver app coming soon'),
             ),
             const SizedBox(height: 20),
             const Center(

@@ -9,7 +9,7 @@ import { KycStats } from './stats';
 import { AccountBadge, Avatar, DocGlyph, KycProgress, KycStatusBadge } from './status';
 import {
   DEFAULT_FILTERS,
-  DOC_TYPES,
+  QUEUE_DOC_TYPES,
   DOC_TYPE_LABELS,
   activeFilterChips,
   canPerm,
@@ -458,7 +458,7 @@ function QueueRow({
       </td>
       <td>
         <div className="kyc-doc-inds">
-          {DOC_TYPES.map((t) => (
+          {QUEUE_DOC_TYPES.map((t) => (
             <DocGlyph key={t} indicator={row.docs[t]?.indicator ?? 'missing'} title={DOC_TYPE_LABELS[t]} />
           ))}
         </div>

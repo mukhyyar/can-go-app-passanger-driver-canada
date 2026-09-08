@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { searchPlaces } from '../lib/places';
 import { VEHICLE_CLASSES, vehicleImage } from '../lib/vehicles';
 import type { Place } from '../lib/types';
+import { AppPhoneMock } from './app-phone-mock';
 import { AuthModal } from './auth-modal';
 import { SiteFooter } from './site-footer';
 import { SiteHeader } from './site-header';
@@ -68,6 +69,7 @@ export function LandingPage() {
   const [toQ, setToQ] = useState('');
   const [active, setActive] = useState<Field | null>(null);
   const [hints, setHints] = useState<Place[]>([]);
+  const [swapping, setSwapping] = useState(false);
 
   useEffect(() => {
     const q = active === 'from' ? fromQ : active === 'to' ? toQ : '';
@@ -94,9 +96,11 @@ export function LandingPage() {
   }
 
   function swap() {
+    setSwapping(true);
     const aq = fromQ;
     setFromQ(toQ);
     setToQ(aq);
+    window.setTimeout(() => setSwapping(false), 320);
   }
 
   function goBook(extra?: Record<string, string>) {
@@ -115,6 +119,8 @@ export function LandingPage() {
     goBook();
   }
 
+  const showTo = mode === 'RIDE';
+
   return (
     <div className="page-wrap lp">
       <SiteHeader onLogin={() => setAuthOpen(true)} />
@@ -130,91 +136,162 @@ export function LandingPage() {
             price, the vehicle, and who drives — airport, intercity, or by the hour.
           </p>
 
-          <form className="lp-search" onSubmit={onSubmit}>
-            <div className="mode-toggle" role="tablist" aria-label="Trip type">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'RIDE'}
-                className={mode === 'RIDE' ? 'on' : ''}
-                onClick={() => setMode('RIDE')}
-              >
-                <RideIcon />
-                Ride
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'PER_HOUR'}
-                className={mode === 'PER_HOUR' ? 'on' : ''}
-                onClick={() => setMode('PER_HOUR')}
-              >
-                <ClockIcon />
-                Per hour
-              </button>
+          <form
+            className={`lp-search${showTo ? '' : ' is-hourly'}${swapping ? ' is-swapping' : ''}`}
+            onSubmit={onSubmit}
+            data-mode={mode}
+          >
+            <div className="lp-search-chrome">
+              <div className="mode-toggle" role="tablist" aria-label="Trip type">
+                <span
+                  className="mode-thumb"
+                  aria-hidden
+                  data-pos={mode === 'RIDE' ? 'ride' : 'hour'}
+                />
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'RIDE'}
+                  className={mode === 'RIDE' ? 'on' : ''}
+                  onClick={() => setMode('RIDE')}
+                >
+                  <RideIcon />
+                  Transfer
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === 'PER_HOUR'}
+                  className={mode === 'PER_HOUR' ? 'on' : ''}
+                  onClick={() => setMode('PER_HOUR')}
+                >
+                  <ClockIcon />
+                  Hourly
+                </button>
+              </div>
+              <p className="lp-search-hint" key={mode}>
+                {showTo
+                  ? 'A to B — compare driver bids on your route'
+                  : 'Hire by the hour — set pickup, pick duration next'}
+              </p>
             </div>
 
             <div className="search-bar">
-              <label className="search-field">
-                <span className="search-label">From</span>
-                <input
-                  value={fromQ}
-                  onChange={(e) => {
-                    setFromQ(e.target.value);
-                    setActive('from');
-                  }}
-                  onFocus={() => setActive('from')}
-                  placeholder="Address, airport, hotel"
-                  autoComplete="off"
-                />
-                {active === 'from' && hints.length > 0 && (
-                  <div className="suggest">
-                    {hints.map((p) => (
-                      <button key={p.id} type="button" onClick={() => pick(p)}>
-                        {p.label}
-                        {p.subtitle && <small>{p.subtitle}</small>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </label>
-              {mode === 'RIDE' && (
-                <>
-                  <button
-                    className="swap-btn"
-                    type="button"
-                    aria-label="Swap locations"
-                    onClick={swap}
-                  >
-                    ⇄
-                  </button>
-                  <label className="search-field">
-                    <span className="search-label">To</span>
+              <div className="search-panel">
+                <label
+                  className={`search-field search-field-from${active === 'from' ? ' is-active' : ''}${fromQ ? ' has-value' : ''}`}
+                >
+                  <span className="search-field-icon" aria-hidden>
+                    <span className="search-pin search-pin-from" />
+                  </span>
+                  <span className="search-field-body">
+                    <span className="search-label">
+                      {showTo ? 'Pickup' : 'Meet me at'}
+                    </span>
                     <input
-                      value={toQ}
+                      value={fromQ}
                       onChange={(e) => {
-                        setToQ(e.target.value);
-                        setActive('to');
+                        setFromQ(e.target.value);
+                        setActive('from');
                       }}
-                      onFocus={() => setActive('to')}
-                      placeholder="Address, airport, hotel"
+                      onFocus={() => setActive('from')}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          setActive((cur) => (cur === 'from' ? null : cur));
+                        }, 140);
+                      }}
+                      placeholder={
+                        showTo
+                          ? 'Airport, hotel, or address'
+                          : 'Airport, hotel, or address'
+                      }
                       autoComplete="off"
+                      aria-autocomplete="list"
                     />
-                    {active === 'to' && hints.length > 0 && (
-                      <div className="suggest">
-                        {hints.map((p) => (
-                          <button key={p.id} type="button" onClick={() => pick(p)}>
+                  </span>
+                  {active === 'from' && hints.length > 0 && (
+                    <div className="suggest" role="listbox">
+                      {hints.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          role="option"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => pick(p)}
+                        >
+                          <PinIcon />
+                          <span>
                             {p.label}
                             {p.subtitle && <small>{p.subtitle}</small>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </label>
-                </>
-              )}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </label>
+
+                {showTo && (
+                  <>
+                    <button
+                      className="swap-btn"
+                      type="button"
+                      aria-label="Swap locations"
+                      onClick={swap}
+                    >
+                      <SwapIcon />
+                    </button>
+                    <label
+                      className={`search-field search-field-to${active === 'to' ? ' is-active' : ''}${toQ ? ' has-value' : ''}`}
+                    >
+                      <span className="search-field-icon" aria-hidden>
+                        <span className="search-pin search-pin-to" />
+                      </span>
+                      <span className="search-field-body">
+                        <span className="search-label">Drop-off</span>
+                        <input
+                          value={toQ}
+                          onChange={(e) => {
+                            setToQ(e.target.value);
+                            setActive('to');
+                          }}
+                          onFocus={() => setActive('to')}
+                          onBlur={() => {
+                            window.setTimeout(() => {
+                              setActive((cur) => (cur === 'to' ? null : cur));
+                            }, 140);
+                          }}
+                          placeholder="Where are you going?"
+                          autoComplete="off"
+                          aria-autocomplete="list"
+                        />
+                      </span>
+                      {active === 'to' && hints.length > 0 && (
+                        <div className="suggest" role="listbox">
+                          {hints.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              role="option"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => pick(p)}
+                            >
+                              <PinIcon />
+                              <span>
+                                {p.label}
+                                {p.subtitle && <small>{p.subtitle}</small>}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </label>
+                  </>
+                )}
+              </div>
+
               <button className="get-offers" type="submit">
-                Get offers
+                <span>Get offers</span>
+                <ArrowIcon />
               </button>
             </div>
           </form>
@@ -335,12 +412,7 @@ export function LandingPage() {
           <div className="app-visual">
             <div className="app-phone-stage">
               <div className="app-phone-wrap">
-                <img
-                  src="/images/app-phone.png"
-                  alt="CAN-GO app showing a live transfer map"
-                  width={640}
-                  height={680}
-                />
+                <AppPhoneMock />
               </div>
             </div>
           </div>
@@ -447,6 +519,47 @@ function ClockIcon() {
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SwapIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        d="M7 8h11M15 5l3 3-3 3M17 16H6M9 13l-3 3 3 3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
+      <path
+        d="M5 12h12M13 6l6 6-6 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden className="suggest-pin">
+      <path
+        fill="currentColor"
+        d="M12 2.5c-3.2 0-5.8 2.5-5.8 5.7 0 4.2 5.8 13.3 5.8 13.3s5.8-9.1 5.8-13.3c0-3.2-2.6-5.7-5.8-5.7zm0 8a2.3 2.3 0 1 1 0-4.6 2.3 2.3 0 0 1 0 4.6z"
       />
     </svg>
   );

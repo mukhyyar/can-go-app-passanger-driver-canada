@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:passenger/screens/account_screen.dart';
 import 'package:passenger/screens/auth_screen.dart';
+import 'package:passenger/screens/booking_confirmed_screen.dart';
 import 'package:passenger/screens/location_screen.dart';
 import 'package:passenger/screens/map_pick_screen.dart';
 import 'package:passenger/screens/offer_detail_screen.dart';
@@ -21,16 +22,32 @@ GoRouter createRouter(AppState state) {
       if (!state.ready) return null;
       final loc = goState.matchedLocation;
       final isAuth = loc == '/auth';
-      if (!state.isAuthenticated && !isAuth && loc != '/onboarding') {
-        return '/auth';
-      }
+
+      // Guests may browse the app; auth is opened from gated actions.
       if (state.isAuthenticated && isAuth) return '/';
+
+      final needsAuth = loc == '/account' ||
+          loc == '/edit-field' ||
+          loc.startsWith('/payment') ||
+          loc.startsWith('/booking-confirmed');
+      if (!state.isAuthenticated && needsAuth) return '/auth';
+
       if (state.isAuthenticated &&
           !state.onboarded &&
           loc != '/onboarding') {
         return '/onboarding';
       }
       if (state.onboarded && loc == '/onboarding') return '/';
+
+      // Consume pending FCM / deep-link once authenticated.
+      if (state.isAuthenticated &&
+          state.pendingDeepLinkRideId != null &&
+          !loc.startsWith('/offers') &&
+          !loc.startsWith('/offer/')) {
+        final path = state.consumeDeepLinkPath();
+        if (path != null) return path;
+      }
+
       return null;
     },
     routes: [
@@ -61,8 +78,10 @@ GoRouter createRouter(AppState state) {
       ),
       GoRoute(
         path: '/offers/:id',
-        builder: (_, state) =>
-            OffersScreen(rideId: state.pathParameters['id']!),
+        builder: (_, goState) => OffersScreen(
+          rideId: goState.pathParameters['id']!,
+          focusOfferId: goState.uri.queryParameters['offerId'],
+        ),
       ),
       GoRoute(
         path: '/offer/:rideId/:offerId',
@@ -76,6 +95,12 @@ GoRouter createRouter(AppState state) {
         builder: (_, state) => PaymentScreen(
           rideId: state.pathParameters['rideId']!,
           offerId: state.pathParameters['offerId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/booking-confirmed/:rideId',
+        builder: (_, state) => BookingConfirmedScreen(
+          rideId: state.pathParameters['rideId']!,
         ),
       ),
       GoRoute(

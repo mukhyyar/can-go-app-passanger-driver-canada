@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  OnModuleInit,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -16,6 +12,8 @@ export type PriceSnapshot = {
   days?: number;
   catalogItemId?: string;
   vipApplied?: boolean;
+  isRoundTrip?: boolean;
+  legs?: number;
   guidanceAmount: number;
   minBid: number;
   maxBid: number;
@@ -27,6 +25,8 @@ export type PriceSnapshot = {
   platformCommissionPct: number;
   taxPct: number;
   bidAmount?: number;
+  outboundPrice?: number;
+  returnPrice?: number;
   subtotal?: number;
   taxAmount?: number;
   platformFee?: number;
@@ -34,6 +34,7 @@ export type PriceSnapshot = {
   passengerTotal?: number;
   frozenAt?: string;
   ruleId?: string;
+  priceBand?: 'competitive' | 'typical' | 'above_typical';
 };
 
 const PHASE3_TYPES = new Set([
@@ -214,7 +215,9 @@ export class PricingService implements OnModuleInit {
     vip?: boolean;
   }): Promise<PriceSnapshot> {
     if (!PHASE3_TYPES.has(input.serviceType)) {
-      throw new BadRequestException(`Unsupported serviceType ${input.serviceType}`);
+      throw new BadRequestException(
+        `Unsupported serviceType ${input.serviceType}`,
+      );
     }
 
     const currency = input.currency ?? 'USD';
@@ -325,7 +328,11 @@ export class PricingService implements OnModuleInit {
     };
   }
 
-  freezeBid(guidance: PriceSnapshot, bidAmount: number): PriceSnapshot {
+  freezeBid(
+    guidance: PriceSnapshot,
+    bidAmount: number,
+    opts?: { outboundPrice?: number; returnPrice?: number | null },
+  ): PriceSnapshot {
     if (bidAmount < guidance.minBid - 0.001) {
       throw new BadRequestException(
         `Bid below minimum (${guidance.minBid} ${guidance.currency})`,
@@ -344,15 +351,28 @@ export class PricingService implements OnModuleInit {
       subtotal * (guidance.platformCommissionPct / 100),
     );
     const driverEarning = round2(subtotal - platformFee);
+    const outbound =
+      opts?.outboundPrice != null ? round2(opts.outboundPrice) : subtotal;
+    const returnPrice =
+      opts?.returnPrice != null ? round2(opts.returnPrice) : undefined;
+
+    let priceBand: PriceSnapshot['priceBand'] = 'typical';
+    const span = Math.max(0.01, guidance.maxBid - guidance.minBid);
+    const t = (subtotal - guidance.minBid) / span;
+    if (t <= 0.33) priceBand = 'competitive';
+    else if (t >= 0.67) priceBand = 'above_typical';
 
     return {
       ...guidance,
       bidAmount: subtotal,
+      outboundPrice: outbound,
+      returnPrice,
       subtotal,
       taxAmount,
       platformFee,
       driverEarning,
       passengerTotal,
+      priceBand,
       frozenAt: new Date().toISOString(),
     };
   }

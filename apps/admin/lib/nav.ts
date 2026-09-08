@@ -10,6 +10,72 @@ export type NavGroup = {
   items: NavItem[];
 };
 
+/** Match sidebar active state including query + hash (pathname alone is not enough). */
+export function isNavActive(
+  href: string,
+  pathname: string,
+  searchParams: URLSearchParams,
+  hash = '',
+): boolean {
+  const url = new URL(href, 'http://local');
+  const hrefPath = url.pathname;
+  const hrefHash = url.hash;
+  const hrefKeys = [...url.searchParams.keys()];
+
+  if (hrefPath === '/') {
+    if (pathname !== '/') return false;
+  } else if (pathname !== hrefPath && !pathname.startsWith(`${hrefPath}/`)) {
+    return false;
+  }
+
+  if (hrefKeys.length > 0) {
+    for (const [key, value] of url.searchParams.entries()) {
+      if (searchParams.get(key) !== value) return false;
+    }
+    return true;
+  }
+
+  if (hrefHash) {
+    return pathname === hrefPath && normalizeHash(hash) === normalizeHash(hrefHash);
+  }
+
+  // Bare path: inactive when a same-path sibling owns the current query/hash.
+  if (pathname === hrefPath) {
+    const currentHash = normalizeHash(hash);
+    if (currentHash) {
+      const hashSibling = NAV.some((g) =>
+        g.items.some((item) => {
+          if (item.href === href) return false;
+          const other = new URL(item.href, 'http://local');
+          return (
+            other.pathname === hrefPath &&
+            other.hash &&
+            normalizeHash(other.hash) === currentHash
+          );
+        }),
+      );
+      if (hashSibling) return false;
+    }
+
+    const querySibling = NAV.some((g) =>
+      g.items.some((item) => {
+        if (item.href === href) return false;
+        const other = new URL(item.href, 'http://local');
+        if (other.pathname !== hrefPath) return false;
+        return [...other.searchParams.keys()].some((key) => searchParams.has(key));
+      }),
+    );
+    if (querySibling) return false;
+  }
+
+  return true;
+}
+
+function normalizeHash(hash: string): string {
+  if (!hash || hash === '#') return '';
+  return hash.startsWith('#') ? hash : `#${hash}`;
+}
+
 export const NAV: NavGroup[] = [
   {
     id: 'overview',

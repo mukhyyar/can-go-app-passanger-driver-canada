@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../lib/api';
 import { toPickupIso } from '../lib/datetime';
@@ -32,8 +32,9 @@ export function BookingPage() {
   const [to, setTo] = useState<Place | null>(null);
   const [perHourHasEnd, setPerHourHasEnd] = useState(false);
   const [vehicleIds, setVehicleIds] = useState<string[]>(DEFAULT_VEHICLE_IDS);
-  const [pickupNow, setPickupNow] = useState(false);
+  const [pickupNow, setPickupNow] = useState(true);
   const [pickupValue, setPickupValue] = useState('');
+  const pickupInputRef = useRef<HTMLInputElement>(null);
   const [durationMin, setDurationMin] = useState(60);
   const [returnOn, setReturnOn] = useState(false);
   const [returnValue, setReturnValue] = useState('');
@@ -280,18 +281,42 @@ export function BookingPage() {
 
           <div className="field">
             <CalendarIcon />
-            <input
-              type="datetime-local"
-              value={pickupNow ? '' : pickupValue}
-              onChange={(e) => {
-                setPickupNow(false);
-                setPickupValue(e.target.value);
-              }}
-              aria-label="Pick-up date & time"
-            />
+            {pickupNow ? (
+              <button
+                type="button"
+                className="pickup-now-text"
+                onClick={() => {
+                  setPickupNow(false);
+                  window.setTimeout(() => {
+                    const el = pickupInputRef.current;
+                    if (!el) return;
+                    el.focus();
+                    try {
+                      el.showPicker?.();
+                    } catch {
+                      /* showPicker may be unavailable or blocked */
+                    }
+                  }, 0);
+                }}
+              >
+                Now
+              </button>
+            ) : (
+              <input
+                ref={pickupInputRef}
+                type="datetime-local"
+                value={pickupValue}
+                onChange={(e) => {
+                  setPickupNow(false);
+                  setPickupValue(e.target.value);
+                }}
+                aria-label="Pick-up date & time"
+              />
+            )}
             <button
               type="button"
-              className={`now-btn ${pickupNow ? '' : 'idle'}`}
+              className={`now-btn ${pickupNow ? 'on' : 'idle'}`}
+              aria-pressed={pickupNow}
               onClick={() => {
                 setPickupNow(true);
                 setPickupValue('');

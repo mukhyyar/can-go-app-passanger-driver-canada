@@ -57,18 +57,26 @@ class InstructionsScreen extends StatelessWidget {
             (
               'Vehicle',
               '1. Valid registration, insurance and inspection certificate.\n'
-                  '2. Good appearance of the car, no advertisements.\n'
-                  '3. No tobacco or any other smoke inside.'
+                  '2. Clean, presentable vehicle matching your registered details.\n'
+                  '3. No prohibited advertising or company contact info on the vehicle.\n'
+                  '4. Smoke-free cabin at all times.'
             ),
             (
               'Driver',
-              '1. 3 years or more of a driving experience and at least 21 years of age.\n'
-                  '2. Safe and comfortable driving style.\n'
-                  '3. Adherence to local traffic regulations.\n'
-                  '4. Presentable appearance.\n'
-                  '5. Meeting with a name sign on request and help with luggage.\n'
-                  '6. No phone talk while driving or forced conversation with passengers.\n'
-                  '7. No price change after confirmation with passenger on CAN-GO.'
+              '1. Valid driving licence and minimum experience/age required in your jurisdiction.\n'
+                  '2. Safe driving and local traffic-law compliance.\n'
+                  '3. Professional appearance and respectful passenger communication.\n'
+                  '4. Meet with a name sign on request and help with luggage.\n'
+                  '5. No unsafe phone use while driving.\n'
+                  '6. No unauthorized price changes after confirmation.'
+            ),
+            (
+              'Ride service',
+              '1. Arrive on time for pickups; communicate delays early.\n'
+                  '2. Follow waiting and airport pickup procedures.\n'
+                  '3. Complete trips only when the passenger is safely dropped off.\n'
+                  '4. Follow passenger no-show and cancellation rules.\n'
+                  '5. Use emergency procedures and contact support when needed.'
             ),
           ]),
           const SizedBox(height: 24),

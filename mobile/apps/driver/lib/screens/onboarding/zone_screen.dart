@@ -43,7 +43,12 @@ class _ZoneScreenState extends State<ZoneScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final s = context.read<AppState>();
+      if (s.isAuthenticated) {
+        await s.loadOperatingZones();
+      }
+      if (!mounted) return;
       _hydrate();
       if (!_infoShown) {
         _infoShown = true;

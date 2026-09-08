@@ -1,9 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
+import { PricingService, round2, type PriceSnapshot } from './pricing.service';
 import {
-  PricingService,
-  round2,
-  type PriceSnapshot,
-} from './pricing.service';
+  isAllowedOfferValidity,
+  OFFER_VALIDITY_OPTIONS_SECONDS,
+} from './offer.constants';
 
 describe('PricingService (unit)', () => {
   const pricing = new PricingService({} as never);
@@ -70,5 +70,67 @@ describe('PricingService (unit)', () => {
     expect(frozen.platformFee).toBe(15);
     expect(frozen.driverEarning).toBe(85);
     expect(frozen.frozenAt).toBeTruthy();
+  });
+
+  it('freezeBid stores outbound/return and price band', () => {
+    const guidance: PriceSnapshot = {
+      currency: 'USD',
+      serviceType: 'RIDE',
+      vehicleClass: 'sedan',
+      distanceKm: 20,
+      durationMin: 40,
+      guidanceAmount: 200,
+      minBid: 160,
+      maxBid: 300,
+      minFare: 12,
+      baseFare: 8,
+      perKm: 1.4,
+      perMinute: 0.25,
+      perHour: 0,
+      platformCommissionPct: 13,
+      taxPct: 0,
+      isRoundTrip: true,
+      legs: 2,
+    };
+    const frozen = pricing.freezeBid(guidance, 220, {
+      outboundPrice: 120,
+      returnPrice: 100,
+    });
+    expect(frozen.outboundPrice).toBe(120);
+    expect(frozen.returnPrice).toBe(100);
+    expect(frozen.platformFee).toBe(28.6);
+    expect(frozen.driverEarning).toBe(191.4);
+    expect(frozen.priceBand).toBe('typical');
+  });
+
+  it('freezeBid rejects zero/negative via min band', () => {
+    const guidance: PriceSnapshot = {
+      currency: 'USD',
+      serviceType: 'RIDE',
+      vehicleClass: 'sedan',
+      distanceKm: 10,
+      durationMin: 20,
+      guidanceAmount: 100,
+      minBid: 80,
+      maxBid: 150,
+      minFare: 12,
+      baseFare: 8,
+      perKm: 1.4,
+      perMinute: 0.25,
+      perHour: 0,
+      platformCommissionPct: 15,
+      taxPct: 0,
+    };
+    expect(() => pricing.freezeBid(guidance, 0)).toThrow(BadRequestException);
+  });
+});
+
+describe('offer validity options', () => {
+  it('includes screenshot durations', () => {
+    expect(OFFER_VALIDITY_OPTIONS_SECONDS).toEqual([
+      1800, 3600, 7200, 28800, 43200, 86400, 172800, 345600, 518400,
+    ]);
+    expect(isAllowedOfferValidity(1800)).toBe(true);
+    expect(isAllowedOfferValidity(900)).toBe(false);
   });
 });

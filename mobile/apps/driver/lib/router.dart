@@ -12,8 +12,11 @@ import 'screens/onboarding/payment_screen.dart';
 import 'screens/onboarding/photos_screen.dart';
 import 'screens/onboarding/profile_screen.dart';
 import 'screens/onboarding/zone_screen.dart';
+import 'screens/request_detail_screen.dart';
 import 'screens/requests_screen.dart';
 import 'screens/rides_screen.dart';
+import 'screens/settings/add_vehicle_screen.dart';
+import 'screens/settings/vehicles_list_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/shell.dart';
 import 'state/app_state.dart';
@@ -77,6 +80,14 @@ GoRouter createRouter(AppState appState) {
         path: '/onboarding/payment',
         builder: (_, __) => const PaymentScreen(),
       ),
+      GoRoute(
+        path: '/settings/vehicles',
+        builder: (_, __) => const VehiclesListScreen(),
+      ),
+      GoRoute(
+        path: '/settings/vehicles/add',
+        builder: (_, __) => const AddVehicleScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             DriverShell(navigationShell: navigationShell),
@@ -114,6 +125,12 @@ GoRouter createRouter(AppState appState) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: '/request/:id',
+        builder: (_, state) => RequestDetailScreen(
+          requestId: state.pathParameters['id']!,
+        ),
       ),
       GoRoute(
         path: '/instructions',

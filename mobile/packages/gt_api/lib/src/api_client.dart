@@ -16,6 +16,22 @@ class ApiException implements Exception {
   final String message;
   final dynamic body;
 
+  /// Nest often nests `{ code, challengeId, ... }` under `message`.
+  Map<String, dynamic> get flatBody {
+    if (body is! Map) return {};
+    final map = Map<String, dynamic>.from(body as Map);
+    final nested = map['message'];
+    if (nested is Map) {
+      return {...map, ...Map<String, dynamic>.from(nested)};
+    }
+    return map;
+  }
+
+  String? get code {
+    final c = flatBody['code'];
+    return c?.toString();
+  }
+
   @override
   String toString() => 'ApiException($statusCode): $message';
 }
@@ -119,6 +135,21 @@ class ApiClient {
     return _send('PUT', path, body: body, auth: auth);
   }
 
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    bool auth = true,
+    String? idempotencyKey,
+  }) async {
+    return _send(
+      'PATCH',
+      path,
+      body: body,
+      auth: auth,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
   Future<Map<String, dynamic>> delete(String path, {bool auth = true}) async {
     return _send('DELETE', path, auth: auth);
   }
@@ -172,6 +203,9 @@ class ApiClient {
         break;
       case 'PUT':
         res = await _http.put(uri, headers: headers, body: encoded);
+        break;
+      case 'PATCH':
+        res = await _http.patch(uri, headers: headers, body: encoded);
         break;
       case 'DELETE':
         res = await _http.delete(uri, headers: headers);
@@ -240,7 +274,14 @@ class ApiClient {
     String message = 'Request failed';
     if (parsed is Map && parsed['message'] != null) {
       final m = parsed['message'];
-      message = m is List ? m.join(', ') : m.toString();
+      if (m is List) {
+        message = m.join(', ');
+      } else if (m is Map) {
+        final inner = m['message'];
+        message = inner != null ? inner.toString() : 'Request failed';
+      } else {
+        message = m.toString();
+      }
     }
     throw ApiException(res.statusCode, message, body: parsed);
   }

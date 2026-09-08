@@ -4,6 +4,10 @@
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
+| GET | `/oauth/config` | — | Google/Apple availability + local mock flags |
+| POST | `/oauth/google` | — | Google ID token (or local mock email) |
+| POST | `/oauth/apple` | — | Apple identity token (or local mock email) |
+| POST | `/oauth/link-phone` | — | Attach phone after social signup; returns OTP |
 | POST | `/register` | — | PASSENGER/DRIVER; returns OTP challenge |
 | POST | `/otp/verify` | — | Completes phone verify; issues tokens |
 | POST | `/otp/send` | — | Rate-limited OTP resend |

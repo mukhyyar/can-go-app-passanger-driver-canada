@@ -57,7 +57,11 @@ class _WaitingScreenState extends State<WaitingScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final ride = state.rideById(widget.rideId);
-    final carriers = 42 + (widget.rideId.hashCode % 30).abs();
+    final offers = state.offersFor(widget.rideId);
+    final hasOffers = offers.isNotEmpty ||
+        (ride?.offerCount ?? 0) > 0 ||
+        ride?.status == RideStatus.chooseOffer ||
+        ride?.serverStatus == 'OFFER_SELECTION';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -85,24 +89,37 @@ class _WaitingScreenState extends State<WaitingScreen> {
               ),
             const SizedBox(height: 24),
             Text(
-              'Connecting to $carriers carriers',
+              hasOffers
+                  ? '${offers.isNotEmpty ? offers.length : (ride?.offerCount ?? 0)} offer(s) received'
+                  : 'Waiting for driver offers',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Drivers are reviewing your request and preparing offers.',
-              style: TextStyle(color: GtColors.textSecondary),
+            Text(
+              hasOffers
+                  ? 'Drivers have bid on your ride. Review and choose an offer.'
+                  : 'Your request was sent. Offers appear here when a driver responds.',
+              style: const TextStyle(color: GtColors.textSecondary),
             ),
             const SizedBox(height: 24),
             _stepRow(0, 'Request sent'),
             _stepRow(1, 'Carriers notified'),
-            _stepRow(2, 'Waiting for offers'),
+            _stepRow(2, hasOffers ? 'Offers received' : 'Waiting for offers'),
             _stepRow(3, 'Ready to choose'),
             const Spacer(),
-            if (_refreshed)
+            if (_refreshed && hasOffers)
               GtGreenButton(
                 label: 'Show offers',
                 onPressed: () => context.push('/offers/${widget.rideId}'),
+              ),
+            if (_refreshed && !hasOffers)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'No offers yet — this screen refreshes automatically.',
+                  style: TextStyle(color: GtColors.textMuted, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
               ),
             const SizedBox(height: 8),
             OutlinedButton(

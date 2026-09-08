@@ -91,3 +91,38 @@ export async function api<T = unknown>(
   }
   return data as T;
 }
+
+/** Multipart upload — sets Bearer auth but does not force JSON Content-Type. */
+export async function apiForm<T = unknown>(
+  path: string,
+  formData: FormData,
+  opts: { method?: string; token?: string | null } = {},
+): Promise<T> {
+  const tokens = readTokens();
+  const token = opts.token ?? tokens?.accessToken;
+  const headers = new Headers();
+  headers.set('Accept', 'application/json');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const method = opts.method ?? 'POST';
+  let res = await fetch(`${API_BASE}${path}`, { method, headers, body: formData });
+
+  if (res.status === 401 && tokens?.refreshToken && !path.includes('/auth/refresh')) {
+    const next = await refreshAccess(tokens.refreshToken);
+    if (next?.accessToken) {
+      saveTokens({ ...tokens, ...next });
+      headers.set('Authorization', `Bearer ${next.accessToken}`);
+      res = await fetch(`${API_BASE}${path}`, { method, headers, body: formData });
+    }
+  }
+
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const msg =
+      (data && (data.message?.toString?.() || data.message)) ||
+      `HTTP ${res.status}`;
+    throw new Error(Array.isArray(msg) ? msg.join(', ') : String(msg));
+  }
+  return data as T;
+}

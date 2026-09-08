@@ -23,9 +23,14 @@ export class MarketplaceScheduler implements OnModuleInit, OnModuleDestroy {
   private async tick() {
     try {
       const result = await this.marketplace.expireDueEntities();
-      if (result.expiredRequests || result.expiredPayments) {
+      if (
+        result.expiredRequests ||
+        result.expiredPayments ||
+        result.reopenedPayments ||
+        result.expiredOffers
+      ) {
         this.logger.log(
-          `TTL sweep requests=${result.expiredRequests} payments=${result.expiredPayments}`,
+          `TTL sweep offers=${result.expiredOffers} requests=${result.expiredRequests} payments=${result.expiredPayments} reopened=${result.reopenedPayments}`,
         );
       }
     } catch (err) {

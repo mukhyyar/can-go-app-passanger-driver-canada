@@ -21,12 +21,17 @@ import {
   AdminTotpDisableDto,
   AdminTotpEnableDto,
   LoginDto,
+  OAuthAppleDto,
+  OAuthGoogleDto,
+  OAuthLinkPhoneDto,
   OtpSendDto,
   OtpVerifyDto,
   PasswordResetConfirmDto,
   PasswordResetRequestDto,
   RegisterDto,
 } from './dto/auth.dto';
+import { OAuthVerifyService, type OAuthIdentity } from './oauth-verify.service';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
@@ -35,6 +40,8 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokensService,
     private readonly config: ConfigService,
+    private readonly jwt: JwtService,
+    private readonly oauthVerify: OAuthVerifyService,
     @Inject(OTP_PROVIDER) private readonly otp: OtpProvider,
   ) {}
 
@@ -123,14 +130,34 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
 
-    const user = await this.prisma.user.findUnique({
+    let user = await this.prisma.user.findUnique({
       where: { phoneE164: result.phoneE164 },
       include: { passengerProfile: true, driverProfile: true },
     });
+
+    // Phone-first signup: create passenger when OTP login/register has no user yet
+    if (
+      !user &&
+      (result.purpose === 'login' ||
+        result.purpose === 'register' ||
+        result.purpose === 'verify_phone')
+    ) {
+      user = await this.prisma.user.create({
+        data: {
+          phoneE164: result.phoneE164,
+          phoneVerifiedAt: new Date(),
+          role: UserRole.PASSENGER,
+          passengerProfile: { create: { fullName: '' } },
+        },
+        include: { passengerProfile: true, driverProfile: true },
+      });
+      await this.audit(user.id, 'auth.phone_register', 'User', user.id, meta?.ip);
+    }
+
     if (!user) {
       throw new NotFoundException('User not found for this phone');
     }
-    if (user.isSuspended) {
+    if (user.isSuspended || user.archivedAt) {
       throw new ForbiddenException('Account suspended');
     }
 
@@ -144,6 +171,7 @@ export class AuthService {
           where: { id: user.id },
           data: { phoneVerifiedAt: new Date() },
         });
+        user = { ...user, phoneVerifiedAt: new Date() };
       }
     }
 
@@ -165,19 +193,14 @@ export class AuthService {
 
   async sendOtp(dto: OtpSendDto) {
     await this.requireDb();
-    // Rate limit is at controller (Throttler)
-    if (dto.purpose === 'verify_phone' || dto.purpose === 'login') {
+    // Always issue for login/register so phone-first signup works.
+    // password_reset still uses requestPasswordReset for anti-enumeration.
+    if (dto.purpose === 'verify_phone') {
       const user = await this.prisma.user.findUnique({
         where: { phoneE164: dto.phoneE164 },
       });
       if (!user) {
-        // Avoid phone enumeration for login; still ok for verify after register
-        if (dto.purpose === 'login') {
-          return {
-            ok: true,
-            message: 'If the account exists, an OTP was sent',
-          };
-        }
+        throw new NotFoundException('No account for this phone');
       }
     }
 
@@ -211,7 +234,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (user.isSuspended) {
+    if (user.isSuspended || user.archivedAt) {
       throw new ForbiddenException('Account suspended');
     }
 
@@ -507,7 +530,7 @@ export class AuthService {
     if (session.consumedAt) {
       throw new UnauthorizedException('Impersonation token already used');
     }
-    if (session.target.isSuspended) {
+    if (session.target.isSuspended || session.target.archivedAt) {
       throw new ForbiddenException('Target account is suspended');
     }
 
@@ -568,6 +591,204 @@ export class AuthService {
       actor.id,
     );
     return { ok: true, adminUrl: this.config.get<string>('admin.adminWebBase') };
+  }
+
+  oauthConfig() {
+    const googleIds = this.oauthVerify.googleAudiences();
+    const appleIds = this.oauthVerify.appleAudiences();
+    const localMock = this.oauthVerify.localMockEnabled();
+    return {
+      google: {
+        enabled: googleIds.length > 0 || localMock,
+        clientId: googleIds[0] ?? null,
+        localMock: localMock && googleIds.length === 0,
+      },
+      apple: {
+        enabled: appleIds.length > 0 || localMock,
+        clientId: appleIds[0] ?? null,
+        localMock: localMock && appleIds.length === 0,
+      },
+    };
+  }
+
+  async oauthGoogle(
+    dto: OAuthGoogleDto,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
+    await this.requireDb();
+    const identity = dto.idToken
+      ? await this.oauthVerify.verifyGoogleIdToken(dto.idToken)
+      : this.oauthVerify.mockIdentity('google', dto.email!, dto.fullName);
+    return this.completeOAuth(identity, dto.deviceId, meta);
+  }
+
+  async oauthApple(
+    dto: OAuthAppleDto,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
+    await this.requireDb();
+    const identity = dto.idToken
+      ? await this.oauthVerify.verifyAppleIdToken(dto.idToken)
+      : this.oauthVerify.mockIdentity('apple', dto.email!, dto.fullName);
+    if (dto.fullName?.trim() && !identity.fullName) {
+      identity.fullName = dto.fullName.trim();
+    }
+    return this.completeOAuth(identity, dto.deviceId, meta);
+  }
+
+  async linkOAuthPhone(dto: OAuthLinkPhoneDto) {
+    await this.requireDb();
+    const userId = await this.verifyPhoneLinkToken(dto.linkToken);
+    const phoneE164 = dto.phoneE164.trim();
+
+    const existingPhone = await this.prisma.user.findUnique({
+      where: { phoneE164 },
+    });
+    if (existingPhone && existingPhone.id !== userId) {
+      throw new ConflictException('Phone already registered to another account');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { phoneE164 },
+    });
+
+    const challenge = await this.otp.issue(phoneE164, 'verify_phone');
+    return {
+      challengeId: challenge.challengeId,
+      expiresAt: challenge.expiresAt,
+      ...(challenge.debugCode ? { debugCode: challenge.debugCode } : {}),
+      message: 'Verify phone OTP to complete sign-in',
+    };
+  }
+
+  private async completeOAuth(
+    identity: OAuthIdentity,
+    deviceId?: string,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
+    if (!identity.email && identity.provider === 'google') {
+      throw new BadRequestException('Google account email is required');
+    }
+
+    const linked = await this.prisma.oAuthAccount.findUnique({
+      where: {
+        provider_providerSubject: {
+          provider: identity.provider,
+          providerSubject: identity.subject,
+        },
+      },
+      include: {
+        user: { include: { passengerProfile: true, driverProfile: true } },
+      },
+    });
+
+    let user = linked?.user ?? null;
+
+    if (!user && identity.email) {
+      const byEmail = await this.prisma.user.findUnique({
+        where: { email: identity.email },
+        include: { passengerProfile: true, driverProfile: true },
+      });
+      if (byEmail) {
+        await this.prisma.oAuthAccount.create({
+          data: {
+            userId: byEmail.id,
+            provider: identity.provider,
+            providerSubject: identity.subject,
+            email: identity.email,
+          },
+        });
+        user = byEmail;
+      }
+    }
+
+    if (!user) {
+      const fullName = identity.fullName ?? '';
+      user = await this.prisma.user.create({
+        data: {
+          email: identity.email,
+          role: UserRole.PASSENGER,
+          passengerProfile: { create: { fullName } },
+          oauthAccounts: {
+            create: {
+              provider: identity.provider,
+              providerSubject: identity.subject,
+              email: identity.email,
+            },
+          },
+        },
+        include: { passengerProfile: true, driverProfile: true },
+      });
+      await this.audit(
+        user.id,
+        `auth.oauth_${identity.provider}_register`,
+        'User',
+        user.id,
+        meta?.ip,
+      );
+    } else {
+      await this.audit(
+        user.id,
+        `auth.oauth_${identity.provider}_login`,
+        'User',
+        user.id,
+        meta?.ip,
+      );
+    }
+
+    if (user.isSuspended || user.archivedAt) {
+      throw new ForbiddenException('Account suspended');
+    }
+
+    if (
+      (user.role === UserRole.PASSENGER || user.role === UserRole.DRIVER) &&
+      !user.phoneVerifiedAt
+    ) {
+      const linkToken = await this.issuePhoneLinkToken(user.id);
+      return {
+        requiresPhoneLink: true as const,
+        linkToken,
+        user: this.publicUser(user),
+        message: 'Add and verify a phone number to finish signing in',
+      };
+    }
+
+    const tokens = await this.tokens.issueSession({
+      userId: user.id,
+      role: user.role,
+      deviceId,
+      userAgent: meta?.userAgent,
+      ip: meta?.ip,
+    });
+
+    return {
+      requiresPhoneLink: false as const,
+      user: this.publicUser(user),
+      ...tokens,
+    };
+  }
+
+  private async issuePhoneLinkToken(userId: string): Promise<string> {
+    return this.jwt.signAsync(
+      { sub: userId, purpose: 'oauth_phone_link' },
+      { expiresIn: '15m' },
+    );
+  }
+
+  private async verifyPhoneLinkToken(token: string): Promise<string> {
+    try {
+      const payload = await this.jwt.verifyAsync<{
+        sub?: string;
+        purpose?: string;
+      }>(token);
+      if (payload.purpose !== 'oauth_phone_link' || !payload.sub) {
+        throw new UnauthorizedException('Invalid link token');
+      }
+      return payload.sub;
+    } catch {
+      throw new UnauthorizedException('Invalid or expired link token');
+    }
   }
 
   private publicUser(user: {

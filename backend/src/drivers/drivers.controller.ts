@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Req,
@@ -25,6 +26,9 @@ import {
 import { DriversService } from './drivers.service';
 import {
   CreateVehicleDto,
+  UpdateDriverProfileDto,
+  UpdatePaymentDetailsDto,
+  UpdateVehicleDto,
   UploadDocumentMetaDto,
   UpsertZoneDto,
 } from './dto/drivers.dto';
@@ -35,6 +39,39 @@ import { MAX_UPLOAD_BYTES } from './documents.constants';
 @Roles(UserRole.DRIVER)
 export class DriversController {
   constructor(private readonly drivers: DriversService) {}
+
+  @Get('me')
+  getMe(@CurrentUser() user: AuthUser) {
+    return this.drivers.getMyProfile(user.id);
+  }
+
+  @Patch('me')
+  updateMe(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateDriverProfileDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.updateMyProfile(user.id, dto, req.ip);
+  }
+
+  @Get('me/account-status')
+  accountStatus(@CurrentUser() user: AuthUser) {
+    return this.drivers.getAccountStatus(user.id);
+  }
+
+  @Get('me/payment-details')
+  getPayment(@CurrentUser() user: AuthUser) {
+    return this.drivers.getPaymentDetails(user.id);
+  }
+
+  @Patch('me/payment-details')
+  updatePayment(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdatePaymentDetailsDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.updatePaymentDetails(user.id, dto, req.ip);
+  }
 
   @Get('documents')
   listDocuments(@CurrentUser() user: AuthUser) {
@@ -86,8 +123,36 @@ export class DriversController {
   }
 
   @Post('vehicles')
-  createVehicle(@CurrentUser() user: AuthUser, @Body() dto: CreateVehicleDto) {
-    return this.drivers.createVehicle(user.id, dto);
+  createVehicle(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateVehicleDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.createVehicle(user.id, dto, req.ip);
+  }
+
+  @Get('vehicles/:id')
+  getVehicle(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.drivers.getVehicle(user.id, id);
+  }
+
+  @Patch('vehicles/:id')
+  updateVehicle(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateVehicleDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.updateVehicle(user.id, id, dto, req.ip);
+  }
+
+  @Delete('vehicles/:id')
+  deleteVehicle(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.deleteVehicle(user.id, id, req.ip);
   }
 
   @Get('operating-zones')
@@ -96,8 +161,12 @@ export class DriversController {
   }
 
   @Post('operating-zones')
-  createZone(@CurrentUser() user: AuthUser, @Body() dto: UpsertZoneDto) {
-    return this.drivers.upsertZone(user.id, dto);
+  createZone(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpsertZoneDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.upsertZone(user.id, dto, undefined, req.ip);
   }
 
   @Put('operating-zones/:id')
@@ -105,12 +174,17 @@ export class DriversController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpsertZoneDto,
+    @Req() req: { ip?: string },
   ) {
-    return this.drivers.upsertZone(user.id, dto, id);
+    return this.drivers.upsertZone(user.id, dto, id, req.ip);
   }
 
   @Delete('operating-zones/:id')
-  deleteZone(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.drivers.deleteZone(user.id, id);
+  deleteZone(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.deleteZone(user.id, id, req.ip);
   }
 }

@@ -266,9 +266,17 @@ export function DataGrid({
   const start = pageSize === 0 ? 1 : filtered.length === 0 ? 0 : pageSafe * pageSize + 1;
   const end = pageSize === 0 ? filtered.length : Math.min(filtered.length, (pageSafe + 1) * pageSize);
   const enumFacets = visibleCols.filter((c) => (c.type ?? types[c.key]) === 'enum' && canFilter(c)).slice(0, 3);
+  const showFacets = !showFilterRow && enumFacets.length > 0;
 
   return (
-    <div className="dg" data-density={density} data-clickable={onRowClick ? '1' : '0'} data-selectable={selectable ? '1' : '0'} ref={rootRef}>
+    <div
+      className="dg"
+      data-density={density}
+      data-clickable={onRowClick ? '1' : '0'}
+      data-selectable={selectable ? '1' : '0'}
+      data-filters={showFilterRow ? '1' : '0'}
+      ref={rootRef}
+    >
       <div className="dg-toolbar">
         <div className="dg-search-wrap">
           <input
@@ -286,8 +294,9 @@ export function DataGrid({
             type="button"
             className={`btn ghost sm ${showFilterRow ? 'on' : ''}`}
             onClick={() => setShowFilterRow((v) => !v)}
+            aria-pressed={showFilterRow}
           >
-            Filters
+            Filters{activeFilters.length > 0 ? ` (${activeFilters.length})` : ''}
           </button>
           <div className="dg-menu-anchor">
             <button type="button" className="btn ghost sm" onClick={() => setMenu(menu?.kind === 'density' ? null : { kind: 'density' })}>
@@ -345,29 +354,35 @@ export function DataGrid({
 
       {activeFilters.length > 0 && (
         <div className="dg-chips">
+          <span className="dg-chips-label">Active</span>
           {activeFilters.map((c) => (
-            <button key={c.key} type="button" className="chip" onClick={() => setFilter(c.key)}>
-              {c.label}: {filterSummary(filters[c.key]!)} ×
+            <button key={c.key} type="button" className="dg-chip-clear" onClick={() => setFilter(c.key)}>
+              <span className="dg-chip-clear-key">{c.label}</span>
+              <span className="dg-chip-clear-val">{filterSummary(filters[c.key]!)}</span>
+              <span className="dg-chip-clear-x" aria-hidden>×</span>
             </button>
           ))}
+          <button type="button" className="dg-chips-reset" onClick={() => setFilters({})}>
+            Clear filters
+          </button>
         </div>
       )}
 
-      {enumFacets.length > 0 && (
+      {showFacets && (
         <div className="dg-facets">
           {enumFacets.map((col) => {
             const f = filters[col.key];
             const selectedVals = f?.kind === 'enum' ? f.selected : [];
             return (
               <div key={col.key} className="dg-facet">
-                <span className="muted">{col.label}</span>
+                <span className="dg-facet-label">{col.label}</span>
                 {(facets[col.key] ?? []).slice(0, 10).map((v) => {
                   const on = selectedVals.includes(v);
                   return (
                     <button
                       key={v}
                       type="button"
-                      className={`chip ${on ? 'ok' : ''}`}
+                      className={`dg-facet-chip ${on ? 'on' : ''}`}
                       onClick={() => {
                         const next = on ? selectedVals.filter((x) => x !== v) : [...selectedVals, v];
                         setFilter(col.key, { kind: 'enum', selected: next });
@@ -392,26 +407,33 @@ export function DataGrid({
               <div key={i} className="dg-skel-row" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
-          <Empty text={rows.length === 0 ? emptyText : 'No rows match the current search or filters'} />
         ) : (
           <table className="data dg-table">
             <thead>
-              <tr>
+              <tr className="dg-head-row">
                 {selectable && (
                   <th className="dg-sticky dg-check-th">
-                    <input type="checkbox" checked={allPageSelected} onChange={toggleSelectPage} aria-label="Select page" />
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      onChange={toggleSelectPage}
+                      aria-label="Select page"
+                      disabled={pageRows.length === 0}
+                    />
                   </th>
                 )}
                 {visibleCols.map((c, ci) => {
                   const sortIdx = sorts.findIndex((s) => s.key === c.key);
                   const sort = sortIdx >= 0 ? sorts[sortIdx] : undefined;
-                  const w = widths[c.key] ?? c.width;
+                  const colType = c.type ?? types[c.key] ?? 'text';
+                  const minW = c.minWidth ?? defaultMinWidth(colType);
+                  const rawW = widths[c.key] ?? c.width;
+                  const w = rawW != null ? Math.max(rawW, minW) : undefined;
                   return (
                     <th
                       key={c.key}
                       className={`${ci === 0 ? 'dg-sticky-col' : ''} ${filterActive(filters[c.key]) ? 'dg-filtered' : ''}`}
-                      style={{ width: w, minWidth: c.minWidth ?? 88, textAlign: c.align }}
+                      style={{ width: w, minWidth: minW, textAlign: c.align }}
                     >
                       <div className="dg-th">
                         <button
@@ -432,16 +454,17 @@ export function DataGrid({
                               setMenu(menu?.kind === 'filter' && menu.key === c.key ? null : { kind: 'filter', key: c.key });
                             }}
                             aria-label={`Filter ${c.label}`}
+                            title={`Filter ${c.label}`}
                           >
-                            ▾
+                            <FilterIcon />
                           </button>
                         )}
                       </div>
                       {menu?.kind === 'filter' && menu.key === c.key && (
                         <FilterPopover
                           col={c}
-                          type={c.type ?? types[c.key] ?? 'text'}
-                          value={filters[c.key] ?? emptyFilter(c.type ?? types[c.key] ?? 'text')}
+                          type={colType}
+                          value={filters[c.key] ?? emptyFilter(colType)}
                           options={facets[c.key]}
                           onChange={(f) => setFilter(c.key, f)}
                           onClose={() => setMenu(null)}
@@ -466,53 +489,76 @@ export function DataGrid({
               {showFilterRow && (
                 <tr className="dg-filter-row">
                   {selectable && <th className="dg-sticky dg-check-th" />}
-                  {visibleCols.map((c, ci) => (
-                    <th key={c.key} className={ci === 0 ? 'dg-sticky-col' : ''}>
-                      {canFilter(c) ? (
-                        <InlineFilter
-                          type={c.type ?? types[c.key] ?? 'text'}
-                          value={filters[c.key]}
-                          options={facets[c.key]}
-                          onChange={(f) => setFilter(c.key, f)}
-                        />
-                      ) : null}
-                    </th>
-                  ))}
+                  {visibleCols.map((c, ci) => {
+                    const colType = c.type ?? types[c.key] ?? 'text';
+                    const active = filterActive(filters[c.key]);
+                    return (
+                      <th
+                        key={c.key}
+                        className={`${ci === 0 ? 'dg-sticky-col' : ''} ${active ? 'dg-filter-active' : ''}`}
+                      >
+                        {canFilter(c) ? (
+                          <InlineFilter
+                            type={colType}
+                            value={filters[c.key]}
+                            options={facets[c.key]}
+                            onChange={(f) => setFilter(c.key, f)}
+                          />
+                        ) : (
+                          <span className="dg-filter-empty" />
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               )}
             </thead>
             <tbody>
-              {pageRows.map((row, i) => {
-                const id = rowId(row, i);
-                return (
-                  <tr
-                    key={id}
-                    className={`${onRowClick ? 'clickable' : ''} ${selected.has(id) ? 'selected' : ''}`}
-                    onClick={(e) => onRowActivate(row, e)}
-                  >
-                    {selectable && (
-                      <td className="dg-sticky dg-check-th dg-check">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(id)}
-                          onChange={() => toggleSelect(id)}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Select row"
-                        />
-                      </td>
-                    )}
-                    {visibleCols.map((c, ci) => (
-                      <td
-                        key={c.key}
-                        className={ci === 0 ? 'dg-sticky-col' : ''}
-                        style={{ width: widths[c.key] ?? c.width, textAlign: c.align }}
-                      >
-                        {c.render ? c.render(row) : displayCell(cellValue(c, row))}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
+              {filtered.length === 0 ? (
+                <tr className="dg-empty-row">
+                  <td colSpan={(selectable ? 1 : 0) + visibleCols.length}>
+                    <Empty text={rows.length === 0 ? emptyText : 'No rows match the current search or filters'} />
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((row, i) => {
+                  const id = rowId(row, i);
+                  return (
+                    <tr
+                      key={id}
+                      className={`${onRowClick ? 'clickable' : ''} ${selected.has(id) ? 'selected' : ''}`}
+                      onClick={(e) => onRowActivate(row, e)}
+                    >
+                      {selectable && (
+                        <td className="dg-sticky dg-check-th dg-check">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(id)}
+                            onChange={() => toggleSelect(id)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="Select row"
+                          />
+                        </td>
+                      )}
+                      {visibleCols.map((c, ci) => {
+                        const colType = c.type ?? types[c.key] ?? 'text';
+                        const minW = c.minWidth ?? defaultMinWidth(colType);
+                        const rawW = widths[c.key] ?? c.width;
+                        const w = rawW != null ? Math.max(rawW, minW) : undefined;
+                        return (
+                          <td
+                            key={c.key}
+                            className={ci === 0 ? 'dg-sticky-col' : ''}
+                            style={{ width: w, minWidth: minW, textAlign: c.align }}
+                          >
+                            {c.render ? c.render(row) : displayCell(cellValue(c, row))}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         )}
@@ -551,6 +597,20 @@ function displayCell(v: unknown) {
   return String(v);
 }
 
+function defaultMinWidth(type: ColType) {
+  if (type === 'number' || type === 'date') return 156;
+  if (type === 'enum' || type === 'boolean') return 128;
+  return 160;
+}
+
+function FilterIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M1.5 2.75h13l-4.75 5.5v4.5l-3.5-1.75v-2.75L1.5 2.75Z" />
+    </svg>
+  );
+}
+
 function FilterPopover({
   col,
   type,
@@ -572,7 +632,7 @@ function FilterPopover({
     <div className="dg-pop dg-filter-pop" onClick={(e) => e.stopPropagation()}>
       <div className="dg-pop-title">{col.label}</div>
       <InlineFilter type={type} value={value} options={shown} optionSearch={optQ} onOptionSearch={setOptQ} onChange={onChange} stacked />
-      <div className="row" style={{ marginTop: 8 }}>
+      <div className="dg-pop-actions">
         <button type="button" className="btn ghost sm" onClick={() => { onChange(undefined); onClose(); }}>Clear</button>
         <button type="button" className="btn sm" onClick={onClose}>Done</button>
       </div>
@@ -597,6 +657,7 @@ function InlineFilter({
   optionSearch?: string;
   onOptionSearch?: (q: string) => void;
 }) {
+  const active = filterActive(value);
   if (type === 'enum') {
     const selected = value?.kind === 'enum' ? value.selected : [];
     if (stacked) {
@@ -604,7 +665,7 @@ function InlineFilter({
         <div>
           {(options?.length ?? 0) > 8 && (
             <input
-              className="field"
+              className="field dg-pop-search"
               placeholder="Find value…"
               value={optionSearch ?? ''}
               onChange={(e) => onOptionSearch?.(e.target.value)}
@@ -630,9 +691,10 @@ function InlineFilter({
     }
     return (
       <select
-        className="field dg-inline"
+        className={`field dg-inline dg-inline-select ${active ? 'has-value' : ''}`}
         value={selected[0] ?? ''}
         onChange={(e) => onChange(e.target.value ? { kind: 'enum', selected: [e.target.value] } : undefined)}
+        aria-label="Filter"
       >
         <option value="">All</option>
         {(options ?? []).map((o) => (
@@ -645,9 +707,10 @@ function InlineFilter({
     const min = value?.kind === 'number' ? value.min ?? '' : '';
     const max = value?.kind === 'number' ? value.max ?? '' : '';
     return (
-      <div className={stacked ? 'row' : 'dg-range'}>
-        <input className="field dg-inline" placeholder="Min" value={min} onChange={(e) => onChange({ kind: 'number', min: e.target.value, max })} />
-        <input className="field dg-inline" placeholder="Max" value={max} onChange={(e) => onChange({ kind: 'number', min, max: e.target.value })} />
+      <div className={stacked ? 'dg-range stacked' : 'dg-range'}>
+        <input className={`field dg-inline ${min ? 'has-value' : ''}`} placeholder="Min" value={min} onChange={(e) => onChange({ kind: 'number', min: e.target.value, max })} />
+        <span className="dg-range-sep" aria-hidden>–</span>
+        <input className={`field dg-inline ${max ? 'has-value' : ''}`} placeholder="Max" value={max} onChange={(e) => onChange({ kind: 'number', min, max: e.target.value })} />
       </div>
     );
   }
@@ -655,9 +718,10 @@ function InlineFilter({
     const from = value?.kind === 'date' ? value.from ?? '' : '';
     const to = value?.kind === 'date' ? value.to ?? '' : '';
     return (
-      <div className={stacked ? 'row' : 'dg-range'}>
-        <input className="field dg-inline" type="date" value={from} onChange={(e) => onChange({ kind: 'date', from: e.target.value, to })} />
-        <input className="field dg-inline" type="date" value={to} onChange={(e) => onChange({ kind: 'date', from, to: e.target.value })} />
+      <div className={stacked ? 'dg-range stacked' : 'dg-range'}>
+        <input className={`field dg-inline ${from ? 'has-value' : ''}`} type="date" value={from} onChange={(e) => onChange({ kind: 'date', from: e.target.value, to })} />
+        <span className="dg-range-sep" aria-hidden>–</span>
+        <input className={`field dg-inline ${to ? 'has-value' : ''}`} type="date" value={to} onChange={(e) => onChange({ kind: 'date', from, to: e.target.value })} />
       </div>
     );
   }
@@ -665,9 +729,10 @@ function InlineFilter({
     const v = value?.kind === 'boolean' ? value.value ?? '' : '';
     return (
       <select
-        className="field dg-inline"
+        className={`field dg-inline dg-inline-select ${active ? 'has-value' : ''}`}
         value={v}
         onChange={(e) => onChange(e.target.value ? { kind: 'boolean', value: e.target.value as 'true' | 'false' } : undefined)}
+        aria-label="Filter"
       >
         <option value="">All</option>
         <option value="true">Yes</option>
@@ -678,10 +743,11 @@ function InlineFilter({
   const q = value?.kind === 'text' ? value.q : '';
   return (
     <input
-      className="field dg-inline"
-      placeholder="Contains…"
+      className={`field dg-inline ${active ? 'has-value' : ''}`}
+      placeholder="Filter…"
       value={q}
       onChange={(e) => onChange({ kind: 'text', q: e.target.value })}
+      aria-label="Filter"
     />
   );
 }

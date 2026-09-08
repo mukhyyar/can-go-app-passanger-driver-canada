@@ -4,7 +4,9 @@ import {
   Get,
   Headers,
   Param,
+  Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -23,8 +25,11 @@ import {
   CreateOfferDto,
   CreatePaymentIntentDto,
   CreateRideDto,
+  PaymentQuoteDto,
   PricingQuoteDto,
   SelectOfferDto,
+  UpdateOfferDto,
+  ValidateBookDto,
 } from './dto/marketplace.dto';
 
 @Controller()
@@ -51,12 +56,7 @@ export class MarketplaceController {
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Req() req: { ip?: string },
   ) {
-    return this.marketplace.createRide(
-      user.id,
-      dto,
-      idempotencyKey,
-      req.ip,
-    );
+    return this.marketplace.createRide(user.id, dto, idempotencyKey, req.ip);
   }
 
   @Get('rides')
@@ -70,6 +70,14 @@ export class MarketplaceController {
   @UseGuards(JwtAuthGuard)
   getRide(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.marketplace.getRideForActor(user.id, id);
+  }
+
+  @Post('rides/:id/view')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  recordView(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.marketplace.recordRideView(user.id, id);
   }
 
   @Post('rides/:id/cancel')
@@ -95,11 +103,60 @@ export class MarketplaceController {
     return this.marketplace.selectOffer(user.id, id, body.offerId, req.ip);
   }
 
+  @Post('rides/:id/validate-book')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  validateBook(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: ValidateBookDto,
+  ) {
+    return this.marketplace.validateBook(user.id, id, body.offerId);
+  }
+
+  @Get('rides/:id/offers/:offerId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  getOfferDetail(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('offerId') offerId: string,
+  ) {
+    return this.marketplace.getOfferDetail(user.id, id, offerId);
+  }
+
+  @Get('rides/:id/payment-status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  paymentStatus(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.marketplace.getPaymentStatus(user.id, id);
+  }
+
   @Get('driver/requests')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.DRIVER)
   driverRequests(@CurrentUser() user: AuthUser) {
     return this.marketplace.listOpenRequests(user.id);
+  }
+
+  @Get('driver/requests/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  driverRequestDetail(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.marketplace.getDriverRequest(user.id, id);
+  }
+
+  @Post('driver/requests/:id/skip')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  skipRequest(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.skipRequest(user.id, id, req.ip);
   }
 
   @Post('rides/:id/offers')
@@ -110,9 +167,80 @@ export class MarketplaceController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: CreateOfferDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Req() req: { ip?: string },
   ) {
-    return this.marketplace.createOffer(user.id, id, dto, req.ip);
+    return this.marketplace.createOffer(
+      user.id,
+      id,
+      {
+        ...dto,
+        idempotencyKey: dto.idempotencyKey ?? idempotencyKey,
+      },
+      req.ip,
+    );
+  }
+
+  @Patch('rides/:id/offers/:offerId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  updateOffer(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('offerId') offerId: string,
+    @Body() dto: UpdateOfferDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.updateOffer(
+      user.id,
+      id,
+      offerId,
+      {
+        ...dto,
+        idempotencyKey: dto.idempotencyKey ?? idempotencyKey,
+      },
+      req.ip,
+    );
+  }
+
+  @Post('offers/:offerId/withdraw')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  withdrawOffer(
+    @CurrentUser() user: AuthUser,
+    @Param('offerId') offerId: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.withdrawOffer(user.id, offerId, req.ip);
+  }
+
+  @Get('offers/:offerId/reviews')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  listOfferReviews(
+    @CurrentUser() user: AuthUser,
+    @Param('offerId') offerId: string,
+    @Query('cursor') cursor?: string,
+    @Query('take') take?: string,
+  ) {
+    return this.marketplace.listOfferReviews(user.id, offerId, {
+      cursor,
+      take: take != null ? Number(take) : undefined,
+    });
+  }
+
+  @Post('payments/quote')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  paymentQuote(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: PaymentQuoteDto,
+  ) {
+    return this.marketplace.getPaymentQuote(user.id, dto);
   }
 
   @Post('payments/intents')
@@ -139,8 +267,7 @@ export class MarketplaceController {
     },
   ) {
     const raw =
-      req.rawBody ??
-      Buffer.from(JSON.stringify(req.body ?? {}), 'utf8');
+      req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}), 'utf8');
     return this.marketplace.handlePaymentWebhook(provider, req.headers, raw);
   }
 }

@@ -89,8 +89,91 @@ class MarketplaceApi {
   Future<Map<String, dynamic>> selectOffer(String rideId, String offerId) =>
       client.post('/rides/$rideId/select-offer', body: {'offerId': offerId});
 
-  Future<Map<String, dynamic>> createPaymentIntent(String rideId) =>
-      client.post('/payments/intents', body: {'rideId': rideId});
+  Future<Map<String, dynamic>> validateBook(String rideId, String offerId) =>
+      client.post('/rides/$rideId/validate-book', body: {'offerId': offerId});
+
+  Future<Map<String, dynamic>> paymentQuote({
+    required String rideId,
+    required String offerId,
+    String? paymentMode,
+    String? platform,
+  }) {
+    return client.post(
+      '/payments/quote',
+      body: {
+        'rideId': rideId,
+        'offerId': offerId,
+        if (paymentMode != null) 'paymentMode': paymentMode,
+        if (platform != null) 'platform': platform,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> createPaymentIntent(
+    String rideId, {
+    String? paymentMode,
+    String? paymentMethod,
+    bool? termsAccepted,
+    String? termsVersion,
+    String? policyVersion,
+    String? platform,
+    String? idempotencyKey,
+  }) {
+    return client.post(
+      '/payments/intents',
+      idempotencyKey: idempotencyKey,
+      body: {
+        'rideId': rideId,
+        if (paymentMode != null) 'paymentMode': paymentMode,
+        if (paymentMethod != null) 'paymentMethod': paymentMethod,
+        if (termsAccepted != null) 'termsAccepted': termsAccepted,
+        if (termsVersion != null) 'termsVersion': termsVersion,
+        if (policyVersion != null) 'policyVersion': policyVersion,
+        if (platform != null) 'platform': platform,
+        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> getOffer(String rideId, String offerId) =>
+      client.get('/rides/$rideId/offers/$offerId');
+
+  Future<Map<String, dynamic>> listOfferReviews(
+    String offerId, {
+    String? cursor,
+    int? take,
+  }) {
+    final params = <String>[];
+    if (cursor != null && cursor.isNotEmpty) {
+      params.add('cursor=${Uri.encodeQueryComponent(cursor)}');
+    }
+    if (take != null) params.add('take=$take');
+    final q = params.isEmpty ? '' : '?${params.join('&')}';
+    return client.get('/offers/$offerId/reviews$q');
+  }
+
+  Future<Map<String, dynamic>> paymentStatus(String rideId) =>
+      client.get('/rides/$rideId/payment-status');
+
+  Future<Map<String, dynamic>> recordRideView(String rideId) =>
+      client.post('/rides/$rideId/view', body: {});
+
+  Future<Map<String, dynamic>> registerDeviceToken({
+    required String token,
+    required String platform,
+    required String appRole,
+    String? deviceId,
+  }) {
+    return client.post(
+      '/notifications/device-tokens',
+      body: {
+        'token': token,
+        'platform': platform,
+        'appRole': appRole,
+        if (deviceId != null) 'deviceId': deviceId,
+      },
+    );
+  }
 
   Future<Map<String, dynamic>> cancelRide(String rideId) =>
       client.post('/rides/$rideId/cancel', body: {});

@@ -17,6 +17,9 @@ import {
   ConsumeImpersonationDto,
   LoginDto,
   LogoutDto,
+  OAuthAppleDto,
+  OAuthGoogleDto,
+  OAuthLinkPhoneDto,
   OtpSendDto,
   OtpVerifyDto,
   PasswordResetConfirmDto,
@@ -32,6 +35,41 @@ import { CurrentUser, type AuthUser } from './decorators/current-user.decorator'
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
+
+  @Get('oauth/config')
+  oauthConfig() {
+    return this.auth.oauthConfig();
+  }
+
+  @Post('oauth/google')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  oauthGoogle(
+    @Body() dto: OAuthGoogleDto,
+    @Req() req: { ip?: string; headers: Record<string, string> },
+  ) {
+    return this.auth.oauthGoogle(dto, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('oauth/apple')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  oauthApple(
+    @Body() dto: OAuthAppleDto,
+    @Req() req: { ip?: string; headers: Record<string, string> },
+  ) {
+    return this.auth.oauthApple(dto, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+  }
+
+  @Post('oauth/link-phone')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  linkOAuthPhone(@Body() dto: OAuthLinkPhoneDto) {
+    return this.auth.linkOAuthPhone(dto);
+  }
 
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60000 } })

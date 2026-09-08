@@ -26,7 +26,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         adminRole: { include: { permissions: true } },
       },
     });
-    if (!user || user.isSuspended) {
+    if (!user || user.isSuspended || user.archivedAt) {
       throw new UnauthorizedException('Invalid or suspended user');
     }
 

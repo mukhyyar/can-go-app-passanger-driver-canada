@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
@@ -14,11 +16,14 @@ class AppState extends ChangeNotifier {
   final CanGoSession api = CanGoSession();
 
   static const _onboardedKey = 'passenger_onboarded';
+  static const _placeHistoryPrefix = 'passenger_place_history_';
+  static const _maxPlaceHistory = 12;
 
   bool onboarded = false;
   bool ready = false;
   bool isAuthenticated = false;
   Map<String, dynamic>? me;
+  List<Place> placeSearchHistory = const [];
   final Map<String, List<Offer>> _serverOffers = {};
   final Map<String, String> _serverRideStatus = {};
 
@@ -74,21 +79,103 @@ class AppState extends ChangeNotifier {
   int get completedRideCount =>
       repo.rides.where((r) => r.status == RideStatus.past).length;
 
+  String get _placeHistoryUserKey {
+    final id = me?['id']?.toString();
+    if (id != null && id.isNotEmpty) return id;
+    return 'guest';
+  }
+
+  String get _placeHistoryPrefsKey =>
+      '$_placeHistoryPrefix$_placeHistoryUserKey';
+
   Future<void> _bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
     onboarded = prefs.getBool(_onboardedKey) ?? false;
+    // Never show hardcoded demo rides in the passenger app.
+    repo.rides.clear();
     isAuthenticated = await api.isAuthenticated();
     if (isAuthenticated) {
       try {
         me = await api.auth.me();
+        _syncLocalProfileFromMe();
         await refreshRidesFromServer();
       } catch (_) {
         isAuthenticated = false;
+        me = null;
+        _clearLocalProfile();
         await api.clear();
       }
+    } else {
+      me = null;
+      _clearLocalProfile();
     }
+    await _loadPlaceSearchHistory();
     ready = true;
     notifyListeners();
+  }
+
+  Future<void> _loadPlaceSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_placeHistoryPrefsKey);
+    if (raw == null || raw.isEmpty) {
+      placeSearchHistory = const [];
+      return;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) {
+        placeSearchHistory = const [];
+        return;
+      }
+      placeSearchHistory = decoded
+          .whereType<Map>()
+          .map((e) => Place(
+                id: e['id']?.toString() ?? '',
+                label: e['label']?.toString() ?? '',
+                subtitle: e['subtitle']?.toString() ?? '',
+                lat: (e['lat'] as num?)?.toDouble() ?? 0,
+                lng: (e['lng'] as num?)?.toDouble() ?? 0,
+              ))
+          .where((p) => p.label.trim().isNotEmpty)
+          .toList();
+    } catch (_) {
+      placeSearchHistory = const [];
+    }
+  }
+
+  Future<void> addPlaceToSearchHistory(Place place) async {
+    final label = place.label.trim();
+    if (label.isEmpty) return;
+
+    final next = <Place>[
+      place,
+      ...placeSearchHistory.where((p) {
+        if (place.id.isNotEmpty && p.id == place.id) return false;
+        return p.label.trim().toLowerCase() != label.toLowerCase();
+      }),
+    ];
+    if (next.length > _maxPlaceHistory) {
+      placeSearchHistory = next.sublist(0, _maxPlaceHistory);
+    } else {
+      placeSearchHistory = next;
+    }
+    notifyListeners();
+
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(
+      placeSearchHistory
+          .map(
+            (p) => {
+              'id': p.id,
+              'label': p.label,
+              'subtitle': p.subtitle,
+              'lat': p.lat,
+              'lng': p.lng,
+            },
+          )
+          .toList(),
+    );
+    await prefs.setString(_placeHistoryPrefsKey, encoded);
   }
 
   Future<Map<String, dynamic>> register({
@@ -106,16 +193,59 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  Future<Map<String, dynamic>> sendPhoneOtp(
+    String phoneE164, {
+    String purpose = 'login',
+  }) {
+    return api.auth.sendOtp(phoneE164: phoneE164, purpose: purpose);
+  }
+
+  Future<OAuthConfig> loadOAuthConfig() => api.auth.oauthConfig();
+
+  Future<OAuthResult> oauthGoogle({
+    String? idToken,
+    String? email,
+    String? fullName,
+  }) async {
+    final result = await api.auth.oauthGoogle(
+      idToken: idToken,
+      email: email,
+      fullName: fullName,
+    );
+    if (!result.requiresPhoneLink) await _afterAuth();
+    return result;
+  }
+
+  Future<OAuthResult> oauthApple({
+    String? idToken,
+    String? email,
+    String? fullName,
+  }) async {
+    final result = await api.auth.oauthApple(
+      idToken: idToken,
+      email: email,
+      fullName: fullName,
+    );
+    if (!result.requiresPhoneLink) await _afterAuth();
+    return result;
+  }
+
+  Future<Map<String, dynamic>> linkOAuthPhone({
+    required String linkToken,
+    required String phoneE164,
+  }) {
+    return api.auth.linkOAuthPhone(
+      linkToken: linkToken,
+      phoneE164: phoneE164,
+    );
+  }
+
   Future<void> verifyOtp({
     required String challengeId,
     required String code,
   }) async {
     await api.auth.verifyOtp(challengeId: challengeId, code: code);
-    me = await api.auth.me();
-    isAuthenticated = true;
-    await setOnboarded(true);
-    await refreshRidesFromServer();
-    notifyListeners();
+    await _afterAuth();
   }
 
   Future<void> login({
@@ -123,11 +253,36 @@ class AppState extends ChangeNotifier {
     required String password,
   }) async {
     await api.auth.login(email: email, password: password);
+    await _afterAuth();
+  }
+
+  Future<void> _afterAuth() async {
     me = await api.auth.me();
     isAuthenticated = true;
+    _syncLocalProfileFromMe();
     await setOnboarded(true);
     await refreshRidesFromServer();
+    await _loadPlaceSearchHistory();
     notifyListeners();
+  }
+
+  void _syncLocalProfileFromMe() {
+    final m = me;
+    if (m == null) {
+      _clearLocalProfile();
+      return;
+    }
+    repo.passenger.fullName = m['fullName']?.toString() ?? '';
+    repo.passenger.email = m['email']?.toString() ?? '';
+    repo.passenger.phone = m['phoneE164']?.toString() ??
+        m['phone']?.toString() ??
+        '';
+  }
+
+  void _clearLocalProfile() {
+    repo.passenger.fullName = '';
+    repo.passenger.email = '';
+    repo.passenger.phone = '';
   }
 
   Future<void> refreshRidesFromServer() async {
@@ -145,12 +300,8 @@ class AppState extends ChangeNotifier {
         final id = r['id'] as String?;
         final status = r['status'] as String?;
         if (id != null && status != null) _serverRideStatus[id] = status;
-        final offers = r['offers'];
-        if (id != null && offers is List) {
-          _serverOffers[id] = offers
-              .whereType<Map>()
-              .map((o) => offerFromServer(Map<String, dynamic>.from(o)))
-              .toList();
+        if (id != null) {
+          _serverOffers[id] = _parseOffersList(r['offers']);
         }
       }
       notifyListeners();
@@ -158,6 +309,283 @@ class AppState extends ChangeNotifier {
       debugPrint('refreshRidesFromServer: $e');
     }
   }
+
+  List<Offer> _parseOffersList(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <Offer>[];
+    for (final item in raw) {
+      try {
+        if (item is Map) {
+          out.add(offerFromServer(Map<String, dynamic>.from(item)));
+        }
+      } catch (e, st) {
+        debugPrint('offer parse skipped: $e\n$st');
+      }
+    }
+    return out;
+  }
+
+  /// Refresh a single ride (and its offers) from GET /rides/:id.
+  Future<RideRequest?> refreshRide(String rideId) async {
+    if (!isAuthenticated) return rideById(rideId);
+    try {
+      final raw = await api.marketplace.getRide(rideId);
+      final ride = rideFromServer(raw);
+      final idx = repo.rides.indexWhere((r) => r.id == rideId);
+      if (idx >= 0) {
+        repo.rides[idx] = ride;
+      } else {
+        repo.rides.insert(0, ride);
+      }
+      _serverRideStatus[rideId] = raw['status'] as String? ?? ride.serverStatus ?? '';
+      _serverOffers[rideId] = _parseOffersList(raw['offers']);
+      notifyListeners();
+      return ride;
+    } catch (e) {
+      debugPrint('refreshRide: $e');
+      return rideById(rideId);
+    }
+  }
+
+  /// Unread-style badge: sum of offer counts on upcoming rides awaiting selection.
+  int get unreadOfferBadge {
+    return repo.rides
+        .where((r) =>
+            r.status == RideStatus.chooseOffer ||
+            r.status == RideStatus.waitingOffers)
+        .fold<int>(0, (sum, r) => sum + r.offerCount);
+  }
+
+  /// Last payment quote / intent metadata for booking-confirmed UI.
+  Map<String, dynamic>? lastPaymentQuote;
+  Map<String, dynamic>? lastPaymentResult;
+
+  /// Pending deep-link target after auth / splash.
+  String? pendingDeepLinkRideId;
+  String? pendingDeepLinkOfferId;
+
+  void applyDeepLink({required String rideId, String? offerId}) {
+    pendingDeepLinkRideId = rideId;
+    pendingDeepLinkOfferId = offerId;
+    notifyListeners();
+  }
+
+  /// Consumes pending deep link and returns a go_router path, or null.
+  String? consumeDeepLinkPath() {
+    final rideId = pendingDeepLinkRideId;
+    if (rideId == null || rideId.isEmpty) return null;
+    final offerId = pendingDeepLinkOfferId;
+    pendingDeepLinkRideId = null;
+    pendingDeepLinkOfferId = null;
+    if (offerId != null && offerId.isNotEmpty) {
+      return '/offers/$rideId?offerId=$offerId';
+    }
+    return '/offers/$rideId';
+  }
+
+  Future<Map<String, dynamic>> validateBook(String rideId, String offerId) {
+    return api.marketplace.validateBook(rideId, offerId);
+  }
+
+  Future<Map<String, dynamic>> getPaymentQuote(
+    String rideId,
+    String offerId, {
+    String? paymentMode,
+    String? platform,
+  }) async {
+    final raw = await api.marketplace.paymentQuote(
+      rideId: rideId,
+      offerId: offerId,
+      paymentMode: paymentMode,
+      platform: platform ?? (kIsWeb ? 'web' : defaultTargetPlatform.name),
+    );
+    // Backend nests amounts under paymentQuote; flatten for UI.
+    final nested = raw['paymentQuote'];
+    final Map<String, dynamic> quote;
+    if (nested is Map) {
+      quote = {
+        ...Map<String, dynamic>.from(nested),
+        if (raw['cancellationPolicy'] != null)
+          'cancellationPolicy': raw['cancellationPolicy'],
+        if (raw['paymentMethods'] != null)
+          'paymentMethods': raw['paymentMethods'],
+        if (raw['partialEnabled'] != null)
+          'partialEnabled': raw['partialEnabled'],
+      };
+    } else {
+      quote = Map<String, dynamic>.from(raw);
+    }
+    // partialEnabled may only live on nested quote
+    if (quote['partialEnabled'] == null && nested is Map) {
+      quote['partialEnabled'] = nested['partialEnabled'];
+    }
+    lastPaymentQuote = quote;
+    notifyListeners();
+    return quote;
+  }
+
+  Future<Offer?> fetchOffer(String rideId, String offerId) async {
+    if (!isAuthenticated) return offerByIds(rideId, offerId);
+    try {
+      final raw = await api.marketplace.getOffer(rideId, offerId);
+      final offer = offerFromServer(raw);
+      final list = List<Offer>.from(_serverOffers[rideId] ?? const []);
+      final idx = list.indexWhere((o) => o.id == offerId);
+      if (idx >= 0) {
+        list[idx] = offer;
+      } else {
+        list.add(offer);
+      }
+      _serverOffers[rideId] = list;
+      notifyListeners();
+      return offer;
+    } catch (e) {
+      debugPrint('fetchOffer: $e');
+      return offerByIds(rideId, offerId);
+    }
+  }
+
+  Future<List<Review>> fetchOfferReviews(String offerId) async {
+    try {
+      final raw = await api.marketplace.listOfferReviews(offerId);
+      final list = (raw['_list'] as List?) ??
+          (raw['reviews'] as List?) ??
+          (raw['items'] as List?) ??
+          [];
+      return list.whereType<Map>().map((r) {
+        DateTime? created;
+        final ca = r['createdAt'];
+        if (ca is String) created = DateTime.tryParse(ca);
+        return Review(
+          stars: (r['stars'] as num?)?.toInt() ?? 0,
+          text: r['text']?.toString() ?? '',
+          fromLanguage: r['translatedFrom']?.toString() ??
+              r['fromLanguage']?.toString(),
+          createdAt: created,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('fetchOfferReviews: $e');
+      return const [];
+    }
+  }
+
+  Future<Map<String, dynamic>> getPaymentStatus(String rideId) =>
+      api.marketplace.paymentStatus(rideId);
+
+  Future<void> recordRideView(String rideId) async {
+    if (!isAuthenticated) return;
+    try {
+      final res = await api.marketplace.recordRideView(rideId);
+      final count = (res['viewCount'] as num?)?.toInt();
+      if (count != null) {
+        final idx = repo.rides.indexWhere((r) => r.id == rideId);
+        if (idx >= 0) {
+          final existing = repo.rides[idx];
+          repo.rides[idx] = RideRequest(
+            id: existing.id,
+            datetimeLabel: existing.datetimeLabel,
+            from: existing.from,
+            to: existing.to,
+            distance: existing.distance,
+            duration: existing.duration,
+            timeBadge: existing.timeBadge,
+            status: existing.status,
+            offerCount: existing.offerCount,
+            returnLabel: existing.returnLabel,
+            selectedOfferId: existing.selectedOfferId,
+            serverStatus: existing.serverStatus,
+            shortId: existing.shortId,
+            createdAtLabel: existing.createdAtLabel,
+            viewCount: count,
+            currency: existing.currency,
+          );
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('recordRideView: $e');
+    }
+  }
+
+  /// Select offer then create payment intent using server-quoted amounts only.
+  Future<Map<String, dynamic>> pay({
+    required String rideId,
+    required String offerId,
+    required String paymentMode,
+    required String paymentMethod,
+    required bool termsAccepted,
+    String? idempotencyKey,
+  }) async {
+    await selectOffer(rideId, offerId);
+    final result = await api.marketplace.createPaymentIntent(
+      rideId,
+      paymentMode: paymentMode,
+      paymentMethod: paymentMethod,
+      termsAccepted: termsAccepted,
+      platform: kIsWeb ? 'web' : defaultTargetPlatform.name,
+      idempotencyKey: idempotencyKey,
+    );
+    lastPaymentResult = result;
+    await refreshRide(rideId);
+    notifyListeners();
+    return result;
+  }
+
+  Future<void> selectOffer(String rideId, String offerId) async {
+    if (isAuthenticated) {
+      final updated = await api.marketplace.selectOffer(rideId, offerId);
+      final ride = rideFromServer(updated);
+      final idx = repo.rides.indexWhere((r) => r.id == rideId);
+      if (idx >= 0) {
+        repo.rides[idx] = ride;
+      } else {
+        repo.rides.insert(0, ride);
+      }
+      _serverRideStatus[rideId] =
+          updated['status'] as String? ?? 'PAYMENT_PENDING';
+      notifyListeners();
+      return;
+    }
+    repo.selectOffer(rideId, offerId);
+    notifyListeners();
+  }
+
+  /// @deprecated Prefer [pay] with explicit mode/method.
+  Future<void> paySelectedOffer(String rideId) async {
+    await api.marketplace.createPaymentIntent(rideId);
+    await refreshRidesFromServer();
+    notifyListeners();
+  }
+
+  Future<void> registerPushTokenIfAvailable({
+    required String token,
+    required String platform,
+  }) async {
+    if (!isAuthenticated) return;
+    try {
+      await api.marketplace.registerDeviceToken(
+        token: token,
+        platform: platform,
+        appRole: kIsWeb ? 'PASSENGER_WEB' : 'PASSENGER',
+      );
+    } catch (e) {
+      debugPrint('registerPushTokenIfAvailable: $e');
+    }
+  }
+
+  void onAppResumed() {
+    if (isAuthenticated) {
+      refreshRidesFromServer();
+    }
+  }
+
+  void setShellTab(int index) {
+    shellTabIndex = index;
+    notifyListeners();
+  }
+
+  void refresh() => notifyListeners();
 
   Future<void> setOnboarded(bool value) async {
     onboarded = value;
@@ -351,6 +779,14 @@ class AppState extends ChangeNotifier {
     if (fullName != null) repo.passenger.fullName = fullName;
     if (email != null) repo.passenger.email = email;
     if (phone != null) repo.passenger.phone = phone;
+    if (me != null) {
+      me = {
+        ...me!,
+        if (fullName != null) 'fullName': fullName,
+        if (email != null) 'email': email,
+        if (phone != null) 'phoneE164': phone,
+      };
+    }
     notifyListeners();
   }
 
@@ -374,21 +810,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void logoutSim() {
-    // Prototype: clear local draft only
+  Future<void> logout() async {
+    final refresh = await api.client.tokens.readRefresh();
+    await api.auth.logout(refreshToken: refresh);
     from = null;
     to = null;
     comment = '';
     promoEnabled = false;
     promoCode = '';
     termsAccepted = false;
+    me = null;
+    isAuthenticated = false;
+    _clearLocalProfile();
+    placeSearchHistory = const [];
+    notifyListeners();
+    await _loadPlaceSearchHistory();
     notifyListeners();
   }
 
+  /// Kept for older call sites; prefer [logout].
+  void logoutSim() {
+    logout();
+  }
+
   void deleteAccountSim() {
-    repo.passenger.fullName = '';
-    repo.passenger.email = '';
-    repo.passenger.phone = '';
+    _clearLocalProfile();
     logoutSim();
   }
 
@@ -522,12 +968,16 @@ class AppState extends ChangeNotifier {
       to: toLabel,
       distance: ride.distance,
       duration: ride.duration,
-      timeBadge: timeBadge,
+      timeBadge: timeBadge ?? ride.timeBadge,
       status: ride.status,
       offerCount: ride.offerCount,
-      returnLabel: returnLabel,
+      returnLabel: returnLabel ?? ride.returnLabel,
       selectedOfferId: ride.selectedOfferId,
       serverStatus: ride.serverStatus,
+      shortId: ride.shortId,
+      createdAtLabel: ride.createdAtLabel,
+      viewCount: ride.viewCount,
+      currency: ride.currency,
     );
     final idx = repo.rides.indexWhere((r) => r.id == local.id);
     if (idx >= 0) {
@@ -545,40 +995,12 @@ class AppState extends ChangeNotifier {
   String _formatDate(DateTime d) => formatDateTimeLabel(d);
 
   List<Offer> offersFor(String rideId) {
+    // Authenticated passengers only see real server offers (never mock bids).
+    if (isAuthenticated) {
+      return _serverOffers[rideId] ?? const [];
+    }
     final cached = _serverOffers[rideId];
-    if (cached != null && cached.isNotEmpty) return cached;
+    if (cached != null) return cached;
     return repo.offersFor(rideId);
   }
-
-  Future<void> selectOffer(String rideId, String offerId) async {
-    if (isAuthenticated) {
-      final updated = await api.marketplace.selectOffer(rideId, offerId);
-      final ride = rideFromServer(updated);
-      final idx = repo.rides.indexWhere((r) => r.id == rideId);
-      if (idx >= 0) {
-        repo.rides[idx] = ride;
-      } else {
-        repo.rides.insert(0, ride);
-      }
-      _serverRideStatus[rideId] =
-          updated['status'] as String? ?? 'PAYMENT_PENDING';
-      notifyListeners();
-      return;
-    }
-    repo.selectOffer(rideId, offerId);
-    notifyListeners();
-  }
-
-  Future<void> paySelectedOffer(String rideId) async {
-    await api.marketplace.createPaymentIntent(rideId);
-    await refreshRidesFromServer();
-    notifyListeners();
-  }
-
-  void setShellTab(int index) {
-    shellTabIndex = index;
-    notifyListeners();
-  }
-
-  void refresh() => notifyListeners();
 }

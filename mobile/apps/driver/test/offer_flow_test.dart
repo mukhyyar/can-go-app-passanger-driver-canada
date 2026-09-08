@@ -1,0 +1,134 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gt_api/gt_api.dart';
+import 'package:gt_mock/gt_mock.dart';
+
+import 'package:driver/offer/offer_helpers.dart';
+
+void main() {
+  group('MoneyFormat', () {
+    test('formats USD without hardcoding amounts', () {
+      expect(MoneyFormat.format(95, 'USD'), 'US\$95');
+      expect(MoneyFormat.formatFlexible(12.5, 'CAD'), 'CA\$12.50');
+    });
+  });
+
+  group('OfferDraft', () {
+    test('copy preserves fields', () {
+      final d = OfferDraft(
+        vehicleId: 'v1',
+        outboundPrice: 100,
+        returnPrice: 80,
+        validForSeconds: 3600,
+        selectedOptions: {'wifi', 'name_sign'},
+      );
+      final c = d.copy();
+      expect(c.vehicleId, 'v1');
+      expect(c.outboundPrice, 100);
+      expect(c.returnPrice, 80);
+      expect(c.validForSeconds, 3600);
+      expect(c.selectedOptions, {'wifi', 'name_sign'});
+      c.selectedOptions.add('water');
+      expect(d.selectedOptions.contains('water'), isFalse);
+    });
+  });
+
+  group('driverRequestFromServer', () {
+    test('maps round-trip guidance and coords', () {
+      final req = driverRequestFromServer({
+        'id': 'ride_1',
+        'fromLabel': 'A street',
+        'toLabel': 'B street',
+        'fromLat': 43.6,
+        'fromLng': -79.6,
+        'toLat': 43.1,
+        'toLng': -79.0,
+        'pickupAt': '2026-09-28T20:30:00.000Z',
+        'returnAt': '2026-10-02T11:00:00.000Z',
+        'isRoundTrip': true,
+        'adults': 2,
+        'currency': 'USD',
+        'vehicleClassIds': ['Economy'],
+        'signage': 'John',
+        'requiredOptions': ['name_sign'],
+        'comment': 'One bag',
+        'priceSnapshot': {
+          'distanceKm': 254,
+          'durationMin': 160,
+          'guidanceAmount': 160,
+          'minBid': 95,
+          'maxBid': 228,
+          'platformCommissionPct': 13,
+          'isRoundTrip': true,
+          'legs': 2,
+        },
+        'myOffers': [],
+        'createdAt': DateTime.now()
+            .subtract(const Duration(minutes: 3))
+            .toIso8601String(),
+      });
+      expect(req.isRoundTrip, isTrue);
+      expect(req.fromLat, 43.6);
+      expect(req.pricing?.minBid, 95);
+      expect(req.pricing?.maxBid, 228);
+      expect(req.pricing?.platformCommissionPct, 13);
+      expect(req.requiredOptions, contains('name_sign'));
+      expect(req.comment, 'One bag');
+      expect(req.distance.contains('×'), isTrue);
+    });
+
+    test('one-way does not invent return price fields', () {
+      final req = driverRequestFromServer({
+        'id': 'ride_2',
+        'fromLabel': 'A',
+        'toLabel': 'B',
+        'pickupAt': '2026-09-28T20:30:00.000Z',
+        'isRoundTrip': false,
+        'adults': 1,
+        'currency': 'USD',
+        'vehicleClassIds': ['Van'],
+        'priceSnapshot': {
+          'distanceKm': 36,
+          'durationMin': 30,
+          'guidanceAmount': 80,
+          'minBid': 60,
+          'maxBid': 120,
+          'platformCommissionPct': 15,
+        },
+      });
+      expect(req.isRoundTrip, isFalse);
+      expect(req.returnDatetimeLabel, isNull);
+    });
+  });
+
+  group('validity options', () {
+    test('matches screenshot durations', () {
+      expect(kOfferValidityOptions.map((e) => e.label).toList(), [
+        '30 min',
+        '1 h',
+        '2 h',
+        '8 h',
+        '12 h',
+        '1 d',
+        '2 d',
+        '4 d',
+        '6 d',
+      ]);
+    });
+  });
+
+  group('DriverVehicle', () {
+    test('fromJson', () {
+      final v = DriverVehicle.fromJson({
+        'id': 'v1',
+        'name': 'Honda City',
+        'plate': 'BW238J',
+        'vehicleClass': 'sedan',
+        'amenities': {'Free Wi-Fi': true},
+        'isActive': true,
+      });
+      expect(v.name, 'Honda City');
+      expect(v.plate, 'BW238J');
+      expect(v.amenities['Free Wi-Fi'], isTrue);
+    });
+  });
+}

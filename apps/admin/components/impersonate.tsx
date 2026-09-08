@@ -53,11 +53,11 @@ export function ImpersonateButton({
     <>
       {variant === 'menu' ? (
         <button type="button" className="menu-item" onClick={() => setOpen(true)}>
-          Login as driver
+          Login as user
         </button>
       ) : (
         <button className={`btn sm ${variant === 'ghost' ? 'ghost' : ''}`} onClick={() => setOpen(true)}>
-          {variant === 'ghost' ? 'Login as driver' : `Login as ${name ? name.split(' ')[0] : 'user'}`}
+          {variant === 'ghost' ? 'Login as' : `Login as ${name ? name.split(' ')[0] : 'user'}`}
         </button>
       )}
       {open && (

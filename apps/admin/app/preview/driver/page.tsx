@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { api, API_BASE } from '../../lib/api';
+import { api, API_BASE } from '@/lib/api';
 
 type Tokens = {
   accessToken: string;

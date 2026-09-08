@@ -29,11 +29,12 @@ import {
 import {
   ACTIVE_TRIP,
   CANCELLED,
+  CANCELLED_OR_UNFULFILLED,
   FAIL_STATUSES,
-  FAILED_EXPIRED,
   OPEN_REQ,
   PAID_STATUSES,
   PENDING_PAY,
+  UNFULFILLED,
   parseAnalyticsQuery,
   rideFilterSql,
   rideWhere,
@@ -383,6 +384,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     const paxCancel = byStatus[RideStatus.PASSENGER_CANCELLED] ?? 0;
     const drvCancel = byStatus[RideStatus.DRIVER_CANCELLED] ?? 0;
     const cancelled = CANCELLED.reduce((s, st) => s + (byStatus[st] ?? 0), 0);
+    const unfulfilled = UNFULFILLED.reduce((s, st) => s + (byStatus[st] ?? 0), 0);
     const valid = Math.max(1, requests - (byStatus[RideStatus.PAYMENT_FAILED] ?? 0));
     const gmv = asNum(gmvAgg._sum.amount);
     const refunds = asNum(refundAgg._sum.amount);
@@ -394,12 +396,14 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     const arrived = byStatus[RideStatus.DRIVER_ARRIVED] ?? 0;
     const started =
       (byStatus[RideStatus.TRIP_STARTED] ?? 0) + (byStatus[RideStatus.IN_PROGRESS] ?? 0);
-    const failed = FAILED_EXPIRED.reduce((s, st) => s + (byStatus[st] ?? 0), 0);
+    // Failed payment only — EXPIRED counted under unfulfilled, not double-counted as failed
+    const failed = byStatus[RideStatus.PAYMENT_FAILED] ?? 0;
 
     return {
       requests,
       completed,
       cancelled,
+      unfulfilled,
       searching,
       assigned,
       arrived,
@@ -423,6 +427,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       acceptanceRate: acceptanceRate(acceptedOffers, offers),
       driverCancelRate: cancellationRate(drvCancel, valid),
       paxCancelRate: cancellationRate(paxCancel, valid),
+      unfulfilledRate: cancellationRate(unfulfilled, valid),
       offers,
       acceptedOffers,
       newPassengers: newPax,
@@ -881,7 +886,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         COALESCE(SUM(COALESCE((r."priceSnapshot"->>'passengerTotal')::numeric, (r."priceSnapshot"->>'bidAmount')::numeric, 0))
           FILTER (WHERE r."status" = 'COMPLETED'), 0) AS revenue,
         CASE WHEN COUNT(*) = 0 THEN 0
-          ELSE ROUND(100.0 * COUNT(*) FILTER (WHERE r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED','EXPIRED','NO_SHOW')) / COUNT(*), 1)
+          ELSE ROUND(100.0 * COUNT(*) FILTER (WHERE r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED')) / COUNT(*), 1)
         END AS cancel_pct,
         0::numeric AS avg_eta
       FROM "Ride" r
@@ -1438,7 +1443,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     });
     const zones = await this.zoneTable(q, resolved);
     const cancels = points.filter((p) =>
-      ['PASSENGER_CANCELLED', 'DRIVER_CANCELLED', 'ADMIN_CANCELLED', 'EXPIRED', 'NO_SHOW'].includes(
+      ['PASSENGER_CANCELLED', 'DRIVER_CANCELLED', 'ADMIN_CANCELLED'].includes(
         p.status,
       ),
     );
@@ -1481,11 +1486,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       FROM "Ride" r
       LEFT JOIN LATERAL (
         SELECT payload, "toStatus" FROM "RideEvent" e
-        WHERE e."rideId" = r.id AND e."toStatus" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED','EXPIRED','NO_SHOW')
+        WHERE e."rideId" = r.id AND e."toStatus" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED')
         ORDER BY e."createdAt" DESC LIMIT 1
       ) e ON TRUE
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
-        AND r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED','EXPIRED','NO_SHOW')
+        AND r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED')
         AND ${extra}
       GROUP BY 1, 2
       ORDER BY n DESC
@@ -1494,7 +1499,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       SELECT EXTRACT(HOUR FROM r."createdAt" AT TIME ZONE ${tz})::int AS hour, COUNT(*)::int AS n
       FROM "Ride" r
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
-        AND r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED','EXPIRED','NO_SHOW')
+        AND r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED')
         AND ${extra}
       GROUP BY 1
     `;
@@ -1831,7 +1836,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         EXTRACT(HOUR FROM r."createdAt" AT TIME ZONE ${tz})::int AS hour,
         COUNT(*)::int AS requests,
         COALESCE(SUM(COALESCE((r."priceSnapshot"->>'passengerTotal')::numeric, 0)) FILTER (WHERE r."status" = 'COMPLETED'), 0) AS revenue,
-        COUNT(*) FILTER (WHERE r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED','EXPIRED','NO_SHOW'))::int AS cancels,
+        COUNT(*) FILTER (WHERE r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED'))::int AS cancels,
         COUNT(DISTINCT r."assignedDriverId")::int AS drivers
       FROM "Ride" r
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
@@ -2093,8 +2098,14 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       where = { ...where, status: RideStatus.COMPLETED };
     } else if (metric.includes('cancel')) {
       where = { ...where, status: { in: CANCELLED } };
+    } else if (
+      metric.includes('unfulfilil') ||
+      metric.includes('expired') ||
+      metric.includes('missed')
+    ) {
+      where = { ...where, status: { in: UNFULFILLED } };
     } else if (metric.includes('failed')) {
-      where = { ...where, status: { in: FAILED_EXPIRED } };
+      where = { ...where, status: { in: [RideStatus.PAYMENT_FAILED] } };
     }
     const take = Math.min(100, Math.max(10, pageSize));
     const skip = (Math.max(1, page) - 1) * take;
@@ -2229,7 +2240,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       SELECT ${selectDim} AS dim,
         COUNT(*)::int AS rides,
         COALESCE(SUM(COALESCE((r."priceSnapshot"->>'passengerTotal')::numeric, 0)) FILTER (WHERE r."status" = 'COMPLETED'), 0) AS revenue,
-        COUNT(*) FILTER (WHERE r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED','EXPIRED','NO_SHOW'))::int AS cancelled
+        COUNT(*) FILTER (WHERE r."status" IN ('PASSENGER_CANCELLED','DRIVER_CANCELLED','ADMIN_CANCELLED'))::int AS cancelled
       FROM "Ride" r
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
         AND ${extra}
