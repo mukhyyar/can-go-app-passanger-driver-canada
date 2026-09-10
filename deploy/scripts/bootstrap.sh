@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "==> System packages"
 apt-get update -y
 apt-get upgrade -y
-apt-get install -y ca-certificates curl git ufw nginx certbot python3-certbot-nginx
+apt-get install -y ca-certificates curl git ufw nginx certbot python3-certbot-nginx build-essential
 
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
@@ -20,7 +20,7 @@ fi
 systemctl enable --now docker
 
 if ! command -v node >/dev/null 2>&1; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi
 
