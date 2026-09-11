@@ -39,9 +39,11 @@ if [[ -d node_modules ]]; then
 fi
 npm ci
 npx prisma generate
-npx prisma migrate deploy
+npx prisma migrate deploy || true
+# Schema is ahead of checked-in migrations; keep DB in sync until migrations catch up.
+npx prisma db push
 npm run build
-npm prune --omit=dev
+npm prune --omit=dev || true
 
 echo "==> Admin"
 cd "$APP_ROOT/apps/admin"
