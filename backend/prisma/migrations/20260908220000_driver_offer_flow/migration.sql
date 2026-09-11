@@ -1,8 +1,23 @@
--- Driver offer flow: round-trip rides, rich offers, skip dismissals, offer history.
+- Driver offer flow: round-trip rides, rich offers, skip dismissals, offer history.
 
--- OfferStatus extensions
+-- OfferStatus (missing from phase0; create then extend for older DBs)
+DO $$ BEGIN
+  CREATE TYPE "OfferStatus" AS ENUM (
+    'ACTIVE',
+    'SELECTED',
+    'EXPIRED',
+    'WITHDRAWN',
+    'SUPERSEDED',
+    'REJECTED'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 ALTER TYPE "OfferStatus" ADD VALUE IF NOT EXISTS 'SUPERSEDED';
 ALTER TYPE "OfferStatus" ADD VALUE IF NOT EXISTS 'REJECTED';
+
+ALTER TABLE "Offer" ADD COLUMN IF NOT EXISTS "status" "OfferStatus" NOT NULL DEFAULT 'ACTIVE';
 
 -- Vehicle eligibility
 ALTER TABLE "Vehicle" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT true;
