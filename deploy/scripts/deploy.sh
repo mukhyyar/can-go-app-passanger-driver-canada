@@ -32,6 +32,7 @@ done
 
 echo "==> Backend"
 cd "$APP_ROOT/backend"
+rm -rf node_modules
 npm ci
 npx prisma generate
 npx prisma migrate deploy
@@ -40,11 +41,13 @@ npm prune --omit=dev
 
 echo "==> Admin"
 cd "$APP_ROOT/apps/admin"
+rm -rf node_modules .next
 npm ci
 npm run build
 
 echo "==> Web passenger"
 cd "$APP_ROOT/apps/web-passenger"
+rm -rf node_modules .next
 npm ci
 npm run build
 
