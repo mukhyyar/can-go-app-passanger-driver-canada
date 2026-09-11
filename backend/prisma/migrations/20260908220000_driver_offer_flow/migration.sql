@@ -1,6 +1,6 @@
-- Driver offer flow: round-trip rides, rich offers, skip dismissals, offer history.
+/* Driver offer flow: round-trip rides, rich offers, skip dismissals, offer history. */
 
--- OfferStatus (missing from phase0; create then extend for older DBs)
+/* OfferStatus (missing from phase0; create then extend for older DBs) */
 DO $$ BEGIN
   CREATE TYPE "OfferStatus" AS ENUM (
     'ACTIVE',
