@@ -32,7 +32,11 @@ done
 
 echo "==> Backend"
 cd "$APP_ROOT/backend"
-rm -rf node_modules
+if [[ -d node_modules ]]; then
+  chmod -R u+w node_modules || true
+  rm -rf node_modules || mv node_modules "node_modules.trash.$$"
+  rm -rf node_modules.trash.* || true
+fi
 npm ci
 npx prisma generate
 npx prisma migrate deploy
@@ -41,13 +45,13 @@ npm prune --omit=dev
 
 echo "==> Admin"
 cd "$APP_ROOT/apps/admin"
-rm -rf node_modules .next
+rm -rf node_modules .next || true
 npm ci
 npm run build
 
 echo "==> Web passenger"
 cd "$APP_ROOT/apps/web-passenger"
-rm -rf node_modules .next
+rm -rf node_modules .next || true
 npm ci
 npm run build
 
