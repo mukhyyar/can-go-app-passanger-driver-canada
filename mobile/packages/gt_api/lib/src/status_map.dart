@@ -639,6 +639,10 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     throw FormatException('Driver request missing id');
   }
 
+  DateTime? pickupAt;
+  final pickupRaw = json['pickupAt'];
+  if (pickupRaw != null) pickupAt = DateTime.tryParse(pickupRaw.toString());
+
   return DriverRequest(
     id: id,
     datetimeLabel: _formatPickup(json['pickupAt']),
@@ -676,6 +680,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     requestExpiresAt: requestExpiresAt,
     status: json['status']?.toString(),
     shortId: json['shortId']?.toString(),
+    pickupAt: pickupAt,
   );
 }
 

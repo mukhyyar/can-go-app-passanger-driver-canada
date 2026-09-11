@@ -140,6 +140,13 @@ export class MarketplaceController {
     return this.marketplace.listOpenRequests(user.id);
   }
 
+  @Get('driver/schedule')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  driverSchedule(@CurrentUser() user: AuthUser) {
+    return this.marketplace.listDriverRides(user.id);
+  }
+
   @Get('driver/requests/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.DRIVER)

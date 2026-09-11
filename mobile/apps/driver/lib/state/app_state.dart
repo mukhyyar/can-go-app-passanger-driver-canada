@@ -94,6 +94,7 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> documents = [];
 
   List<DriverRequest> openRequests = [];
+  List<DriverRequest> myRides = [];
   final Map<String, OfferDraft> _offerDrafts = {};
   List<DriverVehicle> vehicles = [];
   bool offerSubmitting = false;
@@ -121,6 +122,7 @@ class AppState extends ChangeNotifier {
         await refreshDriverSettings(force: true);
         if (isActivated) {
           await refreshOpenRequests();
+          await refreshMyRides();
           await startMarketplaceRealtime();
         }
       } catch (_) {
@@ -165,6 +167,7 @@ class AppState extends ChangeNotifier {
     await refreshDriverSettings(force: true);
     if (isActivated) {
       await refreshOpenRequests();
+      await refreshMyRides();
       await startMarketplaceRealtime();
     }
     notifyListeners();
@@ -180,6 +183,7 @@ class AppState extends ChangeNotifier {
     await refreshDriverSettings(force: true);
     if (isActivated) {
       await refreshOpenRequests();
+      await refreshMyRides();
       await startMarketplaceRealtime();
     }
     notifyListeners();
@@ -511,6 +515,53 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshMyRides() async {
+    if (!isAuthenticated || !isActivated) return;
+    try {
+      final list = await api.driver.mySchedule();
+      final parsed = <DriverRequest>[];
+      for (final item in list) {
+        try {
+          final map = item is Map
+              ? Map<String, dynamic>.from(item)
+              : null;
+          if (map == null || map.isEmpty) continue;
+          parsed.add(driverRequestFromServer(map));
+        } catch (e) {
+          debugPrint('refreshMyRides skip row: $e');
+        }
+      }
+      parsed.sort((a, b) {
+        final aAt = a.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bAt = b.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return aAt.compareTo(bAt);
+      });
+      myRides = parsed;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('refreshMyRides: $e');
+    }
+  }
+
+  List<DriverRequest> get scheduledRides {
+    return myRides.where((r) {
+      final mapped = mapServerRideStatus(r.status);
+      return mapped == RideStatus.booked;
+    }).toList();
+  }
+
+  List<DriverRequest> get pastRides {
+    return myRides.where((r) {
+      final mapped = mapServerRideStatus(r.status);
+      return mapped == RideStatus.past || mapped == RideStatus.cancelled;
+    }).toList()
+      ..sort((a, b) {
+        final aAt = a.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bAt = b.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bAt.compareTo(aAt);
+      });
+  }
+
   Future<void> startMarketplaceRealtime() async {
     if (!isAuthenticated || !isActivated) return;
     _realtime ??= MarketplaceRealtime(
@@ -549,6 +600,7 @@ class AppState extends ChangeNotifier {
   Future<void> onAppResumed() async {
     if (!isAuthenticated || !isActivated) return;
     await refreshOpenRequests();
+    await refreshMyRides();
     await startMarketplaceRealtime();
   }
 

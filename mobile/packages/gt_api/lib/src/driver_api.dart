@@ -161,6 +161,11 @@ class DriverApi {
     return (data['_list'] as List?) ?? [];
   }
 
+  Future<List<dynamic>> mySchedule() async {
+    final data = await client.get('/driver/schedule');
+    return (data['_list'] as List?) ?? [];
+  }
+
   Future<Map<String, dynamic>> requestDetail(String rideId) =>
       client.get('/driver/requests/$rideId');
 

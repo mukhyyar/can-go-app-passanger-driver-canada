@@ -710,6 +710,57 @@ export class MarketplaceService {
     );
   }
 
+  /** Booked / in-progress / completed trips assigned to this driver. */
+  async listDriverRides(userId: string) {
+    const driver = await this.requireActivatedDriver(userId);
+    const statuses: RideStatus[] = [
+      RideStatus.BOOKED,
+      RideStatus.DRIVER_EN_ROUTE,
+      RideStatus.DRIVER_ARRIVED,
+      RideStatus.TRIP_STARTED,
+      RideStatus.IN_PROGRESS,
+      RideStatus.COMPLETED,
+      RideStatus.NO_SHOW,
+      RideStatus.PASSENGER_CANCELLED,
+      RideStatus.DRIVER_CANCELLED,
+      RideStatus.ADMIN_CANCELLED,
+    ];
+    const rides = await this.prisma.ride.findMany({
+      where: {
+        assignedDriverId: driver.id,
+        status: { in: statuses },
+      },
+      include: {
+        offers: {
+          where: { driverId: driver.id },
+          include: { vehicle: true },
+          orderBy: { createdAt: 'desc' },
+        },
+        selectedOffer: {
+          include: { vehicle: true },
+        },
+        passenger: { select: { fullName: true } },
+      },
+      orderBy: { pickupAt: 'asc' },
+      take: 100,
+    });
+
+    return Promise.all(
+      rides.map(async (r) => {
+        const serialized = await this.serializeRide(r);
+        const myOffers = (r.offers ?? []).map((o) =>
+          this.serializeOffer(o as unknown as Record<string, unknown>),
+        );
+        return {
+          ...serialized,
+          myOffers,
+          offers: myOffers,
+          passengerName: r.passenger?.fullName ?? null,
+        };
+      }),
+    );
+  }
+
   async getDriverRequest(userId: string, rideId: string) {
     const driver = await this.requireActivatedDriver(userId);
     const dismissed = await this.prisma.requestDismissal.findUnique({

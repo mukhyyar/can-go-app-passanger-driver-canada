@@ -593,6 +593,7 @@ class DriverRequest {
     this.requestExpiresAt,
     this.status,
     this.shortId,
+    this.pickupAt,
   });
 
   final String id;
@@ -628,6 +629,7 @@ class DriverRequest {
   final DateTime? requestExpiresAt;
   final String? status;
   final String? shortId;
+  final DateTime? pickupAt;
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
@@ -641,6 +643,8 @@ class DriverRequest {
     bool? hasOffer,
     double? offerPrice,
     DriverOfferSummary? myOffer,
+    DateTime? pickupAt,
+    String? status,
   }) {
     return DriverRequest(
       id: id,
@@ -674,8 +678,9 @@ class DriverRequest {
       myOffer: myOffer ?? this.myOffer,
       createdAt: createdAt,
       requestExpiresAt: requestExpiresAt,
-      status: status,
+      status: status ?? this.status,
       shortId: shortId,
+      pickupAt: pickupAt ?? this.pickupAt,
     );
   }
 }

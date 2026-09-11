@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:gt_api/gt_api.dart';
+import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -16,15 +19,19 @@ class RidesScreen extends StatefulWidget {
 class _RidesScreenState extends State<RidesScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  DateTime _day = DateTime(2026, 9, 4);
-  int _viewMode = 2; // 0 month, 1 week, 2 day
+  DateTime _day = DateTime.now();
+  int _viewMode = 0; // 0 month, 1 week, 2 day
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this, initialIndex: 2);
+    _tabs = TabController(length: 3, vsync: this);
     _tabs.addListener(() {
       if (mounted) setState(() {});
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AppState>().refreshMyRides();
     });
   }
 
@@ -34,8 +41,37 @@ class _RidesScreenState extends State<RidesScreen>
     super.dispose();
   }
 
+  DateTime get _today {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
+  }
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  List<DriverRequest> _ridesOnDay(List<DriverRequest> all, DateTime day) {
+    return all.where((r) {
+      final at = r.pickupAt;
+      if (at == null) return false;
+      final local = at.toLocal();
+      return _sameDay(local, day);
+    }).toList();
+  }
+
+  Future<void> _onRefresh() => context.read<AppState>().refreshMyRides();
+
+  void _openRide(DriverRequest r) {
+    context.push('/request/${r.id}');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final scheduled = app.scheduledRides;
+    final past = app.pastRides;
+
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
       body: SafeArea(
@@ -83,9 +119,17 @@ class _RidesScreenState extends State<RidesScreen>
               child: TabBarView(
                 controller: _tabs,
                 children: [
-                  _emptyList('No scheduled rides'),
-                  _emptyList('No past rides'),
-                  _calendar(),
+                  _rideList(
+                    scheduled,
+                    empty: 'No scheduled rides',
+                    showStatus: true,
+                  ),
+                  _rideList(
+                    past,
+                    empty: 'No past rides',
+                    showStatus: true,
+                  ),
+                  _calendar(app.myRides),
                 ],
               ),
             ),
@@ -95,7 +139,43 @@ class _RidesScreenState extends State<RidesScreen>
     );
   }
 
-  Widget _emptyList(String msg) {
+  Widget _rideList(
+    List<DriverRequest> items, {
+    required String empty,
+    bool showStatus = false,
+  }) {
+    if (items.isEmpty) {
+      return RefreshIndicator(
+        color: GtColors.brand,
+        onRefresh: _onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.45,
+              child: _emptyState(empty),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      color: GtColors.brand,
+      onRefresh: _onRefresh,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+        itemCount: items.length,
+        itemBuilder: (_, i) => _ScheduledRideCard(
+          request: items[i],
+          showStatus: showStatus,
+          onTap: () => _openRide(items[i]),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyState(String msg) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -127,8 +207,13 @@ class _RidesScreenState extends State<RidesScreen>
     );
   }
 
-  Widget _calendar() {
-    final label = DateFormat('MMMM d, y').format(_day);
+  Widget _calendar(List<DriverRequest> rides) {
+    final label = _viewMode == 0
+        ? DateFormat('MMMM y').format(_day)
+        : _viewMode == 1
+            ? _weekRangeLabel(_day)
+            : DateFormat('MMMM d, y').format(_day);
+
     return Column(
       children: [
         Padding(
@@ -136,19 +221,32 @@ class _RidesScreenState extends State<RidesScreen>
           child: Row(
             children: [
               TextButton(
-                onPressed: () => setState(() => _day = DateTime(2026, 9, 4)),
+                onPressed: () => setState(() => _day = _today),
                 style: TextButton.styleFrom(foregroundColor: GtColors.brand),
                 child: const Text('today'),
               ),
               IconButton(
-                onPressed: () => setState(
-                  () => _day = _day.subtract(const Duration(days: 1)),
-                ),
+                onPressed: () => setState(() {
+                  if (_viewMode == 0) {
+                    _day = DateTime(_day.year, _day.month - 1, 1);
+                  } else if (_viewMode == 1) {
+                    _day = _day.subtract(const Duration(days: 7));
+                  } else {
+                    _day = _day.subtract(const Duration(days: 1));
+                  }
+                }),
                 icon: const Icon(Icons.chevron_left),
               ),
               IconButton(
-                onPressed: () =>
-                    setState(() => _day = _day.add(const Duration(days: 1))),
+                onPressed: () => setState(() {
+                  if (_viewMode == 0) {
+                    _day = DateTime(_day.year, _day.month + 1, 1);
+                  } else if (_viewMode == 1) {
+                    _day = _day.add(const Duration(days: 7));
+                  } else {
+                    _day = _day.add(const Duration(days: 1));
+                  }
+                }),
                 icon: const Icon(Icons.chevron_right),
               ),
               Expanded(
@@ -157,27 +255,6 @@ class _RidesScreenState extends State<RidesScreen>
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.filter_list, size: 18),
-                label: const Text('Filter'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: GtColors.text,
-                  side: const BorderSide(color: GtColors.border),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.search, color: GtColors.brand),
               ),
             ],
           ),
@@ -218,7 +295,17 @@ class _RidesScreenState extends State<RidesScreen>
             ),
           ),
         ),
-        Expanded(child: _dayTimeline()),
+        Expanded(
+          child: RefreshIndicator(
+            color: GtColors.brand,
+            onRefresh: _onRefresh,
+            child: _viewMode == 0
+                ? _monthView(rides)
+                : _viewMode == 1
+                    ? _weekView(rides)
+                    : _dayTimeline(rides),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: SizedBox(
@@ -226,18 +313,17 @@ class _RidesScreenState extends State<RidesScreen>
             height: 48,
             child: OutlinedButton.icon(
               onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 final s = context.read<AppState>();
                 final date =
                     '${_day.year.toString().padLeft(4, '0')}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
                 try {
                   await s.api.driver.addDayOff(date);
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text('Day off added for $date')),
                   );
                 } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text('Day off failed: $e')),
                   );
                 }
@@ -259,16 +345,319 @@ class _RidesScreenState extends State<RidesScreen>
     );
   }
 
-  Widget _dayTimeline() {
-    final weekday = DateFormat('E').format(_day);
+  String _weekRangeLabel(DateTime day) {
+    final start = _weekStart(day);
+    final end = start.add(const Duration(days: 6));
+    if (start.month == end.month) {
+      return '${DateFormat('MMM d').format(start)} – ${DateFormat('d, y').format(end)}';
+    }
+    return '${DateFormat('MMM d').format(start)} – ${DateFormat('MMM d, y').format(end)}';
+  }
+
+  DateTime _weekStart(DateTime day) {
+    final d = _dateOnly(day);
+    return d.subtract(Duration(days: d.weekday % 7));
+  }
+
+  Widget _monthView(List<DriverRequest> rides) {
+    final monthStart = DateTime(_day.year, _day.month, 1);
+    final daysInMonth = DateTime(_day.year, _day.month + 1, 0).day;
+    final lead = monthStart.weekday % 7; // Sunday = 0
+    final cells = lead + daysInMonth;
+    final rows = ((cells + 6) ~/ 7);
+
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: GtColors.border),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+                    .map(
+                      (d) => Expanded(
+                        child: Center(
+                          child: Text(
+                            d,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: GtColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 8),
+              ...List.generate(rows, (row) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: List.generate(7, (col) {
+                      final index = row * 7 + col;
+                      final dayNum = index - lead + 1;
+                      if (dayNum < 1 || dayNum > daysInMonth) {
+                        return const Expanded(child: SizedBox(height: 48));
+                      }
+                      final date = DateTime(_day.year, _day.month, dayNum);
+                      final dayRides = _ridesOnDay(rides, date);
+                      final selected = _sameDay(date, _day);
+                      final isToday = _sameDay(date, _today);
+                      return Expanded(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => setState(() {
+                            _day = date;
+                            _viewMode = 2;
+                          }),
+                          child: Container(
+                            height: 52,
+                            margin: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? GtColors.brand
+                                  : isToday
+                                      ? GtColors.soft
+                                      : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  '$dayNum',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: selected
+                                        ? Colors.white
+                                        : GtColors.text,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                if (dayRides.isNotEmpty)
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: List.generate(
+                                      dayRides.length.clamp(1, 3),
+                                      (_) => Container(
+                                        width: 5,
+                                        height: 5,
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: selected
+                                              ? Colors.white
+                                              : GtColors.brand,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  const SizedBox(height: 5),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          DateFormat('EEEE, MMM d').format(_day),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        ..._dayRideCards(_ridesOnDay(rides, _day)),
+      ],
+    );
+  }
+
+  Widget _weekView(List<DriverRequest> rides) {
+    final start = _weekStart(_day);
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      itemCount: 7,
+      itemBuilder: (_, i) {
+        final date = start.add(Duration(days: i));
+        final dayRides = _ridesOnDay(rides, date);
+        final selected = _sameDay(date, _day);
+        final isToday = _sameDay(date, _today);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => setState(() {
+                _day = date;
+                _viewMode = 2;
+              }),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected ? GtColors.brand : GtColors.border,
+                    width: selected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 52,
+                      child: Column(
+                        children: [
+                          Text(
+                            DateFormat('E').format(date),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: isToday
+                                  ? GtColors.brand
+                                  : GtColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: selected || isToday
+                                  ? GtColors.brand
+                                  : GtColors.soft,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${date.day}',
+                              style: TextStyle(
+                                color: selected || isToday
+                                    ? Colors.white
+                                    : GtColors.text,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: dayRides.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.only(top: 8),
+                              child: Text(
+                                'No rides',
+                                style: TextStyle(
+                                  color: GtColors.textMuted,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              children: dayRides
+                                  .map(
+                                    (r) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: _miniRideRow(r),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _miniRideRow(DriverRequest r) {
+    final time = r.pickupAt != null
+        ? DateFormat('HH:mm').format(r.pickupAt!.toLocal())
+        : '—';
+    return GestureDetector(
+      onTap: () => _openRide(r),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: GtColors.soft,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          '$time  ${r.from} → ${r.to}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _dayRideCards(List<DriverRequest> dayRides) {
+    if (dayRides.isEmpty) {
+      return [
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: Text(
+              'No rides this day',
+              style: TextStyle(color: GtColors.textMuted),
+            ),
+          ),
+        ),
+      ];
+    }
+    return dayRides
+        .map(
+          (r) => _ScheduledRideCard(
+            request: r,
+            showStatus: true,
+            onTap: () => _openRide(r),
+          ),
+        )
+        .toList();
+  }
+
+  Widget _dayTimeline(List<DriverRequest> rides) {
+    final dayRides = _ridesOnDay(rides, _day);
+    final weekday = DateFormat('E').format(_day);
+    final now = DateTime.now();
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       children: [
         Row(
           children: [
             Column(
               children: [
-                Text(weekday, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  weekday,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 Container(
                   width: 32,
                   height: 32,
@@ -288,21 +677,37 @@ class _RidesScreenState extends State<RidesScreen>
               ],
             ),
             const Spacer(),
-            const Text('15:59', style: TextStyle(color: GtColors.textMuted)),
+            Text(
+              DateFormat('HH:mm').format(now),
+              style: const TextStyle(color: GtColors.textMuted),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
-        ...List.generate(12, (i) {
-          final hour = i + 1;
+        const SizedBox(height: 12),
+        if (dayRides.isNotEmpty) ...[
+          ...dayRides.map(
+            (r) => _ScheduledRideCard(
+              request: r,
+              showStatus: true,
+              onTap: () => _openRide(r),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        ...List.generate(24, (hour) {
+          final hourRides = dayRides.where((r) {
+            final at = r.pickupAt?.toLocal();
+            return at != null && at.hour == hour;
+          }).toList();
           final label =
-              DateFormat('hh:00 a').format(DateTime(2026, 1, 1, hour));
+              DateFormat('HH:00').format(DateTime(2026, 1, 1, hour));
           return SizedBox(
-            height: 56,
+            height: hourRides.isEmpty ? 44 : 44.0 + hourRides.length * 36,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 72,
+                  width: 52,
                   child: Text(
                     label,
                     style: const TextStyle(
@@ -316,6 +721,21 @@ class _RidesScreenState extends State<RidesScreen>
                     decoration: const BoxDecoration(
                       border: Border(top: BorderSide(color: GtColors.border)),
                     ),
+                    child: hourRides.isEmpty
+                        ? null
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 4, left: 4),
+                            child: Column(
+                              children: hourRides
+                                  .map(
+                                    (r) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: _miniRideRow(r),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ),
                   ),
                 ),
               ],
@@ -323,6 +743,113 @@ class _RidesScreenState extends State<RidesScreen>
           );
         }),
       ],
+    );
+  }
+}
+
+class _ScheduledRideCard extends StatelessWidget {
+  const _ScheduledRideCard({
+    required this.request,
+    required this.onTap,
+    this.showStatus = false,
+  });
+
+  final DriverRequest request;
+  final VoidCallback onTap;
+  final bool showStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusLabel = friendlyRideStatus(request.status);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GtCard(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    request.datetimeLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (showStatus)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: GtColors.soft,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: GtColors.brand.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: Text(
+                      statusLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: GtColors.brand,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Ride #${request.displayId}',
+              style: const TextStyle(color: GtColors.textMuted, fontSize: 12),
+            ),
+            if (request.isRoundTrip && request.returnDatetimeLabel != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Return: ${request.returnDatetimeLabel}',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: GtColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            GtRouteRow(
+              from: request.from,
+              to: request.to,
+              distance: request.distance,
+              duration: request.duration,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  request.vehicleNeed,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.person_outline,
+                  size: 18,
+                  color: GtColors.brand,
+                ),
+                Text(' × ${request.passengers}'),
+              ],
+            ),
+            if (request.offerPrice != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                '${request.currency} ${request.offerPrice!.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: GtColors.brand,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
