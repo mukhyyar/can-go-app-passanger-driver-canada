@@ -3,9 +3,9 @@
 import { Suspense } from 'react';
 import { BookingPage } from '../../components/booking-page';
 
-export default function BookPage() {
+export default function Page() {
   return (
-    <Suspense fallback={<div className="info-page">Loading booking…</div>}>
+    <Suspense fallback={<main style={{ padding: 48 }}>Loading�</main>}>
       <BookingPage />
     </Suspense>
   );
