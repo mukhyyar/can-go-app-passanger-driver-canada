@@ -98,6 +98,32 @@ void main() {
       expect(req.isRoundTrip, isFalse);
       expect(req.returnDatetimeLabel, isNull);
     });
+
+    test('parses Prisma Decimal strings in myOffers without wiping request', () {
+      final req = driverRequestFromServer({
+        'id': 'ride_decimal',
+        'fromLabel': 'Beach',
+        'toLabel': 'Airport',
+        'pickupAt': '2026-09-28T20:30:00.000Z',
+        'isRoundTrip': false,
+        'adults': 2,
+        'currency': 'USD',
+        'vehicleClassIds': ['Economy'],
+        'myOffers': [
+          {
+            'id': 'offer_1',
+            'status': 'ACTIVE',
+            'bidAmount': '50',
+            'outboundPrice': '50',
+            'currency': 'USD',
+            'validForSeconds': '1800',
+          },
+        ],
+      });
+      expect(req.hasOffer, isTrue);
+      expect(req.offerPrice, 50);
+      expect(req.myOffer?.bidAmount, 50);
+    });
   });
 
   group('validity options', () {

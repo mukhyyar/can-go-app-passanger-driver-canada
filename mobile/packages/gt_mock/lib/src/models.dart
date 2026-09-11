@@ -105,19 +105,26 @@ class OfferPriceBreakdown {
     if (json == null) {
       return const OfferPriceBreakdown();
     }
+    double n(dynamic v) {
+      if (v == null) return 0;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v.trim()) ?? 0;
+      return 0;
+    }
+
     return OfferPriceBreakdown(
-      ridePrice: (json['ridePrice'] as num?)?.toDouble() ?? 0,
-      marketplaceFee: (json['marketplaceFee'] as num?)?.toDouble() ?? 0,
-      taxes: (json['taxes'] as num?)?.toDouble() ?? 0,
-      tolls: (json['tolls'] as num?)?.toDouble() ?? 0,
-      waitingTime: (json['waitingTime'] as num?)?.toDouble() ?? 0,
-      discount: (json['discount'] as num?)?.toDouble() ?? 0,
-      promotion: (json['promotion'] as num?)?.toDouble() ?? 0,
-      total: (json['total'] as num?)?.toDouble() ?? 0,
-      currency: json['currency'] as String? ?? 'USD',
-      includesNote: json['includesNote'] as String?,
-      ridePriceNote: json['ridePriceNote'] as String?,
-      marketplaceFeeNote: json['marketplaceFeeNote'] as String?,
+      ridePrice: n(json['ridePrice']),
+      marketplaceFee: n(json['marketplaceFee']),
+      taxes: n(json['taxes']),
+      tolls: n(json['tolls']),
+      waitingTime: n(json['waitingTime']),
+      discount: n(json['discount']),
+      promotion: n(json['promotion']),
+      total: n(json['total']),
+      currency: json['currency']?.toString() ?? 'USD',
+      includesNote: json['includesNote']?.toString(),
+      ridePriceNote: json['ridePriceNote']?.toString(),
+      marketplaceFeeNote: json['marketplaceFeeNote']?.toString(),
     );
   }
 }
@@ -143,14 +150,29 @@ class OfferRatingBreakdown {
 
   factory OfferRatingBreakdown.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const OfferRatingBreakdown();
+    double n(dynamic v) {
+      if (v == null) return 0;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v.trim()) ?? 0;
+      return 0;
+    }
+
+    int i(dynamic v) {
+      if (v == null) return 0;
+      if (v is int) return v;
+      if (v is num) return v.round();
+      if (v is String) return int.tryParse(v.trim()) ?? 0;
+      return 0;
+    }
+
     return OfferRatingBreakdown(
-      overall: (json['overall'] as num?)?.toDouble() ?? 0,
-      count: (json['count'] as num?)?.toInt() ?? 0,
-      communication: (json['communication'] as num?)?.toDouble() ?? 0,
-      driver: (json['driver'] as num?)?.toDouble() ?? 0,
-      vehicle: (json['vehicle'] as num?)?.toDouble() ?? 0,
-      completedRides: (json['completedRides'] as num?)?.toInt() ?? 0,
-      yearsWithPlatform: (json['yearsWithPlatform'] as num?)?.toInt() ?? 0,
+      overall: n(json['overall']),
+      count: i(json['count']),
+      communication: n(json['communication']),
+      driver: n(json['driver']),
+      vehicle: n(json['vehicle']),
+      completedRides: i(json['completedRides']),
+      yearsWithPlatform: i(json['yearsWithPlatform']),
     );
   }
 }
@@ -428,16 +450,31 @@ class PricingGuidance {
   final int legs;
 
   factory PricingGuidance.fromJson(Map<String, dynamic> json) {
+    double asDouble(dynamic v, [double fallback = 0]) {
+      if (v == null) return fallback;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString()) ?? fallback;
+    }
+
+    int asInt(dynamic v, [int fallback = 0]) {
+      if (v == null) return fallback;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString()) ?? fallback;
+    }
+
     return PricingGuidance(
-      guidanceAmount: (json['guidanceAmount'] as num?)?.toDouble() ?? 0,
-      minBid: (json['minBid'] as num?)?.toDouble() ?? 0,
-      maxBid: (json['maxBid'] as num?)?.toDouble() ?? 0,
-      platformCommissionPct:
-          (json['platformCommissionPct'] as num?)?.toDouble() ?? 0,
-      distanceKm: (json['distanceKm'] as num?)?.toDouble(),
-      durationMin: (json['durationMin'] as num?)?.toDouble(),
+      guidanceAmount: asDouble(json['guidanceAmount']),
+      minBid: asDouble(json['minBid']),
+      maxBid: asDouble(json['maxBid']),
+      platformCommissionPct: asDouble(json['platformCommissionPct']),
+      distanceKm: json['distanceKm'] == null
+          ? null
+          : asDouble(json['distanceKm']),
+      durationMin: json['durationMin'] == null
+          ? null
+          : asDouble(json['durationMin']),
       isRoundTrip: json['isRoundTrip'] as bool? ?? false,
-      legs: (json['legs'] as num?)?.toInt() ?? 1,
+      legs: asInt(json['legs'], 1),
     );
   }
 }
@@ -476,33 +513,47 @@ class DriverOfferSummary {
   bool get isActive => status == 'ACTIVE';
 
   factory DriverOfferSummary.fromJson(Map<String, dynamic> json) {
+    double? asDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString());
+    }
+
+    int? asInt(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString());
+    }
+
     final commission = json['commission'];
     DateTime? expires;
     final rawExp = json['expiresAt'];
-    if (rawExp is String) expires = DateTime.tryParse(rawExp);
+    if (rawExp != null) expires = DateTime.tryParse(rawExp.toString());
     final opts = json['selectedOptions'];
+    final id = json['id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw FormatException('Offer missing id');
+    }
     return DriverOfferSummary(
-      id: json['id'] as String,
-      status: json['status'] as String? ?? 'ACTIVE',
-      bidAmount: (json['bidAmount'] as num?)?.toDouble() ?? 0,
-      currency: json['currency'] as String? ?? 'USD',
-      outboundPrice: (json['outboundPrice'] as num?)?.toDouble(),
-      returnPrice: (json['returnPrice'] as num?)?.toDouble(),
+      id: id,
+      status: json['status']?.toString() ?? 'ACTIVE',
+      bidAmount: asDouble(json['bidAmount']) ?? 0,
+      currency: json['currency']?.toString() ?? 'USD',
+      outboundPrice: asDouble(json['outboundPrice']),
+      returnPrice: asDouble(json['returnPrice']),
       expiresAt: expires,
-      validForSeconds: (json['validForSeconds'] as num?)?.toInt(),
+      validForSeconds: asInt(json['validForSeconds']),
       selectedOptions: opts is List
           ? opts.map((e) => e.toString()).toList()
           : const [],
-      vehicleId: json['vehicleId'] as String?,
+      vehicleId: json['vehicleId']?.toString(),
       platformCommissionPct: commission is Map
-          ? (commission['platformCommissionPct'] as num?)?.toDouble()
+          ? asDouble(commission['platformCommissionPct'])
           : null,
-      platformFee: commission is Map
-          ? (commission['platformFee'] as num?)?.toDouble()
-          : null,
-      driverEarning: commission is Map
-          ? (commission['driverEarning'] as num?)?.toDouble()
-          : null,
+      platformFee:
+          commission is Map ? asDouble(commission['platformFee']) : null,
+      driverEarning:
+          commission is Map ? asDouble(commission['driverEarning']) : null,
     );
   }
 }

@@ -289,7 +289,7 @@ export class NotificationsService {
       imageUrl: input.imageUrl ?? undefined,
       eventId: `offer.created.${input.offerId}`,
       data: {
-        type: 'ride_offer',
+        type: 'RIDE_OFFER_RECEIVED',
         rideRequestId: input.rideId,
         rideId: input.rideId,
         offerId: input.offerId,
@@ -298,5 +298,39 @@ export class NotificationsService {
         deepLink: `/offers/${input.rideId}?offerId=${input.offerId}`,
       },
     });
+  }
+
+  /** Driver-facing new open ride request in their operating zone. */
+  async notifyNewRideRequest(input: {
+    userIds: string[];
+    rideId: string;
+    fromLabel: string;
+    toLabel: string;
+    pickupAt?: string;
+  }) {
+    const title = 'New ride request';
+    const body = `${input.fromLabel} → ${input.toLabel}`;
+    const results = [];
+    for (const userId of input.userIds) {
+      results.push(
+        await this.sendToUser({
+          userId,
+          title,
+          body,
+          templateKey: 'ride.new_request',
+          eventId: `ride.new_request.${input.rideId}.${userId}`,
+          data: {
+            type: 'ride_request',
+            rideId: input.rideId,
+            rideRequestId: input.rideId,
+            fromLabel: input.fromLabel,
+            toLabel: input.toLabel,
+            pickupAt: input.pickupAt ?? '',
+            deepLink: `/request/${input.rideId}`,
+          },
+        }),
+      );
+    }
+    return results;
   }
 }

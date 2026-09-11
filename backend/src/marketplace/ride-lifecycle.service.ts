@@ -228,10 +228,11 @@ export class RideLifecycleService {
           },
         });
         if (!result.ok) continue;
+        // Return reserved offer to ACTIVE so passenger can book again.
         if (r.selectedOfferId) {
-          await this.prisma.offer.update({
-            where: { id: r.selectedOfferId },
-            data: { status: OfferStatus.EXPIRED, expiredAt: now },
+          await this.prisma.offer.updateMany({
+            where: { id: r.selectedOfferId, status: OfferStatus.SELECTED },
+            data: { status: OfferStatus.ACTIVE, acceptedAt: null },
           });
         }
         reopened += 1;
@@ -252,8 +253,8 @@ export class RideLifecycleService {
         });
         if (!result.ok) continue;
         if (r.selectedOfferId) {
-          await this.prisma.offer.update({
-            where: { id: r.selectedOfferId },
+          await this.prisma.offer.updateMany({
+            where: { id: r.selectedOfferId, status: OfferStatus.SELECTED },
             data: { status: OfferStatus.EXPIRED, expiredAt: now },
           });
         }

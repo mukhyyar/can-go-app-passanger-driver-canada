@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:gt_mock/gt_mock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../offer/offer_helpers.dart';
+import '../services/marketplace_realtime.dart';
 import 'driver_settings_mappers.dart';
 
 class AppState extends ChangeNotifier {
@@ -13,6 +15,11 @@ class AppState extends ChangeNotifier {
 
   final MockRepository repo = MockRepository.instance;
   final CanGoSession api = CanGoSession();
+  MarketplaceRealtime? _realtime;
+
+  /// Latest inbound request alert for in-app banner (cleared by UI).
+  String? pendingRequestAlert;
+  String? pendingRequestRideId;
 
   static const _kOnboarded = 'driver_onboarded';
   static const _kOperatingZones = 'driver_operating_zones';
@@ -114,6 +121,7 @@ class AppState extends ChangeNotifier {
         await refreshDriverSettings(force: true);
         if (isActivated) {
           await refreshOpenRequests();
+          await startMarketplaceRealtime();
         }
       } catch (_) {
         isAuthenticated = false;
@@ -155,7 +163,10 @@ class AppState extends ChangeNotifier {
     isAuthenticated = true;
     await refreshMe();
     await refreshDriverSettings(force: true);
-    if (isActivated) await refreshOpenRequests();
+    if (isActivated) {
+      await refreshOpenRequests();
+      await startMarketplaceRealtime();
+    }
     notifyListeners();
   }
 
@@ -167,7 +178,10 @@ class AppState extends ChangeNotifier {
     isAuthenticated = true;
     await refreshMe();
     await refreshDriverSettings(force: true);
-    if (isActivated) await refreshOpenRequests();
+    if (isActivated) {
+      await refreshOpenRequests();
+      await startMarketplaceRealtime();
+    }
     notifyListeners();
   }
 
@@ -189,6 +203,11 @@ class AppState extends ChangeNotifier {
         defaultDriverName = name;
       }
       await _syncOnboardedFromServer(hasDocuments: false);
+      if (isActivated) {
+        unawaited(startMarketplaceRealtime());
+      } else {
+        stopMarketplaceRealtime();
+      }
     }
   }
 
@@ -453,18 +472,84 @@ class AppState extends ChangeNotifier {
     await loadDriverVehicles();
   }
 
-  Future<void> refreshOpenRequests() async {
+  Future<void> refreshOpenRequests({bool fromPush = false}) async {
     if (!isAuthenticated || !isActivated) return;
     try {
+      final previousIds = openRequests.map((r) => r.id).toSet();
       final list = await api.driver.openRequests();
-      openRequests = list
-          .whereType<Map>()
-          .map((e) => driverRequestFromServer(Map<String, dynamic>.from(e)))
-          .toList();
+      final parsed = <DriverRequest>[];
+      for (final item in list) {
+        try {
+          final map = item is Map
+              ? Map<String, dynamic>.from(item)
+              : null;
+          if (map == null || map.isEmpty) continue;
+          parsed.add(driverRequestFromServer(map));
+        } catch (e) {
+          // One bad row must not wipe the whole dashboard.
+          debugPrint('refreshOpenRequests skip row: $e');
+        }
+      }
+      openRequests = parsed;
+      if (fromPush || previousIds.isNotEmpty) {
+        DriverRequest? newest;
+        for (final r in openRequests) {
+          if (!previousIds.contains(r.id) && !r.hasOffer) {
+            newest = r;
+            break;
+          }
+        }
+        if (newest != null) {
+          pendingRequestRideId = newest.id;
+          pendingRequestAlert =
+              'New request: ${newest.from} → ${newest.to}';
+        }
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('refreshOpenRequests: $e');
     }
+  }
+
+  Future<void> startMarketplaceRealtime() async {
+    if (!isAuthenticated || !isActivated) return;
+    _realtime ??= MarketplaceRealtime(
+      session: api,
+      onNewRequest: (payload) {
+        final rideId = payload['rideId']?.toString();
+        final from = payload['fromLabel']?.toString();
+        final to = payload['toLabel']?.toString();
+        if (from != null &&
+            from.isNotEmpty &&
+            to != null &&
+            to.isNotEmpty) {
+          pendingRequestRideId = rideId;
+          pendingRequestAlert = 'New request: $from → $to';
+          notifyListeners();
+        }
+        unawaited(refreshOpenRequests(fromPush: true));
+      },
+    );
+    await _realtime!.connect();
+  }
+
+  void stopMarketplaceRealtime() {
+    _realtime?.disconnect();
+    _realtime = null;
+  }
+
+  void clearPendingRequestAlert() {
+    if (pendingRequestAlert == null && pendingRequestRideId == null) return;
+    pendingRequestAlert = null;
+    pendingRequestRideId = null;
+    notifyListeners();
+  }
+
+  /// Called when app returns to foreground.
+  Future<void> onAppResumed() async {
+    if (!isAuthenticated || !isActivated) return;
+    await refreshOpenRequests();
+    await startMarketplaceRealtime();
   }
 
   List<OperatingZone> _decodeZones(String? raw) {
@@ -797,6 +882,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    stopMarketplaceRealtime();
     await api.auth.logout();
     await api.clear();
     isAuthenticated = false;
@@ -809,9 +895,12 @@ class AppState extends ChangeNotifier {
     authUserId = null;
     documents = [];
     vehicles = [];
+    openRequests = [];
     operatingZones = [];
     primaryVehicleId = null;
     acceptedTerms = false;
+    pendingRequestAlert = null;
+    pendingRequestRideId = null;
     selectedLanguages.clear();
     notifyListeners();
   }

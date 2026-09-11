@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:provider/provider.dart';
 
+import '../state/app_state.dart';
 import 'brand_chrome.dart';
 
 class DriverShell extends StatelessWidget {
@@ -16,10 +18,15 @@ class DriverShell extends StatelessWidget {
       body: navigationShell,
       bottomNavigationBar: GtBottomNav(
         index: navigationShell.currentIndex,
-        onTap: (i) => navigationShell.goBranch(
-          i,
-          initialLocation: i == navigationShell.currentIndex,
-        ),
+        onTap: (i) {
+          if (i == 0) {
+            context.read<AppState>().refreshOpenRequests();
+          }
+          navigationShell.goBranch(
+            i,
+            initialLocation: i == navigationShell.currentIndex,
+          );
+        },
         items: const [
           GtNavItem(icon: Icons.alt_route, label: 'Requests'),
           GtNavItem(icon: Icons.calendar_month_outlined, label: 'Rides'),

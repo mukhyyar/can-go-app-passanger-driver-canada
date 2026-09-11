@@ -21,6 +21,7 @@ dependencies:
     path: ../../packages/gt_api
   intl: ^0.20.2
   http: ^1.6.0
+  socket_io_client: ^3.1.6
 
 dev_dependencies:
   flutter_test:

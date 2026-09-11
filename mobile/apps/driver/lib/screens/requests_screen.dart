@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
@@ -15,27 +17,75 @@ class RequestsScreen extends StatefulWidget {
 }
 
 class _RequestsScreenState extends State<RequestsScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabs;
   final _scroll = ScrollController();
+  Timer? _poll;
+  String? _shownAlert;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabs = TabController(length: 2, vsync: this);
     _tabs.addListener(() {
       if (mounted) setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final app = context.read<AppState>();
+      app.refreshOpenRequests();
+      app.startMarketplaceRealtime();
+      _maybeShowAlert(app);
+    });
+    // Fallback if socket is down — keep dashboard fresh without manual refresh.
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
       context.read<AppState>().refreshOpenRequests();
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<AppState>().onAppResumed();
+    }
+  }
+
+  @override
   void dispose() {
+    _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _tabs.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _maybeShowAlert(AppState app) {
+    final alert = app.pendingRequestAlert;
+    if (alert == null || alert.isEmpty || alert == _shownAlert) return;
+    _shownAlert = alert;
+    final rideId = app.pendingRequestRideId;
+    app.clearPendingRequestAlert();
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: GtColors.brand,
+        content: Text(alert),
+        action: rideId == null
+            ? null
+            : SnackBarAction(
+                label: 'Open',
+                textColor: Colors.white,
+                onPressed: () {
+                  if (!mounted) return;
+                  context.push('/request/$rideId');
+                },
+              ),
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   Future<void> _openRequest(DriverRequest req) async {
@@ -66,6 +116,9 @@ class _RequestsScreenState extends State<RequestsScreen>
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _maybeShowAlert(s);
+    });
     final all = s.isAuthenticated ? s.openRequests : s.repo.newRequests;
     final newReqs = all.where((r) => !r.hasOffer).toList();
     final offers = s.isAuthenticated
@@ -171,51 +224,68 @@ class _RequestsScreenState extends State<RequestsScreen>
     bool showPrice = false,
   }) {
     if (items.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: GtColors.soft,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: GtColors.brand.withValues(alpha: 0.16),
+      return RefreshIndicator(
+        color: GtColors.brand,
+        onRefresh: () => context.read<AppState>().refreshOpenRequests(),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.45,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: GtColors.soft,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: GtColors.brand.withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.inbox_outlined,
+                          color: GtColors.brand,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        empty,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: GtColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: const Icon(
-                  Icons.inbox_outlined,
-                  color: GtColors.brand,
-                  size: 32,
-                ),
               ),
-              const SizedBox(height: 14),
-              Text(
-                empty,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: GtColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
-    return ListView.builder(
-      controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-      itemCount: items.length,
-      itemBuilder: (_, i) => _RequestCard(
-        request: items[i],
-        showPrice: showPrice,
-        onOffer: () => _openRequest(items[i]),
-        onOpen: () => _openRequest(items[i]),
+    return RefreshIndicator(
+      color: GtColors.brand,
+      onRefresh: () => context.read<AppState>().refreshOpenRequests(),
+      child: ListView.builder(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+        itemCount: items.length,
+        itemBuilder: (_, i) => _RequestCard(
+          request: items[i],
+          showPrice: showPrice,
+          onOffer: () => _openRequest(items[i]),
+          onOpen: () => _openRequest(items[i]),
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
@@ -134,12 +135,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _pay() async {
     if (_paying || !_termsAccepted || _quote == null) return;
-    setState(() => _paying = true);
+    setState(() {
+      _paying = true;
+      _error = null;
+    });
     _idempotencyKey ??=
         'pay-${widget.rideId}-${widget.offerId}-${DateTime.now().millisecondsSinceEpoch}';
     final app = context.read<AppState>();
     try {
-      await app.pay(
+      final result = await app.pay(
         rideId: widget.rideId,
         offerId: widget.offerId,
         paymentMode: _paymentMode,
@@ -148,14 +152,73 @@ class _PaymentScreenState extends State<PaymentScreen> {
         idempotencyKey: _idempotencyKey,
       );
       if (!mounted) return;
-      context.go('/booking-confirmed/${widget.rideId}');
+
+      final ride = result['ride'];
+      final rideStatus = ride is Map
+          ? ride['status']?.toString()
+          : app.rideById(widget.rideId)?.serverStatus;
+      final payment = result['payment'];
+      final payStatus = payment is Map
+          ? payment['status']?.toString().toLowerCase()
+          : null;
+
+      if (rideStatus == 'BOOKED' || payStatus == 'succeeded') {
+        context.go('/booking-confirmed/${widget.rideId}');
+        return;
+      }
+
+      // Provider may still be confirming (webhook delay).
+      final confirmed = await _awaitPaymentConfirmation(app);
+      if (!mounted) return;
+      if (confirmed) {
+        context.go('/booking-confirmed/${widget.rideId}');
+        return;
+      }
+
+      setState(() {
+        _paying = false;
+        _error =
+            'Confirming your payment… Please wait a moment, then tap Retry status.';
+      });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Payment failed: $e')),
-      );
-      setState(() => _paying = false);
+      setState(() {
+        _paying = false;
+        _error =
+            'Payment unsuccessful. Your ride has not been booked.\n$e';
+      });
     }
+  }
+
+  Future<bool> _awaitPaymentConfirmation(AppState app) async {
+    for (var i = 0; i < 8; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      try {
+        final status = await app.getPaymentStatus(widget.rideId);
+        final rideStatus = status['rideStatus']?.toString() ??
+            status['status']?.toString() ??
+            '';
+        final payStatus =
+            status['paymentStatus']?.toString().toLowerCase() ??
+            (status['payment'] is Map
+                ? (status['payment'] as Map)['status']
+                    ?.toString()
+                    .toLowerCase()
+                : null);
+        if (rideStatus == 'BOOKED' || payStatus == 'succeeded') {
+          await app.refreshRide(widget.rideId);
+          return true;
+        }
+        if (payStatus == 'failed' || rideStatus == 'PAYMENT_FAILED') {
+          return false;
+        }
+      } catch (_) {
+        // Keep polling briefly.
+      }
+    }
+    await app.refreshRide(widget.rideId);
+    return app.rideById(widget.rideId)?.serverStatus == 'BOOKED' ||
+        app.rideById(widget.rideId)?.status == RideStatus.booked;
   }
 
   @override
@@ -196,11 +259,50 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_error!, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
+                        const Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: GtColors.brand,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(height: 1.4),
+                        ),
+                        const SizedBox(height: 20),
                         GtGreenButton(
-                          label: 'Retry',
-                          onPressed: () => _loadQuote(),
+                          label: _error!.contains('Confirming')
+                              ? 'Retry status'
+                              : 'Try again',
+                          onPressed: () async {
+                            final app = context.read<AppState>();
+                            if (_error!.contains('Confirming')) {
+                              setState(() => _paying = true);
+                              final ok = await _awaitPaymentConfirmation(app);
+                              if (!mounted) return;
+                              if (ok) {
+                                context.go(
+                                  '/booking-confirmed/${widget.rideId}',
+                                );
+                                return;
+                              }
+                              setState(() => _paying = false);
+                              return;
+                            }
+                            setState(() => _error = null);
+                            await _loadQuote();
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () => context.go(
+                            '/offers/${widget.rideId}',
+                          ),
+                          child: const Text(
+                            'Back to offers',
+                            style: TextStyle(color: GtColors.textSecondary),
+                          ),
                         ),
                       ],
                     ),

@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
+import 'package:passenger/services/ride_realtime.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum ServiceType { ride, perHour, delivery, carRental, experiences }
@@ -14,6 +16,12 @@ class AppState extends ChangeNotifier {
 
   final MockRepository repo = MockRepository.instance;
   final CanGoSession api = CanGoSession();
+  RideRealtime? _realtime;
+  Timer? _openRidePoll;
+
+  /// Banner when a new offer arrives while the user is elsewhere in the app.
+  String? pendingOfferAlert;
+  String? pendingOfferRideId;
 
   static const _onboardedKey = 'passenger_onboarded';
   static const _placeHistoryPrefix = 'passenger_place_history_';
@@ -99,15 +107,21 @@ class AppState extends ChangeNotifier {
         me = await api.auth.me();
         _syncLocalProfileFromMe();
         await refreshRidesFromServer();
+        await startRideRealtime();
+        _syncOpenRidePolling();
       } catch (_) {
         isAuthenticated = false;
         me = null;
         _clearLocalProfile();
         await api.clear();
+        stopRideRealtime();
+        _stopOpenRidePolling();
       }
     } else {
       me = null;
       _clearLocalProfile();
+      stopRideRealtime();
+      _stopOpenRidePolling();
     }
     await _loadPlaceSearchHistory();
     ready = true;
@@ -262,6 +276,8 @@ class AppState extends ChangeNotifier {
     _syncLocalProfileFromMe();
     await setOnboarded(true);
     await refreshRidesFromServer();
+    await startRideRealtime();
+    _syncOpenRidePolling();
     await _loadPlaceSearchHistory();
     notifyListeners();
   }
@@ -289,60 +305,113 @@ class AppState extends ChangeNotifier {
     if (!isAuthenticated) return;
     try {
       final list = await api.marketplace.listRides();
+      final rides = <RideRequest>[];
+      final statuses = <String, String>{};
+      final offers = <String, List<Offer>>{};
+      for (final raw in list.whereType<Map>()) {
+        final map = Map<String, dynamic>.from(raw);
+        final ride = rideFromServer(map);
+        rides.add(ride);
+        final id = ride.id;
+        final status = map['status'] as String?;
+        if (status != null) statuses[id] = status;
+        offers[id] = _parseOffersList(map['offers']);
+      }
       repo.rides
         ..clear()
-        ..addAll(
-          list
-              .whereType<Map>()
-              .map((e) => rideFromServer(Map<String, dynamic>.from(e))),
-        );
-      for (final r in list.whereType<Map>()) {
-        final id = r['id'] as String?;
-        final status = r['status'] as String?;
-        if (id != null && status != null) _serverRideStatus[id] = status;
-        if (id != null) {
-          _serverOffers[id] = _parseOffersList(r['offers']);
-        }
-      }
+        ..addAll(rides);
+      _serverRideStatus
+        ..clear()
+        ..addAll(statuses);
+      _serverOffers
+        ..clear()
+        ..addAll(offers);
+      _syncRealtimeRideRooms();
+      _syncOpenRidePolling();
       notifyListeners();
     } catch (e) {
       debugPrint('refreshRidesFromServer: $e');
     }
   }
 
-  List<Offer> _parseOffersList(dynamic raw) {
-    if (raw is! List) return const [];
-    final out = <Offer>[];
-    for (final item in raw) {
-      try {
-        if (item is Map) {
-          out.add(offerFromServer(Map<String, dynamic>.from(item)));
-        }
-      } catch (e, st) {
-        debugPrint('offer parse skipped: $e\n$st');
-      }
-    }
-    return out;
-  }
+  List<Offer> _parseOffersList(dynamic raw) => parseOffersList(raw);
 
   /// Refresh a single ride (and its offers) from GET /rides/:id.
   Future<RideRequest?> refreshRide(String rideId) async {
     if (!isAuthenticated) return rideById(rideId);
     try {
       final raw = await api.marketplace.getRide(rideId);
-      final ride = rideFromServer(raw);
+      // Parse offers first so a ride-mapping failure never blanks the list.
+      final parsedOffers = _parseOffersList(raw['offers']);
+      _serverOffers[rideId] = parsedOffers;
+      _realtime?.subscribeRide(rideId);
+
+      RideRequest ride;
+      try {
+        ride = rideFromServer(raw);
+      } catch (e, st) {
+        debugPrint('rideFromServer failed, using fallback: $e\n$st');
+        final existing = rideById(rideId);
+        ride = RideRequest(
+          id: rideId,
+          datetimeLabel: existing?.datetimeLabel ?? '',
+          from: existing?.from ?? (raw['fromLabel']?.toString() ?? ''),
+          to: existing?.to ?? raw['toLabel']?.toString(),
+          distance: existing?.distance,
+          duration: existing?.duration,
+          timeBadge: existing?.timeBadge,
+          status: mapServerRideStatus(raw['status']?.toString()),
+          offerCount: parsedOffers.isNotEmpty
+              ? parsedOffers.length
+              : (raw['offerCount'] is num
+                  ? (raw['offerCount'] as num).toInt()
+                  : existing?.offerCount ?? 0),
+          returnLabel: existing?.returnLabel,
+          selectedOfferId: raw['selectedOfferId']?.toString() ??
+              existing?.selectedOfferId,
+          serverStatus: raw['status']?.toString() ?? existing?.serverStatus,
+          shortId: raw['shortId']?.toString() ?? existing?.shortId,
+          createdAtLabel: existing?.createdAtLabel,
+          viewCount: (raw['viewCount'] as num?)?.toInt() ?? existing?.viewCount,
+          currency: raw['currency']?.toString() ?? existing?.currency,
+        );
+      }
+
+      // Keep offerCount in sync with parsed offers when possible.
+      if (parsedOffers.isNotEmpty && ride.offerCount != parsedOffers.length) {
+        ride = RideRequest(
+          id: ride.id,
+          datetimeLabel: ride.datetimeLabel,
+          from: ride.from,
+          to: ride.to,
+          distance: ride.distance,
+          duration: ride.duration,
+          timeBadge: ride.timeBadge,
+          status: ride.status,
+          offerCount: parsedOffers.length,
+          returnLabel: ride.returnLabel,
+          selectedOfferId: ride.selectedOfferId,
+          serverStatus: ride.serverStatus,
+          shortId: ride.shortId,
+          createdAtLabel: ride.createdAtLabel,
+          viewCount: ride.viewCount,
+          currency: ride.currency,
+        );
+      }
+
       final idx = repo.rides.indexWhere((r) => r.id == rideId);
       if (idx >= 0) {
         repo.rides[idx] = ride;
       } else {
         repo.rides.insert(0, ride);
       }
-      _serverRideStatus[rideId] = raw['status'] as String? ?? ride.serverStatus ?? '';
-      _serverOffers[rideId] = _parseOffersList(raw['offers']);
+      _serverRideStatus[rideId] =
+          raw['status']?.toString() ?? ride.serverStatus ?? '';
+      _syncOpenRidePolling();
       notifyListeners();
       return ride;
-    } catch (e) {
-      debugPrint('refreshRide: $e');
+    } catch (e, st) {
+      debugPrint('refreshRide: $e\n$st');
       return rideById(rideId);
     }
   }
@@ -576,8 +645,96 @@ class AppState extends ChangeNotifier {
 
   void onAppResumed() {
     if (isAuthenticated) {
-      refreshRidesFromServer();
+      unawaited(refreshRidesFromServer());
+      unawaited(startRideRealtime());
+      _syncOpenRidePolling();
     }
+  }
+
+  Future<void> startRideRealtime() async {
+    if (!isAuthenticated) return;
+    _realtime ??= RideRealtime(
+      session: api,
+      onOfferEvent: _handleOfferRealtimeEvent,
+    );
+    await _realtime!.connect();
+    _syncRealtimeRideRooms();
+  }
+
+  void stopRideRealtime() {
+    _realtime?.disconnect();
+    _realtime = null;
+  }
+
+  void _handleOfferRealtimeEvent(Map<String, dynamic> payload) {
+    final type = payload['type']?.toString() ?? '';
+    final rideId = payload['rideId']?.toString();
+    if (rideId == null || rideId.isEmpty) {
+      unawaited(refreshRidesFromServer());
+      return;
+    }
+    final isOfferEvent = type.isEmpty ||
+        type == 'offer.created' ||
+        type == 'offer.updated' ||
+        type == 'offer.withdrawn' ||
+        type == 'offer.reserved' ||
+        type == 'offer.reservation_released';
+    final isBookingEvent =
+        type == 'ride.booked' || payload['status']?.toString() == 'BOOKED';
+    if (type == 'offer.created') {
+      pendingOfferRideId = rideId;
+      pendingOfferAlert = 'New offer on your ride';
+    }
+    if (isOfferEvent || isBookingEvent) {
+      unawaited(refreshRide(rideId));
+    }
+    if (isBookingEvent) {
+      unawaited(refreshRidesFromServer());
+    }
+  }
+
+  void clearPendingOfferAlert() {
+    if (pendingOfferAlert == null && pendingOfferRideId == null) return;
+    pendingOfferAlert = null;
+    pendingOfferRideId = null;
+    notifyListeners();
+  }
+
+  Iterable<String> get _openOfferRideIds sync* {
+    for (final r in repo.rides) {
+      if (r.status == RideStatus.waitingOffers ||
+          r.status == RideStatus.chooseOffer) {
+        yield r.id;
+      }
+    }
+  }
+
+  void _syncRealtimeRideRooms() {
+    _realtime?.syncRideSubscriptions(_openOfferRideIds);
+  }
+
+  void _syncOpenRidePolling() {
+    final needsPoll = _openOfferRideIds.isNotEmpty;
+    if (!needsPoll || !isAuthenticated) {
+      _stopOpenRidePolling();
+      return;
+    }
+    _openRidePoll ??= Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!isAuthenticated) {
+        _stopOpenRidePolling();
+        return;
+      }
+      if (_openOfferRideIds.isEmpty) {
+        _stopOpenRidePolling();
+        return;
+      }
+      unawaited(refreshRidesFromServer());
+    });
+  }
+
+  void _stopOpenRidePolling() {
+    _openRidePoll?.cancel();
+    _openRidePoll = null;
   }
 
   void setShellTab(int index) {
@@ -813,6 +970,8 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     final refresh = await api.client.tokens.readRefresh();
     await api.auth.logout(refreshToken: refresh);
+    stopRideRealtime();
+    _stopOpenRidePolling();
     from = null;
     to = null;
     comment = '';
@@ -821,6 +980,11 @@ class AppState extends ChangeNotifier {
     termsAccepted = false;
     me = null;
     isAuthenticated = false;
+    _serverOffers.clear();
+    _serverRideStatus.clear();
+    repo.rides.clear();
+    pendingOfferAlert = null;
+    pendingOfferRideId = null;
     _clearLocalProfile();
     placeSearchHistory = const [];
     notifyListeners();
@@ -988,6 +1152,9 @@ class AppState extends ChangeNotifier {
     _serverRideStatus[local.id] =
         created['status'] as String? ?? 'WAITING_FOR_OFFERS';
     _serverOffers[local.id] = const [];
+    unawaited(startRideRealtime());
+    _realtime?.subscribeRide(local.id);
+    _syncOpenRidePolling();
     notifyListeners();
     return local;
   }

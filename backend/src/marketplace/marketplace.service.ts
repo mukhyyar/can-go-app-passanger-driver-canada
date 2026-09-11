@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
@@ -47,6 +48,7 @@ const DEFAULT_OFFER_VALIDITY_SECONDS = 30 * 60;
 @Injectable()
 export class MarketplaceService {
   private readonly payTtlMs: number;
+  private readonly logger = new Logger(MarketplaceService.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -202,7 +204,106 @@ export class MarketplaceService {
       { action: 'createRide', quote: snapshot },
     );
     await this.audit(userId, 'ride.create', 'Ride', ride.id, ip);
+    void this.notifyDriversOfNewRequest(ride);
     return this.getRideForActor(userId, ride.id);
+  }
+
+  /** Fan-out new open request to zone-matched (or zoneless) activated drivers. */
+  private async notifyDriversOfNewRequest(ride: {
+    id: string;
+    fromLat: number;
+    fromLng: number;
+    fromLabel: string;
+    toLabel: string | null;
+    pickupAt: Date;
+  }) {
+    try {
+      const userIds = await this.findEligibleDriverUserIds(
+        ride.fromLat,
+        ride.fromLng,
+      );
+      if (!userIds.length) return;
+
+      const toLabel = ride.toLabel ?? '';
+      const payload = {
+        type: 'request.created',
+        rideId: ride.id,
+        fromLabel: ride.fromLabel,
+        toLabel,
+        fromLat: ride.fromLat,
+        fromLng: ride.fromLng,
+        pickupAt: ride.pickupAt.toISOString(),
+      };
+      this.tracking?.emitToDrivers(userIds, 'marketplace.request', payload);
+      void this.notifications.notifyNewRideRequest({
+        userIds,
+        rideId: ride.id,
+        fromLabel: ride.fromLabel,
+        toLabel,
+        pickupAt: ride.pickupAt.toISOString(),
+      });
+    } catch (err) {
+      // Never fail createRide because of notification fan-out.
+      this.logger.warn(
+        `notifyDriversOfNewRequest failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /** Activated + approved drivers whose zones contain pickup (or have no geom zones). */
+  private async findEligibleDriverUserIds(
+    fromLat: number,
+    fromLng: number,
+  ): Promise<string[]> {
+    const ids = new Set<string>();
+    try {
+      const matched = await this.prisma.$queryRawUnsafe<
+        Array<{ userId: string }>
+      >(
+        `SELECT DISTINCT d."userId" AS "userId"
+         FROM "DriverProfile" d
+         INNER JOIN "OperatingZone" z ON z."driverId" = d.id
+         WHERE d."isActivated" = true
+           AND d."approvalStatus" = 'APPROVED'
+           AND z.geom IS NOT NULL
+           AND ST_Contains(
+             z.geom,
+             ST_SetSRID(ST_MakePoint($1, $2), 4326)
+           )`,
+        fromLng,
+        fromLat,
+      );
+      for (const row of matched) {
+        if (row.userId) ids.add(row.userId);
+      }
+    } catch {
+      // PostGIS unavailable — fall through to zoneless drivers only.
+    }
+
+    // Drivers with zero geom zones see all open rides (same as listOpenRequests fallback).
+    try {
+      const zoneless = await this.prisma.$queryRawUnsafe<
+        Array<{ userId: string }>
+      >(
+        `SELECT d."userId" AS "userId"
+         FROM "DriverProfile" d
+         WHERE d."isActivated" = true
+           AND d."approvalStatus" = 'APPROVED'
+           AND NOT EXISTS (
+             SELECT 1 FROM "OperatingZone" z
+             WHERE z."driverId" = d.id AND z.geom IS NOT NULL
+           )`,
+      );
+      for (const row of zoneless) {
+        if (row.userId) ids.add(row.userId);
+      }
+    } catch {
+      // ignore
+    }
+
+    return [...ids];
   }
 
   async listPassengerRides(userId: string) {
@@ -408,20 +509,30 @@ export class MarketplaceService {
       throw new BadRequestException('Offer expired');
     }
 
+    // Reserve for payment only — do NOT close competing offers until payment
+    // succeeds (markBooked). Optimistic locks prevent double-booking races.
     await this.prisma.$transaction(async (tx) => {
-      await tx.offer.updateMany({
-        where: { rideId, id: { not: offerId }, status: OfferStatus.ACTIVE },
-        data: {
-          status: OfferStatus.REJECTED,
-          rejectedAt: new Date(),
+      const offerLock = await tx.offer.updateMany({
+        where: {
+          id: offerId,
+          rideId,
+          status: OfferStatus.ACTIVE,
+          expiresAt: { gt: new Date() },
         },
-      });
-      await tx.offer.update({
-        where: { id: offerId },
         data: { status: OfferStatus.SELECTED, acceptedAt: new Date() },
       });
-      await tx.ride.update({
-        where: { id: rideId },
+      if (offerLock.count !== 1) {
+        throw new BadRequestException('Offer not available');
+      }
+
+      const rideLock = await tx.ride.updateMany({
+        where: {
+          id: rideId,
+          passengerId: passenger.id,
+          status: {
+            in: [RideStatus.WAITING_FOR_OFFERS, RideStatus.OFFER_SELECTION],
+          },
+        },
         data: {
           selectedOfferId: offerId,
           assignedDriverId: offer.driverId,
@@ -430,6 +541,12 @@ export class MarketplaceService {
           paymentExpiresAt: new Date(Date.now() + this.payTtlMs),
         },
       });
+      if (rideLock.count !== 1) {
+        throw new BadRequestException(
+          'Ride is no longer available for booking',
+        );
+      }
+
       await tx.rideEvent.create({
         data: {
           rideId,
@@ -437,7 +554,7 @@ export class MarketplaceService {
           toStatus: RideStatus.PAYMENT_PENDING,
           actorType: 'passenger',
           actorId: userId,
-          payload: { offerId, action: 'selectOffer' },
+          payload: { offerId, action: 'offer_reserved_for_payment' },
         },
       });
       await tx.offerHistory.create({
@@ -445,7 +562,7 @@ export class MarketplaceService {
           offerId,
           rideId,
           driverId: offer.driverId,
-          action: 'SELECTED',
+          action: 'RESERVED_FOR_PAYMENT',
           afterJson: { offerId, bidAmount: Number(offer.bidAmount) },
           actorId: userId,
         },
@@ -454,9 +571,6 @@ export class MarketplaceService {
 
     await this.audit(userId, 'ride.select_offer', 'Offer', offerId, ip);
 
-    const losing = ride.offers.filter(
-      (o) => o.id !== offerId && o.status === OfferStatus.ACTIVE,
-    );
     const winnerUser = await this.prisma.driverProfile.findUnique({
       where: { id: offer.driverId },
       select: { userId: true },
@@ -465,31 +579,25 @@ export class MarketplaceService {
       void this.notifications.notifyRideStatus({
         userIds: [winnerUser.userId],
         rideId,
-        status: 'OFFER_ACCEPTED',
-        title: 'Offer accepted',
-        body: 'A passenger accepted your offer. Payment is pending.',
+        status: 'OFFER_RESERVED',
+        title: 'Offer reserved',
+        body: 'A passenger started booking your offer. Payment is pending.',
+        data: { rideId, offerId, type: 'OFFER_RESERVED' },
       });
-    }
-    for (const o of losing) {
-      const d = await this.prisma.driverProfile.findUnique({
-        where: { id: o.driverId },
-        select: { userId: true },
-      });
-      if (d) {
-        void this.notifications.notifyRideStatus({
-          userIds: [d.userId],
-          rideId,
-          status: 'OFFER_REJECTED',
-          title: 'Offer not selected',
-          body: 'Another driver was selected for this request.',
-        });
-      }
     }
     this.tracking?.emitRideEvent(rideId, {
-      type: 'offer.selected',
+      type: 'offer.reserved',
       offerId,
       rideId,
+      status: RideStatus.PAYMENT_PENDING,
     });
+    if (passenger.userId) {
+      this.tracking?.emitToPassengers([passenger.userId], 'ride.status.changed', {
+        rideId,
+        status: RideStatus.PAYMENT_PENDING,
+        offerId,
+      });
+    }
 
     return this.getRideForActor(userId, rideId);
   }
@@ -590,10 +698,15 @@ export class MarketplaceService {
     }
 
     return Promise.all(
-      filtered.map(async (r) => ({
-        ...(await this.serializeRide(r)),
-        myOffers: r.offers,
-      })),
+      filtered.map(async (r) => {
+        const serialized = await this.serializeRide(r);
+        // Always serialize offers — raw Prisma Decimals become JSON strings and
+        // break Flutter `as num` casts, wiping the entire open-requests list.
+        const myOffers = (r.offers ?? []).map((o) =>
+          this.serializeOffer(o as unknown as Record<string, unknown>),
+        );
+        return { ...serialized, myOffers, offers: myOffers };
+      }),
     );
   }
 
@@ -788,6 +901,15 @@ export class MarketplaceService {
         amount: Number(offer.bidAmount),
         vehicleName: vehicle?.name,
       });
+      this.tracking?.emitToPassengers(
+        [passenger.userId],
+        'marketplace.offer',
+        {
+          type: 'offer.created',
+          offerId: offer.id,
+          rideId,
+        },
+      );
     }
     this.tracking?.emitRideEvent(rideId, {
       type: 'offer.created',
@@ -911,6 +1033,22 @@ export class MarketplaceService {
     });
 
     await this.audit(userId, 'offer.update', 'Offer', replacement.id, ip);
+    const passenger = await this.prisma.passengerProfile.findUnique({
+      where: { id: ride.passengerId },
+      select: { userId: true },
+    });
+    if (passenger) {
+      this.tracking?.emitToPassengers(
+        [passenger.userId],
+        'marketplace.offer',
+        {
+          type: 'offer.updated',
+          offerId: replacement.id,
+          rideId,
+          supersededOfferId: existing.id,
+        },
+      );
+    }
     this.tracking?.emitRideEvent(rideId, {
       type: 'offer.updated',
       offerId: replacement.id,
@@ -1402,19 +1540,12 @@ export class MarketplaceService {
     if ((event.status ?? 'succeeded') === 'succeeded') {
       await this.markBooked(payment.rideId, payment.id, undefined);
     } else if (event.status === 'failed') {
-      const ride = await this.prisma.ride.findUnique({
-        where: { id: payment.rideId },
-      });
-      if (ride && ride.status === RideStatus.PAYMENT_PENDING) {
-        await this.setStatus(
-          ride.id,
-          ride.status,
-          RideStatus.PAYMENT_FAILED,
-          'system',
-          undefined,
-          { paymentId: payment.id },
-        );
-      }
+      // Do not leave the ride stuck — release reservation so passenger can retry.
+      await this.releasePaymentReservation(
+        payment.rideId,
+        'payment_failed',
+        RideStatus.OFFER_SELECTION,
+      );
     }
 
     await this.prisma.webhookEvent.update({
@@ -1460,6 +1591,10 @@ export class MarketplaceService {
       include: {
         passenger: true,
         selectedOffer: { include: { driver: true } },
+        offers: {
+          where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] } },
+          select: { id: true, driverId: true, status: true },
+        },
       },
     });
     if (!ride) return;
@@ -1469,19 +1604,79 @@ export class MarketplaceService {
         `Cannot book from ${ride.status} for payment ${paymentId}`,
       );
     }
-    await this.setStatus(
-      rideId,
-      ride.status,
-      RideStatus.BOOKED,
-      actorId ? 'passenger' : 'system',
-      actorId,
-      { paymentId, action: 'payment_succeeded' },
-    );
+    if (!ride.selectedOfferId) {
+      throw new BadRequestException('No selected offer to book');
+    }
+
+    const now = new Date();
+    const booked = await this.prisma.$transaction(async (tx) => {
+      const rideLock = await tx.ride.updateMany({
+        where: { id: rideId, status: RideStatus.PAYMENT_PENDING },
+        data: { status: RideStatus.BOOKED, paymentExpiresAt: null },
+      });
+      if (rideLock.count !== 1) {
+        return false;
+      }
+
+      // Winning offer stays SELECTED (accepted). Close all other open offers.
+      await tx.offer.updateMany({
+        where: {
+          rideId,
+          id: { not: ride.selectedOfferId! },
+          status: {
+            in: [OfferStatus.ACTIVE, OfferStatus.SELECTED],
+          },
+        },
+        data: {
+          status: OfferStatus.REJECTED,
+          rejectedAt: now,
+        },
+      });
+
+      await tx.rideEvent.create({
+        data: {
+          rideId,
+          fromStatus: RideStatus.PAYMENT_PENDING,
+          toStatus: RideStatus.BOOKED,
+          actorType: actorId ? 'passenger' : 'system',
+          actorId,
+          payload: {
+            paymentId,
+            action: 'payment_succeeded',
+            offerId: ride.selectedOfferId,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      await tx.offerHistory.create({
+        data: {
+          offerId: ride.selectedOfferId!,
+          rideId,
+          driverId: ride.selectedOffer!.driverId,
+          action: 'ACCEPTED',
+          afterJson: { paymentId, status: 'BOOKED' },
+          actorId: actorId ?? undefined,
+        },
+      });
+      return true;
+    });
+
+    if (!booked) {
+      const again = await this.prisma.ride.findUnique({
+        where: { id: rideId },
+        select: { status: true },
+      });
+      if (again?.status === RideStatus.BOOKED) return;
+      throw new BadRequestException(
+        `Cannot book from ${again?.status ?? 'unknown'} for payment ${paymentId}`,
+      );
+    }
 
     const bookingData = {
       bookingId: rideId,
+      rideId,
+      offerId: ride.selectedOfferId,
       type: 'ride.booked',
-      deepLink: `/rides/${rideId}`,
+      deepLink: `/booking-confirmed/${rideId}`,
     };
     void this.notifications.notifyRideStatus({
       userIds: [ride.passenger.userId],
@@ -1502,11 +1697,110 @@ export class MarketplaceService {
         userIds: [driverUserId],
         rideId,
         status: RideStatus.BOOKED,
-        title: 'Your offer has been booked',
+        title: 'Your offer has been accepted',
         body: `Pickup at ${pickupLabel} · ${when}`,
         data: bookingData,
       });
     }
+
+    // Notify losing drivers only after payment confirms the booking.
+    for (const o of ride.offers) {
+      if (o.id === ride.selectedOfferId) continue;
+      const d = await this.prisma.driverProfile.findUnique({
+        where: { id: o.driverId },
+        select: { userId: true },
+      });
+      if (d) {
+        void this.notifications.notifyRideStatus({
+          userIds: [d.userId],
+          rideId,
+          status: 'OFFER_NOT_SELECTED',
+          title: 'Offer not selected',
+          body: 'Another offer was booked for this request.',
+          data: { rideId, offerId: o.id, type: 'OFFER_NOT_SELECTED' },
+        });
+      }
+    }
+
+    this.tracking?.emitRideEvent(rideId, {
+      type: 'ride.booked',
+      rideId,
+      offerId: ride.selectedOfferId,
+      status: RideStatus.BOOKED,
+      paymentId,
+    });
+    this.tracking?.emitToPassengers([ride.passenger.userId], 'ride.status.changed', {
+      rideId,
+      status: RideStatus.BOOKED,
+      offerId: ride.selectedOfferId,
+    });
+    if (driverUserId) {
+      this.tracking?.emitToDrivers([driverUserId], 'ride.status.changed', {
+        rideId,
+        status: RideStatus.BOOKED,
+        offerId: ride.selectedOfferId,
+      });
+    }
+  }
+
+  /** Release a payment reservation so competing offers stay bookable. */
+  private async releasePaymentReservation(
+    rideId: string,
+    reason: string,
+    toStatus: RideStatus = RideStatus.OFFER_SELECTION,
+  ) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      select: {
+        id: true,
+        status: true,
+        selectedOfferId: true,
+        offers: { where: { status: OfferStatus.SELECTED }, select: { id: true } },
+      },
+    });
+    if (!ride || ride.status !== RideStatus.PAYMENT_PENDING) return false;
+
+    const now = new Date();
+    const result = await this.lifecycle.transition({
+      rideId,
+      from: RideStatus.PAYMENT_PENDING,
+      to: toStatus,
+      actorType: 'system',
+      payload: { reason },
+      extraRideData: {
+        selectedOfferId: null,
+        assignedDriverId: null,
+        paymentExpiresAt: null,
+      },
+    });
+    if (!result.ok) return false;
+
+    if (ride.selectedOfferId) {
+      await this.prisma.offer.updateMany({
+        where: { id: ride.selectedOfferId, status: OfferStatus.SELECTED },
+        data: {
+          status: OfferStatus.ACTIVE,
+          acceptedAt: null,
+        },
+      });
+    } else {
+      await this.prisma.offer.updateMany({
+        where: { rideId, status: OfferStatus.SELECTED },
+        data: {
+          status: OfferStatus.ACTIVE,
+          acceptedAt: null,
+        },
+      });
+    }
+
+    this.tracking?.emitRideEvent(rideId, {
+      type: 'offer.reservation_released',
+      rideId,
+      reason,
+      status: toStatus,
+      at: now.toISOString(),
+    });
+    return true;
   }
 
   private async setStatus(

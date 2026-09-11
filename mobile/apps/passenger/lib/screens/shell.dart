@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/screens/book_screen.dart';
 import 'package:passenger/screens/menu_panel.dart';
@@ -59,11 +60,43 @@ class Shell extends StatefulWidget {
 }
 
 class _ShellState extends State<Shell> {
+  String? _seenOfferAlert;
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final index = app.shellTabIndex;
     final offerBadge = app.unreadOfferBadge;
+    final alert = app.pendingOfferAlert;
+    final alertRideId = app.pendingOfferRideId;
+
+    if (alert != null &&
+        alertRideId != null &&
+        alert != _seenOfferAlert &&
+        mounted) {
+      _seenOfferAlert = alert;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(alert),
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: () {
+                app.clearPendingOfferAlert();
+                app.setShellTab(1);
+                // ignore: use_build_context_synchronously
+                GoRouter.of(context).push('/offers/$alertRideId');
+              },
+            ),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+        app.clearPendingOfferAlert();
+      });
+    }
 
     return Scaffold(
       key: passengerShellKey,

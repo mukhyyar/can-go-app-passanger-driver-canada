@@ -14,8 +14,7 @@ import 'package:passenger/state/app_state.dart';
 
 GoRouter createRouter(AppState state) {
   return GoRouter(
-    // Avoid Flutter web platform defaultRouteName clashing with go_router.
-    overridePlatformDefaultLocation: true,
+    // Keep browser deep links (e.g. /offers/:id) — do not force '/'.
     initialLocation: '/',
     refreshListenable: state,
     redirect: (context, goState) {

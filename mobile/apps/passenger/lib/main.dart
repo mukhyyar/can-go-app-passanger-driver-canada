@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/router.dart';
@@ -8,6 +9,8 @@ import 'package:provider/provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // So /offers/:id and other deep links work on Flutter web (not only /#/...).
+  usePathUrlStrategy();
   runApp(const PassengerApp());
 }
 
@@ -37,17 +40,19 @@ class _PassengerAppState extends State<PassengerApp> {
 
   @override
   Widget build(BuildContext context) {
+    // IMPORTANT: Do not rebuild MaterialApp.router on every AppState notify.
+    // That remounts the navigator and kicks the user off /offers back to /.
     return ChangeNotifierProvider.value(
       value: _state,
-      child: ListenableBuilder(
-        listenable: _state,
-        builder: (context, _) {
-          return MaterialApp.router(
-            title: 'CAN-GO Passenger',
-            theme: GtTheme.light(),
-            debugShowCheckedModeBanner: false,
-            routerConfig: _router,
-            builder: (context, child) {
+      child: MaterialApp.router(
+        title: 'CAN-GO Passenger',
+        theme: GtTheme.light(),
+        debugShowCheckedModeBanner: false,
+        routerConfig: _router,
+        builder: (context, child) {
+          return ListenableBuilder(
+            listenable: _state,
+            builder: (context, _) {
               return GtSplashGate(
                 ready: _state.ready,
                 role: GtSplashRole.passenger,

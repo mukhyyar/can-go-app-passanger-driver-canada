@@ -41,12 +41,35 @@ export class TrackingGateway implements OnGatewayConnection {
         client.disconnect(true);
         return;
       }
-      const payload = await this.jwt.verifyAsync<{ sub: string }>(token);
+      const payload = await this.jwt.verifyAsync<{
+        sub: string;
+        role?: string;
+      }>(token);
       client.data.userId = payload.sub;
+      // Drivers / passengers join personal rooms for marketplace fan-out.
+      if (payload.role === 'DRIVER') {
+        await client.join(`driver:${payload.sub}`);
+      } else if (payload.role === 'PASSENGER') {
+        await client.join(`passenger:${payload.sub}`);
+      }
     } catch {
       this.logger.warn('WS auth failed — disconnect');
       client.disconnect(true);
     }
+  }
+
+  @SubscribeMessage('driver.subscribe')
+  async subscribeDriver(@ConnectedSocket() client: AuthedSocket) {
+    if (!client.data.userId) return { ok: false };
+    await client.join(`driver:${client.data.userId}`);
+    return { ok: true, room: `driver:${client.data.userId}` };
+  }
+
+  @SubscribeMessage('passenger.subscribe')
+  async subscribePassenger(@ConnectedSocket() client: AuthedSocket) {
+    if (!client.data.userId) return { ok: false };
+    await client.join(`passenger:${client.data.userId}`);
+    return { ok: true, room: `passenger:${client.data.userId}` };
   }
 
   @SubscribeMessage('ride.subscribe')
@@ -86,5 +109,25 @@ export class TrackingGateway implements OnGatewayConnection {
 
   emitRideEvent(rideId: string, event: Record<string, unknown>) {
     this.server?.to(`ride:${rideId}`).emit('ride.event', event);
+  }
+
+  /** Push a marketplace event to one or more driver user rooms. */
+  emitToDrivers(userIds: string[], event: string, payload: Record<string, unknown>) {
+    if (!this.server || !userIds.length) return;
+    for (const userId of userIds) {
+      this.server.to(`driver:${userId}`).emit(event, payload);
+    }
+  }
+
+  /** Push a marketplace event to one or more passenger user rooms. */
+  emitToPassengers(
+    userIds: string[],
+    event: string,
+    payload: Record<string, unknown>,
+  ) {
+    if (!this.server || !userIds.length) return;
+    for (const userId of userIds) {
+      this.server.to(`passenger:${userId}`).emit(event, payload);
+    }
   }
 }

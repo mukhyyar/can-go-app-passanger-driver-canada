@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
@@ -31,39 +30,87 @@ class OffersScreen extends StatefulWidget {
 }
 
 class _OffersScreenState extends State<OffersScreen> {
-  Timer? _poll;
   _OfferSort _sort = _OfferSort.recommended;
   bool _viewRecorded = false;
   bool _booking = false;
+  bool _loading = true;
+  String? _loadError;
+  List<Offer> _offers = const [];
 
   @override
   void initState() {
     super.initState();
-    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted) return;
-      context.read<AppState>().refreshRide(widget.rideId);
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
   Future<void> _bootstrap() async {
+    await _reload();
     if (!mounted) return;
-    final app = context.read<AppState>();
-    await app.refreshRide(widget.rideId);
     if (!_viewRecorded) {
       _viewRecorded = true;
-      await app.recordRideView(widget.rideId);
+      final app = context.read<AppState>();
+      if (app.isAuthenticated) {
+        await app.recordRideView(widget.rideId);
+      }
     }
+    if (!mounted) return;
     final focus = widget.focusOfferId;
-    if (focus != null && focus.isNotEmpty && mounted) {
+    if (focus != null && focus.isNotEmpty) {
       context.push('/offer/${widget.rideId}/$focus');
     }
   }
 
-  @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
+  Future<void> _reload() async {
+    final app = context.read<AppState>();
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      if (!app.isAuthenticated) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _offers = const [];
+          _loadError = 'Sign in to see driver offers on this ride.';
+        });
+        return;
+      }
+
+      final raw = await app.api.marketplace.getRide(widget.rideId);
+      final parsed = parseOffersList(raw['offers']);
+      await app.refreshRide(widget.rideId);
+      if (!mounted) return;
+
+      final fromState = app.offersFor(widget.rideId);
+      final offers = parsed.isNotEmpty ? parsed : fromState;
+      final ride = app.rideById(widget.rideId);
+      final serverCount = raw['offerCount'] is num
+          ? (raw['offerCount'] as num).toInt()
+          : (raw['offers'] is List ? (raw['offers'] as List).length : 0);
+
+      setState(() {
+        _loading = false;
+        _offers = offers;
+        if (offers.isEmpty && serverCount > 0) {
+          _loadError =
+              'API returned $serverCount offer(s) but parsing yielded 0. Tap Retry.';
+        } else if (offers.isEmpty && (ride?.offerCount ?? 0) > 0) {
+          _loadError =
+              'Server has ${ride!.offerCount} offer(s) but the card did not load.';
+        } else {
+          _loadError = null;
+        }
+      });
+    } catch (e, st) {
+      debugPrint('OffersScreen reload error: $e\n$st');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = '$e';
+      });
+    }
   }
 
   List<Offer> _sorted(List<Offer> offers) {
@@ -82,7 +129,7 @@ class _OffersScreenState extends State<OffersScreen> {
       case _OfferSort.bestRated:
         list.sort((a, b) => b.rating.compareTo(a.rating));
       case _OfferSort.newest:
-        break;
+        list.sort((a, b) => b.id.compareTo(a.id));
       case _OfferSort.vehicleClass:
         list.sort((a, b) => a.vehicleClass.compareTo(b.vehicleClass));
     }
@@ -107,34 +154,306 @@ class _OffersScreenState extends State<OffersScreen> {
     }
   }
 
-  String _sortLabel(_OfferSort s) {
-    switch (s) {
-      case _OfferSort.recommended:
-        return 'Recommended';
-      case _OfferSort.lowestPrice:
-        return 'Lowest price';
-      case _OfferSort.highestPrice:
-        return 'Highest price';
-      case _OfferSort.bestRated:
-        return 'Best rated';
-      case _OfferSort.newest:
-        return 'Newest';
-      case _OfferSort.vehicleClass:
-        return 'Vehicle class';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final ride = state.rideById(widget.rideId);
-    final offers = _sorted(state.offersFor(widget.rideId));
-    final offerCount = offers.isNotEmpty
-        ? offers.length
-        : (ride?.offerCount ?? 0);
+    final live = state.offersFor(widget.rideId);
+    final source = _offers.isNotEmpty ? _offers : live;
+    final offers = _sorted(source);
+    final offerCount =
+        offers.isNotEmpty ? offers.length : (ride?.offerCount ?? 0);
+
+    // Flutter web: ListView children were laying out but not painting.
+    // ColoredBox + SingleChildScrollView + Column paints reliably.
+    // Build offer rows imperatively — collection-if/else/for dropped cards.
+    final children = <Widget>[
+      if (!state.isAuthenticated)
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF1F2),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFFECDD3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Sign in required to load live offers.',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => context.push('/auth'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: GtColors.brand,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(44),
+                ),
+                child: const Text('Sign in'),
+              ),
+            ],
+          ),
+        ),
+      if (ride != null) ...[
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: GtColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                ride.from,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              if (ride.to != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  ride.to!,
+                  style:
+                      const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Text(
+                '$offerCount offer${offerCount == 1 ? '' : 's'}'
+                '${ride.viewCount != null ? ' · ${ride.viewCount} views' : ''}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: GtColors.brand,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Text(
+              'Sort',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: GtColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SizedBox(
+                height: 44,
+                child: Material(
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: const BorderSide(color: GtColors.border),
+                  ),
+                  child: PopupMenuButton<_OfferSort>(
+                    initialValue: _sort,
+                    onSelected: (v) => setState(() => _sort = v),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: _OfferSort.recommended,
+                        child: Text('Recommended'),
+                      ),
+                      PopupMenuItem(
+                        value: _OfferSort.lowestPrice,
+                        child: Text('Lowest price'),
+                      ),
+                      PopupMenuItem(
+                        value: _OfferSort.highestPrice,
+                        child: Text('Highest price'),
+                      ),
+                      PopupMenuItem(
+                        value: _OfferSort.bestRated,
+                        child: Text('Best rated'),
+                      ),
+                      PopupMenuItem(
+                        value: _OfferSort.newest,
+                        child: Text('Newest'),
+                      ),
+                      PopupMenuItem(
+                        value: _OfferSort.vehicleClass,
+                        child: Text('Vehicle class'),
+                      ),
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              switch (_sort) {
+                                _OfferSort.recommended => 'Recommended',
+                                _OfferSort.lowestPrice => 'Lowest price',
+                                _OfferSort.highestPrice => 'Highest price',
+                                _OfferSort.bestRated => 'Best rated',
+                                _OfferSort.newest => 'Newest',
+                                _OfferSort.vehicleClass => 'Vehicle class',
+                              },
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+      ],
+    ];
+
+    if (_loading && offers.isEmpty) {
+      children.add(
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 40),
+          child: Center(
+            child: CircularProgressIndicator(color: GtColors.brand),
+          ),
+        ),
+      );
+    } else if (offers.isEmpty) {
+      children.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: GtColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _loadError != null ? 'Could not load offers' : 'No offers yet',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              if (_loadError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _loadError!,
+                  style: const TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+                ),
+              ],
+              const SizedBox(height: 8),
+              const Text(
+                'Drivers are bidding. Tap Retry to refresh.',
+                style: TextStyle(color: GtColors.textMuted, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loading ? null : _reload,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: GtColors.brand,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(44),
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      for (final offer in offers) {
+        children.add(
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: GtColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  offer.displayName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${offer.vehicleClass} · ${offer.passengers} pax'
+                  '${offer.baggage != null ? ' · ${offer.baggage} bags' : ''}',
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                if (offer.ratingCount > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '★ ${offer.rating.toStringAsFixed(1)} (${offer.ratingCount})',
+                    style: const TextStyle(fontSize: 12, color: Colors.black45),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Text(
+                  offer.priceLabel,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 24,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => context
+                          .push('/offer/${widget.rideId}/${offer.id}'),
+                      child: const Text(
+                        'DETAILS',
+                        style: TextStyle(
+                          color: GtColors.brand,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    ElevatedButton(
+                      onPressed: _booking ? null : () => _book(offer),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF16A34A),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        minimumSize: const Size(120, 44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'BOOK',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
 
     return Scaffold(
-      backgroundColor: GtColors.bgGrey,
+      backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
         title: Text(
           ride != null ? 'Offers · #${ride.displayId}' : 'Offers',
@@ -143,333 +462,39 @@ class _OffersScreenState extends State<OffersScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
-      ),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (ride != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                child: GtCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GtRouteRow(
-                        from: ride.from,
-                        to: ride.to,
-                        distance: ride.distance,
-                        duration: ride.duration,
-                        timeBadge: ride.timeBadge,
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Text(
-                            '$offerCount offer${offerCount == 1 ? '' : 's'}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: GtColors.brand,
-                            ),
-                          ),
-                          if (ride.viewCount != null) ...[
-                            const SizedBox(width: 12),
-                            Text(
-                              '${ride.viewCount} views',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: GtColors.textMuted,
-                              ),
-                            ),
-                          ],
-                          const Spacer(),
-                          Text(
-                            ride.currency ?? state.currency,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: GtColors.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: SizedBox(
-                height: 44,
-                child: Row(
-                  children: [
-                    const Text(
-                      'Sort',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: GtColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Material(
-                        color: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: const BorderSide(color: GtColors.border),
-                        ),
-                        child: PopupMenuButton<_OfferSort>(
-                          initialValue: _sort,
-                          onSelected: (v) => setState(() => _sort = v),
-                          itemBuilder: (_) => [
-                            for (final s in _OfferSort.values)
-                              PopupMenuItem(
-                                value: s,
-                                child: Text(_sortLabel(s)),
-                              ),
-                          ],
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _sortLabel(_sort),
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                ),
-                                const Icon(Icons.arrow_drop_down),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Expanded(
-              child: offers.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              offerCount > 0
-                                  ? Icons.sync
-                                  : Icons.hourglass_empty,
-                              size: 40,
-                              color: GtColors.textMuted,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              offerCount > 0
-                                  ? 'Loading offers…'
-                                  : 'No offers yet',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              offerCount > 0
-                                  ? 'We found $offerCount offer(s). Pulling details…'
-                                  : 'Offers appear when a driver bids on your ride. Checking automatically…',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: GtColors.textMuted),
-                            ),
-                            const SizedBox(height: 16),
-                            TextButton(
-                              onPressed: () => context
-                                  .read<AppState>()
-                                  .refreshRide(widget.rideId),
-                              child: const Text('Retry'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: offers.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (_, i) {
-                        final o = offers[i];
-                        return _OfferCard(
-                          offer: o,
-                          booking: _booking,
-                          onDetails: () =>
-                              context.push('/offer/${widget.rideId}/${o.id}'),
-                          onBook: () => _book(o),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OfferCard extends StatelessWidget {
-  const _OfferCard({
-    required this.offer,
-    required this.onDetails,
-    required this.onBook,
-    required this.booking,
-  });
-
-  final Offer offer;
-  final VoidCallback onDetails;
-  final VoidCallback onBook;
-  final bool booking;
-
-  @override
-  Widget build(BuildContext context) {
-    final asset = MockData.vehicleImageAsset(offer.vehicleClass);
-    final network = offer.imageUrl;
-
-    return GtCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 88,
-                  height: 64,
-                  child: network != null && network.isNotEmpty
-                      ? Image.network(
-                          network,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _placeholder(asset),
-                        )
-                      : _placeholder(asset),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      offer.displayName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      offer.vehicleClass,
-                      style: const TextStyle(
-                        color: GtColors.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${offer.passengers}×  ·  ${offer.baggage ?? '—'}× bags',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: GtColors.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.star, size: 14, color: GtColors.star),
-                        const SizedBox(width: 4),
-                        Text(
-                          offer.ratingCount > 0
-                              ? '${offer.rating.toStringAsFixed(1)} (${offer.ratingCount})'
-                              : 'New',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                offer.priceLabel,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          if (offer.options.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              offer.options.take(4).join(' · '),
-              style: const TextStyle(
-                fontSize: 12,
-                color: GtColors.textSecondary,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-          if (offer.languages.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              offer.languages.join(' · '),
-              style: const TextStyle(fontSize: 12, color: GtColors.textMuted),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              TextButton(
-                onPressed: onDetails,
-                child: const Text(
-                  'Details',
-                  style: TextStyle(
-                    color: GtColors.brand,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              SizedBox(
-                height: 36,
-                child: ElevatedButton(
-                  onPressed: booking ? null : onBook,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: GtColors.green,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text(
-                    'BOOK',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loading ? null : _reload,
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _placeholder(String? asset) {
-    return ColoredBox(
-      color: GtColors.bgGrey,
-      child: asset != null
-          ? Image.asset(asset, package: 'gt_ui', fit: BoxFit.contain)
-          : const Icon(Icons.directions_car, size: 32, color: GtColors.textMuted),
+      // Explicit expand — Flutter web was painting AppBar but leaving body empty
+      // when ListView/unbounded scroll got zero paint extent.
+      body: SizedBox.expand(
+        child: ColoredBox(
+          color: const Color(0xFFF3F4F6),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '${offers.length} offer${offers.length == 1 ? '' : 's'} available',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...children,
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

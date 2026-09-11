@@ -1,4 +1,5 @@
 import 'package:gt_mock/gt_mock.dart';
+import 'dart:convert';
 
 /// Maps server RideStatus strings to Flutter UX [RideStatus].
 RideStatus mapServerRideStatus(String? status) {
@@ -90,17 +91,27 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     if (km != null) {
       final v = km is num ? km : num.tryParse(km.toString());
       if (v != null) {
-        distance = v == v.roundToDouble() ? '${v.round()} km' : '${v.toStringAsFixed(1)} km';
+        distance = v == v.roundToDouble()
+            ? '${v.round()} km'
+            : '${v.toStringAsFixed(1)} km';
       }
     }
     if (mins != null) {
-      final m = (mins as num).round();
-      duration = m >= 60 ? '~ ${m ~/ 60} h ${m % 60} min' : '~ $m min';
+      final mNum = mins is num ? mins : num.tryParse(mins.toString());
+      if (mNum != null) {
+        final m = mNum.round();
+        duration = m >= 60 ? '~ ${m ~/ 60} h ${m % 60} min' : '~ $m min';
+      }
     }
   }
   final offers = json['offers'];
-  final offerCount =
-      offers is List ? offers.length : (json['offerCount'] as int? ?? 0);
+  final offerCount = offers is List
+      ? offers.length
+      : (() {
+          final raw = json['offerCount'];
+          if (raw is num) return raw.toInt();
+          return int.tryParse('$raw') ?? 0;
+        })();
 
   final pickupLabel = _formatPickup(json['pickupAt']);
   final returnLabel =
@@ -113,45 +124,56 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
   }
 
   String? timeBadge;
-  final pickupNow = json['pickupNow'] as bool?;
+  final pickupNow = json['pickupNow'];
   if (pickupNow == true) {
     timeBadge = 'Pickup now';
   } else if (pickupLabel.isNotEmpty) {
     timeBadge = 'Scheduled';
   }
 
+  final id = json['id']?.toString();
+  if (id == null || id.isEmpty) {
+    throw FormatException('Ride missing id');
+  }
+
   return RideRequest(
-    id: json['id'] as String,
+    id: id,
     datetimeLabel: pickupLabel,
-    from: json['fromLabel'] as String? ?? '',
-    to: json['toLabel'] as String?,
+    from: json['fromLabel']?.toString() ?? '',
+    to: json['toLabel']?.toString(),
     distance: distance,
     duration: duration,
     timeBadge: timeBadge,
-    status: mapServerRideStatus(json['status'] as String?),
+    status: mapServerRideStatus(json['status']?.toString()),
     offerCount: offerCount,
     returnLabel: returnLabel,
-    selectedOfferId: json['selectedOfferId'] as String?,
-    serverStatus: json['status'] as String?,
+    selectedOfferId: json['selectedOfferId']?.toString(),
+    serverStatus: json['status']?.toString(),
     shortId: json['shortId']?.toString(),
     createdAtLabel: createdAtLabel,
-    viewCount: (json['viewCount'] as num?)?.toInt(),
-    currency: json['currency'] as String?,
+    viewCount: (json['viewCount'] as num?)?.toInt() ??
+        int.tryParse('${json['viewCount'] ?? ''}'),
+    currency: json['currency']?.toString(),
   );
 }
 
 Offer offerFromServer(Map<String, dynamic> json) {
+  Map<String, dynamic> asStringKeyedMap(dynamic raw) {
+    if (raw is! Map) return <String, dynamic>{};
+    return raw.map((key, value) => MapEntry(key.toString(), value));
+  }
+
   final presentation = json['presentation'];
-  final pres = presentation is Map
-      ? Map<String, dynamic>.from(presentation)
-      : <String, dynamic>{};
+  final pres = asStringKeyedMap(presentation);
 
   final snap = json['priceSnapshot'];
-  final snapMap = snap is Map ? Map<String, dynamic>.from(snap) : null;
+  final snapMap = snap is Map ? asStringKeyedMap(snap) : null;
 
-  final currencyRaw = (pres['priceBreakdown'] is Map
-          ? (pres['priceBreakdown'] as Map)['currency']
-          : null) ??
+  final breakdownRaw = pres['priceBreakdown'];
+  final breakdownMap =
+      breakdownRaw is Map ? asStringKeyedMap(breakdownRaw) : null;
+
+  final currencyRaw = breakdownMap?['currency'] ??
       json['currency'] ??
       snapMap?['currency'] ??
       'USD';
@@ -160,10 +182,10 @@ Offer offerFromServer(Map<String, dynamic> json) {
   double price = _asDouble(pres['passengerTotal']);
   if (price <= 0) price = _asDouble(json['bidAmount']);
   if (price <= 0) price = _asDouble(snapMap?['passengerTotal']);
+  if (price <= 0) price = _asDouble(json['outboundPrice']);
 
   final ratingRaw = pres['rating'];
-  final ratingMap =
-      ratingRaw is Map ? Map<String, dynamic>.from(ratingRaw) : null;
+  final ratingMap = ratingRaw is Map ? asStringKeyedMap(ratingRaw) : null;
   final ratingBreakdown = OfferRatingBreakdown.fromJson(ratingMap);
 
   final amenitiesRaw = pres['amenities'];
@@ -211,7 +233,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
       if (r is! Map) continue;
       DateTime? created;
       final ca = r['createdAt'];
-      if (ca is String) created = DateTime.tryParse(ca);
+      if (ca != null) created = DateTime.tryParse(ca.toString());
       reviews.add(
         Review(
           stars: _asInt(r['stars']),
@@ -230,8 +252,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
   }
 
   final vehicle = json['vehicle'];
-  final vehicleMap =
-      vehicle is Map ? Map<String, dynamic>.from(vehicle) : null;
+  final vehicleMap = vehicle is Map ? asStringKeyedMap(vehicle) : null;
 
   final brand = pres['brand']?.toString() ??
       () {
@@ -249,9 +270,8 @@ Offer offerFromServer(Map<String, dynamic> json) {
       snapMap?['vehicleClass']?.toString() ??
       'sedan';
 
-  final breakdownRaw = pres['priceBreakdown'];
-  final priceBreakdown = breakdownRaw is Map
-      ? OfferPriceBreakdown.fromJson(Map<String, dynamic>.from(breakdownRaw))
+  final priceBreakdown = breakdownMap != null
+      ? OfferPriceBreakdown.fromJson(breakdownMap)
       : null;
 
   final id = json['id']?.toString();
@@ -272,7 +292,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
     ratingCount: ratingBreakdown.count,
     rides: ratingBreakdown.completedRides,
     options: options,
-    languages: languages,
+    languages: languages.isNotEmpty ? languages : const ['EN'],
     carrierId: pres['carrierId']?.toString() ??
         (json['driver'] is Map
             ? (json['driver'] as Map)['id']?.toString() ?? ''
@@ -295,6 +315,140 @@ Offer offerFromServer(Map<String, dynamic> json) {
         vehicleMap?['name']?.toString(),
     plate: pres['plate']?.toString() ?? vehicleMap?['plate']?.toString(),
   );
+}
+
+/// Coerce JSON-like maps from web/mobile into a plain String-keyed map.
+Map<String, dynamic> coerceStringKeyedMap(dynamic raw) {
+  if (raw == null) return <String, dynamic>{};
+  if (raw is Map<String, dynamic>) return raw;
+  if (raw is Map) {
+    return {
+      for (final entry in raw.entries) entry.key.toString(): entry.value,
+    };
+  }
+  // Flutter web can surface JS objects that are not Dart Maps — normalize.
+  try {
+    final decoded = jsonDecode(jsonEncode(raw));
+    if (decoded is Map) {
+      return {
+        for (final entry in decoded.entries) entry.key.toString(): entry.value,
+      };
+    }
+  } catch (_) {}
+  return <String, dynamic>{};
+}
+
+List<dynamic>? coerceJsonList(dynamic raw) {
+  if (raw is List) return raw;
+  if (raw is Iterable) return List<dynamic>.from(raw);
+  try {
+    final decoded = jsonDecode(jsonEncode(raw));
+    if (decoded is List) return decoded;
+  } catch (_) {}
+  return null;
+}
+
+/// Always returns an Offer when [json] has an id — never drops server bids.
+Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
+  try {
+    return offerFromServer(json);
+  } catch (e, st) {
+    assert(() {
+      // ignore: avoid_print
+      print('offerFromServer failed, using minimal: $e\n$st');
+      return true;
+    }());
+    final id = json['id']?.toString();
+    if (id == null || id.isEmpty) rethrow;
+    final snap = coerceStringKeyedMap(json['priceSnapshot']);
+    final vehicle = coerceStringKeyedMap(json['vehicle']);
+    final driver = coerceStringKeyedMap(json['driver']);
+    final pres = coerceStringKeyedMap(json['presentation']);
+    double pickPrice() {
+      for (final v in [
+        pres['passengerTotal'],
+        json['bidAmount'],
+        snap['passengerTotal'],
+        json['outboundPrice'],
+      ]) {
+        final d = _asDouble(v);
+        if (d > 0) return d;
+      }
+      return 0;
+    }
+
+    final price = pickPrice();
+    return Offer(
+      id: id,
+      vehicleBrand: pres['brand']?.toString() ??
+          vehicle['name']?.toString() ??
+          driver['fullName']?.toString() ??
+          'Vehicle',
+      vehicleModel: pres['model']?.toString() ?? '',
+      vehicleClass: pres['vehicleClass']?.toString() ??
+          vehicle['vehicleClass']?.toString() ??
+          'sedan',
+      price: price,
+      currency: (pres['priceBreakdown'] is Map
+                  ? (pres['priceBreakdown'] as Map)['currency']
+                  : null)
+              ?.toString() ??
+          json['currency']?.toString() ??
+          'USD',
+      rating: 0,
+      ratingCount: 0,
+      rides: 0,
+      options: const [],
+      languages: const ['EN'],
+      carrierId:
+          pres['carrierId']?.toString() ?? driver['id']?.toString() ?? '',
+      passengers: _asInt(pres['passengers'], fallback: 3),
+      imageUrl: pres['imageUrl']?.toString(),
+      status: json['status']?.toString(),
+      vehicleDisplayName: pres['vehicleDisplayName']?.toString() ??
+          vehicle['name']?.toString(),
+      plate: pres['plate']?.toString() ?? vehicle['plate']?.toString(),
+    );
+  }
+}
+
+/// Parse an offers JSON array; never returns empty solely due to one bad row.
+List<Offer> parseOffersList(dynamic raw) {
+  final list = coerceJsonList(raw);
+  if (list == null) return const [];
+  final out = <Offer>[];
+  var skipped = 0;
+  for (final item in list) {
+    try {
+      // Round-trip through JSON so Flutter-web JS objects become Dart Maps.
+      final normalized = jsonDecode(jsonEncode(item));
+      final map = coerceStringKeyedMap(normalized);
+      if (map.isEmpty || map['id'] == null) {
+        skipped += 1;
+        continue;
+      }
+      out.add(offerFromServerOrMinimal(map));
+    } catch (e, st) {
+      skipped += 1;
+      assert(() {
+        // ignore: avoid_print
+        print('offer parse skipped: $e\n$st');
+        return true;
+      }());
+    }
+  }
+  // #region agent log
+  try {
+    // Fire-and-forget via print for packages without http dep; passenger
+    // screen also logs. Keep a marker for grep in browser console.
+    // ignore: avoid_print
+    print(
+      'DBG1b2370 parseOffersList rawType=${raw.runtimeType} '
+      'listLen=${list.length} out=${out.length} skipped=$skipped',
+    );
+  } catch (_) {}
+  // #endregion
+  return out;
 }
 
 double _asDouble(dynamic v) {
@@ -383,6 +537,18 @@ String _formatDuration(num mins) {
 }
 
 DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
+  double? asDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+
+  int? asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
   final snap = json['priceSnapshot'];
   final guidanceRaw = json['pricingGuidance'];
   Map<String, dynamic>? snapMap;
@@ -394,21 +560,21 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
   final isRoundTrip = json['isRoundTrip'] as bool? ??
       snapMap?['isRoundTrip'] as bool? ??
       false;
-  final legs = (snapMap?['legs'] as num?)?.toInt() ?? (isRoundTrip ? 2 : 1);
+  final legs = asInt(snapMap?['legs']) ?? (isRoundTrip ? 2 : 1);
 
   String distance = '—';
   String duration = '—';
   if (snapMap != null) {
-    final km = snapMap['distanceKm'];
-    final mins = snapMap['durationMin'];
+    final km = asDouble(snapMap['distanceKm']);
+    final mins = asDouble(snapMap['durationMin']);
     if (km != null) {
-      final oneWay = (km as num) / (legs > 0 ? legs : 1);
+      final oneWay = km / (legs > 0 ? legs : 1);
       distance = legs > 1
           ? '${oneWay.toStringAsFixed(0)} km × $legs'
           : '$km km';
     }
     if (mins != null) {
-      final oneWayMins = (mins as num) / (legs > 0 ? legs : 1);
+      final oneWayMins = mins / (legs > 0 ? legs : 1);
       duration = legs > 1
           ? '${_formatDuration(oneWayMins)} × $legs'
           : _formatDuration(mins);
@@ -427,9 +593,14 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
   if (myOffers is List && myOffers.isNotEmpty) {
     for (final raw in myOffers) {
       if (raw is Map) {
-        final o = DriverOfferSummary.fromJson(Map<String, dynamic>.from(raw));
-        if (o.isActive || myOffer == null) myOffer = o;
-        if (o.isActive) break;
+        try {
+          final o =
+              DriverOfferSummary.fromJson(Map<String, dynamic>.from(raw));
+          if (o.isActive || myOffer == null) myOffer = o;
+          if (o.isActive) break;
+        } catch (_) {
+          // Skip malformed offer rows; still show the request.
+        }
       }
     }
   }
@@ -446,49 +617,56 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
 
   DateTime? createdAt;
   final createdRaw = json['createdAt'];
-  if (createdRaw is String) createdAt = DateTime.tryParse(createdRaw);
+  if (createdRaw != null) createdAt = DateTime.tryParse(createdRaw.toString());
 
   DateTime? requestExpiresAt;
   final expRaw = json['requestExpiresAt'];
-  if (expRaw is String) requestExpiresAt = DateTime.tryParse(expRaw);
+  if (expRaw != null) {
+    requestExpiresAt = DateTime.tryParse(expRaw.toString());
+  }
 
-  final pickupWait = (json['pickupWaitMin'] as num?)?.toInt();
-  final returnWait = (json['returnWaitMin'] as num?)?.toInt();
-  final flight = json['flight'] as String?;
+  final pickupWait = asInt(json['pickupWaitMin']);
+  final returnWait = asInt(json['returnWaitMin']);
+  final flight = json['flight']?.toString();
 
   PricingGuidance? pricing;
   if (snapMap != null && snapMap['guidanceAmount'] != null) {
     pricing = PricingGuidance.fromJson(snapMap);
   }
 
+  final id = json['id']?.toString();
+  if (id == null || id.isEmpty) {
+    throw FormatException('Driver request missing id');
+  }
+
   return DriverRequest(
-    id: json['id'] as String,
+    id: id,
     datetimeLabel: _formatPickup(json['pickupAt']),
     returnDatetimeLabel:
         json['returnAt'] != null ? _formatPickup(json['returnAt']) : null,
-    from: json['fromLabel'] as String? ?? '',
-    to: json['toLabel'] as String? ?? '',
+    from: json['fromLabel']?.toString() ?? '',
+    to: json['toLabel']?.toString() ?? '',
     distance: distance,
     duration: duration,
     vehicleNeed: vehicleNeed,
     vehicleClassIds: classList,
-    passengers: (json['adults'] as num?)?.toInt() ?? 1,
+    passengers: asInt(json['adults']) ?? 1,
     ttlLabel: _ttlFromExpiry(json['requestExpiresAt']),
     flightWait: pickupWait != null
         ? '$pickupWait min'
         : (flight != null && flight.isNotEmpty ? '60 min' : null),
     hasOffer: myOffer != null && myOffer.isActive,
     offerPrice: myOffer?.bidAmount,
-    fromLat: (json['fromLat'] as num?)?.toDouble(),
-    fromLng: (json['fromLng'] as num?)?.toDouble(),
-    toLat: (json['toLat'] as num?)?.toDouble(),
-    toLng: (json['toLng'] as num?)?.toDouble(),
-    currency: json['currency'] as String? ?? 'USD',
+    fromLat: asDouble(json['fromLat']),
+    fromLng: asDouble(json['fromLng']),
+    toLat: asDouble(json['toLat']),
+    toLng: asDouble(json['toLng']),
+    currency: json['currency']?.toString() ?? 'USD',
     isRoundTrip: isRoundTrip,
     pickupWaitMin: pickupWait,
     returnWaitMin: returnWait,
-    comment: json['comment'] as String?,
-    signage: json['signage'] as String?,
+    comment: json['comment']?.toString(),
+    signage: json['signage']?.toString(),
     flight: flight,
     requiredOptions: requiredOptions,
     childSeats: childSeats,
@@ -496,7 +674,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     myOffer: myOffer,
     createdAt: createdAt,
     requestExpiresAt: requestExpiresAt,
-    status: json['status'] as String?,
+    status: json['status']?.toString(),
     shortId: json['shortId']?.toString(),
   );
 }

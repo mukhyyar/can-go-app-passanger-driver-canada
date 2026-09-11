@@ -15,31 +15,36 @@ class WaitingScreen extends StatefulWidget {
   State<WaitingScreen> createState() => _WaitingScreenState();
 }
 
-class _WaitingScreenState extends State<WaitingScreen> {
-  Timer? _pulse;
+class _WaitingScreenState extends State<WaitingScreen>
+    with SingleTickerProviderStateMixin {
   Timer? _poll;
-  int _step = 0;
+  late final AnimationController _pulse;
   bool _refreshed = false;
 
   @override
   void initState() {
     super.initState();
-    _pulse = Timer.periodic(const Duration(milliseconds: 700), (_) {
-      if (!mounted) return;
-      setState(() => _step = (_step + 1).clamp(0, 3));
-    });
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
     _poll = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
     Future.delayed(const Duration(milliseconds: 400), _refresh);
   }
 
   Future<void> _refresh() async {
     final app = context.read<AppState>();
-    await app.refreshRidesFromServer();
+    await Future.wait([
+      app.refreshRidesFromServer(),
+      app.refreshRide(widget.rideId),
+    ]);
     if (!mounted) return;
     setState(() => _refreshed = true);
     final ride = app.rideById(widget.rideId);
+    final offers = app.offersFor(widget.rideId);
     if (ride != null &&
         (ride.status == RideStatus.chooseOffer ||
+            offers.isNotEmpty ||
             (ride.offerCount > 0) ||
             ride.serverStatus == 'OFFER_SELECTION')) {
       context.go('/offers/${widget.rideId}');
@@ -48,8 +53,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
 
   @override
   void dispose() {
-    _pulse?.cancel();
     _poll?.cancel();
+    _pulse.dispose();
     super.dispose();
   }
 
@@ -58,99 +63,127 @@ class _WaitingScreenState extends State<WaitingScreen> {
     final state = context.watch<AppState>();
     final ride = state.rideById(widget.rideId);
     final offers = state.offersFor(widget.rideId);
-    final hasOffers = offers.isNotEmpty ||
-        (ride?.offerCount ?? 0) > 0 ||
+    final offerCount =
+        offers.isNotEmpty ? offers.length : (ride?.offerCount ?? 0);
+    final hasOffers = offerCount > 0 ||
         ride?.status == RideStatus.chooseOffer ||
         ride?.serverStatus == 'OFFER_SELECTION';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
-        title: Text('Ride #${widget.rideId}'),
+        title: Text(
+          ride != null ? 'Ride · #${ride.displayId}' : 'Finding offers',
+        ),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.go('/'),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (ride != null)
-              GtCard(
-                child: GtRouteRow(
-                  from: ride.from,
-                  to: ride.to,
-                  distance: ride.distance,
-                  duration: ride.duration,
-                  timeBadge: ride.timeBadge,
-                ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        children: [
+          if (ride != null)
+            GtCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (ride.datetimeLabel.isNotEmpty) ...[
+                    Text(
+                      ride.datetimeLabel,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  GtRouteRow(
+                    from: ride.from,
+                    to: ride.to,
+                    distance: ride.distance,
+                    duration: ride.duration,
+                    timeBadge: ride.timeBadge,
+                  ),
+                ],
               ),
-            const SizedBox(height: 24),
-            Text(
-              hasOffers
-                  ? '${offers.isNotEmpty ? offers.length : (ride?.offerCount ?? 0)} offer(s) received'
-                  : 'Waiting for driver offers',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 8),
-            Text(
-              hasOffers
-                  ? 'Drivers have bid on your ride. Review and choose an offer.'
-                  : 'Your request was sent. Offers appear here when a driver responds.',
-              style: const TextStyle(color: GtColors.textSecondary),
+          const SizedBox(height: 28),
+          FadeTransition(
+            opacity: Tween(begin: 0.45, end: 1.0).animate(_pulse),
+            child: const Icon(
+              Icons.radar,
+              size: 56,
+              color: GtColors.brand,
             ),
-            const SizedBox(height: 24),
-            _stepRow(0, 'Request sent'),
-            _stepRow(1, 'Carriers notified'),
-            _stepRow(2, hasOffers ? 'Offers received' : 'Waiting for offers'),
-            _stepRow(3, 'Ready to choose'),
-            const Spacer(),
-            if (_refreshed && hasOffers)
-              GtGreenButton(
-                label: 'Show offers',
-                onPressed: () => context.push('/offers/${widget.rideId}'),
-              ),
-            if (_refreshed && !hasOffers)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'No offers yet — this screen refreshes automatically.',
-                  style: TextStyle(color: GtColors.textMuted, fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            const SizedBox(height: 8),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            hasOffers
+                ? '$offerCount offer${offerCount == 1 ? '' : 's'} received'
+                : 'Finding the best offers for you',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            hasOffers
+                ? 'Drivers have bid on your ride. Review and choose an offer.'
+                : 'Connecting you with nearby drivers. You can leave this screen — your request stays active.',
+            style: const TextStyle(
+              color: GtColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 28),
+          _step(true, 'Request sent'),
+          _step(true, 'Receive offers'),
+          _step(hasOffers, 'Select an offer'),
+          _step(false, 'Book & pay'),
+          const SizedBox(height: 28),
+          if (_refreshed && hasOffers)
+            GtGreenButton(
+              label: 'Show offers',
+              onPressed: () => context.push('/offers/${widget.rideId}'),
+            ),
+          if (_refreshed && !hasOffers)
             OutlinedButton(
-              onPressed: () => context.go('/'),
+              onPressed: _refresh,
               style: OutlinedButton.styleFrom(
+                foregroundColor: GtColors.brand,
+                side: const BorderSide(color: GtColors.brand),
                 minimumSize: const Size.fromHeight(48),
               ),
-              child: const Text('Back to Book'),
+              child: const Text('Refresh'),
             ),
-          ],
-        ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => context.go('/'),
+            child: const Text(
+              'Back to home',
+              style: TextStyle(color: GtColors.textSecondary),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _stepRow(int index, String label) {
-    final done = _step >= index;
+  Widget _step(bool done, String label) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Icon(
             done ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: done ? GtColors.green : GtColors.border,
+            size: 22,
+            color: done ? GtColors.green : GtColors.textMuted,
           ),
           const SizedBox(width: 10),
           Text(
             label,
             style: TextStyle(
-              fontWeight: done ? FontWeight.w600 : FontWeight.w400,
-              color: done ? GtColors.text : GtColors.textMuted,
+              fontWeight: done ? FontWeight.w700 : FontWeight.w500,
+              color: done ? GtColors.text : GtColors.textSecondary,
             ),
           ),
         ],

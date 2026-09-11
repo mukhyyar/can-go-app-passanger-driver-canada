@@ -111,8 +111,8 @@ class _LocationScreenState extends State<LocationScreen> {
   void _pick(Place place) {
     final state = context.read<AppState>();
     final field = state.locationField;
-    unawaited(state.addPlaceToSearchHistory(place));
-    // Apply after leaving this route so GoRouter refresh can't cancel pop.
+    // Pop first — addPlaceToSearchHistory notifies AppState, and GoRouter's
+    // refreshListenable would cancel/undo the pop if history runs before navigate.
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     } else {
@@ -124,6 +124,7 @@ class _LocationScreenState extends State<LocationScreen> {
       } else {
         state.setFrom(place);
       }
+      unawaited(state.addPlaceToSearchHistory(place));
     });
   }
 
