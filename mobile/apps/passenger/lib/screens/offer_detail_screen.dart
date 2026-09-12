@@ -25,12 +25,15 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
   bool _loading = true;
   bool _booking = false;
   bool _breakdownOpen = false;
+  bool _handlingEvent = false;
   String? _error;
   Offer? _offer;
+  String? _activeOfferId;
 
   @override
   void initState() {
     super.initState();
+    _activeOfferId = widget.offerId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -40,13 +43,14 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({String? offerId}) async {
+    final id = offerId ?? _activeOfferId ?? widget.offerId;
     setState(() {
       _loading = true;
       _error = null;
     });
     final app = context.read<AppState>();
-    final offer = await app.fetchOffer(widget.rideId, widget.offerId);
+    final offer = await app.fetchOffer(widget.rideId, id);
     if (!mounted) return;
     if (offer == null) {
       setState(() {
@@ -55,13 +59,96 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       });
       return;
     }
-    final withdrawn = (offer.status ?? '').toUpperCase().contains('WITHDRAW') ||
-        (offer.status ?? '').toUpperCase() == 'EXPIRED' ||
-        (offer.status ?? '').toUpperCase() == 'CANCELLED';
+    final status = (offer.status ?? '').toUpperCase();
+    final withdrawn = status.contains('WITHDRAW') ||
+        status == 'EXPIRED' ||
+        status == 'CANCELLED' ||
+        status == 'SUPERSEDED';
     setState(() {
       _offer = offer;
+      _activeOfferId = offer.id;
       _loading = false;
       _error = withdrawn ? 'This offer is no longer available' : null;
+    });
+  }
+
+  void _consumeRealtime(AppState app) {
+    if (_handlingEvent) return;
+    final type = app.pendingOfferEventType;
+    if (type == null) return;
+    final rideId = app.pendingOfferEventRideId;
+    if (rideId != widget.rideId) return;
+
+    final eventOfferId = app.pendingOfferEventOfferId;
+    final superseded = app.pendingOfferEventSupersededId;
+    final watching = _activeOfferId ?? widget.offerId;
+    final matches = eventOfferId == watching ||
+        superseded == watching ||
+        (type == 'offer.withdrawn' && eventOfferId == watching);
+
+    if (!matches && type != 'offer.updated') return;
+    if (type == 'offer.updated' && !matches && eventOfferId == null) return;
+
+    _handlingEvent = true;
+    app.clearPendingOfferDetailEvent();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _handlingEvent = false;
+        return;
+      }
+      if (type == 'offer.withdrawn' &&
+          (eventOfferId == watching || superseded == watching)) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Offer withdrawn'),
+            content: const Text(
+              'This offer has been withdrawn by the driver.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(color: GtColors.brand),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (mounted) {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/offers/${widget.rideId}');
+          }
+        }
+      } else if (type == 'offer.updated') {
+        final nextId = eventOfferId ?? watching;
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Offer updated'),
+            content: const Text(
+              'This offer has been enhanced / updated by the driver. Tap OK to refresh.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text(
+                  'OK',
+                  style: TextStyle(color: GtColors.brand),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (mounted) await _load(offerId: nextId);
+      }
+      _handlingEvent = false;
     });
   }
 
@@ -168,6 +255,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    _consumeRealtime(app);
+
     if (_loading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Details')),
@@ -181,9 +271,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     if (offer == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Offer')),
-        body: Center(
-          child: Text(_error ?? 'Offer not found'),
-        ),
+        body: Center(child: Text(_error ?? 'Offer not found')),
       );
     }
 
@@ -191,11 +279,12 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     final asset = MockData.vehicleImageAsset(offer.vehicleClass);
     final breakdown = offer.priceBreakdown;
     final rating = offer.ratingBreakdown;
+    final unavailable = _error != null;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF7F7F8),
       appBar: AppBar(
-        title: const Text('Details'),
+        title: const Text('Offer details'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
@@ -205,15 +294,15 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                if (_error != null)
+                if (unavailable)
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: GtColors.soft,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       _error!,
@@ -223,232 +312,333 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                       ),
                     ),
                   ),
-                SizedBox(
-                  height: 200,
-                  child: Stack(
-                    children: [
-                      PageView.builder(
-                        controller: _page,
-                        itemCount: images.isEmpty ? 1 : images.length,
-                        onPageChanged: (i) => setState(() => _pageIndex = i),
-                        itemBuilder: (_, i) {
-                          if (images.isEmpty) {
-                            return _imagePlaceholder(asset);
-                          }
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
+                // Hero photo
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    height: 200,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        PageView.builder(
+                          controller: _page,
+                          itemCount: images.isEmpty ? 1 : images.length,
+                          onPageChanged: (i) =>
+                              setState(() => _pageIndex = i),
+                          itemBuilder: (_, i) {
+                            if (images.isEmpty) {
+                              return _imagePlaceholder(asset);
+                            }
+                            return Image.network(
                               images[i],
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) =>
                                   _imagePlaceholder(asset),
-                            ),
-                          );
-                        },
-                      ),
-                      if (images.length > 1)
-                        Positioned(
-                          bottom: 10,
-                          left: 0,
-                          right: 0,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: List.generate(
-                              images.length,
-                              (i) => Container(
-                                width: 8,
-                                height: 8,
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 3),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: i == _pageIndex
-                                      ? GtColors.brand
-                                      : Colors.white70,
+                            );
+                          },
+                        ),
+                        if (images.length > 1)
+                          Positioned(
+                            bottom: 10,
+                            left: 0,
+                            right: 0,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(
+                                images.length,
+                                (i) => Container(
+                                  width: 7,
+                                  height: 7,
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 3),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: i == _pageIndex
+                                        ? Colors.white
+                                        : Colors.white54,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
+                        Positioned(
+                          right: 12,
+                          top: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.72),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              offer.priceLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
+                const SizedBox(height: 14),
+                // Vehicle block
+                _Section(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
                         offer.displayName,
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ),
-                    Text(
-                      offer.priceLabel,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  offer.vehicleClass,
-                  style: const TextStyle(color: GtColors.textSecondary),
-                ),
-                InkWell(
-                  onTap: () => setState(() => _breakdownOpen = !_breakdownOpen),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        Text(
-                          breakdown?.includesNote ?? 'Includes all taxes and fees',
-                          style: const TextStyle(
-                            color: GtColors.green,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          offer.vehicleClass,
+                          if ((offer.color ?? '').isNotEmpty) offer.color,
+                          if ((offer.plate ?? '').trim().isNotEmpty)
+                            'Plate ${offer.plate!.trim()}',
+                        ].whereType<String>().join(' · '),
+                        style: const TextStyle(
+                          color: GtColors.textSecondary,
+                          fontSize: 13,
                         ),
-                        Icon(
-                          _breakdownOpen
-                              ? Icons.expand_less
-                              : Icons.expand_more,
-                          color: GtColors.green,
-                          size: 20,
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _MetaChip(
+                            icon: Icons.people_outline,
+                            label: 'Up to ${offer.passengers}',
+                          ),
+                          if (offer.baggage != null)
+                            _MetaChip(
+                              icon: Icons.luggage_outlined,
+                              label: '${offer.baggage} bags',
+                            ),
+                          if ((offer.plate ?? '').trim().isNotEmpty)
+                            _MetaChip(
+                              icon: Icons.pin_outlined,
+                              label: offer.plate!.trim(),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Amenities
+                if (offer.options.isNotEmpty)
+                  _Section(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Included',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: offer.options
+                              .map(
+                                (o) => Chip(
+                                  label: Text(o, style: const TextStyle(fontSize: 12)),
+                                  visualDensity: VisualDensity.compact,
+                                  backgroundColor: GtColors.bgGrey,
+                                  side: BorderSide.none,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              )
+                              .toList(),
                         ),
                       ],
                     ),
                   ),
-                ),
-                if (_breakdownOpen && breakdown != null) ...[
-                  _breakRow('Ride price', breakdown.ridePrice, offer.currency),
-                  _breakRow(
-                    'Marketplace fee',
-                    breakdown.marketplaceFee,
-                    offer.currency,
-                  ),
-                  _breakRow('Taxes', breakdown.taxes, offer.currency),
-                  const Divider(),
-                  _breakRow('Total', breakdown.total, offer.currency, bold: true),
-                  const SizedBox(height: 8),
-                ],
-                const SizedBox(height: 8),
-                const Text(
-                  'Options',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                if (offer.options.isEmpty)
-                  const Text(
-                    'No extras listed',
-                    style: TextStyle(color: GtColors.textMuted),
-                  )
-                else
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: offer.options
-                        .map(
-                          (o) => Chip(
-                            label: Text(o),
-                            backgroundColor: GtColors.bgGrey,
-                            side: BorderSide.none,
+                if (offer.options.isNotEmpty) const SizedBox(height: 10),
+                // Driver trust
+                _Section(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Driver',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.star, color: GtColors.star, size: 18),
+                          const SizedBox(width: 4),
+                          Text(
+                            offer.ratingCount > 0
+                                ? '${offer.rating.toStringAsFixed(1)} (${offer.ratingCount})'
+                                : 'New',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
-                        )
-                        .toList(),
+                          const SizedBox(width: 12),
+                          Text(
+                            '${offer.rides} trips',
+                            style: const TextStyle(
+                              color: GtColors.textSecondary,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '${offer.yearsWithPlatform} yrs',
+                            style: const TextStyle(
+                              color: GtColors.textSecondary,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (rating != null && rating.count > 0) ...[
+                        const SizedBox(height: 8),
+                        _ratingBar('Communication', rating.communication),
+                        _ratingBar('Driver', rating.driver),
+                        _ratingBar('Vehicle', rating.vehicle),
+                      ],
+                      if (offer.languages.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Languages: ${offer.languages.join(', ')}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: GtColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                      TextButton(
+                        onPressed: () => _showReviews(offer),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          'Show reviews',
+                          style: TextStyle(color: GtColors.brand),
+                        ),
+                      ),
+                    ],
                   ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Rating',
-                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.star, color: GtColors.star, size: 18),
-                    const SizedBox(width: 4),
-                    Text(
-                      offer.ratingCount > 0
-                          ? '${offer.rating.toStringAsFixed(1)} (${offer.ratingCount})'
-                          : 'New carrier',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(width: 12),
-                    Text('${offer.rides} rides'),
-                    const SizedBox(width: 12),
-                    Text('${offer.yearsWithPlatform} yrs'),
-                  ],
-                ),
-                if (rating != null && rating.count > 0) ...[
-                  const SizedBox(height: 8),
-                  _ratingBar('Communication', rating.communication),
-                  _ratingBar('Driver', rating.driver),
-                  _ratingBar('Vehicle', rating.vehicle),
-                ],
-                TextButton(
-                  onPressed: () => _showReviews(offer),
-                  child: const Text(
-                    'Show reviews',
-                    style: TextStyle(color: GtColors.brand),
+                const SizedBox(height: 10),
+                // Price
+                _Section(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              offer.priceLabel,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => setState(
+                              () => _breakdownOpen = !_breakdownOpen,
+                            ),
+                            child: Row(
+                              children: [
+                                Text(
+                                  breakdown?.includesNote ??
+                                      'Taxes & fees included',
+                                  style: const TextStyle(
+                                    color: GtColors.green,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Icon(
+                                  _breakdownOpen
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                  color: GtColors.green,
+                                  size: 20,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_breakdownOpen && breakdown != null) ...[
+                        const SizedBox(height: 8),
+                        _breakRow(
+                            'Ride price', breakdown.ridePrice, offer.currency),
+                        _breakRow(
+                          'Marketplace fee',
+                          breakdown.marketplaceFee,
+                          offer.currency,
+                        ),
+                        _breakRow('Taxes', breakdown.taxes, offer.currency),
+                        const Divider(height: 16),
+                        _breakRow(
+                          'Total',
+                          breakdown.total,
+                          offer.currency,
+                          bold: true,
+                        ),
+                      ],
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Languages',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Text(offer.languages.join(' · ')),
-                const SizedBox(height: 16),
-                const Text(
-                  'Carrier',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Text('Carrier ID ${offer.carrierId}'),
-                const SizedBox(height: 16),
-                const Text(
-                  'Vehicle',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  [
-                    offer.displayName,
-                    if (offer.color != null) offer.color,
-                    'Up to ${offer.passengers} passengers',
-                    if (offer.baggage != null) '${offer.baggage} bags',
-                  ].whereType<String>().join(' · '),
                 ),
                 if (offer.waitingTimeSummary != null) ...[
-                  const SizedBox(height: 16),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.timer_outlined,
-                        color: GtColors.brand),
-                    title: const Text(
-                      'Waiting time',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                  const SizedBox(height: 10),
+                  _Section(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      leading: const Icon(Icons.timer_outlined,
+                          color: GtColors.brand),
+                      title: const Text(
+                        'Waiting time',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        offer.waitingTimeSummary!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () => _showWaiting(offer.waitingTimeSummary!),
                     ),
-                    subtitle: Text(
-                      offer.waitingTimeSummary!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () => _showWaiting(offer.waitingTimeSummary!),
                   ),
                 ],
+                const SizedBox(height: 8),
+                Text(
+                  'Carrier ID ${offer.carrierId}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: GtColors.textMuted,
+                  ),
+                ),
               ],
             ),
           ),
           SafeArea(
             top: false,
             child: Container(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               decoration: const BoxDecoration(
                 color: Colors.white,
                 border: Border(top: BorderSide(color: GtColors.border)),
@@ -458,7 +648,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                   Text(
                     offer.priceLabel,
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -466,8 +656,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                   Expanded(
                     child: GtGreenButton(
                       label: _booking ? 'Checking…' : 'Book',
-                      onPressed:
-                          (_booking || _error != null) ? null : _book,
+                      onPressed: (_booking || unavailable) ? null : _book,
                     ),
                   ),
                 ],
@@ -480,16 +669,13 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
   }
 
   Widget _imagePlaceholder(String? asset) {
-    return Container(
-      decoration: BoxDecoration(
-        color: GtColors.bgGrey,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return ColoredBox(
+      color: GtColors.bgGrey,
       child: asset != null
           ? Image.asset(asset, package: 'gt_ui', fit: BoxFit.contain)
           : const Center(
-              child: Icon(Icons.directions_car, size: 72, color: Colors.black45),
+              child:
+                  Icon(Icons.directions_car, size: 72, color: Colors.black45),
             ),
     );
   }
@@ -505,6 +691,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
               label,
               style: TextStyle(
                 fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                fontSize: 13,
               ),
             ),
           ),
@@ -512,6 +699,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
             formatMoney(amount, currency),
             style: TextStyle(
               fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+              fontSize: 13,
             ),
           ),
         ],
@@ -528,7 +716,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
             width: 110,
             child: Text(
               label,
-              style: const TextStyle(fontSize: 13, color: GtColors.textSecondary),
+              style: const TextStyle(fontSize: 12, color: GtColors.textSecondary),
             ),
           ),
           Expanded(
@@ -536,7 +724,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
               value: (value / 5).clamp(0.0, 1.0),
               backgroundColor: GtColors.border,
               color: GtColors.star,
-              minHeight: 6,
+              minHeight: 5,
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -545,6 +733,50 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
             value > 0 ? value.toStringAsFixed(1) : '—',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Section extends StatelessWidget {
+  const _Section({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: GtColors.border),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: GtColors.bgGrey,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: GtColors.textSecondary),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 12)),
         ],
       ),
     );

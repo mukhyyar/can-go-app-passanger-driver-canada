@@ -38,10 +38,10 @@ export function BookingPage() {
   const [durationMin, setDurationMin] = useState(60);
   const [returnOn, setReturnOn] = useState(false);
   const [returnValue, setReturnValue] = useState('');
-  const [adults, setAdults] = useState(2);
+  const [adults, setAdults] = useState(1);
   const [childSeats, setChildSeats] = useState<ChildSeats>({
     infant: 0,
-    child: 0,
+    convertible: 0,
     booster: 0,
   });
   const [childOpen, setChildOpen] = useState(false);
@@ -113,6 +113,9 @@ export function BookingPage() {
     try {
       const hours =
         service === 'PER_HOUR' ? Math.max(1, durationMin / 60) : undefined;
+      const childTotal =
+        childSeats.infant + childSeats.convertible + childSeats.booster;
+      const isRoundTrip = service === 'RIDE' && returnOn && Boolean(returnValue);
       const ride = await api<Ride>('/rides', {
         method: 'POST',
         token: accessToken,
@@ -127,7 +130,10 @@ export function BookingPage() {
           pickupAt: toPickupIso(pickupNow, pickupValue),
           vehicleClassIds: vehicleIds,
           adults: service === 'DELIVERY' ? undefined : adults,
+          childSeatsJson: childTotal > 0 ? childSeats : undefined,
           comment: comment || undefined,
+          isRoundTrip: isRoundTrip || undefined,
+          returnAt: isRoundTrip ? toPickupIso(false, returnValue) : undefined,
           promoCode: promoOn && promo ? promo : undefined,
           hours,
         }),
@@ -181,7 +187,19 @@ export function BookingPage() {
     );
   }
 
-  const childTotal = childSeats.infant + childSeats.child + childSeats.booster;
+  const childTotal =
+    childSeats.infant + childSeats.convertible + childSeats.booster;
+
+  function childSeatsSummary(): string {
+    if (childTotal === 0) return 'Child seats';
+    const parts: string[] = [];
+    if (childSeats.infant > 0) parts.push(`Infant carrier ×${childSeats.infant}`);
+    if (childSeats.convertible > 0) {
+      parts.push(`Convertible ×${childSeats.convertible}`);
+    }
+    if (childSeats.booster > 0) parts.push(`Booster ×${childSeats.booster}`);
+    return parts.join(' · ');
+  }
 
   return (
     <div className="page-wrap">
@@ -379,9 +397,7 @@ export function BookingPage() {
               </div>
               <div className="row-line">
                 <ChildIcon />
-                <span className="grow">
-                  Children{childTotal ? ` (${childTotal})` : ''}
-                </span>
+                <span className="grow">{childSeatsSummary()}</span>
                 <button type="button" className="edit-link" onClick={() => setChildOpen(true)}>
                   Edit
                 </button>
@@ -472,17 +488,20 @@ export function BookingPage() {
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginTop: 0 }}>Child seats</h2>
             <SeatRow
-              label="Infant seat"
+              label="Infant carrier"
+              hint="Up to 10 kg, 6 months"
               value={childSeats.infant}
               onChange={(v) => setChildSeats((s) => ({ ...s, infant: v }))}
             />
             <SeatRow
-              label="Child seat"
-              value={childSeats.child}
-              onChange={(v) => setChildSeats((s) => ({ ...s, child: v }))}
+              label="Convertible seat"
+              hint="9–25 kg, 0–7 years"
+              value={childSeats.convertible}
+              onChange={(v) => setChildSeats((s) => ({ ...s, convertible: v }))}
             />
             <SeatRow
-              label="Booster"
+              label="Booster seat"
+              hint="22–36 kg, 6–12 years"
               value={childSeats.booster}
               onChange={(v) => setChildSeats((s) => ({ ...s, booster: v }))}
             />
@@ -540,16 +559,23 @@ function ToggleRow({
 
 function SeatRow({
   label,
+  hint,
   value,
   onChange,
 }: {
   label: string;
+  hint?: string;
   value: number;
   onChange: (v: number) => void;
 }) {
   return (
     <div className="row-line">
-      <span className="grow">{label}</span>
+      <span className="grow">
+        <span style={{ display: 'block', fontWeight: 600 }}>{label}</span>
+        {hint ? (
+          <span style={{ display: 'block', fontSize: 12, opacity: 0.7 }}>{hint}</span>
+        ) : null}
+      </span>
       <div className="stepper">
         <button type="button" onClick={() => onChange(Math.max(0, value - 1))}>
           −

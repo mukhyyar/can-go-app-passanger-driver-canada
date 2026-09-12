@@ -10,6 +10,7 @@ class ZoneCreationBar extends StatelessWidget {
     super.key,
     required this.tool,
     required this.radiusKm,
+    this.draftPolygonCount = 0,
     required this.canConfirm,
     required this.onCancel,
     required this.onSelectTool,
@@ -20,6 +21,7 @@ class ZoneCreationBar extends StatelessWidget {
 
   final ZoneCreationTool tool;
   final double radiusKm;
+  final int draftPolygonCount;
   final bool canConfirm;
   final VoidCallback onCancel;
   final ValueChanged<ZoneCreationTool> onSelectTool;
@@ -67,6 +69,19 @@ class ZoneCreationBar extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
+          ] else ...[
+            // Draw tool — never show radius UI.
+            Text(
+              draftPolygonCount > 0
+                  ? '$draftPolygonCount area${draftPolygonCount == 1 ? '' : 's'} ready — tap ✓ to add'
+                  : 'Draw freehand on the map (no radius)',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: GtColors.text,
+              ),
+            ),
+            const SizedBox(height: 8),
           ],
           Row(
             children: [

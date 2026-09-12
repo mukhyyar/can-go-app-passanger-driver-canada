@@ -22,6 +22,7 @@ import {
 import { MarketplaceService } from './marketplace.service';
 import { PricingService } from './pricing.service';
 import {
+  CreateChangeRequestDto,
   CreateOfferDto,
   CreatePaymentIntentDto,
   CreateRideDto,
@@ -89,6 +90,19 @@ export class MarketplaceController {
     @Req() req: { ip?: string },
   ) {
     return this.marketplace.cancelRide(user.id, id, req.ip);
+  }
+
+  @Post('rides/:id/change-requests')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  createChangeRequest(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: CreateChangeRequestDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.createChangeRequest(user.id, id, dto, req.ip);
   }
 
   @Post('rides/:id/select-offer')

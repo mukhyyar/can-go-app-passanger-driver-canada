@@ -13,6 +13,7 @@ import 'screens/onboarding/photos_screen.dart';
 import 'screens/onboarding/profile_screen.dart';
 import 'screens/onboarding/zone_screen.dart';
 import 'screens/request_detail_screen.dart';
+import 'screens/trip_detail_screen.dart';
 import 'screens/requests_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/settings/add_vehicle_screen.dart';
@@ -130,6 +131,12 @@ GoRouter createRouter(AppState appState) {
         path: '/request/:id',
         builder: (_, state) => RequestDetailScreen(
           requestId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/trip/:rideId',
+        builder: (_, state) => TripDetailScreen(
+          rideId: state.pathParameters['rideId']!,
         ),
       ),
       GoRoute(

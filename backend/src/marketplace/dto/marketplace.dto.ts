@@ -18,6 +18,8 @@ import {
 
   Max,
 
+  MaxLength,
+
   Min,
 
   MinLength,
@@ -273,17 +275,15 @@ export class CreateRideDto {
 
 
   @IsOptional()
-
   @IsString()
-
   flight?: string;
 
-
+  @IsOptional()
+  @IsString()
+  returnFlight?: string;
 
   @IsOptional()
-
   @IsString()
-
   signage?: string;
 
 
@@ -512,6 +512,32 @@ export class PaymentQuoteDto {
 export class ValidateBookDto {
   @IsString()
   offerId!: string;
+}
+
+export const CHANGE_REQUEST_TYPES = [
+  'FLIGHT_DELAY',
+  'RESCHEDULE',
+  'BILLING_HELP',
+  'REFUND_REQUEST',
+  'CURRENT_RIDE_HELP',
+] as const;
+
+export class CreateChangeRequestDto {
+  @IsIn([...CHANGE_REQUEST_TYPES])
+  type!: (typeof CHANGE_REQUEST_TYPES)[number];
+
+  @IsOptional()
+  @IsString()
+  proposedPickupAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  flightNumber?: string;
 }
 
 

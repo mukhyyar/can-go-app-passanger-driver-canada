@@ -300,6 +300,34 @@ export class NotificationsService {
     });
   }
 
+  /** Passenger-facing offer update / enhance push. */
+  async notifyOfferUpdated(input: {
+    userId: string;
+    rideId: string;
+    offerId: string;
+    supersededOfferId?: string | null;
+    title?: string;
+    body?: string;
+  }) {
+    return this.sendToUser({
+      userId: input.userId,
+      title: input.title ?? 'Offer updated',
+      body:
+        input.body ??
+        'A driver enhanced or updated their offer. Review the new details.',
+      templateKey: 'ride.offer_updated',
+      eventId: `offer.updated.${input.offerId}`,
+      data: {
+        type: 'OFFER_UPDATED',
+        rideRequestId: input.rideId,
+        rideId: input.rideId,
+        offerId: input.offerId,
+        supersededOfferId: input.supersededOfferId ?? '',
+        deepLink: `/offer/${input.rideId}/${input.offerId}`,
+      },
+    });
+  }
+
   /** Driver-facing new open ride request in their operating zone. */
   async notifyNewRideRequest(input: {
     userIds: string[];

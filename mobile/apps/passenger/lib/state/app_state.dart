@@ -7,7 +7,7 @@ import 'package:gt_mock/gt_mock.dart';
 import 'package:passenger/services/ride_realtime.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum ServiceType { ride, perHour, delivery, carRental, experiences }
+enum ServiceType { ride, perHour, delivery }
 
 class AppState extends ChangeNotifier {
   AppState() {
@@ -22,6 +22,16 @@ class AppState extends ChangeNotifier {
   /// Banner when a new offer arrives while the user is elsewhere in the app.
   String? pendingOfferAlert;
   String? pendingOfferRideId;
+
+  /// Live offer detail events (update / withdraw) for an open offer screen.
+  String? pendingOfferEventType; // offer.updated | offer.withdrawn
+  String? pendingOfferEventRideId;
+  String? pendingOfferEventOfferId;
+  String? pendingOfferEventSupersededId;
+
+  /// In-app alert when a booked ride status changes (en route, completed, etc.).
+  String? pendingRideStatusAlert;
+  String? pendingRideStatusRideId;
 
   static const _onboardedKey = 'passenger_onboarded';
   static const _placeHistoryPrefix = 'passenger_place_history_';
@@ -42,7 +52,7 @@ class AppState extends ChangeNotifier {
   Place? to;
   /// Multi-select vehicle classes on Book (ride).
   Set<String> vehicleClassIds = {MockData.vehicleClasses.first.id};
-  int adults = 2;
+  int adults = 1;
   ChildSeats childSeats = const ChildSeats();
   String flight = '';
   String signage = '';
@@ -542,6 +552,59 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> getPaymentStatus(String rideId) =>
       api.marketplace.paymentStatus(rideId);
 
+  Future<void> cancelRide(String rideId) async {
+    final ride = rideById(rideId);
+    final status = (ride?.serverStatus ?? '').toUpperCase();
+    const bookedCancel = {
+      'BOOKED',
+      'DRIVER_EN_ROUTE',
+      'DRIVER_ARRIVED',
+    };
+    if (bookedCancel.contains(status)) {
+      await api.marketplace.cancelBookedRide(rideId);
+    } else {
+      await api.marketplace.cancelRide(rideId);
+    }
+    await refreshRide(rideId);
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> rateRide(
+    String rideId, {
+    required int stars,
+    String? comment,
+  }) async {
+    final res = await api.marketplace.rateRide(
+      rideId,
+      stars: stars,
+      comment: comment,
+    );
+    await refreshRide(rideId);
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> getChat(String rideId) =>
+      api.marketplace.getChatThread(rideId);
+
+  Future<Map<String, dynamic>> sendChat(String rideId, String body) =>
+      api.marketplace.sendChatMessage(rideId, body);
+
+  Future<Map<String, dynamic>> createChangeRequest(
+    String rideId, {
+    required String type,
+    String? proposedPickupAt,
+    String? note,
+    String? flightNumber,
+  }) =>
+      api.marketplace.createChangeRequest(
+        rideId,
+        type: type,
+        proposedPickupAt: proposedPickupAt,
+        note: note,
+        flightNumber: flightNumber,
+      );
+
   Future<void> recordRideView(String rideId) async {
     if (!isAuthenticated) return;
     try {
@@ -669,6 +732,8 @@ class AppState extends ChangeNotifier {
   void _handleOfferRealtimeEvent(Map<String, dynamic> payload) {
     final type = payload['type']?.toString() ?? '';
     final rideId = payload['rideId']?.toString();
+    final offerId = payload['offerId']?.toString();
+    final supersededOfferId = payload['supersededOfferId']?.toString();
     if (rideId == null || rideId.isEmpty) {
       unawaited(refreshRidesFromServer());
       return;
@@ -685,18 +750,93 @@ class AppState extends ChangeNotifier {
       pendingOfferRideId = rideId;
       pendingOfferAlert = 'New offer on your ride';
     }
+    if (type == 'offer.updated') {
+      pendingOfferRideId = rideId;
+      pendingOfferAlert = 'Offer updated on your ride';
+      pendingOfferEventType = 'offer.updated';
+      pendingOfferEventRideId = rideId;
+      pendingOfferEventOfferId = offerId;
+      pendingOfferEventSupersededId = supersededOfferId;
+    }
+    if (type == 'offer.withdrawn') {
+      pendingOfferRideId = rideId;
+      pendingOfferAlert = 'An offer was withdrawn';
+      pendingOfferEventType = 'offer.withdrawn';
+      pendingOfferEventRideId = rideId;
+      pendingOfferEventOfferId = offerId;
+      pendingOfferEventSupersededId = null;
+      // Drop withdrawn offer from local cache immediately.
+      final cached = _serverOffers[rideId];
+      if (cached != null && offerId != null) {
+        _serverOffers[rideId] =
+            cached.where((o) => o.id != offerId).toList(growable: false);
+      }
+    }
     if (isOfferEvent || isBookingEvent) {
       unawaited(refreshRide(rideId));
     }
     if (isBookingEvent) {
       unawaited(refreshRidesFromServer());
     }
+
+    if (type == 'ride.status.changed') {
+      final newStatus =
+          payload['status']?.toString() ?? payload['to']?.toString() ?? '';
+      if (newStatus.isNotEmpty) {
+        pendingRideStatusRideId = rideId;
+        pendingRideStatusAlert = _rideStatusAlertMessage(newStatus);
+        unawaited(refreshRide(rideId));
+        unawaited(refreshRidesFromServer());
+      }
+    }
+
+    notifyListeners();
+  }
+
+  String _rideStatusAlertMessage(String status) {
+    switch (status.toUpperCase()) {
+      case 'BOOKED':
+        return 'Your ride is confirmed';
+      case 'DRIVER_EN_ROUTE':
+        return 'Your driver is on the way';
+      case 'DRIVER_ARRIVED':
+        return 'Your driver has arrived';
+      case 'TRIP_STARTED':
+      case 'IN_PROGRESS':
+        return 'Your trip has started';
+      case 'COMPLETED':
+        return 'Ride completed';
+      case 'PASSENGER_CANCELLED':
+      case 'DRIVER_CANCELLED':
+      case 'ADMIN_CANCELLED':
+        return 'Ride cancelled';
+      default:
+        return 'Ride status updated';
+    }
+  }
+
+  void clearPendingRideStatusAlert() {
+    if (pendingRideStatusAlert == null && pendingRideStatusRideId == null) {
+      return;
+    }
+    pendingRideStatusAlert = null;
+    pendingRideStatusRideId = null;
+    notifyListeners();
   }
 
   void clearPendingOfferAlert() {
     if (pendingOfferAlert == null && pendingOfferRideId == null) return;
     pendingOfferAlert = null;
     pendingOfferRideId = null;
+    notifyListeners();
+  }
+
+  void clearPendingOfferDetailEvent() {
+    if (pendingOfferEventType == null) return;
+    pendingOfferEventType = null;
+    pendingOfferEventRideId = null;
+    pendingOfferEventOfferId = null;
+    pendingOfferEventSupersededId = null;
     notifyListeners();
   }
 
@@ -709,8 +849,19 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Iterable<String> get _activeTripRideIds sync* {
+    for (final r in repo.rides) {
+      if (r.status == RideStatus.booked) yield r.id;
+    }
+  }
+
+  Iterable<String> get _realtimeRideIds sync* {
+    yield* _openOfferRideIds;
+    yield* _activeTripRideIds;
+  }
+
   void _syncRealtimeRideRooms() {
-    _realtime?.syncRideSubscriptions(_openOfferRideIds);
+    _realtime?.syncRideSubscriptions(_realtimeRideIds);
   }
 
   void _syncOpenRidePolling() {
@@ -1067,9 +1218,7 @@ class AppState extends ChangeNotifier {
     final service = switch (serviceType) {
       ServiceType.perHour => 'PER_HOUR',
       ServiceType.delivery => 'DELIVERY',
-      ServiceType.carRental => 'CAR_RENTAL',
-      ServiceType.experiences => 'EXPERIENCES',
-      _ => 'RIDE',
+      ServiceType.ride => 'RIDE',
     };
     final needsDropoff =
         serviceType == ServiceType.ride || serviceType == ServiceType.delivery;
@@ -1077,16 +1226,6 @@ class AppState extends ChangeNotifier {
     final hours = isPerHour
         ? ((perHourDurationMinutes ?? 60) / 60).clamp(1, 24).toDouble()
         : null;
-    double? days;
-    if (serviceType == ServiceType.carRental) {
-      if (returnEnabled && returnDateTime != null) {
-        final start = pickupNow ? DateTime.now() : pickupDateTime;
-        final diff = returnDateTime!.difference(start).inHours;
-        days = (diff / 24).ceil().clamp(1, 90).toDouble();
-      } else {
-        days = 1.0;
-      }
-    }
     final pickupAt = (pickupNow ? DateTime.now() : pickupDateTime)
         .toUtc()
         .toIso8601String();
@@ -1099,8 +1238,14 @@ class AppState extends ChangeNotifier {
       toLng: needsDropoff ? dropoff.lng : null,
       vehicleClass: vehicleClassIds.first,
       hours: hours,
-      days: days,
     );
+
+    final childSeatsPayload =
+        childSeats.total > 0 ? childSeats.toJson() : null;
+    final isRoundTrip = returnEnabled && returnDateTime != null;
+    final returnAt = isRoundTrip
+        ? returnDateTime!.toUtc().toIso8601String()
+        : null;
 
     final created = await api.marketplace.createRide(
       serviceType: service,
@@ -1113,12 +1258,15 @@ class AppState extends ChangeNotifier {
       pickupAt: pickupAt,
       vehicleClassIds: vehicleClassIds.toList(),
       adults: adults,
+      childSeatsJson: childSeatsPayload,
       flight: flight.isEmpty ? null : flight,
       signage: signage.isEmpty ? null : signage,
       comment: comment.isEmpty ? null : comment,
+      isRoundTrip: isRoundTrip,
+      returnAt: returnAt,
+      returnFlight: returnFlight.isEmpty ? null : returnFlight,
       promoCode: promoEnabled && promoCode.isNotEmpty ? promoCode : null,
       hours: hours,
-      days: days,
     );
 
     final ride = rideFromServer(created);

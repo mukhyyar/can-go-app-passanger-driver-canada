@@ -18,6 +18,8 @@ build/
 .idea/
 .DS_Store
 Thumbs.db
+__MACOSX/
+._*
 
 # Logs
 *.log

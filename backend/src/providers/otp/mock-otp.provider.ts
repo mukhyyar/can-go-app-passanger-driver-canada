@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { createHash, randomInt, randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { OtpProvider, OtpPurpose } from './otp-provider.interface';
 import { SMS_PROVIDER } from '../sms/sms-provider.interface';
 import type { SmsProvider } from '../sms/sms-provider.interface';
@@ -22,7 +22,7 @@ export class MockOtpProvider implements OtpProvider {
   constructor(@Inject(SMS_PROVIDER) private readonly sms: SmsProvider) {}
 
   async issue(phoneE164: string, purpose: OtpPurpose) {
-    const code = String(randomInt(100000, 999999));
+    const code = '111111';
     const challengeId = randomUUID();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     this.challenges.set(challengeId, {

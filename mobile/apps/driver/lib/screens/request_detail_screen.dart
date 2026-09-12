@@ -5,8 +5,8 @@ import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
+import '../offer/inline_offer_form.dart';
 import '../offer/offer_helpers.dart';
-import '../offer/your_offer_sheet.dart';
 import '../state/app_state.dart';
 
 class RequestDetailScreen extends StatefulWidget {
@@ -24,6 +24,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   bool _loading = true;
   String? _error;
   bool _submitting = false;
+  String? _offerError;
   bool _mapFullscreen = false;
   late OfferDraft _draft;
   final _outCtrl = TextEditingController();
@@ -63,6 +64,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         if (_draft.vehicleId == null && vehicles.isNotEmpty) {
           _draft.vehicleId = s.primaryVehicleId ?? vehicles.first.id;
         }
+        for (final r in detail.requiredOptions) {
+          _draft.selectedOptions.add(r);
+        }
+        if ((detail.signage ?? '').trim().isNotEmpty) {
+          _draft.selectedOptions.add('name_sign');
+        }
         final existing = detail.myOffer;
         if (existing != null) {
           _draft.outboundPrice =
@@ -71,6 +78,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           _draft.validForSeconds = existing.validForSeconds;
           _draft.vehicleId = existing.vehicleId ?? _draft.vehicleId;
           _draft.selectedOptions = {...existing.selectedOptions};
+          for (final r in detail.requiredOptions) {
+            _draft.selectedOptions.add(r);
+          }
+          if ((detail.signage ?? '').trim().isNotEmpty) {
+            _draft.selectedOptions.add('name_sign');
+          }
           _outCtrl.text = (_draft.outboundPrice ?? 0).toStringAsFixed(0);
           if (detail.isRoundTrip && _draft.returnPrice != null) {
             _retCtrl.text = _draft.returnPrice!.toStringAsFixed(0);
@@ -100,25 +113,41 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
   }
 
-  DriverVehicle? get _selectedVehicle {
-    final id = _draft.vehicleId;
-    if (id == null || _vehicles.isEmpty) {
-      return _vehicles.isEmpty ? null : _vehicles.first;
-    }
-    try {
-      return _vehicles.firstWhere((v) => v.id == id);
-    } catch (_) {
-      return _vehicles.first;
-    }
-  }
-
   void _persistDraft() {
     final s = context.read<AppState>();
     _draft.outboundPrice = double.tryParse(_outCtrl.text.trim());
     if (_request?.isRoundTrip == true) {
       _draft.returnPrice = double.tryParse(_retCtrl.text.trim());
+    } else {
+      _draft.returnPrice = null;
     }
     s.saveOfferDraft(widget.requestId, _draft);
+  }
+
+  String? _validate() {
+    _persistDraft();
+    if (_vehicles.isEmpty) {
+      return 'No eligible vehicle. Add a vehicle in settings first.';
+    }
+    if (_draft.vehicleId == null) return 'Select a vehicle';
+    if (_draft.validForSeconds == null) return 'Select offer validity';
+    final out = _draft.outboundPrice;
+    if (out == null || out <= 0) return 'Enter a valid A → B price';
+    final req = _request;
+    if (req != null && req.isRoundTrip) {
+      final ret = _draft.returnPrice;
+      if (ret == null || ret < 0) return 'Enter a valid B → A price';
+    }
+    for (final r in req?.requiredOptions ?? const <String>[]) {
+      if (!_draft.selectedOptions.contains(r)) {
+        return 'Required option missing: $r';
+      }
+    }
+    if ((req?.signage ?? '').trim().isNotEmpty &&
+        !_draft.selectedOptions.contains('name_sign')) {
+      return 'Name sign is required for this passenger';
+    }
+    return null;
   }
 
   Future<void> _onSkip() async {
@@ -162,53 +191,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
   }
 
-  Future<void> _openOfferSheet() async {
+  Future<void> _submitOffer() async {
     final req = _request;
-    if (req == null) return;
-    _persistDraft();
-    final submitted = await showYourOfferSheet(
-      context: context,
-      request: req,
-      vehicles: _vehicles,
-      draft: _draft,
-      existingOffer: req.myOffer,
-      onSubmit: (draft) async {
-        setState(() => _submitting = true);
-        try {
-          await context.read<AppState>().submitOfferDraft(req.id, draft);
-          _draft = draft.copy();
-        } finally {
-          if (mounted) setState(() => _submitting = false);
-        }
-      },
-    );
-    if (submitted == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offer submitted')),
-      );
-      await _load();
-    } else {
-      _persistDraft();
-    }
-  }
-
-  Future<void> _quickSubmit() async {
-    final req = _request;
-    if (req == null) return;
-    if (_submitting) return;
-    _persistDraft();
-    if (_draft.validForSeconds == null) {
-      await _openOfferSheet();
+    if (req == null || _submitting) return;
+    final err = _validate();
+    if (err != null) {
+      setState(() => _offerError = err);
       return;
     }
-    final out = double.tryParse(_outCtrl.text.trim());
-    if (out == null || out <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid price')),
-      );
-      return;
-    }
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _offerError = null;
+    });
     try {
       await context.read<AppState>().submitOfferDraft(req.id, _draft);
       if (!mounted) return;
@@ -218,10 +212,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
-      );
-      await _openOfferSheet();
+      setState(() {
+        _offerError = e
+            .toString()
+            .replaceFirst('ApiException(', '')
+            .replaceAll(RegExp(r'\)$'), '');
+      });
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -313,7 +309,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                GtGreenButton(label: 'Back to requests', onPressed: () => context.go('/')),
+                GtGreenButton(
+                    label: 'Back to requests', onPressed: () => context.go('/')),
               ],
             ),
           ),
@@ -322,15 +319,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
 
     final req = _request!;
-    final vehicle = _selectedVehicle;
     final age = driverRequestAgeLabel(req);
     final currency = req.currency;
-    final commission = req.pricing?.platformCommissionPct ??
-        req.myOffer?.platformCommissionPct;
+    final hasActiveOffer = req.hasOffer && req.myOffer != null;
 
-    if (_mapFullscreen &&
-        req.fromLat != null &&
-        req.fromLng != null) {
+    if (_mapFullscreen && req.fromLat != null && req.fromLng != null) {
       return Scaffold(
         body: Stack(
           children: [
@@ -428,7 +421,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
                   _TripSchedule(request: req),
                   const SizedBox(height: 14),
@@ -445,9 +438,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     children: [
                       _Chip(label: 'Adults × ${req.passengers}'),
                       ..._childSeatChips(req),
+                      if ((req.flight ?? '').trim().isNotEmpty)
+                        _Chip(
+                          label: 'Flight ${req.flight!.trim()}',
+                          icon: Icons.flight,
+                        ),
+                      if ((req.returnFlight ?? '').trim().isNotEmpty)
+                        _Chip(
+                          label: 'Return flight ${req.returnFlight!.trim()}',
+                          icon: Icons.flight_land,
+                        ),
                       if ((req.signage ?? '').trim().isNotEmpty)
-                        const _Chip(
-                          label: 'Meeting with a name sign',
+                        _Chip(
+                          label: 'Name sign: ${req.signage!.trim()}',
                           icon: Icons.badge_outlined,
                         ),
                       for (final o in req.requiredOptions)
@@ -544,7 +547,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     )
                   else
                     const GtMockMap(),
-                  if (req.hasOffer && req.myOffer != null) ...[
+                  if (hasActiveOffer) ...[
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.all(14),
@@ -562,43 +565,38 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                           Text(
                             'Your offer: ${MoneyFormat.formatFlexible(req.myOffer!.bidAmount, currency)} · ${req.myOffer!.status}',
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              TextButton(
-                                onPressed: _openOfferSheet,
-                                child: const Text('Edit offer'),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              onPressed: _withdraw,
+                              child: const Text(
+                                'Withdraw offer',
+                                style: TextStyle(color: GtColors.brand),
                               ),
-                              TextButton(
-                                onPressed: _withdraw,
-                                child: const Text(
-                                  'Withdraw offer',
-                                  style: TextStyle(color: GtColors.brand),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ],
-                  const SizedBox(height: 120),
+                  const SizedBox(height: 16),
+                  InlineOfferForm(
+                    request: req,
+                    vehicles: _vehicles,
+                    draft: _draft,
+                    outCtrl: _outCtrl,
+                    retCtrl: _retCtrl,
+                    submitting: _submitting,
+                    existingOffer: req.myOffer,
+                    error: _offerError,
+                    onChanged: () {
+                      _persistDraft();
+                      setState(() => _offerError = null);
+                    },
+                    onSubmit: _submitOffer,
+                  ),
                 ],
               ),
-            ),
-            _StickyOfferPanel(
-              vehicle: vehicle,
-              optionsSummary: _optionsSummary(),
-              isRoundTrip: req.isRoundTrip,
-              currency: currency,
-              outCtrl: _outCtrl,
-              retCtrl: _retCtrl,
-              commissionPct: commission,
-              guidance: req.pricing,
-              submitting: _submitting,
-              onEdit: _openOfferSheet,
-              onSubmit: _quickSubmit,
-              onPriceChanged: (_) => _persistDraft(),
             ),
           ],
         ),
@@ -606,21 +604,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  String _optionsSummary() {
-    if (_draft.selectedOptions.isEmpty) return 'No options added';
-    return _draft.selectedOptions
-        .map((e) => e.replaceAll('_', ' '))
-        .join(', ');
-  }
-
   List<Widget> _childSeatChips(DriverRequest req) {
     final out = <Widget>[];
-    final child = (req.childSeats['child'] as num?)?.toInt() ?? 0;
+    final convertible = (req.childSeats['convertible'] as num?)?.toInt() ??
+        (req.childSeats['child'] as num?)?.toInt() ??
+        0;
     final infant = (req.childSeats['infant'] as num?)?.toInt() ?? 0;
     final booster = (req.childSeats['booster'] as num?)?.toInt() ?? 0;
-    if (child > 0) out.add(_Chip(label: 'Children × $child'));
-    if (infant > 0) out.add(_Chip(label: 'Infant × $infant'));
-    if (booster > 0) out.add(_Chip(label: 'Booster × $booster'));
+    if (infant > 0) out.add(_Chip(label: 'Infant carrier × $infant'));
+    if (convertible > 0) {
+      out.add(_Chip(label: 'Convertible seat × $convertible'));
+    }
+    if (booster > 0) out.add(_Chip(label: 'Booster seat × $booster'));
     return out;
   }
 }
@@ -803,246 +798,6 @@ class _Chip extends StatelessWidget {
           Text(label, style: const TextStyle(fontSize: 13)),
         ],
       ),
-    );
-  }
-}
-
-class _StickyOfferPanel extends StatelessWidget {
-  const _StickyOfferPanel({
-    required this.vehicle,
-    required this.optionsSummary,
-    required this.isRoundTrip,
-    required this.currency,
-    required this.outCtrl,
-    required this.retCtrl,
-    required this.commissionPct,
-    required this.guidance,
-    required this.submitting,
-    required this.onEdit,
-    required this.onSubmit,
-    required this.onPriceChanged,
-  });
-
-  final DriverVehicle? vehicle;
-  final String optionsSummary;
-  final bool isRoundTrip;
-  final String currency;
-  final TextEditingController outCtrl;
-  final TextEditingController retCtrl;
-  final double? commissionPct;
-  final PricingGuidance? guidance;
-  final bool submitting;
-  final VoidCallback onEdit;
-  final VoidCallback onSubmit;
-  final ValueChanged<String> onPriceChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return Material(
-      elevation: 12,
-      color: Colors.white,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(14, 12, 14, 12 + bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.circle, size: 10),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    vehicle?.name ?? 'No vehicle',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                if (vehicle != null)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: GtColors.border),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      vehicle!.plate,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                Material(
-                  color: GtColors.bgGrey,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                  ),
-                ),
-              ],
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                optionsSummary,
-                style: const TextStyle(
-                  color: GtColors.textSecondary,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Column(
-                    children: [
-                      _MiniPriceField(
-                        label: 'Price A → B',
-                        currency: currency,
-                        controller: outCtrl,
-                        onChanged: onPriceChanged,
-                      ),
-                      if (isRoundTrip) ...[
-                        const SizedBox(height: 8),
-                        _MiniPriceField(
-                          label: 'Price B → A',
-                          currency: currency,
-                          controller: retCtrl,
-                          onChanged: onPriceChanged,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 78,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: GtColors.bgGrey,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    commissionPct != null && commissionPct! > 0
-                        ? '${commissionPct!.toStringAsFixed(commissionPct! % 1 == 0 ? 0 : 1)}%\nCommission'
-                        : 'Commission',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 11, height: 1.2),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 52,
-                  height: 52,
-                  child: Material(
-                    color: submitting ? GtColors.textMuted : GtColors.green,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: submitting ? null : onSubmit,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Center(
-                        child: submitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.send_rounded,
-                                color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (guidance != null) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Text(
-                    MoneyFormat.formatFlexible(guidance!.minBid, currency),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: Container(
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Color(0xFF1B7A45),
-                              Color(0xFFF5A623),
-                              Color(0xFFB41B1D),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    MoneyFormat.formatFlexible(guidance!.maxBid, currency),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MiniPriceField extends StatelessWidget {
-  const _MiniPriceField({
-    required this.label,
-    required this.currency,
-    required this.controller,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String currency;
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
-        TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [DecimalTextInputFormatter()],
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            isDense: true,
-            prefixText: '${MoneyFormat.symbolFor(currency)} ',
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

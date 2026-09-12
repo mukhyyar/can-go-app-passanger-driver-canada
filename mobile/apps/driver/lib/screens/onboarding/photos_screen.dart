@@ -15,6 +15,9 @@ class PhotosScreen extends StatefulWidget {
 }
 
 class _PhotosScreenState extends State<PhotosScreen> {
+  final Map<String, String?> _previewUrls = {};
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
@@ -24,8 +27,23 @@ class _PhotosScreenState extends State<PhotosScreen> {
         await s.loadDriverVehicles();
         await s.syncDocumentsStatus();
       }
-      if (mounted) await _maybeShowRequirements();
+      if (mounted) {
+        await _loadPreviews();
+        await _maybeShowRequirements();
+      }
     });
+  }
+
+  Future<void> _loadPreviews() async {
+    final s = context.read<AppState>();
+    for (final doc in s.vehiclePhotoDocuments) {
+      final id = doc['id']?.toString();
+      if (id == null) continue;
+      try {
+        final url = await s.fetchDocumentPreviewUrl(id);
+        if (mounted) setState(() => _previewUrls[id] = url);
+      } catch (_) {}
+    }
   }
 
   Future<void> _maybeShowRequirements() async {
@@ -79,6 +97,95 @@ class _PhotosScreenState extends State<PhotosScreen> {
     );
   }
 
+  Future<void> _addPhoto() async {
+    final s = context.read<AppState>();
+    if (s.vehiclePhotoCount >= 6) return;
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (file == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await s.ensureVehicle();
+      final bytes = await file.readAsBytes();
+      await s.uploadKycBytes(
+        docType: 'vehicle_photo',
+        bytes: bytes,
+        filename: file.name,
+      );
+      if (mounted) await _loadPreviews();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _deletePhoto(Map<String, dynamic> doc) async {
+    final id = doc['id']?.toString();
+    if (id == null) return;
+    if (context.read<AppState>().isDocumentLocked(doc)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Approved photos cannot be deleted')),
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete photo?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: GtColors.brand),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await context.read<AppState>().deleteDocument(id);
+      _previewUrls.remove(id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Delete failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openPreview(String url) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('Vehicle photo'),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: Image.network(url, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -98,6 +205,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
     final plate = current?.plate.isNotEmpty == true
         ? current!.plate
         : (s.repo.driver.plate.isNotEmpty ? s.repo.driver.plate : '—');
+    final photos = s.vehiclePhotoDocuments;
 
     return Scaffold(
       appBar: AppBar(
@@ -125,88 +233,111 @@ class _PhotosScreenState extends State<PhotosScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              vehicle,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: GtColors.bgGrey,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                plate,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
+      body: Column(
+        children: [
+          if (_busy) const LinearProgressIndicator(),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                ...List.generate(
-                  s.vehiclePhotoCount,
-                  (_) => Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: GtColors.soft,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: GtColors.border),
-                    ),
-                    child: const Icon(
-                      Icons.directions_car,
-                      size: 36,
-                      color: GtColors.textMuted,
-                    ),
+                Text(
+                  vehicle,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: GtColors.bgGrey,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    plate,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (s.vehiclePhotoCount < 6)
-                  InkWell(
-                    onTap: () async {
-                      final picker = ImagePicker();
-                      final file = await picker.pickImage(
-                        source: ImageSource.gallery,
-                        imageQuality: 85,
-                      );
-                      if (file == null || !context.mounted) return;
-                      try {
-                        await s.ensureVehicle();
-                        final bytes = await file.readAsBytes();
-                        await s.uploadKycBytes(
-                          docType: 'vehicle_photo',
-                          bytes: bytes,
-                          filename: file.name,
-                        );
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Upload failed: $e')),
-                          );
-                        }
-                      }
-                    },
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: GtColors.bgGrey,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.add_a_photo_outlined, size: 32),
-                    ),
+                const SizedBox(height: 8),
+                Text(
+                  '${photos.length} of 6 photos · tap to preview',
+                  style: const TextStyle(
+                    color: GtColors.textSecondary,
+                    fontSize: 13,
                   ),
+                ),
+                const SizedBox(height: 20),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: photos.length + (photos.length < 6 ? 1 : 0),
+                  itemBuilder: (_, i) {
+                    if (i >= photos.length) {
+                      return InkWell(
+                        onTap: _busy ? null : _addPhoto,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: GtColors.bgGrey,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: GtColors.border),
+                          ),
+                          child: const Icon(Icons.add_a_photo_outlined, size: 32),
+                        ),
+                      );
+                    }
+                    final doc = photos[i];
+                    final id = doc['id']?.toString() ?? '';
+                    final url = _previewUrls[id];
+                    final locked = s.isDocumentLocked(doc);
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        InkWell(
+                          onTap: url != null ? () => _openPreview(url) : null,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: GtColors.soft,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: GtColors.border),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: url != null
+                                ? Image.network(url, fit: BoxFit.cover)
+                                : const Center(
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                          ),
+                        ),
+                        if (!locked)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Material(
+                              color: Colors.black54,
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _busy ? null : () => _deletePhoto(doc),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.close, size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

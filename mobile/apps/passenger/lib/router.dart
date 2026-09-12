@@ -8,6 +8,8 @@ import 'package:passenger/screens/offer_detail_screen.dart';
 import 'package:passenger/screens/offers_screen.dart';
 import 'package:passenger/screens/onboarding_screen.dart';
 import 'package:passenger/screens/payment_screen.dart';
+import 'package:passenger/screens/ride_chat_screen.dart';
+import 'package:passenger/screens/ride_detail_screen.dart';
 import 'package:passenger/screens/shell.dart';
 import 'package:passenger/screens/waiting_screen.dart';
 import 'package:passenger/state/app_state.dart';
@@ -28,7 +30,8 @@ GoRouter createRouter(AppState state) {
       final needsAuth = loc == '/account' ||
           loc == '/edit-field' ||
           loc.startsWith('/payment') ||
-          loc.startsWith('/booking-confirmed');
+          loc.startsWith('/booking-confirmed') ||
+          loc.startsWith('/ride/');
       if (!state.isAuthenticated && needsAuth) return '/auth';
 
       if (state.isAuthenticated &&
@@ -99,6 +102,18 @@ GoRouter createRouter(AppState state) {
       GoRoute(
         path: '/booking-confirmed/:rideId',
         builder: (_, state) => BookingConfirmedScreen(
+          rideId: state.pathParameters['rideId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/ride/:rideId/chat',
+        builder: (_, state) => RideChatScreen(
+          rideId: state.pathParameters['rideId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/ride/:rideId',
+        builder: (_, state) => RideDetailScreen(
           rideId: state.pathParameters['rideId']!,
         ),
       ),

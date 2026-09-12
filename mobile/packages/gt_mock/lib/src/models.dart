@@ -52,18 +52,35 @@ class VehicleClass {
 }
 
 class ChildSeats {
-  const ChildSeats({this.infant = 0, this.child = 0, this.booster = 0});
+  const ChildSeats({this.infant = 0, this.convertible = 0, this.booster = 0});
   final int infant;
-  final int child;
+  final int convertible;
   final int booster;
 
-  ChildSeats copyWith({int? infant, int? child, int? booster}) => ChildSeats(
+  ChildSeats copyWith({int? infant, int? convertible, int? booster}) =>
+      ChildSeats(
         infant: infant ?? this.infant,
-        child: child ?? this.child,
+        convertible: convertible ?? this.convertible,
         booster: booster ?? this.booster,
       );
 
-  int get total => infant + child + booster;
+  int get total => infant + convertible + booster;
+
+  /// Compact summary for the book form row.
+  String get summaryLabel {
+    if (total == 0) return 'Child seats';
+    final parts = <String>[];
+    if (infant > 0) parts.add('Infant carrier ×$infant');
+    if (convertible > 0) parts.add('Convertible ×$convertible');
+    if (booster > 0) parts.add('Booster ×$booster');
+    return parts.join(' · ');
+  }
+
+  Map<String, int> toJson() => {
+        'infant': infant,
+        'convertible': convertible,
+        'booster': booster,
+      };
 }
 
 class OfferImage {
@@ -584,6 +601,7 @@ class DriverRequest {
     this.comment,
     this.signage,
     this.flight,
+    this.returnFlight,
     this.vehicleClassIds = const [],
     this.requiredOptions = const [],
     this.childSeats = const {},
@@ -620,6 +638,7 @@ class DriverRequest {
   final String? comment;
   final String? signage;
   final String? flight;
+  final String? returnFlight;
   final List<String> vehicleClassIds;
   final List<String> requiredOptions;
   final Map<String, dynamic> childSeats;
@@ -671,6 +690,7 @@ class DriverRequest {
       comment: comment,
       signage: signage,
       flight: flight,
+      returnFlight: returnFlight,
       vehicleClassIds: vehicleClassIds,
       requiredOptions: requiredOptions,
       childSeats: childSeats,

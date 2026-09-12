@@ -63,7 +63,7 @@ class _RidesScreenState extends State<RidesScreen>
   Future<void> _onRefresh() => context.read<AppState>().refreshMyRides();
 
   void _openRide(DriverRequest r) {
-    context.push('/request/${r.id}');
+    context.push('/trip/${r.id}');
   }
 
   @override

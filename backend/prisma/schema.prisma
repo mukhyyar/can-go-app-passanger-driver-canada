@@ -423,6 +423,8 @@ model Ride {
   adults          Int        @default(1)
   childSeatsJson  Json       @default("{}")
   flight          String?
+  /// Return-leg arrival flight number when round-trip.
+  returnFlight    String?
   signage         String?
   comment         String?
   /// Passenger-required options (e.g. name_sign, wheelchair). Derived + explicit.

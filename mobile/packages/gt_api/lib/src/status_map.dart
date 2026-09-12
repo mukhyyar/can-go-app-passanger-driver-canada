@@ -672,6 +672,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     comment: json['comment']?.toString(),
     signage: json['signage']?.toString(),
     flight: flight,
+    returnFlight: json['returnFlight']?.toString(),
     requiredOptions: requiredOptions,
     childSeats: childSeats,
     pricing: pricing,

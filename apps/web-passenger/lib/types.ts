@@ -26,7 +26,11 @@ export type AuthUser = {
   };
 };
 
-export type ChildSeats = { infant: number; child: number; booster: number };
+export type ChildSeats = {
+  infant: number;
+  convertible: number;
+  booster: number;
+};
 
 export type OfferPresentation = {
   vehicleDisplayName?: string;

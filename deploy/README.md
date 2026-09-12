@@ -7,17 +7,17 @@
 | https://www.can-rides.ca | Passenger web |
 | https://admin.can-rides.ca | Admin |
 | https://www.can-rides.ca/api/health | API (proxied; same for admin host) |
-| http://api.can-rides.ca/api/health | API direct (HTTP until LE cert for `api`/`apex`) |
+| http://api.can-rides.ca/api/health | API direct (HTTP until LE cert for `api`) |
+| https://can-rides.ca | Redirects to https://www.can-rides.ca |
 
 Email stays on cPanel (`mail.can-rides.ca`).
 
-SSL note: Let's Encrypt currently issued for `www` + `admin`. Apex (`can-rides.ca`) and `api` hit intermittent LE DNS secondary-validation failures against `ns*.mzcorp.com`. Until those certs succeed, apps call the API over the HTTPS hosts above.
+SSL: Let's Encrypt covers `www.can-rides.ca` + `can-rides.ca` (same cert) and `admin.can-rides.ca`. Apex HTTPS redirects to `https://www.can-rides.ca`. `api` still HTTP-only until its own cert is issued.
 
-Finish remaining certs later:
+Finish API cert later:
 
 ```bash
-certbot certonly --nginx -d can-rides.ca -d api.can-rides.ca
-certbot --nginx --expand -d can-rides.ca -d www.can-rides.ca -d api.can-rides.ca -d admin.can-rides.ca --redirect
+certbot certonly --nginx -d api.can-rides.ca
 ```
 
 ## Auto deploy

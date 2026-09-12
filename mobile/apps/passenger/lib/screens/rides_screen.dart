@@ -121,17 +121,9 @@ class _RideList extends StatelessWidget {
           context.push('/offers/${r.id}');
         }
       case RideStatus.booked:
-        final offerId = r.selectedOfferId;
-        if (offerId != null && offerId.isNotEmpty) {
-          context.push('/offer/${r.id}/$offerId');
-        } else {
-          context.push('/booking-confirmed/${r.id}');
-        }
       case RideStatus.past:
       case RideStatus.cancelled:
-        if (r.selectedOfferId != null) {
-          context.push('/offer/${r.id}/${r.selectedOfferId}');
-        }
+        context.push('/ride/${r.id}');
     }
   }
 

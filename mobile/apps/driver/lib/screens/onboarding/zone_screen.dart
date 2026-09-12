@@ -28,7 +28,7 @@ class _ZoneScreenState extends State<ZoneScreen> {
   String? _selectedId;
 
   double _draftRadiusKm = 66;
-  List<GeoPoint>? _draftPolygon;
+  final List<List<GeoPoint>> _draftPolygons = [];
 
   bool _infoShown = false;
   bool _saving = false;
@@ -71,7 +71,7 @@ class _ZoneScreenState extends State<ZoneScreen> {
   }
 
   void _clearDraft() {
-    _draftPolygon = null;
+    _draftPolygons.clear();
     _draftRadiusKm = 66;
   }
 
@@ -145,7 +145,7 @@ class _ZoneScreenState extends State<ZoneScreen> {
       _tool = ZoneCreationTool.circle;
       _selectedId = null;
       _draftRadiusKm = 66;
-      _draftPolygon = null;
+      _draftPolygons.clear();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
@@ -167,7 +167,10 @@ class _ZoneScreenState extends State<ZoneScreen> {
   void _selectTool(ZoneCreationTool tool) {
     setState(() {
       _tool = tool;
-      _draftPolygon = null;
+      // Switching tools must drop the other mode's draft entirely
+      // (circle radius ghost must not linger in Draw).
+      _draftPolygons.clear();
+      _draftRadiusKm = tool == ZoneCreationTool.circle ? 66 : 0;
     });
   }
 
@@ -176,7 +179,12 @@ class _ZoneScreenState extends State<ZoneScreen> {
     if (_tool == ZoneCreationTool.circle) {
       return _draftRadiusKm >= ZoneCreationBar.minKm;
     }
-    return _draftPolygon != null && _draftPolygon!.length >= 3;
+    return _draftPolygons.isNotEmpty;
+  }
+
+  void _onFreehandCompleted(List<GeoPoint> pts) {
+    if (pts.length < 3) return;
+    setState(() => _draftPolygons.add(List<GeoPoint>.from(pts)));
   }
 
   void _confirmCreate() {
@@ -185,7 +193,7 @@ class _ZoneScreenState extends State<ZoneScreen> {
         SnackBar(
           content: Text(
             _tool == ZoneCreationTool.draw
-                ? 'Draw an area on the map first.'
+                ? 'Draw at least one area on the map first.'
                 : 'Adjust the circle radius, then confirm.',
           ),
         ),
@@ -193,27 +201,38 @@ class _ZoneScreenState extends State<ZoneScreen> {
       return;
     }
 
-    final id = 'zone_${DateTime.now().millisecondsSinceEpoch}';
-    final name = 'Operating Zone ${_zones.length + 1}';
-    late final OperatingZone zone;
-
     if (_tool == ZoneCreationTool.circle) {
-      zone = ZoneGeo.circleZone(
+      final id = 'zone_${DateTime.now().millisecondsSinceEpoch}';
+      final zone = ZoneGeo.circleZone(
         id: id,
-        name: name,
+        name: 'Operating Zone ${_zones.length + 1}',
         center: _currentMapCenter(),
         radiusKm: _draftRadiusKm.roundToDouble(),
       );
-    } else {
-      zone = ZoneGeo.polygonZone(
-        id: id,
-        name: name,
-        coordinates: List<GeoPoint>.from(_draftPolygon!),
+      setState(() {
+        _zones.add(zone);
+        _mode = ZoneMapMode.viewing;
+        _clearDraft();
+        _selectedId = null;
+      });
+      return;
+    }
+
+    final base = _zones.length;
+    final newZones = <OperatingZone>[];
+    for (var i = 0; i < _draftPolygons.length; i++) {
+      final id = 'zone_${DateTime.now().millisecondsSinceEpoch}_$i';
+      newZones.add(
+        ZoneGeo.polygonZone(
+          id: id,
+          name: 'Operating Zone ${base + i + 1}',
+          coordinates: List<GeoPoint>.from(_draftPolygons[i]),
+        ),
       );
     }
 
     setState(() {
-      _zones.add(zone);
+      _zones.addAll(newZones);
       _mode = ZoneMapMode.viewing;
       _clearDraft();
       _selectedId = null;
@@ -259,7 +278,7 @@ class _ZoneScreenState extends State<ZoneScreen> {
     });
   }
 
-  Future<void> _onNext() async {
+  Future<void> _onSave() async {
     if (_mode == ZoneMapMode.creating) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Finish or cancel zone creation first.')),
@@ -275,11 +294,25 @@ class _ZoneScreenState extends State<ZoneScreen> {
       return;
     }
 
+    final s = context.read<AppState>();
+    final settingsMode = s.onboardedComplete;
     setState(() => _saving = true);
     try {
-      await context.read<AppState>().saveOperatingZones(_zones);
+      await s.saveOperatingZones(_zones);
       if (!mounted) return;
-      context.push('/onboarding/documents');
+      if (settingsMode) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Operating zones saved')),
+        );
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/');
+        }
+      } else {
+        // First-time onboarding only.
+        context.push('/onboarding/documents');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -290,6 +323,9 @@ class _ZoneScreenState extends State<ZoneScreen> {
     final s = context.watch<AppState>();
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final creating = _mode == ZoneMapMode.creating;
+    final settingsMode = s.onboardedComplete;
+    final isCircleTool = creating && _tool == ZoneCreationTool.circle;
+    final isDrawTool = creating && _tool == ZoneCreationTool.draw;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -341,25 +377,29 @@ class _ZoneScreenState extends State<ZoneScreen> {
                     zones: _zones,
                     mode: _mode,
                     creationTool: creating ? _tool : null,
-                    draftRadiusKm: _draftRadiusKm,
-                    draftPolygon: _draftPolygon,
+                    // Radius only meaningful in Circle tool — never pass in Draw.
+                    draftRadiusKm: isCircleTool ? _draftRadiusKm : 0,
+                    showDraftCircle: isCircleTool,
+                    draftPolygons: isDrawTool ? _draftPolygons : const [],
                     selectedZoneId: _selectedId,
                     onZoneSelected: _onZoneSelected,
                     onDeleteSelected: _confirmDelete,
-                    onFreehandCompleted: (pts) {
-                      setState(() => _draftPolygon = pts);
-                    },
+                    onFreehandCompleted: _onFreehandCompleted,
                   ),
           ),
           if (creating)
             ZoneCreationBar(
               tool: _tool,
-              radiusKm: _draftRadiusKm,
+              radiusKm: isCircleTool ? _draftRadiusKm : 0,
+              draftPolygonCount: isDrawTool ? _draftPolygons.length : 0,
               canConfirm: _canConfirm,
               bottomInset: bottomPad,
               onCancel: _cancelCreate,
               onSelectTool: _selectTool,
-              onRadiusChanged: (v) => setState(() => _draftRadiusKm = v),
+              onRadiusChanged: (v) {
+                if (_tool != ZoneCreationTool.circle) return;
+                setState(() => _draftRadiusKm = v);
+              },
               onConfirm: _confirmCreate,
             )
           else
@@ -379,8 +419,10 @@ class _ZoneScreenState extends State<ZoneScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: GtGreenButton(
-                      label: _saving ? 'Saving…' : 'Next',
-                      onPressed: _saving ? null : _onNext,
+                      label: _saving
+                          ? 'Saving…'
+                          : (settingsMode ? 'Save' : 'Next'),
+                      onPressed: _saving ? null : _onSave,
                     ),
                   ),
                 ],

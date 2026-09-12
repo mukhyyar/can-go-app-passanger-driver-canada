@@ -42,9 +42,13 @@ class MarketplaceApi {
     required String pickupAt,
     required List<String> vehicleClassIds,
     int? adults,
+    Map<String, int>? childSeatsJson,
     String? flight,
     String? signage,
     String? comment,
+    bool? isRoundTrip,
+    String? returnAt,
+    String? returnFlight,
     String? promoCode,
     String? currency,
     double? hours,
@@ -65,9 +69,13 @@ class MarketplaceApi {
         'pickupAt': pickupAt,
         'vehicleClassIds': vehicleClassIds,
         if (adults != null) 'adults': adults,
+        if (childSeatsJson != null) 'childSeatsJson': childSeatsJson,
         if (flight != null) 'flight': flight,
         if (signage != null) 'signage': signage,
         if (comment != null) 'comment': comment,
+        if (isRoundTrip != null) 'isRoundTrip': isRoundTrip,
+        if (returnAt != null) 'returnAt': returnAt,
+        if (returnFlight != null) 'returnFlight': returnFlight,
         if (promoCode != null) 'promoCode': promoCode,
         if (currency != null) 'currency': currency,
         if (hours != null) 'hours': hours,
@@ -177,6 +185,35 @@ class MarketplaceApi {
 
   Future<Map<String, dynamic>> cancelRide(String rideId) =>
       client.post('/rides/$rideId/cancel', body: {});
+
+  Future<Map<String, dynamic>> cancelBookedRide(String rideId) =>
+      client.post(
+        '/rides/$rideId/transitions',
+        body: {'status': 'PASSENGER_CANCELLED'},
+      );
+
+  Future<Map<String, dynamic>> getChatThread(String rideId) =>
+      client.get('/rides/$rideId/chat');
+
+  Future<Map<String, dynamic>> sendChatMessage(String rideId, String body) =>
+      client.post('/rides/$rideId/chat/messages', body: {'body': body});
+
+  Future<Map<String, dynamic>> createChangeRequest(
+    String rideId, {
+    required String type,
+    String? proposedPickupAt,
+    String? note,
+    String? flightNumber,
+  }) =>
+      client.post(
+        '/rides/$rideId/change-requests',
+        body: {
+          'type': type,
+          if (proposedPickupAt != null) 'proposedPickupAt': proposedPickupAt,
+          if (note != null) 'note': note,
+          if (flightNumber != null) 'flightNumber': flightNumber,
+        },
+      );
 
   Future<Map<String, dynamic>> rateRide(
     String rideId, {

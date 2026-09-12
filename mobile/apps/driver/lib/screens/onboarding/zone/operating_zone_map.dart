@@ -23,7 +23,8 @@ class OperatingZoneMap extends StatefulWidget {
     required this.mode,
     this.creationTool,
     this.draftRadiusKm = 66,
-    this.draftPolygon,
+    this.showDraftCircle = false,
+    this.draftPolygons = const [],
     this.selectedZoneId,
     this.onZoneSelected,
     this.onDeleteSelected,
@@ -37,7 +38,9 @@ class OperatingZoneMap extends StatefulWidget {
   final ZoneMapMode mode;
   final ZoneCreationTool? creationTool;
   final double draftRadiusKm;
-  final List<GeoPoint>? draftPolygon;
+  /// Explicit flag — Draw mode must pass false so radius circle never mounts.
+  final bool showDraftCircle;
+  final List<List<GeoPoint>> draftPolygons;
   final String? selectedZoneId;
   final void Function(String? zoneId)? onZoneSelected;
   final VoidCallback? onDeleteSelected;
@@ -55,12 +58,15 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
 
   /// Live freehand stroke — local notifier to avoid full-screen rebuilds.
   final ValueNotifier<List<LatLng>> _stroke = ValueNotifier(const []);
+  /// Draft circle center without MapCamera.of (safe across tool switches).
+  late final ValueNotifier<LatLng> _draftCenter;
   Offset? _lastSample;
   static const _minSamplePx = 6.0;
 
   @override
   void initState() {
     super.initState();
+    _draftCenter = ValueNotifier(_base);
     if (widget.mapController != null) {
       _controller = widget.mapController!;
     } else {
@@ -76,12 +82,20 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
         oldWidget.mode != widget.mode) {
       _stroke.value = const [];
       _lastSample = null;
+      if (_isCircle) {
+        try {
+          _draftCenter.value = _controller.camera.center;
+        } catch (_) {
+          _draftCenter.value = _base;
+        }
+      }
     }
   }
 
   @override
   void dispose() {
     _stroke.dispose();
+    _draftCenter.dispose();
     if (_ownsController) _controller.dispose();
     super.dispose();
   }
@@ -92,7 +106,9 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
   bool get _isDraw =>
       _isCreating && widget.creationTool == ZoneCreationTool.draw;
   bool get _isCircle =>
-      _isCreating && widget.creationTool == ZoneCreationTool.circle;
+      _isCreating &&
+      widget.creationTool == ZoneCreationTool.circle &&
+      widget.showDraftCircle;
 
   void _zoomBy(double delta) {
     final cam = _controller.camera;
@@ -205,11 +221,18 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
     final deleteAt =
         selected == null ? null : OperatingZonePolygons.centroidOf(selected);
 
-    final draftPoly = widget.draftPolygon;
-    final draftLatLngs = draftPoly
-            ?.map((p) => LatLng(p.latitude, p.longitude))
-            .toList() ??
-        const <LatLng>[];
+    final draftPolygonLayers = <Polygon>[];
+    for (final poly in widget.draftPolygons) {
+      if (poly.length < 3) continue;
+      draftPolygonLayers.add(
+        Polygon(
+          points: poly.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+          color: OperatingZonePolygons.fill,
+          borderColor: GtColors.brand,
+          borderStrokeWidth: 2.5,
+        ),
+      );
+    }
 
     return Stack(
       fit: StackFit.expand,
@@ -222,6 +245,13 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
             minZoom: 3,
             maxZoom: 18,
             interactionOptions: InteractionOptions(flags: _interactionFlags),
+            onPositionChanged: (camera, _) {
+              if (!_isCircle) return;
+              final next = camera.center;
+              if (_draftCenter.value != next) {
+                _draftCenter.value = next;
+              }
+            },
             onTap: (tap, latLng) {
               if (_isCreating) return;
               widget.onZoneSelected?.call(_hitTest(latLng));
@@ -243,34 +273,45 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
                 selectedId: widget.selectedZoneId,
               ),
             ),
-            // Circle follows map camera center (pan to reposition).
-            if (_isCircle) _DraftCircleLayer(radiusKm: widget.draftRadiusKm),
-            if (_isDraw && draftLatLngs.length >= 3)
-              PolygonLayer(
-                polygons: [
-                  Polygon(
-                    points: draftLatLngs,
-                    color: OperatingZonePolygons.fill,
-                    borderColor: GtColors.brand,
-                    borderStrokeWidth: 2.5,
-                  ),
-                ],
+            // Draft circle ONLY in Circle tool — never in Draw.
+            // Uses controller center notifier (no MapCamera.of) so tool
+            // switches never look up a deactivated ancestor.
+            if (_isCircle && widget.draftRadiusKm > 0)
+              ValueListenableBuilder<LatLng>(
+                valueListenable: _draftCenter,
+                builder: (context, center, _) {
+                  return CircleLayer(
+                    circles: [
+                      CircleMarker(
+                        point: center,
+                        radius: widget.draftRadiusKm * 1000,
+                        useRadiusInMeter: true,
+                        color: GtColors.brand.withValues(alpha: 0.18),
+                        borderStrokeWidth: 2.5,
+                        borderColor: GtColors.brand,
+                      ),
+                    ],
+                  );
+                },
               ),
-            ValueListenableBuilder<List<LatLng>>(
-              valueListenable: _stroke,
-              builder: (context, pts, _) {
-                if (pts.length < 2) return const SizedBox.shrink();
-                return PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: pts,
-                      color: GtColors.brand,
-                      strokeWidth: 3,
-                    ),
-                  ],
-                );
-              },
-            ),
+            if (_isDraw && draftPolygonLayers.isNotEmpty)
+              PolygonLayer(polygons: draftPolygonLayers),
+            if (_isDraw)
+              ValueListenableBuilder<List<LatLng>>(
+                valueListenable: _stroke,
+                builder: (context, pts, _) {
+                  if (pts.length < 2) return const SizedBox.shrink();
+                  return PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: pts,
+                        color: GtColors.brand,
+                        strokeWidth: 3,
+                      ),
+                    ],
+                  );
+                },
+              ),
             MarkerLayer(
               markers: [
                 Marker(
@@ -340,10 +381,34 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
               elevation: 2,
               borderRadius: BorderRadius.circular(10),
               color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Text(
+                  widget.draftPolygons.isEmpty
+                      ? 'Draw mode — drag on the map to outline your area'
+                      : '${widget.draftPolygons.length} area${widget.draftPolygons.length == 1 ? '' : 's'} drawn — draw more or tap ✓',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: GtColors.text,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (_isCircle)
+          Positioned(
+            left: 12,
+            right: 60,
+            top: 12,
+            child: Material(
+              elevation: 2,
+              borderRadius: BorderRadius.circular(10),
+              color: Colors.white,
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Text(
-                  'Draw your operating area on the map',
+                  'Circle mode — pan map to move center, drag slider for radius',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -353,30 +418,6 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
               ),
             ),
           ),
-      ],
-    );
-  }
-}
-
-/// Circle preview pinned to the live map camera center.
-class _DraftCircleLayer extends StatelessWidget {
-  const _DraftCircleLayer({required this.radiusKm});
-
-  final double radiusKm;
-
-  @override
-  Widget build(BuildContext context) {
-    final camera = MapCamera.of(context);
-    return CircleLayer(
-      circles: [
-        CircleMarker(
-          point: camera.center,
-          radius: radiusKm * 1000,
-          useRadiusInMeter: true,
-          color: GtColors.brand.withValues(alpha: 0.18),
-          borderStrokeWidth: 2.5,
-          borderColor: GtColors.brand,
-        ),
       ],
     );
   }

@@ -437,6 +437,34 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Map<String, dynamic>? documentForType(String docType) {
+    for (final d in documents) {
+      if (d['docType']?.toString() == docType) return d;
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> get vehiclePhotoDocuments {
+    return documents
+        .where((d) => d['docType']?.toString() == 'vehicle_photo')
+        .toList();
+  }
+
+  bool isDocumentLocked(Map<String, dynamic> doc) =>
+      (doc['status']?.toString().toUpperCase() ?? '') == 'APPROVED';
+
+  Future<String?> fetchDocumentPreviewUrl(String documentId) async {
+    if (!isAuthenticated) return null;
+    final data = await api.driver.getDocument(documentId);
+    return data['url']?.toString();
+  }
+
+  Future<void> deleteDocument(String documentId) async {
+    await api.driver.deleteDocument(documentId);
+    await syncDocumentsStatus();
+    notifyListeners();
+  }
+
   Future<void> uploadKycBytes({
     required String docType,
     required Uint8List bytes,
@@ -934,6 +962,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    stopTripLocationTracking();
     stopMarketplaceRealtime();
     await api.auth.logout();
     await api.clear();
@@ -1226,5 +1255,87 @@ class AppState extends ChangeNotifier {
     if (!isAuthenticated) return;
     await api.driver.withdrawOffer(offerId);
     await refreshOpenRequests();
+  }
+
+  DriverRequest? rideById(String rideId) {
+    for (final r in myRides) {
+      if (r.id == rideId) return r;
+    }
+    for (final r in openRequests) {
+      if (r.id == rideId) return r;
+    }
+    return null;
+  }
+
+  Future<DriverRequest> loadTripDetail(String rideId) async =>
+      loadRequestDetail(rideId);
+
+  Future<Map<String, dynamic>> tripGoEnRoute(String rideId) async {
+    final res = await api.driver.enRoute(rideId);
+    await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> tripArrived(String rideId) async {
+    final res = await api.driver.arrived(rideId);
+    await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> tripStart(String rideId) async {
+    final res = await api.driver.startTrip(rideId);
+    await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> tripComplete(String rideId) async {
+    stopTripLocationTracking();
+    final res = await api.driver.completeTrip(rideId);
+    await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
+
+  Future<void> pushTripLocation({
+    required String rideId,
+    required double lat,
+    required double lng,
+  }) async {
+    if (!isAuthenticated) return;
+    await api.driver.pushLocation(lat: lat, lng: lng, rideId: rideId);
+  }
+
+  Timer? _tripLocationTimer;
+  String? _trackingRideId;
+
+  void startTripLocationTracking(String rideId) {
+    if (_trackingRideId == rideId && _tripLocationTimer != null) return;
+    stopTripLocationTracking();
+    _trackingRideId = rideId;
+    unawaited(_pushCurrentLocation(rideId));
+    _tripLocationTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      unawaited(_pushCurrentLocation(rideId));
+    });
+  }
+
+  void stopTripLocationTracking() {
+    _tripLocationTimer?.cancel();
+    _tripLocationTimer = null;
+    _trackingRideId = null;
+  }
+
+  Future<void> _pushCurrentLocation(String rideId) async {
+    try {
+      await pushTripLocation(
+        rideId: rideId,
+        lat: baseLatitude,
+        lng: baseLongitude,
+      );
+    } catch (e) {
+      debugPrint('pushTripLocation: $e');
+    }
   }
 }

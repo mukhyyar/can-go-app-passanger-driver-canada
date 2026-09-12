@@ -61,6 +61,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   String? _seenOfferAlert;
+  String? _seenRideStatusAlert;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +70,8 @@ class _ShellState extends State<Shell> {
     final offerBadge = app.unreadOfferBadge;
     final alert = app.pendingOfferAlert;
     final alertRideId = app.pendingOfferRideId;
+    final rideAlert = app.pendingRideStatusAlert;
+    final rideAlertId = app.pendingRideStatusRideId;
 
     if (alert != null &&
         alertRideId != null &&
@@ -95,6 +98,34 @@ class _ShellState extends State<Shell> {
           ),
         );
         app.clearPendingOfferAlert();
+      });
+    }
+
+    if (rideAlert != null &&
+        rideAlertId != null &&
+        rideAlert != _seenRideStatusAlert &&
+        mounted) {
+      _seenRideStatusAlert = rideAlert;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(rideAlert),
+            action: SnackBarAction(
+              label: 'View',
+              onPressed: () {
+                app.clearPendingRideStatusAlert();
+                app.setShellTab(1);
+                // ignore: use_build_context_synchronously
+                GoRouter.of(context).push('/ride/$rideAlertId');
+              },
+            ),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+        app.clearPendingRideStatusAlert();
       });
     }
 

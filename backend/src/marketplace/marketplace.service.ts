@@ -12,6 +12,7 @@ import {
   OfferStatus,
   Prisma,
   RideStatus,
+  SupportCaseType,
   UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +29,7 @@ import {
   type PriceSnapshot,
 } from './pricing.service';
 import type {
+  CreateChangeRequestDto,
   CreateOfferDto,
   CreatePaymentIntentDto,
   CreateRideDto,
@@ -181,6 +183,7 @@ export class MarketplaceService {
         adults: dto.adults ?? 1,
         childSeatsJson: (dto.childSeatsJson ?? {}) as Prisma.InputJsonValue,
         flight: dto.flight,
+        returnFlight: dto.returnFlight,
         signage: dto.signage,
         comment: dto.comment,
         requiredOptions: requiredOptions as Prisma.InputJsonValue,
@@ -471,6 +474,113 @@ export class MarketplaceService {
       body: 'Your ride request was cancelled.',
     });
     return this.getRideForActor(userId, rideId);
+  }
+
+  async createChangeRequest(
+    userId: string,
+    rideId: string,
+    dto: CreateChangeRequestDto,
+    ip?: string,
+  ) {
+    const passenger = await this.requirePassenger(userId);
+    const ride = await this.prisma.ride.findFirst({
+      where: { id: rideId, passengerId: passenger.id },
+      include: {
+        selectedOffer: { include: { driver: { select: { userId: true } } } },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const preTrip: RideStatus[] = [
+      RideStatus.BOOKED,
+      RideStatus.DRIVER_EN_ROUTE,
+      RideStatus.DRIVER_ARRIVED,
+    ];
+    const ongoing: RideStatus[] = [
+      RideStatus.DRIVER_EN_ROUTE,
+      RideStatus.DRIVER_ARRIVED,
+      RideStatus.TRIP_STARTED,
+      RideStatus.IN_PROGRESS,
+    ];
+    const allowedByType: Record<
+      CreateChangeRequestDto['type'],
+      RideStatus[]
+    > = {
+      FLIGHT_DELAY: preTrip,
+      RESCHEDULE: preTrip,
+      CURRENT_RIDE_HELP: ongoing,
+      BILLING_HELP: [RideStatus.COMPLETED],
+      REFUND_REQUEST: [RideStatus.COMPLETED],
+    };
+    const allowed = allowedByType[dto.type];
+    if (!allowed.includes(ride.status)) {
+      throw new BadRequestException(
+        `Change request ${dto.type} not allowed from ${ride.status}`,
+      );
+    }
+
+    const titles: Record<CreateChangeRequestDto['type'], string> = {
+      FLIGHT_DELAY: 'Flight delay reported',
+      RESCHEDULE: 'Reschedule request',
+      BILLING_HELP: 'Billing help request',
+      REFUND_REQUEST: 'Refund request',
+      CURRENT_RIDE_HELP: 'Help with current ride',
+    };
+    const caseType =
+      dto.type === 'BILLING_HELP' || dto.type === 'REFUND_REQUEST'
+        ? SupportCaseType.BILLING
+        : SupportCaseType.GENERAL;
+
+    const noteLines = [
+      `Type: ${dto.type}`,
+      dto.flightNumber ? `Flight: ${dto.flightNumber}` : null,
+      dto.proposedPickupAt ? `Proposed pickup: ${dto.proposedPickupAt}` : null,
+      dto.note ? `Note: ${dto.note}` : null,
+    ].filter(Boolean) as string[];
+
+    const row = await this.prisma.supportCase.create({
+      data: {
+        title: titles[dto.type],
+        type: caseType,
+        createdById: userId,
+        passengerProfileId: passenger.id,
+        rideId,
+        slaDueAt: new Date(Date.now() + 24 * 3600_000),
+        notes: {
+          create: {
+            authorId: userId,
+            body: noteLines.join('\n'),
+            internal: false,
+          },
+        },
+      },
+    });
+
+    await this.audit(userId, 'ride.change_request', 'SupportCase', row.id, ip);
+
+    const driverUserId = ride.selectedOffer?.driver.userId;
+    const notifyDriver =
+      driverUserId &&
+      (dto.type === 'FLIGHT_DELAY' ||
+        dto.type === 'RESCHEDULE' ||
+        dto.type === 'CURRENT_RIDE_HELP');
+    if (notifyDriver) {
+      void this.notifications.notifyRideStatus({
+        userIds: [driverUserId],
+        rideId,
+        status: 'CHANGE_REQUEST',
+        title: titles[dto.type],
+        body: dto.note?.slice(0, 120) ?? titles[dto.type],
+        data: {
+          type: 'CHANGE_REQUEST',
+          changeRequestId: row.id,
+          requestType: dto.type,
+          deepLink: `/driver/trip/${rideId}`,
+        },
+      });
+    }
+
+    return { id: row.id, status: 'OPEN' as const };
   }
 
   async selectOffer(
@@ -1099,6 +1209,14 @@ export class MarketplaceService {
           supersededOfferId: existing.id,
         },
       );
+      void this.notifications.notifyOfferUpdated({
+        userId: passenger.userId,
+        rideId,
+        offerId: replacement.id,
+        supersededOfferId: existing.id,
+        title: 'Offer updated',
+        body: 'A driver enhanced or updated their offer. Review the new details.',
+      });
     }
     this.tracking?.emitRideEvent(rideId, {
       type: 'offer.updated',
@@ -1150,7 +1268,21 @@ export class MarketplaceService {
         status: 'OFFER_WITHDRAWN',
         title: 'Offer withdrawn',
         body: 'A driver withdrew their offer.',
+        data: {
+          type: 'OFFER_WITHDRAWN',
+          offerId,
+          deepLink: `/offers/${offer.rideId}`,
+        },
       });
+      this.tracking?.emitToPassengers(
+        [ride.passenger.userId],
+        'marketplace.offer',
+        {
+          type: 'offer.withdrawn',
+          offerId,
+          rideId: offer.rideId,
+        },
+      );
     }
     this.tracking?.emitRideEvent(offer.rideId, {
       type: 'offer.withdrawn',
@@ -1939,11 +2071,20 @@ export class MarketplaceService {
     const offerRows = Array.isArray(ride.offers)
       ? (ride.offers as Array<Record<string, unknown>>)
       : [];
+    // Passengers only see bookable offers — withdrawn/expired/superseded stay hidden.
+    const visibleOfferRows = opts?.enrichOffers
+      ? offerRows.filter((o) => {
+          const status = String(o.status ?? '');
+          return (
+            status === OfferStatus.ACTIVE || status === OfferStatus.SELECTED
+          );
+        })
+      : offerRows;
     const offers = opts?.enrichOffers
       ? await Promise.all(
-          offerRows.map((o) => this.serializeOfferForPassenger(o)),
+          visibleOfferRows.map((o) => this.serializeOfferForPassenger(o)),
         )
-      : offerRows.map((o) => this.serializeOffer(o));
+      : visibleOfferRows.map((o) => this.serializeOffer(o));
     const selectedOffer = ride.selectedOffer
       ? opts?.enrichOffers
         ? await this.serializeOfferForPassenger(
@@ -1972,6 +2113,7 @@ export class MarketplaceService {
       adults: ride.adults,
       childSeatsJson: ride.childSeatsJson,
       flight: ride.flight,
+      returnFlight: ride.returnFlight,
       signage: ride.signage,
       comment: ride.comment,
       requiredOptions: ride.requiredOptions ?? [],
@@ -1994,7 +2136,7 @@ export class MarketplaceService {
       requestExpiresAt: ride.requestExpiresAt,
       paymentExpiresAt: ride.paymentExpiresAt,
       viewCount: Number(ride.viewCount ?? 0),
-      offerCount: offerRows.length,
+      offerCount: visibleOfferRows.length,
       createdAt: ride.createdAt,
       updatedAt: ride.updatedAt,
       ...serializeLifecycleFlags({
@@ -2115,10 +2257,13 @@ export class MarketplaceService {
     if (dto.signage && dto.signage.trim()) set.add('name_sign');
     const seats = dto.childSeatsJson ?? {};
     if (typeof seats === 'object' && seats) {
-      const child = Number((seats as Record<string, unknown>).child ?? 0);
-      const infant = Number((seats as Record<string, unknown>).infant ?? 0);
-      const booster = Number((seats as Record<string, unknown>).booster ?? 0);
-      if (child > 0 || infant > 0) set.add('child_seat');
+      const record = seats as Record<string, unknown>;
+      const convertible = Number(
+        record.convertible ?? record.child ?? 0,
+      );
+      const infant = Number(record.infant ?? 0);
+      const booster = Number(record.booster ?? 0);
+      if (convertible > 0 || infant > 0) set.add('child_seat');
       if (booster > 0) set.add('booster_seat');
     }
     return [...set].filter((k) =>

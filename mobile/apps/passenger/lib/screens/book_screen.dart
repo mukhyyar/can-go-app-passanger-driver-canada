@@ -28,7 +28,10 @@ class BookScreen extends StatelessWidget {
                 if (state.serviceType == ServiceType.ride) ...[
                   _RouteCard(state: state, showTo: true, showSwap: true),
                   const SizedBox(height: 12),
-                  _VehicleClassRow(state: state),
+                  _VehicleClassRow(
+                    state: state,
+                    showFromPrice: state.from != null && state.to != null,
+                  ),
                   const SizedBox(height: 12),
                   _PickupRow(state: state),
                   _FlightRow(state: state),
@@ -78,7 +81,8 @@ class BookScreen extends StatelessWidget {
                   _PromoToggle(state: state),
                   const SizedBox(height: 8),
                   _RouteMapSection(state: state),
-                ] else if (state.serviceType == ServiceType.delivery) ...[
+                  _TermsToggle(state: state),
+                ] else ...[
                   _RouteCard(state: state, showTo: true, showSwap: true),
                   const SizedBox(height: 12),
                   _PickupRow(state: state),
@@ -86,66 +90,6 @@ class BookScreen extends StatelessWidget {
                   _PromoToggle(state: state),
                   const SizedBox(height: 8),
                   _RouteMapSection(state: state),
-                  _TermsToggle(state: state),
-                ] else ...[
-                  // Experiences / Car rental
-                  GtCard(
-                    child: InkWell(
-                      onTap: () {
-                        state.setLocationField('from');
-                        context.push('/location');
-                      },
-                      child: Row(
-                        children: [
-                          const GtPointLabel(letter: 'A'),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              state.from?.label ??
-                                  'Location: city, airport, hotel',
-                              style: TextStyle(
-                                color: state.from == null
-                                    ? GtColors.textMuted
-                                    : GtColors.text,
-                              ),
-                            ),
-                          ),
-                          const Icon(Icons.open_in_new, size: 18, color: GtColors.textMuted),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  GtCard(
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: GtColors.soft,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.local_offer, color: GtColors.orange),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            state.serviceType == ServiceType.carRental
-                                ? 'Save on weekly car rentals with partner deals'
-                                : 'Discover curated local experiences near you',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _PromoToggle(state: state),
-                  if (state.from != null) ...[
-                    const SizedBox(height: 8),
-                    _RouteMapSection(state: state),
-                  ],
                   _TermsToggle(state: state),
                 ],
               ],
@@ -156,14 +100,8 @@ class BookScreen extends StatelessWidget {
               bottom: 16,
               child: GtGreenButton(
                 label: 'Get offers',
-                icon: (state.serviceType == ServiceType.experiences ||
-                        state.serviceType == ServiceType.carRental)
-                    ? Icons.open_in_new
-                    : null,
                 onPressed: () async {
-                  if (state.from == null &&
-                      state.serviceType != ServiceType.experiences &&
-                      state.serviceType != ServiceType.carRental) {
+                  if (state.from == null) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Please select a pickup location')),
                     );
@@ -178,13 +116,13 @@ class BookScreen extends StatelessWidget {
                       return;
                     }
                   }
-                  if ((state.serviceType == ServiceType.experiences ||
-                          state.serviceType == ServiceType.carRental) &&
-                      state.from == null) {
-                    state.setFrom(MockData.places[3]);
-                  }
-                  if (state.from == null) {
-                    state.setFrom(MockData.places.first);
+                  if (!state.termsAccepted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please accept the terms of service'),
+                      ),
+                    );
+                    return;
                   }
                   if (!state.isAuthenticated) {
                     if (!context.mounted) return;
@@ -342,8 +280,6 @@ class _ServiceChips extends StatelessWidget {
       (ServiceType.ride, 'RIDE', Icons.alt_route),
       (ServiceType.perHour, 'PER HOUR', Icons.access_time),
       (ServiceType.delivery, 'DELIVERY', Icons.inventory_2_outlined),
-      (ServiceType.carRental, 'CAR RENTAL', Icons.directions_car_outlined),
-      (ServiceType.experiences, 'EXPERIENCES', Icons.explore_outlined),
     ];
     return SizedBox(
       height: 44,
@@ -904,9 +840,7 @@ class _ChildrenRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              state.childSeats.total == 0
-                  ? 'Children'
-                  : 'Children (${state.childSeats.total})',
+              state.childSeats.summaryLabel,
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
@@ -941,15 +875,24 @@ class _ChildrenRow extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 16),
-                _seatRow('Infant seat', seats.infant, (v) {
-                  setModal(() => seats = seats.copyWith(infant: v));
-                }),
-                _seatRow('Child seat', seats.child, (v) {
-                  setModal(() => seats = seats.copyWith(child: v));
-                }),
-                _seatRow('Booster', seats.booster, (v) {
-                  setModal(() => seats = seats.copyWith(booster: v));
-                }),
+                _seatRow(
+                  'Infant carrier',
+                  'Up to 10 kg, 6 months',
+                  seats.infant,
+                  (v) => setModal(() => seats = seats.copyWith(infant: v)),
+                ),
+                _seatRow(
+                  'Convertible seat',
+                  '9–25 kg, 0–7 years',
+                  seats.convertible,
+                  (v) => setModal(() => seats = seats.copyWith(convertible: v)),
+                ),
+                _seatRow(
+                  'Booster seat',
+                  '22–36 kg, 6–12 years',
+                  seats.booster,
+                  (v) => setModal(() => seats = seats.copyWith(booster: v)),
+                ),
                 const SizedBox(height: 16),
                 GtGreenButton(
                   label: 'Done',
@@ -966,12 +909,32 @@ class _ChildrenRow extends StatelessWidget {
     );
   }
 
-  Widget _seatRow(String label, int value, ValueChanged<int> onChanged) {
+  Widget _seatRow(
+    String label,
+    String subtitle,
+    int value,
+    ValueChanged<int> onChanged,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Expanded(child: Text(label)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: GtColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
           GtStepper(value: value, min: 0, max: 5, onChanged: onChanged),
         ],
       ),
@@ -985,7 +948,6 @@ class _CommentBlock extends StatelessWidget {
     this.chips = const [
       'I need Wi-Fi',
       'I need an English-speaking driver',
-      "I'm interested in renting a car at a good price",
     ],
   });
   final AppState state;

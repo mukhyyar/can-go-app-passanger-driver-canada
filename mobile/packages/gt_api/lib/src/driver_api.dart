@@ -26,6 +26,12 @@ class DriverApi {
   Future<Map<String, dynamic>> documentsStatus() =>
       client.get('/driver/documents');
 
+  Future<Map<String, dynamic>> getDocument(String documentId) =>
+      client.get('/driver/documents/$documentId');
+
+  Future<Map<String, dynamic>> deleteDocument(String documentId) =>
+      client.delete('/driver/documents/$documentId');
+
   Future<Map<String, dynamic>> uploadDocument({
     required String docType,
     required Uint8List bytes,

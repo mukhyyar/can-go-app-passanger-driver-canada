@@ -199,6 +199,38 @@ export class DriversService {
     );
   }
 
+  async deleteMyDocument(userId: string, documentId: string, ip?: string) {
+    const driver = await this.requireDriverProfile(userId);
+    const doc = await this.prisma.driverDocument.findFirst({
+      where: { id: documentId, driverId: driver.id },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+    if (doc.lifecycleStatus !== DocumentLifecycleStatus.CURRENT) {
+      throw new BadRequestException('Only the current document version can be deleted');
+    }
+    if (doc.status === DocumentReviewStatus.APPROVED) {
+      throw new ForbiddenException(
+        'This document is approved and locked. Contact support to replace it.',
+      );
+    }
+
+    const updated = await this.prisma.driverDocument.update({
+      where: { id: documentId },
+      data: {
+        lifecycleStatus: DocumentLifecycleStatus.SOFT_DELETED,
+        softDeletedAt: new Date(),
+        softDeletedById: userId,
+      },
+    });
+
+    await this.audit(userId, 'driver.document.delete', 'DriverDocument', documentId, ip, {
+      docType: doc.docType,
+      previousStatus: doc.status,
+    });
+    await this.kycOps.afterDriverUpload(driver.id);
+    return this.kycDocs.serializeDoc(updated);
+  }
+
   async getMyProfile(userId: string) {
     const driver = await this.requireDriverProfile(userId);
     const user = await this.prisma.user.findUnique({

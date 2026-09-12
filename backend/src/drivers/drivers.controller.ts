@@ -117,6 +117,15 @@ export class DriversController {
     return this.drivers.reuploadRejected(user.id, id, file, req.ip);
   }
 
+  @Delete('documents/:id')
+  deleteDocument(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.drivers.deleteMyDocument(user.id, id, req.ip);
+  }
+
   @Get('vehicles')
   listVehicles(@CurrentUser() user: AuthUser) {
     return this.drivers.listVehicles(user.id);
