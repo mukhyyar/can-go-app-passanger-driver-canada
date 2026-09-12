@@ -1,11 +1,11 @@
 {
-    "name": "CAN-GO Passenger",
-    "short_name": "CAN-GO",
+    "name": "CAN-RIDE Passenger",
+    "short_name": "CAN-RIDE",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",
-    "theme_color": "#B41B1D",
-    "description": "CAN-GO Mobility Marketplace — Passenger",
+    "theme_color": "#E50000",
+    "description": "CAN-RIDE Mobility Marketplace — Passenger",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

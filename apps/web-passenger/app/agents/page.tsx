@@ -7,7 +7,7 @@ export default function Page() {
       slug="agents"
       kicker="Partners"
       fallbackTitle="For travel agents"
-      fallbackBody="Book CAN-GO transfers for clients with the passenger booking form. Register interest at partner@can-go.ca."
+      fallbackBody="Book CAN-RIDE transfers for clients with the passenger booking form. Register interest at partner@can-go.ca."
     />
   );
 }

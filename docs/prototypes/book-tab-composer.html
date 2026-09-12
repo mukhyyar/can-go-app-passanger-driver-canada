@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CanRide — Book Tab Composer (Prototype)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand: #E50000;
+      --brand-dark: #B40000;
+      --soft: #FDEAEA;
+      --bg: #F7F7F8;
+      --white: #fff;
+      --border: #E6E6E6;
+      --text: #1A1A1A;
+      --secondary: #5C5C5C;
+      --muted: #9E9E9E;
+      --green: #2E9E45;
+      --radius: 14px;
+      --safe-bottom: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px 16px;
+      font-family: "DM Sans", system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, #ffe0e0 0%, transparent 55%),
+        linear-gradient(165deg, #f0f0f2 0%, #e8e8ea 100%);
+    }
+
+    .stage-label {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary);
+      background: var(--white);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 999px;
+      z-index: 10;
+    }
+
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--bg);
+      border-radius: 36px;
+      border: 10px solid #1a1a1a;
+      box-shadow:
+        0 0 0 1px #333,
+        0 28px 60px rgba(0,0,0,.28);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .notch {
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 120px; height: 28px;
+      background: #1a1a1a;
+      border-radius: 0 0 16px 16px;
+      z-index: 5;
+    }
+
+    .scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 40px 14px 140px;
+      scrollbar-width: thin;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 8px;
+      background: linear-gradient(135deg, #fff, #fff8f8, var(--soft));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin-bottom: 12px;
+    }
+
+    .icon-btn {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--white);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: var(--brand);
+      color: #fff;
+      font-family: Montserrat, sans-serif;
+      font-weight: 800;
+      font-size: 11px;
+      display: grid;
+      place-items: center;
+      letter-spacing: -0.5px;
+    }
+
+    .wordmark {
+      font-family: Montserrat, sans-serif;
+      font-weight: 800;
+      font-size: 17px;
+      letter-spacing: -0.4px;
+    }
+    .wordmark span { color: var(--brand); }
+
+    .avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--soft);
+      border: 1px solid rgba(229,0,0,.18);
+      color: var(--brand);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* Segmented modes */
+    .segment {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      background: #ebebec;
+      border-radius: 12px;
+      margin-bottom: 14px;
+    }
+
+    .segment button {
+      border: none;
+      background: transparent;
+      padding: 10px 4px;
+      border-radius: 9px;
+      font: 700 11px/1 "DM Sans", sans-serif;
+      letter-spacing: 0.02em;
+      color: var(--secondary);
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .segment button.active {
+      background: var(--white);
+      color: var(--brand);
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 4px 2px 8px;
+    }
+
+    /* Route hero */
+    .route-hero {
+      background: var(--white);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 14px 14px 14px 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.04);
+      position: relative;
+    }
+
+    .place {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 8px 36px 8px 4px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .place:hover { background: #fafafa; }
+
+    .pin {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: var(--text);
+      color: #fff;
+      font-weight: 800;
+      font-size: 13px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .pin.b { background: var(--brand); }
+
+    .place-text .hint {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .place-text .filled {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.35;
+    }
+    .place-text .sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .route-rail {
+      display: flex;
+      align-items: center;
+      margin: 2px 0 2px 16px;
+      height: 22px;
+    }
+    .route-rail .line {
+      width: 2px;
+      height: 100%;
+      background: var(--border);
+      margin-left: 12px;
+    }
+
+    .swap {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      color: var(--secondary);
+    }
+
+    /* Map strip — Google Maps */
+    .map-strip {
+      height: 168px;
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+      position: relative;
+      background: #e8eef3;
+      animation: mapIn .35s ease;
+    }
+
+    .map-strip.hidden { display: none; }
+
+    .map-strip iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+
+    .map-strip .map-fallback {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary);
+      background: var(--soft);
+    }
+
+    @keyframes mapIn {
+      from { opacity: 0; transform: translateY(8px); max-height: 0; }
+      to { opacity: 1; transform: none; max-height: 200px; }
+    }
+
+    .map-badge {
+      position: absolute;
+      left: 10px; bottom: 10px;
+      background: rgba(255,255,255,.94);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    /* Essentials */
+    .essentials {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .row-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .row-card .label {
+      flex: 1;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .row-card .meta {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .pill {
+      border: none;
+      background: var(--soft);
+      color: var(--brand);
+      font-weight: 700;
+      font-size: 12px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .pill.on {
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .stepper button {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      font-size: 18px;
+      cursor: pointer;
+      color: var(--text);
+    }
+    .stepper span { font-weight: 700; min-width: 16px; text-align: center; }
+
+    .link {
+      border: none;
+      background: none;
+      color: var(--brand);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .toggle-row {
+      justify-content: space-between;
+    }
+
+    .switch {
+      width: 44px; height: 26px;
+      border-radius: 999px;
+      background: var(--border);
+      position: relative;
+      cursor: pointer;
+      transition: .2s;
+      flex-shrink: 0;
+    }
+    .switch.on { background: var(--brand); }
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      transition: .2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,.15);
+    }
+    .switch.on::after { left: 21px; }
+
+    .duration-pills {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 0 4px;
+      scrollbar-width: none;
+    }
+    .duration-pills::-webkit-scrollbar { display: none; }
+    .duration-pills button {
+      flex-shrink: 0;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 13px;
+      background: #e0e0e0;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .duration-pills button.on {
+      background: #FF8A00;
+    }
+
+    .mode-only.hidden { display: none !important; }
+
+    /* Vehicles */
+    .vehicles {
+      margin-bottom: 14px;
+    }
+
+    .vehicles-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: thin;
+    }
+
+    .vehicle {
+      flex: 0 0 108px;
+      background: var(--white);
+      border: 1.5px solid #E8C4A8;
+      border-radius: 12px;
+      padding: 10px 8px;
+      cursor: pointer;
+      position: relative;
+      transition: .15s;
+    }
+    .vehicle.selected {
+      border-color: var(--brand);
+    }
+    .vehicle .check {
+      position: absolute;
+      top: 6px; right: 6px;
+      color: var(--brand);
+      font-size: 14px;
+      display: none;
+    }
+    .vehicle.selected .check { display: block; }
+    .vehicle .car {
+      height: 48px;
+      display: grid;
+      place-items: center;
+      font-size: 28px;
+      margin-bottom: 4px;
+    }
+    .vehicle .name {
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .vehicle .price {
+      font-size: 11px;
+      color: var(--secondary);
+      margin-top: 2px;
+    }
+    .vehicle .price strong {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    /* Extras */
+    .extras {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .extras-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .extras-head h3 {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .extras-head .chev {
+      transition: transform .2s;
+      color: var(--muted);
+    }
+    .extras.open .extras-head .chev { transform: rotate(180deg); }
+
+    .extras-body {
+      display: none;
+      padding: 0 14px 14px;
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+    .extras.open .extras-body { display: flex; }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .field input, .field textarea {
+      flex: 1;
+      border: none;
+      background: transparent;
+      font: 500 13px/1.4 "DM Sans", sans-serif;
+      outline: none;
+      resize: none;
+      color: var(--text);
+    }
+    .field input::placeholder, .field textarea::placeholder { color: var(--muted); }
+
+    /* Sticky bar */
+    .cta-bar {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 10px 14px calc(10px + var(--safe-bottom));
+      background: linear-gradient(180deg, transparent, var(--bg) 18%);
+      z-index: 4;
+    }
+
+    .cta-inner {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 12px 14px;
+      box-shadow: 0 -4px 24px rgba(0,0,0,.08);
+    }
+
+    .summary {
+      font-size: 12px;
+      color: var(--secondary);
+      font-weight: 500;
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .summary strong { color: var(--text); font-weight: 700; }
+
+    .terms {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--secondary);
+      cursor: pointer;
+    }
+    .terms input { accent-color: var(--brand); width: 16px; height: 16px; }
+
+    .get-offers {
+      width: 100%;
+      border: none;
+      background: var(--brand);
+      color: #fff;
+      font-family: Montserrat, sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: .15s;
+    }
+    .get-offers:hover { background: var(--brand-dark); }
+    .get-offers:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    /* Bottom nav mock */
+    .tabbar {
+      display: none;
+    }
+
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: 150px;
+      transform: translateX(-50%) translateY(8px);
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      opacity: 0;
+      pointer-events: none;
+      transition: .25s;
+      white-space: nowrap;
+      z-index: 6;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="stage-label">Prototype · Book composer · not production</div>
+
+  <div class="phone" id="app">
+    <div class="notch"></div>
+    <div class="scroll">
+      <header class="header">
+        <button class="icon-btn" type="button" aria-label="Menu">☰</button>
+        <div class="brand">
+          <div class="mark">CR</div>
+          <div class="wordmark">CAN<span>RIDE</span></div>
+        </div>
+        <button class="avatar" type="button" aria-label="Account">👤</button>
+      </header>
+
+      <div class="segment" role="tablist">
+        <button type="button" class="active" data-mode="ride">RIDE</button>
+        <button type="button" data-mode="perHour">PER HOUR</button>
+        <button type="button" data-mode="delivery">DELIVERY</button>
+      </div>
+
+      <div class="section-label">Your route</div>
+      <section class="route-hero" id="routeHero">
+        <div class="place" data-field="from">
+          <div class="pin">A</div>
+          <div class="place-text">
+            <div class="filled" id="fromLabel">Islamabad Airport (ISB)</div>
+            <div class="sub">Terminal 1 · Pickup</div>
+          </div>
+        </div>
+        <div class="route-rail"><div class="line"></div></div>
+        <div class="place" data-field="to" id="toPlace">
+          <div class="pin b">B</div>
+          <div class="place-text">
+            <div class="filled" id="toLabel">Faisal Mosque, Islamabad</div>
+            <div class="sub">Drop-off</div>
+          </div>
+        </div>
+        <button class="swap" type="button" id="swapBtn" title="Swap">⇅</button>
+      </section>
+
+      <div class="map-strip" id="mapStrip">
+        <iframe
+          id="mapFrame"
+          title="Google Maps route preview"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+          src="https://maps.google.com/maps?saddr=33.5600,72.8700&daddr=33.7295,73.0372&hl=en&z=11&output=embed"
+        ></iframe>
+        <div class="map-badge" id="mapBadge">Google Maps · route preview</div>
+      </div>
+
+      <div class="section-label">Trip essentials</div>
+      <div class="essentials">
+        <div class="row-card">
+          <span>📅</span>
+          <div style="flex:1">
+            <div class="label" id="pickupLabel">Pickup · Now</div>
+            <div class="meta">Tap to schedule</div>
+          </div>
+          <button class="pill on" type="button" id="nowPill">Now</button>
+        </div>
+
+        <div class="row-card mode-only" data-show="perHour">
+          <span>⏱</span>
+          <div class="label">Ride ends</div>
+          <div class="meta">+1 hour</div>
+        </div>
+
+        <div class="mode-only" data-show="perHour" style="margin-top:-2px">
+          <div class="duration-pills" id="durations">
+            <button type="button" data-m="30">for 30 min</button>
+            <button type="button" class="on" data-m="60">for 1 hour</button>
+            <button type="button" data-m="120">for 2 hours</button>
+            <button type="button" data-m="180">for 3 hours</button>
+          </div>
+        </div>
+
+        <div class="row-card toggle-row mode-only" data-show="perHour">
+          <div class="label">Another end location</div>
+          <div class="switch" id="endLocSwitch" role="switch" aria-checked="false"></div>
+        </div>
+
+        <div class="row-card mode-only" data-show="ride delivery" id="passengersCard">
+          <span>👤</span>
+          <div class="label">Adults</div>
+          <div class="stepper">
+            <button type="button" id="adultMinus">−</button>
+            <span id="adults">2</span>
+            <button type="button" id="adultPlus">+</button>
+          </div>
+        </div>
+
+        <div class="row-card mode-only" data-show="ride" id="childrenCard">
+          <span>🧒</span>
+          <div class="label">Children · No seats</div>
+          <button class="link" type="button">Edit</button>
+        </div>
+
+        <div class="row-card toggle-row mode-only" data-show="ride">
+          <div class="label">Add return trip</div>
+          <div class="switch" id="returnSwitch" role="switch" aria-checked="false"></div>
+        </div>
+      </div>
+
+      <div class="vehicles mode-only" data-show="ride perHour" id="vehiclesBlock">
+        <div class="section-label">Prefer for offers</div>
+        <div class="vehicles-scroll">
+          <div class="vehicle selected" data-id="economy">
+            <span class="check">✓</span>
+            <div class="car">🚗</div>
+            <div class="name">Economy</div>
+            <div class="price">from <strong>US$22</strong></div>
+          </div>
+          <div class="vehicle selected" data-id="comfort">
+            <span class="check">✓</span>
+            <div class="car">🚙</div>
+            <div class="name">Comfort</div>
+            <div class="price">from <strong>US$35</strong></div>
+          </div>
+          <div class="vehicle" data-id="business">
+            <span class="check">✓</span>
+            <div class="car">🚘</div>
+            <div class="name">Business</div>
+            <div class="price">from <strong>US$61</strong></div>
+          </div>
+          <div class="vehicle" data-id="van">
+            <span class="check">✓</span>
+            <div class="car">🚐</div>
+            <div class="name">Van</div>
+            <div class="price">from <strong>US$75</strong></div>
+          </div>
+          <div class="vehicle" data-id="premium">
+            <span class="check">✓</span>
+            <div class="car">✨</div>
+            <div class="name">Premium</div>
+            <div class="price">from <strong>US$95</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="extras" id="extras">
+        <div class="extras-head" id="extrasToggle">
+          <h3>Extras <span style="font-weight:500;color:var(--muted);font-size:12px">optional</span></h3>
+          <span class="chev">▾</span>
+        </div>
+        <div class="extras-body">
+          <div class="field mode-only" data-show="ride perHour"><span>✈</span><input placeholder="Arrival flight number" /></div>
+          <div class="field mode-only" data-show="ride perHour"><span>🪧</span><input placeholder="Name on driver’s sign" /></div>
+          <div class="field"><span>💬</span><textarea rows="2" placeholder="Comment: luggage, special needs…"></textarea></div>
+          <div class="row-card toggle-row" style="padding:10px 12px">
+            <div class="label" style="font-size:13px">I have a promo code</div>
+            <div class="switch" id="promoSwitch" role="switch"></div>
+          </div>
+          <div class="field hidden" id="promoField"><span>🏷</span><input placeholder="Enter promo code" /></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta-bar">
+      <div class="cta-inner">
+        <div class="summary" id="summary"><strong>ISB → Faisal Mosque</strong> · 2 adults · Economy, Comfort</div>
+        <label class="terms">
+          <input type="checkbox" id="terms" />
+          I agree to the terms of service
+        </label>
+        <button class="get-offers" type="button" id="cta" disabled>Get offers</button>
+      </div>
+    </div>
+
+    <div class="toast" id="toast">Request posted — drivers will send offers</div>
+  </div>
+
+  <script>
+    const state = {
+      mode: 'ride',
+      adults: 2,
+      terms: false,
+      routeFilled: true,
+      now: true,
+    };
+
+    const $ = (s, el = document) => el.querySelector(s);
+    const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+
+    function setMode(mode) {
+      state.mode = mode;
+      $$('.segment button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+      $$('.mode-only').forEach(el => {
+        const show = (el.dataset.show || '').split(/\s+/);
+        el.classList.toggle('hidden', !show.includes(mode));
+      });
+      // Delivery: hide to map B still needed; per hour without end can hide B
+      updateMap();
+      updateSummary();
+      updateCta();
+    }
+
+    function updateMap() {
+      const strip = $('#mapStrip');
+      const frame = $('#mapFrame');
+      const showTo = state.mode !== 'perHour' || $('#endLocSwitch').classList.contains('on');
+      const hasRoute = state.routeFilled;
+      strip.classList.toggle('hidden', !hasRoute);
+      if (!hasRoute) return;
+      if (state.mode === 'perHour' && !showTo) {
+        frame.src = 'https://maps.google.com/maps?q=33.5600,72.8700&hl=en&z=12&output=embed';
+        $('#mapBadge').textContent = 'Google Maps · pickup area';
+        $('#toPlace').classList.add('hidden');
+      } else {
+        frame.src = 'https://maps.google.com/maps?saddr=33.5600,72.8700&daddr=33.7295,73.0372&hl=en&z=11&output=embed';
+        $('#mapBadge').textContent =
+          state.mode === 'delivery'
+            ? 'Google Maps · delivery route'
+            : 'Google Maps · route preview';
+        $('#toPlace').classList.remove('hidden');
+      }
+    }
+
+    function updateSummary() {
+      const from = 'ISB';
+      const to = state.mode === 'perHour' && !$('#endLocSwitch').classList.contains('on')
+        ? 'Hourly'
+        : 'Faisal Mosque';
+      const pax = state.mode === 'delivery' ? 'Parcel' : `${state.adults} adult${state.adults > 1 ? 's' : ''}`;
+      const vehicles = $$('.vehicle.selected').map(v => v.querySelector('.name').textContent);
+      const veh = state.mode === 'delivery'
+        ? ''
+        : (vehicles.length ? ' · ' + vehicles.slice(0, 2).join(', ') + (vehicles.length > 2 ? '…' : '') : '');
+      $('#summary').innerHTML = `<strong>${from} → ${to}</strong> · ${pax}${veh}`;
+    }
+
+    function updateCta() {
+      $('#cta').disabled = !state.terms || !state.routeFilled;
+    }
+
+    $$('.segment button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+    $('#extrasToggle').addEventListener('click', () => {
+      $('#extras').classList.toggle('open');
+    });
+
+    [['returnSwitch'], ['promoSwitch'], ['endLocSwitch']].forEach(([id]) => {
+      const el = $('#' + id);
+      el.addEventListener('click', () => {
+        el.classList.toggle('on');
+        el.setAttribute('aria-checked', el.classList.contains('on'));
+        if (id === 'promoSwitch') {
+          $('#promoField').classList.toggle('hidden', !el.classList.contains('on'));
+        }
+        if (id === 'endLocSwitch') updateMap();
+        updateSummary();
+      });
+    });
+
+    $('#terms').addEventListener('change', e => {
+      state.terms = e.target.checked;
+      updateCta();
+    });
+
+    $('#adultMinus').addEventListener('click', () => {
+      state.adults = Math.max(1, state.adults - 1);
+      $('#adults').textContent = state.adults;
+      updateSummary();
+    });
+    $('#adultPlus').addEventListener('click', () => {
+      state.adults = Math.min(20, state.adults + 1);
+      $('#adults').textContent = state.adults;
+      updateSummary();
+    });
+
+    $$('.vehicle').forEach(v => v.addEventListener('click', () => {
+      v.classList.toggle('selected');
+      updateSummary();
+    }));
+
+    $$('#durations button').forEach(b => b.addEventListener('click', () => {
+      $$('#durations button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+    }));
+
+    $('#nowPill').addEventListener('click', () => {
+      state.now = !state.now;
+      $('#nowPill').classList.toggle('on', state.now);
+      $('#pickupLabel').textContent = state.now ? 'Pickup · Now' : 'Pickup · Sat 14:30';
+    });
+
+    $('#swapBtn').addEventListener('click', () => {
+      const a = $('#fromLabel').textContent;
+      const b = $('#toLabel').textContent;
+      $('#fromLabel').textContent = b;
+      $('#toLabel').textContent = a;
+      updateSummary();
+    });
+
+    // Toggle empty route demo on double-click hero
+    $('#routeHero').addEventListener('dblclick', () => {
+      state.routeFilled = !state.routeFilled;
+      if (!state.routeFilled) {
+        $('#fromLabel').className = 'hint';
+        $('#fromLabel').textContent = 'Where from?';
+        $('#toLabel').className = 'hint';
+        $('#toLabel').textContent = 'Where to?';
+        $$('.place .sub').forEach(s => s.style.display = 'none');
+      } else {
+        $('#fromLabel').className = 'filled';
+        $('#fromLabel').textContent = 'Islamabad Airport (ISB)';
+        $('#toLabel').className = 'filled';
+        $('#toLabel').textContent = 'Faisal Mosque, Islamabad';
+        $$('.place .sub').forEach(s => s.style.display = '');
+      }
+      updateMap();
+      updateCta();
+      updateSummary();
+    });
+
+    $('#cta').addEventListener('click', () => {
+      const t = $('#toast');
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    });
+
+    setMode('ride');
+  </script>
+</body>
+</html>

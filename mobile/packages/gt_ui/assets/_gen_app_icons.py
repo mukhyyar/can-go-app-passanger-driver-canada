@@ -12,7 +12,7 @@ SRC_CANDIDATES = [
     Path(__file__).resolve().parent / "appicon-source.png",
     Path(__file__).resolve().parent / "appicon.png",
 ]
-BRAND = (0xB4, 0x1B, 0x1D, 255)
+BRAND = (0xE5, 0x00, 0x00, 255)
 WHITE = (255, 255, 255, 255)
 MASTER = 1024
 

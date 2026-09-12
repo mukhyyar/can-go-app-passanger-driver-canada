@@ -55,7 +55,14 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                 Row(
                   children: [
                     const CanGoLogo(size: 40),
-                    const Spacer(),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: CanRideWordmark(
+                        fontSize: 22,
+                        compact: true,
+                        maxWidth: 200,
+                      ),
+                    ),
                     IconButton(
                       tooltip: 'Close',
                       onPressed: () => Navigator.of(context).maybePop(),
@@ -67,6 +74,15 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                 const SizedBox(height: 8),
               ] else ...[
                 const Center(child: CanGoLogo(size: 56)),
+                const SizedBox(height: 8),
+                const Center(
+                  child: CanRideWordmark(
+                    fontSize: 28,
+                    textAlign: TextAlign.center,
+                    alignment: Alignment.center,
+                    maxWidth: 280,
+                  ),
+                ),
                 const SizedBox(height: 12),
               ],
               Center(
@@ -239,7 +255,7 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
               const SizedBox(height: 20),
               const Center(
                 child: Text(
-                  'CAN-GO Driver · Version 1.0.0 (100)',
+                  'CAN-RIDE Driver · Version 1.0.0 (100)',
                   style: TextStyle(
                     fontSize: 12,
                     color: GtColors.textMuted,

@@ -43,7 +43,7 @@ class _DriverAppState extends State<DriverApp> {
         listenable: _state,
         builder: (context, _) {
           return MaterialApp.router(
-            title: 'CAN-GO Driver',
+            title: 'CAN-RIDE Driver',
             debugShowCheckedModeBanner: false,
             theme: GtTheme.light(),
             routerConfig: _router,
@@ -52,7 +52,7 @@ class _DriverAppState extends State<DriverApp> {
                 ready: _state.loaded,
                 role: GtSplashRole.driver,
                 minDisplay: const Duration(milliseconds: 3200),
-                tagline: 'Drive. Earn. Explore with CAN-GO',
+                tagline: 'Drive. Earn. Explore with CAN-RIDE',
                 child: child ?? const SizedBox.shrink(),
               );
             },

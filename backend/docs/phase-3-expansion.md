@@ -37,12 +37,13 @@ Seeded catalog: `GET /api/catalog?serviceType=EXPERIENCES|CAR_RENTAL`.
 
 | Env | Default | Notes |
 |-----|---------|-------|
-| `MAPS_PROVIDER` | `photon` | Photon geocode + OSRM route |
-| `GOOGLE_MAPS_API_KEY` | empty | Required when `MAPS_PROVIDER=google` |
+| `MAPS_PROVIDER` | `google` | Google Maps only |
+| `GOOGLE_MAPS_API_KEY` | empty | Server key — Geocoding, Directions, Places API (New) |
+| `GOOGLE_MAPS_BROWSER_API_KEY` | falls back to server key | Browser Maps JS / Embed (HTTP referrers). Exposed as `GET /api/maps/browser-config` |
 
-Endpoints: `GET /api/maps/provider`, `/api/maps/geocode`, `/api/maps/reverse`, `/api/maps/route`.
+Endpoints: `GET /api/maps/provider`, `/api/maps/browser-config`, `/api/maps/geocode`, `/api/maps/places`, `/api/maps/reverse`, `POST /api/maps/route` (includes overview polyline when available).
 
-Flutter map UI remains Leaflet/OSRM; backend abstraction is ready for a client swap later.
+All map UIs (Flutter, Next.js admin/passenger) use Google Maps. Browser keys need HTTP referrers allowing local ports (`http://127.0.0.1:3001/*`, `:3002/*`, `:5050/*`, etc.).
 
 ## Schema notes
 

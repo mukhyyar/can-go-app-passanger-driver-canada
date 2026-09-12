@@ -13,8 +13,8 @@ class InstructionsScreen extends StatelessWidget {
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CanGoLogo(size: 28),
-            SizedBox(width: 8),
+            CanRideWordmark(fontSize: 18, compact: true),
+            SizedBox(width: 10),
             Text('Instructions'),
           ],
         ),

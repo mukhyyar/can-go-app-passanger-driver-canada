@@ -38,7 +38,7 @@ export function SuspendUserModal({
     <Modal title={suspending ? 'Suspend account' : 'Reactivate account'} onClose={onClose}>
       <p className="muted">
         {suspending
-          ? `${name} will immediately lose access to CAN-GO.`
+          ? `${name} will immediately lose access to CAN-RIDE.`
           : `${name} will regain access immediately.`}
       </p>
       {count === 1 && (

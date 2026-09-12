@@ -7,7 +7,7 @@ export default function Page() {
       slug="terms"
       kicker="Legal"
       fallbackTitle="Service Agreement"
-      fallbackBody="CAN-GO is a marketplace: passengers request a transfer, drivers bid, and you choose an offer before paying. Prices shown are server-authoritative. Cancellation and waiting rules are shown before you confirm."
+      fallbackBody="CAN-RIDE is a marketplace: passengers request a transfer, drivers bid, and you choose an offer before paying. Prices shown are server-authoritative. Cancellation and waiting rules are shown before you confirm."
     />
   );
 }

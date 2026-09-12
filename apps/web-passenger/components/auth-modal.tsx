@@ -407,8 +407,8 @@ export function AuthModal({
             </button>
             <p className="legal">
               By registering, you agree to the{' '}
-              <a href="/privacy">CAN-GO Privacy Policy</a>, as well as the{' '}
-              <a href="/terms">CAN-GO Service Agreement</a>.
+              <a href="/privacy">CAN-RIDE Privacy Policy</a>, as well as the{' '}
+              <a href="/terms">CAN-RIDE Service Agreement</a>.
             </p>
           </>
         )}
@@ -700,7 +700,7 @@ function PhoneMark() {
 function PhoneVerifyMark() {
   return (
     <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden>
-      <circle cx="32" cy="32" r="32" fill="#f8eaea" />
+      <circle cx="32" cy="32" r="32" fill="#fdeaea" />
       <rect
         x="22"
         y="12"
@@ -708,10 +708,10 @@ function PhoneVerifyMark() {
         height="36"
         rx="4"
         fill="#fff"
-        stroke="#b41b1d"
+        stroke="#e50000"
         strokeWidth="2"
       />
-      <circle cx="32" cy="42" r="1.6" fill="#b41b1d" />
+      <circle cx="32" cy="42" r="1.6" fill="#e50000" />
       <circle cx="44" cy="44" r="10" fill="#1b7a45" />
       <path
         d="M39.5 44.2l2.6 2.6 5.4-5.4"

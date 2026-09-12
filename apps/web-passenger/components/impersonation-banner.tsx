@@ -31,7 +31,7 @@ export function ImpersonationBanner() {
       }}
     >
       <span>
-        You are viewing CAN-GO as <strong>{name}</strong>
+        You are viewing CAN-RIDE as <strong>{name}</strong>
         {me.impersonation.readOnly ? ' (read-only)' : ''}
       </span>
       <button

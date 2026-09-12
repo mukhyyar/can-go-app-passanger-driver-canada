@@ -182,9 +182,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CanGoLogo(size: 22),
-            const SizedBox(width: 8),
-            Text(settingsMode ? 'Carrier profile' : 'New carrier profile'),
+            const CanRideWordmark(fontSize: 16, compact: true),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                settingsMode ? 'Carrier profile' : 'New carrier profile',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         leading: settingsMode
@@ -334,7 +339,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               text: 'I have read and accepted ',
                               children: [
                                 TextSpan(
-                                  text: 'CAN-GO Service License Contract',
+                                  text: 'CAN-RIDE Service License Contract',
                                   style: TextStyle(
                                     decoration: TextDecoration.underline,
                                   ),

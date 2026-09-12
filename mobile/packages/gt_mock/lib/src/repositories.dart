@@ -105,14 +105,24 @@ class MockRepository {
   /// No canned suggestions — callers should show the user's own history.
   List<Place> suggestedPlaces() => const [];
 
-  /// Live worldwide place search (Photon / OpenStreetMap).
+  /// Live place search via backend maps API (Google when configured).
   /// Falls back to filtered mock places if the network request fails.
-  Future<List<Place>> searchPlaces(String q) async {
+  Future<List<Place>> searchPlaces(
+    String q, {
+    double? lat,
+    double? lng,
+    String? sessionToken,
+  }) async {
     final query = q.trim();
     if (query.isEmpty) return suggestedPlaces();
 
     try {
-      final remote = await PlacesSearch.search(query);
+      final remote = await PlacesSearch.search(
+        query,
+        lat: lat,
+        lng: lng,
+        sessionToken: sessionToken,
+      );
       if (remote.isNotEmpty) return remote;
     } catch (_) {
       // Fall through to local filter.
@@ -128,5 +138,23 @@ class MockRepository {
     return [
       Place(id: 'custom-${query.hashCode}', label: query),
     ];
+  }
+
+  /// Resolve coords for an autocomplete prediction (Google placeId).
+  Future<Place?> resolvePlaceDetails(
+    Place place, {
+    String? sessionToken,
+  }) async {
+    final placeId = place.placeId;
+    if (placeId == null || placeId.isEmpty) {
+      return place.hasCoords ? place : null;
+    }
+    if (place.hasCoords) return place;
+    return PlacesSearch.details(
+      placeId,
+      sessionToken: sessionToken,
+      label: place.label,
+      subtitle: place.subtitle,
+    );
   }
 }

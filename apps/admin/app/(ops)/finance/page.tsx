@@ -18,7 +18,7 @@ export default function FinancePage() {
   return (
     <div>
       <h1 className="page-title">Finance overview</h1>
-      <p className="page-sub">Gross booking → refunds → driver share → tax → CAN-GO net</p>
+      <p className="page-sub">Gross booking → refunds → driver share → tax → CAN-RIDE net</p>
       {err && <p className="err">{err}</p>}
       <div className="kpis">
         {data &&

@@ -84,7 +84,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Configure how CAN-GO pays out completed rides. '
+                        'Configure how CAN-RIDE pays out completed rides. '
                         'Sensitive bank credentials are never stored in the app.',
                         style: TextStyle(
                           color: GtColors.textSecondary.withValues(alpha: 0.95),

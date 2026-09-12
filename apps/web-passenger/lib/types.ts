@@ -6,6 +6,7 @@ export type Place = {
   subtitle?: string;
   lat: number;
   lng: number;
+  placeId?: string;
 };
 
 export type Tokens = { accessToken: string; refreshToken: string | null };

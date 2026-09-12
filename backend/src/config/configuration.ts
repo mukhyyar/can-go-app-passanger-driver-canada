@@ -64,8 +64,13 @@ export default () => ({
     ),
   },
   maps: {
-    provider: process.env.MAPS_PROVIDER ?? 'photon',
+    provider: process.env.MAPS_PROVIDER ?? 'google',
     googleApiKey: process.env.GOOGLE_MAPS_API_KEY,
+    /** Browser Maps JS key (HTTP-referrer restricted). Falls back to server key for local. */
+    googleBrowserApiKey:
+      process.env.GOOGLE_MAPS_BROWSER_API_KEY ||
+      process.env.GOOGLE_MAPS_API_KEY ||
+      '',
   },
   launchGate: {
     allowDevPaymentInProduction:

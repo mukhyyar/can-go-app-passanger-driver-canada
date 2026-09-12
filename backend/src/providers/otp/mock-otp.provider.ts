@@ -34,7 +34,7 @@ export class MockOtpProvider implements OtpProvider {
     });
     await this.sms.sendSms(
       phoneE164,
-      `CAN-GO verification code: ${code}. Expires in 5 minutes.`,
+      `CAN-RIDE verification code: ${code}. Expires in 5 minutes.`,
     );
     this.logger.debug(`Mock OTP issued challenge=${challengeId}`);
     return { challengeId, expiresAt, debugCode: code };

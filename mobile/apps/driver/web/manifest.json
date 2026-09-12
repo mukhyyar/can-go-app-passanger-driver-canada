@@ -1,11 +1,11 @@
 {
-    "name": "CAN-GO Driver",
-    "short_name": "CAN-GO Driver",
+    "name": "CAN-RIDE Driver",
+    "short_name": "CAN-RIDE Driver",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",
-    "theme_color": "#B41B1D",
-    "description": "CAN-GO Mobility Marketplace — Driver",
+    "theme_color": "#E50000",
+    "description": "CAN-RIDE Mobility Marketplace — Driver",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

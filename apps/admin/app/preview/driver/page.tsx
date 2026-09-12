@@ -64,7 +64,7 @@ function Inner() {
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: '0 auto', fontFamily: 'IBM Plex Sans, sans-serif' }}>
       <div className="imp-banner">
-        <span>You are viewing CAN-GO as {name} (driver preview)</span>
+        <span>You are viewing CAN-RIDE as {name} (driver preview)</span>
         <button className="btn sm" onClick={end}>Return to Admin</button>
       </div>
       {err && <p className="err">{err}</p>}

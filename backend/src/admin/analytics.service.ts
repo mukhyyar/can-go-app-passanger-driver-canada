@@ -1758,7 +1758,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       lastUpdated: new Date().toISOString(),
       funnel: this.funnelFromCounts(cur),
       marketplaceNote:
-        'CAN-GO is a bid marketplace: Driver Search counts rides that received or awaited offers; Driver Accepted maps to a selected offer.',
+        'CAN-RIDE is a bid marketplace: Driver Search counts rides that received or awaited offers; Driver Accepted maps to a selected offer.',
     };
   }
 

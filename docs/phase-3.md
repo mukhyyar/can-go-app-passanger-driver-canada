@@ -2,7 +2,7 @@
 
 See [`backend/docs/phase-3-expansion.md`](../backend/docs/phase-3-expansion.md).
 
-DELIVERY / CAR_RENTAL / EXPERIENCES pricing + booking, VIP request/admin, referrals, driver calendar day-off (filters open requests), optional Google Maps geocode/route via `MAPS_PROVIDER`.
+DELIVERY / CAR_RENTAL / EXPERIENCES pricing + booking, VIP request/admin, referrals, driver calendar day-off (filters open requests), Google Maps geocode/route/places (Google only).
 
 ## Client wire (Flutter UI kept)
 

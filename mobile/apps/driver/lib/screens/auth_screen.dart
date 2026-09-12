@@ -267,6 +267,21 @@ class _AuthScreenState extends State<AuthScreen> {
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: Row(
+                    children: [
+                      CanGoLogo(size: 40),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: CanRideWordmark(
+                          fontSize: 26,
+                          maxWidth: 220,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 if (_otpStep)
                   Row(
                     children: [
@@ -279,7 +294,6 @@ class _AuthScreenState extends State<AuthScreen> {
                     ],
                   )
                 else ...[
-                  const SizedBox(height: 24),
                   Text(
                     _registerMode ? 'Driver sign up' : 'Driver sign in',
                     style: const TextStyle(
@@ -290,7 +304,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'CAN-GO driver · verify your phone to secure your account',
+                    'CAN-RIDE driver · verify your phone to secure your account',
                     style: TextStyle(color: GtColors.textSecondary),
                   ),
                 ],

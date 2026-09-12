@@ -4,7 +4,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../lib/api';
 import { toPickupIso } from '../lib/datetime';
-import { searchPlaces } from '../lib/places';
+import {
+  newPlacesSessionToken,
+  placeHasCoords,
+  resolvePlaceDetails,
+  searchAndResolvePlace,
+  searchPlaces,
+} from '../lib/places';
 import { DEFAULT_VEHICLE_IDS, VEHICLE_CLASSES } from '../lib/vehicles';
 import type { ChildSeats, Place, Ride, ServiceType } from '../lib/types';
 import { useAuth } from './auth-provider';
@@ -65,16 +71,16 @@ export function BookingPage() {
     const fromText = searchParams.get('from');
     const toText = searchParams.get('to');
     if (fromText) {
-      searchPlaces(fromText, 1)
-        .then((list) => {
-          if (list[0]) setFrom(list[0]);
+      searchAndResolvePlace(fromText)
+        .then((p) => {
+          if (p) setFrom(p);
         })
         .catch(() => undefined);
     }
     if (toText) {
-      searchPlaces(toText, 1)
-        .then((list) => {
-          if (list[0]) setTo(list[0]);
+      searchAndResolvePlace(toText)
+        .then((p) => {
+          if (p) setTo(p);
         })
         .catch(() => undefined);
     }
@@ -603,10 +609,27 @@ function PlaceField({
   const [q, setQ] = useState(value?.label ?? '');
   const [hits, setHits] = useState<Place[]>([]);
   const [open, setOpen] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const sessionRef = useRef(newPlacesSessionToken());
+  const biasRef = useRef<{ lat?: number; lng?: number }>({});
 
   useEffect(() => {
     setQ(value?.label ?? '');
   }, [value]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        biasRef.current = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+      },
+      () => undefined,
+      { maximumAge: 60_000, timeout: 4_000 },
+    );
+  }, []);
 
   useEffect(() => {
     if (q.trim().length < 2 || (value && q === value.label)) {
@@ -614,12 +637,33 @@ function PlaceField({
       return;
     }
     const t = setTimeout(() => {
-      searchPlaces(q)
+      searchPlaces(q, {
+        sessionToken: sessionRef.current,
+        lat: biasRef.current.lat,
+        lng: biasRef.current.lng,
+      })
         .then(setHits)
         .catch(() => setHits([]));
     }, 280);
     return () => clearTimeout(t);
   }, [q, value]);
+
+  async function pick(p: Place) {
+    setResolving(true);
+    try {
+      const resolved = placeHasCoords(p)
+        ? p
+        : await resolvePlaceDetails(p, { sessionToken: sessionRef.current });
+      if (!resolved || !placeHasCoords(resolved)) return;
+      onChange(resolved);
+      setQ(resolved.label);
+      setHits([]);
+      setOpen(false);
+      sessionRef.current = newPlacesSessionToken();
+    } finally {
+      setResolving(false);
+    }
+  }
 
   return (
     <div className="field">
@@ -634,6 +678,7 @@ function PlaceField({
         }}
         onFocus={() => setOpen(true)}
         autoComplete="off"
+        disabled={resolving}
       />
       {value && (
         <button
@@ -644,6 +689,7 @@ function PlaceField({
             onChange(null);
             setQ('');
             setHits([]);
+            sessionRef.current = newPlacesSessionToken();
           }}
         >
           ×
@@ -655,11 +701,9 @@ function PlaceField({
             <button
               key={p.id}
               type="button"
+              disabled={resolving}
               onClick={() => {
-                onChange(p);
-                setQ(p.label);
-                setHits([]);
-                setOpen(false);
+                void pick(p);
               }}
             >
               {p.label}

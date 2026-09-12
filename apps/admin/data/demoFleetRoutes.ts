@@ -1,4 +1,4 @@
-/** Demo fleet routes — Vaughan / VMC road network (OSM-aligned waypoints). */
+/** Demo fleet routes — Vaughan / VMC road network (Google Maps-aligned waypoints). */
 
 export type FleetStatus = 'available' | 'trip' | 'pending';
 
@@ -43,7 +43,7 @@ export const FLEET_MAP_CENTER: LatLng = [43.7995, -79.529];
 export const FLEET_MAP_ZOOM = 14;
 
 /**
- * Road-following loops assembled from OSM Jane St, Hwy 7, Portage,
+ * Road-following loops assembled from Jane St, Hwy 7, Portage,
  * Millway, Edgeley, Applewood, Creditstone, Interchange Way.
  */
 export const DEMO_ROUTES: FleetRoute[] = [
@@ -381,7 +381,7 @@ export const DEMO_VEHICLES: FleetVehicle[] = [
 
 export const STATUS_COLORS: Record<FleetStatus, string> = {
   available: '#2ea44f',
-  trip: '#b41b1d',
+  trip: '#e50000',
   pending: '#f59e0b',
 };
 

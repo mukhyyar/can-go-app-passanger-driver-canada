@@ -1,168 +1,179 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
 
-/// Live place autocomplete via Photon (OpenStreetMap) — no API key required.
+/// Live place search via Nest `/api/maps/places` (Google when MAPS_PROVIDER=google).
 class PlacesSearch {
   PlacesSearch._();
 
-  static const _endpoint = 'https://photon.komoot.io/api/';
+  static const _apiBase = String.fromEnvironment(
+    'CANGO_API_BASE',
+    defaultValue: 'http://127.0.0.1:4000/api',
+  );
   static final _client = http.Client();
+  static final _rng = Random();
 
-  /// Search worldwide addresses, airports, hotels, cities, etc.
-  static Future<List<Place>> search(String query, {int limit = 12}) async {
+  static Uri _maps(String path, [Map<String, String>? query]) {
+    final base = _apiBase.endsWith('/')
+        ? _apiBase.substring(0, _apiBase.length - 1)
+        : _apiBase;
+    return Uri.parse('$base$path').replace(queryParameters: query);
+  }
+
+  /// UUID-like session token for Google Places Autocomplete billing sessions.
+  static String newSessionToken() {
+    String hex(int bytes) {
+      final buf = StringBuffer();
+      for (var i = 0; i < bytes; i++) {
+        buf.write(_rng.nextInt(256).toRadixString(16).padLeft(2, '0'));
+      }
+      return buf.toString();
+    }
+
+    return '${hex(4)}-${hex(2)}-${hex(2)}-${hex(2)}-${hex(6)}';
+  }
+
+  /// Search addresses, airports, hotels, cities (autocomplete predictions).
+  /// Rows may lack coords until [details] is called with the same [sessionToken].
+  static Future<List<Place>> search(
+    String query, {
+    int limit = 12,
+    double? lat,
+    double? lng,
+    String? sessionToken,
+  }) async {
     final q = query.trim();
     if (q.isEmpty) return const [];
 
-    final uri = Uri.parse(_endpoint).replace(queryParameters: {
+    final params = <String, String>{
       'q': q,
       'limit': '$limit',
-      'lang': 'en',
-    });
+    };
+    if (lat != null && lng != null) {
+      params['lat'] = '$lat';
+      params['lng'] = '$lng';
+    }
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      params['sessionToken'] = sessionToken;
+    }
+
+    final uri = _maps('/maps/places', params);
 
     final res = await _client.get(
       uri,
-      headers: const {
-        'Accept': 'application/json',
-      },
+      headers: const {'Accept': 'application/json'},
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('Place search failed (${res.statusCode})');
     }
 
     final body = jsonDecode(res.body);
-    if (body is! Map<String, dynamic>) return const [];
-    final features = body['features'];
-    if (features is! List) return const [];
+    if (body is! List) return const [];
 
     final out = <Place>[];
-    for (final f in features) {
-      if (f is! Map) continue;
-      final props = f['properties'];
-      final geom = f['geometry'];
-      if (props is! Map || geom is! Map) continue;
-
-      final coords = geom['coordinates'];
-      if (coords is! List || coords.length < 2) continue;
-      final lng = (coords[0] as num).toDouble();
-      final lat = (coords[1] as num).toDouble();
-
-      final label = _labelFrom(props);
+    for (final item in body) {
+      if (item is! Map) continue;
+      final label = '${item['label'] ?? ''}'.trim();
       if (label.isEmpty) continue;
-
-      final osmType = '${props['osm_type'] ?? ''}';
-      final osmId = '${props['osm_id'] ?? ''}';
-      final id = osmId.isNotEmpty ? 'osm-$osmType$osmId' : 'geo-$lat-$lng';
-
+      final placeId = item['placeId']?.toString();
+      final latVal = (item['lat'] as num?)?.toDouble() ?? 0;
+      final lngVal = (item['lng'] as num?)?.toDouble() ?? 0;
+      // Autocomplete rows may have placeId without coords.
+      if ((latVal == 0 && lngVal == 0) &&
+          (placeId == null || placeId.isEmpty)) {
+        continue;
+      }
+      final id = '${item['id'] ?? placeId ?? 'geo-$latVal-$lngVal'}';
+      final subtitle = item['subtitle']?.toString();
       out.add(
         Place(
           id: id,
           label: label,
-          subtitle: _subtitleFrom(props),
-          lat: lat,
-          lng: lng,
+          subtitle: subtitle != null && subtitle.isNotEmpty ? subtitle : '',
+          lat: latVal,
+          lng: lngVal,
+          placeId: placeId != null && placeId.isNotEmpty ? placeId : null,
         ),
       );
     }
     return out;
   }
 
-  /// Reverse-geocode lat/lng into a Place (for current location).
-  static Future<Place?> reverse(double lat, double lng) async {
-    final uri = Uri.parse('https://photon.komoot.io/reverse').replace(
-      queryParameters: {
-        'lat': '$lat',
-        'lon': '$lng',
-        'lang': 'en',
-      },
+  /// Resolve lat/lng for a selected Google place (same session as search).
+  static Future<Place?> details(
+    String placeId, {
+    String? sessionToken,
+    String? label,
+    String? subtitle,
+  }) async {
+    final id = placeId.trim();
+    if (id.isEmpty) return null;
+
+    final params = <String, String>{'placeId': id};
+    if (sessionToken != null && sessionToken.isNotEmpty) {
+      params['sessionToken'] = sessionToken;
+    }
+
+    final uri = _maps('/maps/place-details', params);
+    final res = await _client.get(
+      uri,
+      headers: const {'Accept': 'application/json'},
     );
-    final res = await _client.get(uri, headers: const {'Accept': 'application/json'});
     if (res.statusCode < 200 || res.statusCode >= 300) return null;
+
     final body = jsonDecode(res.body);
-    if (body is! Map<String, dynamic>) return null;
-    final features = body['features'];
-    if (features is! List || features.isEmpty) {
+    if (body is! Map) return null;
+    final lat = (body['lat'] as num?)?.toDouble();
+    final lng = (body['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return null;
+    final resolvedLabel =
+        (label != null && label.trim().isNotEmpty)
+            ? label.trim()
+            : '${body['label'] ?? ''}'.trim();
+    if (resolvedLabel.isEmpty) return null;
+    final resolvedSubtitle =
+        (subtitle != null && subtitle.trim().isNotEmpty)
+            ? subtitle.trim()
+            : '${body['subtitle'] ?? ''}'.trim();
+    final resolvedPlaceId = body['placeId']?.toString() ?? id;
+    return Place(
+      id: '${body['id'] ?? 'gplace-$resolvedPlaceId'}',
+      label: resolvedLabel,
+      subtitle: resolvedSubtitle,
+      lat: lat,
+      lng: lng,
+      placeId: resolvedPlaceId,
+    );
+  }
+
+  /// Reverse-geocode lat/lng into a Place (for current location / map pick).
+  static Future<Place?> reverse(double lat, double lng) async {
+    final uri = _maps('/maps/reverse', {
+      'lat': '$lat',
+      'lng': '$lng',
+    });
+    try {
+      final res = await _client
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 12));
+      if (res.statusCode < 200 || res.statusCode >= 300) return null;
+      final raw = res.body.trim();
+      if (raw.isEmpty || raw == 'null') return null;
+      final body = jsonDecode(raw);
+      if (body is! Map) return null;
+      final label = '${body['label'] ?? ''}'.trim();
+      if (label.isEmpty) return null;
       return Place(
         id: 'geo-$lat-$lng',
-        label: '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+        label: label,
         lat: lat,
         lng: lng,
       );
+    } catch (_) {
+      return null;
     }
-    final f = features.first;
-    if (f is! Map) return null;
-    final props = f['properties'];
-    if (props is! Map) return null;
-    final osmType = '${props['osm_type'] ?? ''}';
-    final osmId = '${props['osm_id'] ?? ''}';
-    return Place(
-      id: osmId.isNotEmpty ? 'osm-$osmType$osmId' : 'geo-$lat-$lng',
-      label: _labelFrom(props).isEmpty
-          ? '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}'
-          : _labelFrom(props),
-      subtitle: _subtitleFrom(props),
-      lat: lat,
-      lng: lng,
-    );
-  }
-
-  static String _labelFrom(Map props) {
-    final name = '${props['name'] ?? ''}'.trim();
-    final street = _street(props);
-    final locality = _locality(props);
-    final country = '${props['country'] ?? ''}'.trim();
-
-    final parts = <String>[];
-    if (name.isNotEmpty && name != street) {
-      parts.add(name);
-    }
-    if (street.isNotEmpty) parts.add(street);
-    if (locality.isNotEmpty) parts.add(locality);
-    if (country.isNotEmpty) parts.add(country);
-
-    if (parts.isEmpty) {
-      return name.isNotEmpty ? name : street;
-    }
-    // Deduplicate consecutive identical parts
-    final deduped = <String>[];
-    for (final p in parts) {
-      if (deduped.isEmpty || deduped.last.toLowerCase() != p.toLowerCase()) {
-        deduped.add(p);
-      }
-    }
-    return deduped.join(', ');
-  }
-
-  static String _subtitleFrom(Map props) {
-    final type = '${props['type'] ?? props['osm_value'] ?? ''}'.trim();
-    final city = '${props['city'] ?? props['town'] ?? props['village'] ?? ''}'.trim();
-    final country = '${props['country'] ?? ''}'.trim();
-    final bits = <String>[];
-    if (type.isNotEmpty) bits.add(type.replaceAll('_', ' '));
-    if (city.isNotEmpty) bits.add(city);
-    if (country.isNotEmpty && !bits.contains(country)) bits.add(country);
-    return bits.join(' · ');
-  }
-
-  static String _street(Map props) {
-    final hn = '${props['housenumber'] ?? ''}'.trim();
-    final st = '${props['street'] ?? ''}'.trim();
-    if (st.isEmpty) return '';
-    return hn.isEmpty ? st : '$hn $st';
-  }
-
-  static String _locality(Map props) {
-    final city =
-        '${props['city'] ?? props['town'] ?? props['village'] ?? props['municipality'] ?? ''}'
-            .trim();
-    final state = '${props['state'] ?? ''}'.trim();
-    final postcode = '${props['postcode'] ?? ''}'.trim();
-    final bits = <String>[];
-    if (postcode.isNotEmpty) bits.add(postcode);
-    if (city.isNotEmpty) bits.add(city);
-    if (state.isNotEmpty && state != city) bits.add(state);
-    return bits.join(' ');
   }
 }

@@ -52,8 +52,8 @@ export function AreaChart({
       <svg className="svg-chart" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id={`fillA-${gid}`} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#b41b1d" stopOpacity="0.32" />
-            <stop offset="100%" stopColor="#b41b1d" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#e50000" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#e50000" stopOpacity="0.02" />
           </linearGradient>
           <linearGradient id={`fillB-${gid}`} x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#2ea44f" stopOpacity="0.22" />
@@ -73,11 +73,11 @@ export function AreaChart({
         ))}
         <polygon points={area(a)} fill={`url(#fillA-${gid})`} />
         <polygon points={area(b)} fill={`url(#fillB-${gid})`} />
-        <polyline points={pts(a)} fill="none" stroke="#b41b1d" strokeWidth="2.6" strokeLinejoin="round" />
+        <polyline points={pts(a)} fill="none" stroke="#e50000" strokeWidth="2.6" strokeLinejoin="round" />
         <polyline points={pts(b)} fill="none" stroke="#2ea44f" strokeWidth="2.6" strokeLinejoin="round" />
       </svg>
       <div className="chart-legend">
-        <span style={{ color: '#b41b1d' }}>● {aLabel}</span>
+        <span style={{ color: '#e50000' }}>● {aLabel}</span>
         <span style={{ color: '#2ea44f' }}>● {bLabel}</span>
         <span>
           {labels[0]} → {labels[labels.length - 1]}
@@ -183,7 +183,7 @@ export function FunnelBars({
 
 export function BarChart({
   items,
-  color = '#b41b1d',
+  color = '#e50000',
   onSelect,
 }: {
   items: Array<{ label: string; value: number }>;
@@ -350,11 +350,11 @@ export function LineBand({
     <div>
       <svg className="svg-chart" viewBox={`0 0 ${w} ${h}`}>
         <polygon points={band} fill="#1d4ed8" opacity="0.12" />
-        <polyline points={histPts} fill="none" stroke="#b41b1d" strokeWidth="2.4" />
+        <polyline points={histPts} fill="none" stroke="#e50000" strokeWidth="2.4" />
         <polyline points={fcPts} fill="none" stroke="#1d4ed8" strokeWidth="2.4" strokeDasharray="6 4" />
       </svg>
       <div className="chart-legend">
-        <span style={{ color: '#b41b1d' }}>● History</span>
+        <span style={{ color: '#e50000' }}>● History</span>
         <span style={{ color: '#1d4ed8' }}>● Estimate</span>
         <span>80% range</span>
         <span className="muted">
@@ -376,7 +376,7 @@ export function Waterfall({ items }: { items: Array<{ label: string; value: numb
             <span
               style={{
                 width: `${(Math.abs(i.value) / max) * 100}%`,
-                background: i.value < 0 ? '#b41b1d' : i.label.toLowerCase().includes('net') ? '#2ea44f' : '#1d4ed8',
+                background: i.value < 0 ? '#e50000' : i.label.toLowerCase().includes('net') ? '#2ea44f' : '#1d4ed8',
               }}
             />
           </span>

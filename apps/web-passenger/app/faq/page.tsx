@@ -9,7 +9,7 @@ import { fetchCmsPage, fetchCmsPages, type CmsPage } from '../../lib/cms';
 const FALLBACK: CmsPage[] = [
   {
     slug: 'faq-how-it-works',
-    title: 'How does CAN-GO work?',
+    title: 'How does CAN-RIDE work?',
     category: 'Booking',
     bodyMd:
       'Create a ride request, receive offers from drivers, compare, and pay only the offer you select.',

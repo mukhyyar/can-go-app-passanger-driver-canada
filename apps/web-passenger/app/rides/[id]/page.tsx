@@ -221,7 +221,7 @@ export default function RideDetailPage() {
                 p?.vehicleDisplayName ||
                 o.vehicle?.name ||
                 o.driver?.fullName ||
-                'CAN-GO driver';
+                'CAN-RIDE driver';
               const currency = o.currency ?? ride?.currency ?? 'USD';
               return (
                 <div key={o.id} className="offer-card">

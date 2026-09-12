@@ -1,6 +1,6 @@
 'use client';
 
-/** Same passenger-app brand assets (`public/brand` from web-passenger). */
+/** CAN-RIDE brand assets from `public/brand`. */
 export function BrandLogo({
   size = 36,
   variant = 'mark',
@@ -10,13 +10,13 @@ export function BrandLogo({
   variant?: 'mark' | 'lockup';
   className?: string;
 }) {
-  const src = variant === 'lockup' ? '/brand/can-go-logo.png' : '/brand/can-go-mark.png';
-  const width = variant === 'lockup' ? Math.round(size * 0.81) : size;
+  const src = variant === 'lockup' ? '/brand/can-ride-logo.png' : '/brand/can-ride-mark.png';
+  const width = variant === 'lockup' ? Math.round(size * 3.1) : size;
   const height = size;
   return (
     <img
       src={src}
-      alt="CAN-GO"
+      alt="CAN-RIDE"
       width={width}
       height={height}
       className={className}

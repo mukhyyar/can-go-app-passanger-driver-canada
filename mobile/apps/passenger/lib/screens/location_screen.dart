@@ -1,12 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
-import 'package:passenger/utils/browser_geo.dart';
+import 'package:passenger/utils/device_geo.dart';
 import 'package:provider/provider.dart';
 
 class LocationScreen extends StatefulWidget {
@@ -25,13 +24,22 @@ class _LocationScreenState extends State<LocationScreen> {
   String? _error;
   bool _locating = false;
   bool _showingHistory = true;
+  bool _resolvingPick = false;
+  String? _pickingId;
+
+  /// Google Places session — one token per search→select cycle.
+  late String _sessionToken;
+  double? _biasLat;
+  double? _biasLng;
 
   @override
   void initState() {
     super.initState();
+    _sessionToken = PlacesSearch.newSessionToken();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _showHistory();
+      unawaited(_warmBias());
     });
   }
 
@@ -40,6 +48,23 @@ class _LocationScreenState extends State<LocationScreen> {
     _debounce?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _warmBias() async {
+    try {
+      final coords = await readDeviceCoords();
+      if (!mounted || coords == null) return;
+      setState(() {
+        _biasLat = coords.$1;
+        _biasLng = coords.$2;
+      });
+    } catch (_) {
+      // Backend falls back to Toronto bias.
+    }
+  }
+
+  void _rotateSession() {
+    _sessionToken = PlacesSearch.newSessionToken();
   }
 
   void _showHistory() {
@@ -74,7 +99,12 @@ class _LocationScreenState extends State<LocationScreen> {
     });
 
     try {
-      final results = await context.read<AppState>().repo.searchPlaces(trimmed);
+      final results = await context.read<AppState>().repo.searchPlaces(
+            trimmed,
+            lat: _biasLat,
+            lng: _biasLng,
+            sessionToken: _sessionToken,
+          );
       if (!mounted || seq != _searchSeq) return;
       setState(() {
         _results = results;
@@ -94,23 +124,74 @@ class _LocationScreenState extends State<LocationScreen> {
     final q = _controller.text.trim();
     if (q.isEmpty) return;
     if (_results.isNotEmpty && !_loading) {
-      _pick(_results.first);
+      await _pick(_results.first);
       return;
     }
     setState(() => _loading = true);
-    final results = await context.read<AppState>().repo.searchPlaces(q);
+    final results = await context.read<AppState>().repo.searchPlaces(
+          q,
+          lat: _biasLat,
+          lng: _biasLng,
+          sessionToken: _sessionToken,
+        );
     if (!mounted) return;
     setState(() {
       _results = results;
       _loading = false;
       _showingHistory = false;
     });
-    if (results.isNotEmpty) _pick(results.first);
+    if (results.isNotEmpty) await _pick(results.first);
   }
 
-  void _pick(Place place) {
+  Future<void> _pick(Place place) async {
+    if (_resolvingPick) return;
     final state = context.read<AppState>();
     final field = state.locationField;
+
+    Place resolved = place;
+    if (!place.hasCoords &&
+        place.placeId != null &&
+        place.placeId!.isNotEmpty) {
+      setState(() {
+        _resolvingPick = true;
+        _pickingId = place.id;
+      });
+      try {
+        final detail = await state.repo.resolvePlaceDetails(
+          place,
+          sessionToken: _sessionToken,
+        );
+        if (!mounted) return;
+        if (detail == null || !detail.hasCoords) {
+          setState(() {
+            _resolvingPick = false;
+            _pickingId = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not resolve that place. Try another.'),
+            ),
+          );
+          return;
+        }
+        resolved = detail;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _resolvingPick = false;
+          _pickingId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not resolve that place. Try another.'),
+          ),
+        );
+        return;
+      }
+    }
+
+    _rotateSession();
+
     // Pop first — addPlaceToSearchHistory notifies AppState, and GoRouter's
     // refreshListenable would cancel/undo the pop if history runs before navigate.
     if (Navigator.of(context).canPop()) {
@@ -120,23 +201,23 @@ class _LocationScreenState extends State<LocationScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (field == 'to') {
-        state.setTo(place);
+        state.setTo(resolved);
       } else {
-        state.setFrom(place);
+        state.setFrom(resolved);
       }
-      unawaited(state.addPlaceToSearchHistory(place));
+      unawaited(state.addPlaceToSearchHistory(resolved));
     });
   }
 
   Future<void> _useCurrentLocation() async {
     setState(() => _locating = true);
     try {
+      final coords = await readDeviceCoords();
       Place? place;
-      if (kIsWeb) {
-        final coords = await readBrowserCoords();
-        if (coords != null) {
-          place = await PlacesSearch.reverse(coords.$1, coords.$2);
-        }
+      if (coords != null) {
+        _biasLat = coords.$1;
+        _biasLng = coords.$2;
+        place = await PlacesSearch.reverse(coords.$1, coords.$2);
       }
       if (!mounted) return;
       if (place == null) {
@@ -149,7 +230,7 @@ class _LocationScreenState extends State<LocationScreen> {
         );
         return;
       }
-      _pick(place);
+      await _pick(place);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -216,7 +297,7 @@ class _LocationScreenState extends State<LocationScreen> {
       ),
       body: Column(
         children: [
-          if (_loading || _locating)
+          if (_loading || _locating || _resolvingPick)
             const LinearProgressIndicator(minHeight: 2),
           if (_error != null)
             Padding(
@@ -255,18 +336,26 @@ class _LocationScreenState extends State<LocationScreen> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final p = _results[i];
-                      final parts = p.label.split(',');
-                      final title = parts.first.trim();
-                      final subtitle = parts.length > 1
-                          ? parts.sublist(1).join(',').trim()
-                          : p.subtitle;
+                      final title = p.label.trim();
+                      final subtitle = (p.subtitle.trim().isNotEmpty)
+                          ? p.subtitle.trim()
+                          : '';
+                      final picking = _pickingId == p.id && _resolvingPick;
                       return ListTile(
-                        leading: Icon(
-                          _showingHistory
-                              ? Icons.history
-                              : _iconFor(p),
-                          color: Colors.black87,
-                        ),
+                        leading: picking
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                _showingHistory
+                                    ? Icons.history
+                                    : _iconFor(p),
+                                color: Colors.black87,
+                              ),
                         title: Text(
                           title,
                           style: const TextStyle(fontWeight: FontWeight.w600),
@@ -279,7 +368,7 @@ class _LocationScreenState extends State<LocationScreen> {
                                   color: GtColors.textSecondary,
                                 ),
                               ),
-                        onTap: () => _pick(p),
+                        onTap: _resolvingPick ? null : () => _pick(p),
                       );
                     },
                   ),
@@ -293,7 +382,9 @@ class _LocationScreenState extends State<LocationScreen> {
                 children: [
                   Expanded(
                     child: TextButton.icon(
-                      onPressed: _locating ? null : _useCurrentLocation,
+                      onPressed: (_locating || _resolvingPick)
+                          ? null
+                          : _useCurrentLocation,
                       icon: _locating
                           ? const SizedBox(
                               width: 16,
@@ -310,7 +401,9 @@ class _LocationScreenState extends State<LocationScreen> {
                   Container(width: 1, height: 28, color: GtColors.border),
                   Expanded(
                     child: TextButton.icon(
-                      onPressed: () => context.push('/map-pick'),
+                      onPressed: _resolvingPick
+                          ? null
+                          : () => context.push('/map-pick'),
                       icon: const Icon(Icons.place, color: GtColors.orange),
                       label: const Text(
                         'Choose on map',

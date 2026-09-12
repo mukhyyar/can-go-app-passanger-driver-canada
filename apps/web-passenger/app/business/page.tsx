@@ -6,8 +6,8 @@ export default function Page() {
     <CmsPageView
       slug="business"
       kicker="Partners"
-      fallbackTitle="CAN-GO for business"
-      fallbackBody="Companies book staff and guest transfers on CAN-GO: request, compare offers, pay the selected trip."
+      fallbackTitle="CAN-RIDE for business"
+      fallbackBody="Companies book staff and guest transfers on CAN-RIDE: request, compare offers, pay the selected trip."
     />
   );
 }

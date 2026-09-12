@@ -30,12 +30,8 @@ export function SiteHeader({ onLogin }: { onLogin: () => void }) {
   return (
     <header className="site-header">
       <div className="header-inner">
-        <Link href="/" className="brand-lockup" onClick={() => setOpen(false)}>
-          <BrandLogo size={48} />
-          <span className="brand-copy">
-            <span className="brand-name">CAN-GO</span>
-            <span className="brand-tag">Your next adventure starts here</span>
-          </span>
+        <Link href="/" className="brand-lockup" onClick={() => setOpen(false)} aria-label="CAN-RIDE home">
+          <BrandLogo size={48} variant="lockup" />
         </Link>
 
         <nav className={`header-nav${open ? ' open' : ''}`} aria-label="Primary">

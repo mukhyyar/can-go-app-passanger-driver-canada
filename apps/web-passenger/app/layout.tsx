@@ -9,10 +9,10 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: 'CAN-GO — Your next adventure starts here',
+  title: 'CAN-RIDE — Your marketplace for every ride',
   description:
     'Marketplace transfers: compare driver offers, see the car before you pay, and choose price, vehicle, and driver.',
-  icons: { icon: '/brand/can-go-mark.png' },
+  icons: { icon: '/brand/can-ride-mark.png' },
 };
 
 export default function RootLayout({

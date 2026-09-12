@@ -78,7 +78,7 @@ export class AdminRbacService implements OnModuleInit {
         key: 'ride_booked',
         channel: 'push',
         title: 'Ride booked',
-        body: 'Your CAN-GO transfer is confirmed.',
+        body: 'Your CAN-RIDE transfer is confirmed.',
       },
       {
         key: 'driver_en_route',
@@ -89,7 +89,7 @@ export class AdminRbacService implements OnModuleInit {
       {
         key: 'promo_blast',
         channel: 'push',
-        title: 'CAN-GO offer',
+        title: 'CAN-RIDE offer',
         body: 'A new promo is available in the app.',
       },
     ];

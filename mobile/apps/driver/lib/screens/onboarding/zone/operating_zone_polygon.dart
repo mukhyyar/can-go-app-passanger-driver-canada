@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:gt_mock/gt_mock.dart';
-import 'package:latlong2/latlong.dart';
 
 import 'zone_geo.dart';
 
-/// Builds flutter_map [Polygon]s for saved operating zones.
+/// Builds Google Maps [Polygon]s for saved operating zones.
 class OperatingZonePolygons {
   OperatingZonePolygons._();
 
@@ -14,22 +13,27 @@ class OperatingZonePolygons {
   static const selectedFill = Color(0x88445555);
   static const selectedStroke = Color(0xFF1A1A1A);
 
-  static List<Polygon<Object>> build({
+  static Set<Polygon> build({
     required List<OperatingZone> zones,
     String? selectedId,
   }) {
-    return zones.map((z) {
+    final out = <Polygon>{};
+    for (final z in zones) {
       final pts = _pointsFor(z);
-      if (pts.length < 3) return null;
+      if (pts.length < 3) continue;
       final selected = z.id == selectedId;
-      return Polygon<Object>(
-        points: pts,
-        color: selected ? selectedFill : fill,
-        borderColor: selected ? selectedStroke : stroke,
-        borderStrokeWidth: selected ? 3.0 : 2.0,
-        hitValue: z.id,
+      out.add(
+        Polygon(
+          polygonId: PolygonId(z.id),
+          points: pts,
+          fillColor: selected ? selectedFill : fill,
+          strokeColor: selected ? selectedStroke : stroke,
+          strokeWidth: selected ? 3 : 2,
+          consumeTapEvents: true,
+        ),
       );
-    }).whereType<Polygon<Object>>().toList();
+    }
+    return out;
   }
 
   static List<LatLng> _pointsFor(OperatingZone z) {

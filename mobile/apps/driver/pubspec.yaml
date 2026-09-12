@@ -1,5 +1,5 @@
 name: driver
-description: CAN-GO Driver prototype
+description: CAN-RIDE Driver prototype
 publish_to: none
 version: 1.0.0+1
 
@@ -20,8 +20,7 @@ dependencies:
   gt_api:
     path: ../../packages/gt_api
   intl: ^0.20.2
-  flutter_map: ^8.3.2
-  latlong2: ^0.10.1
+  google_maps_flutter: ^2.12.1
   image_picker: ^1.1.2
   http: ^1.6.0
   socket_io_client: ^3.1.6

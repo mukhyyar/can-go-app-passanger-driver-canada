@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
-import 'package:latlong2/latlong.dart';
 
-import 'base_location_marker.dart';
 import 'delete_zone_button.dart';
 import 'map_controls.dart';
 import 'operating_zone_polygon.dart';
@@ -13,7 +11,33 @@ import 'zone_geo.dart';
 
 enum ZoneMapMode { viewing, creating, selected }
 
-/// Interactive operating-zone map with circle + freehand draw creation.
+/// Thin controller so parent screens can move / read center.
+class ZoneMapController {
+  GoogleMapController? _google;
+  GeoPoint center;
+
+  ZoneMapController({required double lat, required double lng})
+      : center = GeoPoint(latitude: lat, longitude: lng);
+
+  void attach(GoogleMapController c) => _google = c;
+
+  Future<void> move(double lat, double lng, double zoom) async {
+    center = GeoPoint(latitude: lat, longitude: lng);
+    final c = _google;
+    if (c == null) return;
+    await c.animateCamera(
+      CameraUpdate.newLatLngZoom(LatLng(lat, lng), zoom),
+    );
+  }
+
+  Future<void> zoomBy(double delta) async {
+    final c = _google;
+    if (c == null) return;
+    await c.animateCamera(CameraUpdate.zoomBy(delta));
+  }
+}
+
+/// Interactive operating-zone map (Google Maps) with circle + freehand draw.
 class OperatingZoneMap extends StatefulWidget {
   const OperatingZoneMap({
     super.key,
@@ -38,30 +62,27 @@ class OperatingZoneMap extends StatefulWidget {
   final ZoneMapMode mode;
   final ZoneCreationTool? creationTool;
   final double draftRadiusKm;
-  /// Explicit flag — Draw mode must pass false so radius circle never mounts.
   final bool showDraftCircle;
   final List<List<GeoPoint>> draftPolygons;
   final String? selectedZoneId;
   final void Function(String? zoneId)? onZoneSelected;
   final VoidCallback? onDeleteSelected;
   final ValueChanged<List<GeoPoint>>? onFreehandCompleted;
-  final MapController? mapController;
+  final ZoneMapController? mapController;
 
   @override
   State<OperatingZoneMap> createState() => _OperatingZoneMapState();
 }
 
 class _OperatingZoneMapState extends State<OperatingZoneMap> {
-  late final MapController _controller;
+  late final ZoneMapController _controller;
   bool _ownsController = false;
-  bool _tilesError = false;
 
-  /// Live freehand stroke — local notifier to avoid full-screen rebuilds.
   final ValueNotifier<List<LatLng>> _stroke = ValueNotifier(const []);
-  /// Draft circle center without MapCamera.of (safe across tool switches).
   late final ValueNotifier<LatLng> _draftCenter;
   Offset? _lastSample;
   static const _minSamplePx = 6.0;
+  GoogleMapController? _google;
 
   @override
   void initState() {
@@ -70,7 +91,10 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
     if (widget.mapController != null) {
       _controller = widget.mapController!;
     } else {
-      _controller = MapController();
+      _controller = ZoneMapController(
+        lat: widget.baseLatitude,
+        lng: widget.baseLongitude,
+      );
       _ownsController = true;
     }
   }
@@ -83,11 +107,10 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
       _stroke.value = const [];
       _lastSample = null;
       if (_isCircle) {
-        try {
-          _draftCenter.value = _controller.camera.center;
-        } catch (_) {
-          _draftCenter.value = _base;
-        }
+        _draftCenter.value = LatLng(
+          _controller.center.latitude,
+          _controller.center.longitude,
+        );
       }
     }
   }
@@ -96,7 +119,9 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
   void dispose() {
     _stroke.dispose();
     _draftCenter.dispose();
-    if (_ownsController) _controller.dispose();
+    if (_ownsController) {
+      // no-op — GoogleMapController disposed with map
+    }
     super.dispose();
   }
 
@@ -110,14 +135,11 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
       widget.creationTool == ZoneCreationTool.circle &&
       widget.showDraftCircle;
 
-  void _zoomBy(double delta) {
-    final cam = _controller.camera;
-    _controller.move(cam.center, (cam.zoom + delta).clamp(3.0, 18.0));
-  }
+  void _zoomBy(double delta) => _controller.zoomBy(delta);
 
   void _recenter() {
     final zoom = _isCircle ? _zoomForRadius(widget.draftRadiusKm) : 10.5;
-    _controller.move(_base, zoom);
+    _controller.move(widget.baseLatitude, widget.baseLongitude, zoom);
   }
 
   double _zoomForRadius(double radiusKm) {
@@ -129,9 +151,10 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
   }
 
   String? _hitTest(LatLng point) {
+    final gp = GeoPoint(latitude: point.latitude, longitude: point.longitude);
     for (final z in widget.zones.reversed) {
       if (z.isCircle && z.center != null && z.radiusKm != null) {
-        if (ZoneGeo.containsInCircle(point, z.center!, z.radiusKm!)) {
+        if (ZoneGeo.containsInCircle(gp, z.center!, z.radiusKm!)) {
           return z.id;
         }
         continue;
@@ -160,16 +183,17 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
     return inside;
   }
 
-  void _onPointerDown(PointerDownEvent e) {
-    if (!_isDraw) return;
-    final cam = _controller.camera;
-    final latLng = cam.screenOffsetToLatLng(e.localPosition);
+  Future<void> _onPointerDown(PointerDownEvent e) async {
+    if (!_isDraw || _google == null) return;
+    final latLng = await _google!.getLatLng(
+      ScreenCoordinate(x: e.localPosition.dx.round(), y: e.localPosition.dy.round()),
+    );
     _lastSample = e.localPosition;
     _stroke.value = [latLng];
   }
 
-  void _onPointerMove(PointerMoveEvent e) {
-    if (!_isDraw || _stroke.value.isEmpty) return;
+  Future<void> _onPointerMove(PointerMoveEvent e) async {
+    if (!_isDraw || _stroke.value.isEmpty || _google == null) return;
     final last = _lastSample;
     if (last != null) {
       final dx = e.localPosition.dx - last.dx;
@@ -177,8 +201,9 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
       if (dx * dx + dy * dy < _minSamplePx * _minSamplePx) return;
     }
     _lastSample = e.localPosition;
-    final cam = _controller.camera;
-    final latLng = cam.screenOffsetToLatLng(e.localPosition);
+    final latLng = await _google!.getLatLng(
+      ScreenCoordinate(x: e.localPosition.dx.round(), y: e.localPosition.dy.round()),
+    );
     _stroke.value = List<LatLng>.from(_stroke.value)..add(latLng);
   }
 
@@ -205,13 +230,84 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
     _lastSample = null;
   }
 
-  int get _interactionFlags {
-    if (_isDraw) return InteractiveFlag.none;
-    return InteractiveFlag.all & ~InteractiveFlag.rotate;
+  Set<Polygon> get _polygons {
+    final set = OperatingZonePolygons.build(
+      zones: widget.zones,
+      selectedId: widget.selectedZoneId,
+    );
+    // Rebuild with onTap for selection
+    return set.map((p) {
+      final id = p.polygonId.value;
+      return Polygon(
+        polygonId: p.polygonId,
+        points: p.points,
+        fillColor: p.fillColor,
+        strokeColor: p.strokeColor,
+        strokeWidth: p.strokeWidth,
+        consumeTapEvents: true,
+        onTap: () {
+          if (_isCreating) return;
+          widget.onZoneSelected?.call(id);
+        },
+      );
+    }).toSet();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Set<Polygon> get _draftPolys {
+    final out = <Polygon>{};
+    for (var i = 0; i < widget.draftPolygons.length; i++) {
+      final poly = widget.draftPolygons[i];
+      if (poly.length < 3) continue;
+      out.add(
+        Polygon(
+          polygonId: PolygonId('draft_$i'),
+          points: poly.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+          fillColor: OperatingZonePolygons.fill,
+          strokeColor: GtColors.brand,
+          strokeWidth: 3,
+        ),
+      );
+    }
+    return out;
+  }
+
+  Set<Circle> get _circles {
+    if (!_isCircle || widget.draftRadiusKm <= 0) return {};
+    final c = _draftCenter.value;
+    return {
+      Circle(
+        circleId: const CircleId('draft'),
+        center: c,
+        radius: widget.draftRadiusKm * 1000,
+        fillColor: GtColors.brand.withValues(alpha: 0.18),
+        strokeColor: GtColors.brand,
+        strokeWidth: 2,
+      ),
+    };
+  }
+
+  Set<Polyline> get _strokeLine {
+    final pts = _stroke.value;
+    if (pts.length < 2) return {};
+    return {
+      Polyline(
+        polylineId: const PolylineId('stroke'),
+        points: pts,
+        color: GtColors.brand,
+        width: 3,
+      ),
+    };
+  }
+
+  Set<Marker> get _markers {
+    final markers = <Marker>{
+      Marker(
+        markerId: const MarkerId('base'),
+        position: _base,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: const InfoWindow(title: 'Base'),
+      ),
+    };
     final selected = widget.selectedZoneId == null
         ? null
         : widget.zones.cast<OperatingZone?>().firstWhere(
@@ -220,120 +316,73 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
             );
     final deleteAt =
         selected == null ? null : OperatingZonePolygons.centroidOf(selected);
-
-    final draftPolygonLayers = <Polygon>[];
-    for (final poly in widget.draftPolygons) {
-      if (poly.length < 3) continue;
-      draftPolygonLayers.add(
-        Polygon(
-          points: poly.map((p) => LatLng(p.latitude, p.longitude)).toList(),
-          color: OperatingZonePolygons.fill,
-          borderColor: GtColors.brand,
-          borderStrokeWidth: 2.5,
+    if (deleteAt != null &&
+        widget.mode == ZoneMapMode.selected &&
+        widget.onDeleteSelected != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('delete'),
+          position: deleteAt,
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          infoWindow: const InfoWindow(title: 'Remove zone'),
+          onTap: widget.onDeleteSelected,
         ),
       );
     }
+    return markers;
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        FlutterMap(
-          mapController: _controller,
-          options: MapOptions(
-            initialCenter: _base,
-            initialZoom: 10.5,
-            minZoom: 3,
-            maxZoom: 18,
-            interactionOptions: InteractionOptions(flags: _interactionFlags),
-            onPositionChanged: (camera, _) {
-              if (!_isCircle) return;
-              final next = camera.center;
-              if (_draftCenter.value != next) {
-                _draftCenter.value = next;
-              }
-            },
-            onTap: (tap, latLng) {
-              if (_isCreating) return;
-              widget.onZoneSelected?.call(_hitTest(latLng));
-            },
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.cango.driver',
-              errorTileCallback: (_, __, ___) {
-                if (!_tilesError && mounted) {
-                  setState(() => _tilesError = true);
-                }
-              },
-            ),
-            PolygonLayer(
-              polygons: OperatingZonePolygons.build(
-                zones: widget.zones,
-                selectedId: widget.selectedZoneId,
-              ),
-            ),
-            // Draft circle ONLY in Circle tool — never in Draw.
-            // Uses controller center notifier (no MapCamera.of) so tool
-            // switches never look up a deactivated ancestor.
-            if (_isCircle && widget.draftRadiusKm > 0)
-              ValueListenableBuilder<LatLng>(
-                valueListenable: _draftCenter,
-                builder: (context, center, _) {
-                  return CircleLayer(
-                    circles: [
-                      CircleMarker(
-                        point: center,
-                        radius: widget.draftRadiusKm * 1000,
-                        useRadiusInMeter: true,
-                        color: GtColors.brand.withValues(alpha: 0.18),
-                        borderStrokeWidth: 2.5,
-                        borderColor: GtColors.brand,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            if (_isDraw && draftPolygonLayers.isNotEmpty)
-              PolygonLayer(polygons: draftPolygonLayers),
-            if (_isDraw)
-              ValueListenableBuilder<List<LatLng>>(
-                valueListenable: _stroke,
-                builder: (context, pts, _) {
-                  if (pts.length < 2) return const SizedBox.shrink();
-                  return PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: pts,
-                        color: GtColors.brand,
-                        strokeWidth: 3,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: _base,
-                  width: 200,
-                  height: 90,
-                  alignment: Alignment.bottomCenter,
-                  child: const IgnorePointer(child: BaseLocationMarker()),
-                ),
-                if (deleteAt != null &&
-                    widget.mode == ZoneMapMode.selected &&
-                    widget.onDeleteSelected != null)
-                  Marker(
-                    point: deleteAt,
-                    width: 48,
-                    height: 48,
-                    child:
-                        DeleteZoneButton(onPressed: widget.onDeleteSelected!),
+        ValueListenableBuilder<LatLng>(
+          valueListenable: _draftCenter,
+          builder: (context, _, __) {
+            return ValueListenableBuilder<List<LatLng>>(
+              valueListenable: _stroke,
+              builder: (context, __, ___) {
+                return GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _base,
+                    zoom: 10.5,
                   ),
-              ],
-            ),
-          ],
+                  polygons: {..._polygons, if (_isDraw) ..._draftPolys},
+                  circles: _circles,
+                  polylines: _isDraw ? _strokeLine : {},
+                  markers: _markers,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  compassEnabled: false,
+                  scrollGesturesEnabled: !_isDraw,
+                  rotateGesturesEnabled: false,
+                  onMapCreated: (c) {
+                    _google = c;
+                    _controller.attach(c);
+                  },
+                  onCameraMove: (pos) {
+                    _controller.center = GeoPoint(
+                      latitude: pos.target.latitude,
+                      longitude: pos.target.longitude,
+                    );
+                    if (_isCircle) {
+                      _draftCenter.value = pos.target;
+                    }
+                  },
+                  onTap: (latLng) {
+                    if (_isCreating) return;
+                    widget.onZoneSelected?.call(_hitTest(latLng));
+                  },
+                );
+              },
+            );
+          },
+        ),
+        // Base marker overlay (branded chip) — visual only
+        const IgnorePointer(
+          child: SizedBox.shrink(),
         ),
         if (_isDraw)
           Positioned.fill(
@@ -355,23 +404,36 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
             onRecenter: _recenter,
           ),
         ),
-        if (_tilesError)
+        if (widget.mode == ZoneMapMode.selected &&
+            widget.onDeleteSelected != null)
           Positioned(
             left: 12,
-            right: 60,
-            top: 12,
-            child: Material(
-              color: Colors.white.withValues(alpha: 0.95),
-              borderRadius: BorderRadius.circular(8),
-              child: const Padding(
-                padding: EdgeInsets.all(10),
-                child: Text(
-                  'Map tiles unavailable. You can still add zones; try again when online.',
-                  style: TextStyle(fontSize: 12, color: GtColors.textSecondary),
-                ),
+            bottom: 24,
+            child: DeleteZoneButton(onPressed: widget.onDeleteSelected!),
+          ),
+        // Keep BaseLocationMarker hint as floating label near top-left when useful
+        Positioned(
+          left: 12,
+          bottom: 72,
+          child: Material(
+            color: Colors.white.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(8),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.place, color: GtColors.brand, size: 16),
+                  SizedBox(width: 6),
+                  Text(
+                    'Base',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                  ),
+                ],
               ),
             ),
           ),
+        ),
         if (_isDraw)
           Positioned(
             left: 12,
@@ -382,7 +444,8 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
               borderRadius: BorderRadius.circular(10),
               color: Colors.white,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Text(
                   widget.draftPolygons.isEmpty
                       ? 'Draw mode — drag on the map to outline your area'

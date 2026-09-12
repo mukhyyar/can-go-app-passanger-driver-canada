@@ -2,8 +2,13 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
-import { searchPlaces } from '../lib/places';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import {
+  newPlacesSessionToken,
+  placeHasCoords,
+  resolvePlaceDetails,
+  searchPlaces,
+} from '../lib/places';
 import { VEHICLE_CLASSES, vehicleImage } from '../lib/vehicles';
 import type { Place } from '../lib/types';
 import { AppPhoneMock } from './app-phone-mock';
@@ -70,6 +75,22 @@ export function LandingPage() {
   const [active, setActive] = useState<Field | null>(null);
   const [hints, setHints] = useState<Place[]>([]);
   const [swapping, setSwapping] = useState(false);
+  const sessionRef = useRef(newPlacesSessionToken());
+  const biasRef = useRef<{ lat?: number; lng?: number }>({});
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        biasRef.current = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+      },
+      () => undefined,
+      { maximumAge: 60_000, timeout: 4_000 },
+    );
+  }, []);
 
   useEffect(() => {
     const q = active === 'from' ? fromQ : active === 'to' ? toQ : '';
@@ -78,18 +99,32 @@ export function LandingPage() {
       return;
     }
     const t = window.setTimeout(() => {
-      searchPlaces(q)
+      searchPlaces(q, {
+        sessionToken: sessionRef.current,
+        lat: biasRef.current.lat,
+        lng: biasRef.current.lng,
+      })
         .then(setHints)
         .catch(() => setHints([]));
     }, 280);
     return () => window.clearTimeout(t);
   }, [active, fromQ, toQ]);
 
-  function pick(place: Place) {
+  async function pick(place: Place) {
+    let label = place.label;
+    try {
+      const resolved = placeHasCoords(place)
+        ? place
+        : await resolvePlaceDetails(place, { sessionToken: sessionRef.current });
+      if (resolved) label = resolved.label;
+    } catch {
+      // Keep prediction label.
+    }
+    sessionRef.current = newPlacesSessionToken();
     if (active === 'from') {
-      setFromQ(place.label);
+      setFromQ(label);
     } else if (active === 'to') {
-      setToQ(place.label);
+      setToQ(label);
     }
     setHints([]);
     setActive(null);
@@ -130,7 +165,7 @@ export function LandingPage() {
         <div className="lp-hero-shade" />
         <div className="lp-hero-inner">
           <p className="lp-eyebrow">Marketplace transfers · Canada and beyond</p>
-          <h1>Your next adventure starts here</h1>
+          <h1>Your marketplace for every ride</h1>
           <p className="hero-sub">
             Compare trusted driver offers. See the car before you pay. Choose the
             price, the vehicle, and who drives — airport, intercity, or by the hour.
@@ -217,7 +252,9 @@ export function LandingPage() {
                           type="button"
                           role="option"
                           onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => pick(p)}
+                          onClick={() => {
+                            void pick(p);
+                          }}
                         >
                           <PinIcon />
                           <span>
@@ -273,7 +310,9 @@ export function LandingPage() {
                               type="button"
                               role="option"
                               onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => pick(p)}
+                              onClick={() => {
+                            void pick(p);
+                          }}
                             >
                               <PinIcon />
                               <span>
@@ -317,7 +356,7 @@ export function LandingPage() {
         <p className="lp-kicker">How it works</p>
         <h2>Request. Compare. Ride.</h2>
         <p className="lp-lead">
-          CAN-GO is a marketplace — not auto-dispatch. Drivers bid. You decide.
+          CAN-RIDE is a marketplace — not auto-dispatch. Drivers bid. You decide.
         </p>
         <div className="how-grid">
           {STEPS.map((s) => (
@@ -358,10 +397,10 @@ export function LandingPage() {
       <section className="lp-why" id="why">
         <div className="lp-why-inner">
           <div className="lp-why-copy">
-            <p className="lp-kicker light">Why CAN-GO</p>
+            <p className="lp-kicker light">Why CAN-RIDE</p>
             <h2>A transfer you actually choose</h2>
             <p>
-              Other apps assign a car. On CAN-GO you open a tender, wait for bids,
+              Other apps assign a car. On CAN-RIDE you open a tender, wait for bids,
               and accept the offer that looks right — fare, vehicle, and driver
               included.
             </p>
@@ -420,7 +459,7 @@ export function LandingPage() {
           <div className="app-copy">
             <p className="lp-kicker light">Mobile</p>
             <h2>
-              Download the <em>CAN-GO</em> app
+              Download the <em>CAN-RIDE</em> app
             </h2>
             <p className="app-lead">
               Book on the go with live tracking and marketplace bids in your pocket.
@@ -486,7 +525,7 @@ export function LandingPage() {
 function Check() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-      <circle cx="8" cy="8" r="8" fill="#B41B1D" />
+      <circle cx="8" cy="8" r="8" fill="#e50000" />
       <path
         d="M4.6 8.2 7 10.6l4.6-5"
         fill="none"

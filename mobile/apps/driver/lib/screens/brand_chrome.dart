@@ -50,12 +50,12 @@ Future<void> openDriverMenu([BuildContext? context]) async {
 class DriverBrandHeader extends StatelessWidget {
   const DriverBrandHeader({
     super.key,
-    required this.subtitle,
+    this.subtitle,
     this.onProfileTap,
     this.showMenu = true,
   });
 
-  final String subtitle;
+  final String? subtitle;
   final VoidCallback? onProfileTap;
   final bool showMenu;
 
@@ -71,7 +71,7 @@ class DriverBrandHeader extends StatelessWidget {
           colors: [
             Color(0xFFFFFFFF),
             Color(0xFFFFF8F8),
-            Color(0xFFF8EAEA),
+            Color(0xFFFDEAEA),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -114,54 +114,32 @@ class DriverBrandHeader extends StatelessWidget {
             ),
             const SizedBox(width: 10),
           ],
-          const CanGoLogo(size: 44),
-          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'CAN-GO',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.4,
-                    color: GtColors.text,
-                    height: 1.1,
+            child: CanRideHeaderLockup(
+              subtitle: subtitle,
+              markSize: 44,
+              trailing: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onProfileTap ?? () => openDriverMenu(context),
+                  borderRadius: BorderRadius.circular(22),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: GtColors.soft,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: GtColors.brand.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      color: GtColors.brand,
+                      size: 22,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: GtColors.textSecondary.withValues(alpha: 0.95),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onProfileTap ?? () => openDriverMenu(context),
-              borderRadius: BorderRadius.circular(22),
-              child: Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: GtColors.soft,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: GtColors.brand.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: const Icon(
-                  Icons.person_outline_rounded,
-                  color: GtColors.brand,
-                  size: 22,
                 ),
               ),
             ),
@@ -191,11 +169,15 @@ class DriverPageHeader extends StatelessWidget {
         children: [
           const CanGoLogo(size: 36),
           const SizedBox(width: 10),
+          const CanRideWordmark(fontSize: 18, compact: true),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: GtColors.text,
               ),

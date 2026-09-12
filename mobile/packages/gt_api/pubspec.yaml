@@ -1,5 +1,5 @@
 name: gt_api
-description: CAN-GO Nest API client (auth, marketplace, KYC, trips)
+description: CAN-RIDE Nest API client (auth, marketplace, KYC, trips)
 version: 0.0.1
 publish_to: none
 

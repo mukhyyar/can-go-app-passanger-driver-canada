@@ -13,7 +13,7 @@ class SupportScreen extends StatefulWidget {
 class _SupportScreenState extends State<SupportScreen> {
   static const _fallbackFaqs = [
     (
-      'How does CAN-GO work?',
+      'How does CAN-RIDE work?',
       'Create a ride request, receive offers from carriers, compare and book the one you like.'
     ),
     (
@@ -35,7 +35,7 @@ class _SupportScreenState extends State<SupportScreen> {
   ];
 
   String _supportBlurb =
-      'CAN-GO support helps with bookings, offers, payments, and account access.';
+      'CAN-RIDE support helps with bookings, offers, payments, and account access.';
   List<(String, String)> _faqs = _fallbackFaqs;
   bool _loading = true;
 

@@ -147,7 +147,7 @@ class _RequestsScreenState extends State<RequestsScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: DriverBrandHeader(
                 subtitle: s.isActivated
-                    ? 'Partner dashboard · live requests'
+                    ? null
                     : 'Complete activation to offer prices',
               ),
             ),

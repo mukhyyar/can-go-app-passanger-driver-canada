@@ -55,8 +55,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CanGoLogo(size: 28),
-            const SizedBox(width: 8),
+            const CanRideWordmark(fontSize: 16, compact: true),
+            const SizedBox(width: 10),
             Flexible(child: Text(thread?.title ?? 'Chat')),
           ],
         ),

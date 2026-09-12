@@ -546,7 +546,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       ],
                     )
                   else
-                    const GtMockMap(),
+                    Container(
+                      height: 120,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: GtColors.bgGrey,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: GtColors.border),
+                      ),
+                      child: const Text(
+                        'Pickup coordinates unavailable',
+                        style: TextStyle(color: GtColors.textSecondary),
+                      ),
+                    ),
                   if (hasActiveOffer) ...[
                     const SizedBox(height: 16),
                     Container(

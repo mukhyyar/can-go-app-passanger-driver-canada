@@ -6,7 +6,7 @@ export default function Page() {
     <CmsPageView
       slug="drivers"
       kicker="Partners"
-      fallbackTitle="Drive with CAN-GO"
+      fallbackTitle="Drive with CAN-RIDE"
       fallbackBody="Set your zone, complete KYC, and bid on passenger requests. You keep control of your price."
     />
   );

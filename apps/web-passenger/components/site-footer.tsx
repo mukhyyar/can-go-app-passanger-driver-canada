@@ -51,18 +51,14 @@ export function SiteFooter() {
 
         <div className="footer-grid">
           <div className="footer-brand">
-            <Link href="/" className="brand-lockup invert">
-              <BrandLogo size={52} />
-              <span className="brand-copy">
-                <span className="brand-name">CAN-GO</span>
-                <span className="brand-tag">Your next adventure starts here</span>
-              </span>
+            <Link href="/" className="brand-lockup invert" aria-label="CAN-RIDE home">
+              <BrandLogo size={52} variant="lockup" invert />
             </Link>
             <p className="footer-lead">
               Marketplace transfers you compare and trust. Drivers bid. You choose the
               car and the fare.
             </p>
-            <ul className="footer-trust" aria-label="Why travelers choose CAN-GO">
+            <ul className="footer-trust" aria-label="Why travelers choose CAN-RIDE">
               {TRUST.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -109,7 +105,7 @@ export function SiteFooter() {
         </div>
 
         <div className="footer-bottom">
-          <p className="copy">© {year} CAN-GO. All rights reserved.</p>
+          <p className="copy">© {year} CAN-RIDE. All rights reserved.</p>
           <div className="footer-legal">
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>

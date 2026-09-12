@@ -12,42 +12,42 @@ import {
 const REVIEWS = [
   {
     name: 'Priya S.',
-    source: 'CAN-GO',
+    source: 'CAN-RIDE',
     text: 'Driver sent photos before I paid. The Comfort class was exactly what I booked from YYZ to downtown.',
   },
   {
     name: 'Daniel M.',
-    source: 'CAN-GO',
+    source: 'CAN-RIDE',
     text: 'Several bids came in within minutes. I picked the price and the car — no surge surprise at the airport.',
   },
   {
     name: 'Amélie R.',
-    source: 'CAN-GO',
+    source: 'CAN-RIDE',
     text: 'Per-hour for a city day worked perfectly. Clear hospitality score and a clean van for our family.',
   },
   {
     name: 'Omar K.',
-    source: 'CAN-GO',
+    source: 'CAN-RIDE',
     text: 'Compared three offers, chose VIP, and the meet-and-greet was waiting with a sign. Smooth from start to finish.',
   },
   {
     name: 'Hannah L.',
-    source: 'CAN-GO',
+    source: 'CAN-RIDE',
     text: 'Booked an intercity transfer. Real vehicle photos, fair bid, and the driver arrived early.',
   },
   {
     name: 'James T.',
-    source: 'CAN-GO',
-    text: 'I like that CAN-GO is a marketplace. I am not stuck with one fare — I choose who I ride with.',
+    source: 'CAN-RIDE',
+    text: 'I like that CAN-RIDE is a marketplace. I am not stuck with one fare — I choose who I ride with.',
   },
   {
     name: 'Sofia N.',
-    source: 'CAN-GO',
+    source: 'CAN-RIDE',
     text: 'The app tracking matched the web booking. Hospitality rating was honest — our driver earned it.',
   },
   {
     name: 'Wei C.',
-    source: 'CAN-GO',
+    source: 'CAN-RIDE',
     text: 'Airport pickup after a long flight. Economy class, fair price, and no haggling at the curb.',
   },
 ];

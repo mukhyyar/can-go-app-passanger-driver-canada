@@ -20,6 +20,25 @@ Finish API cert later:
 certbot certonly --nginx -d api.can-rides.ca
 ```
 
+## Maps (Google)
+
+On the droplet backend `/opt/cango/backend/.env`:
+
+```
+MAPS_PROVIDER=google
+GOOGLE_MAPS_API_KEY=<cango-maps-server>
+```
+
+Passenger + admin production env (rebuild Next after change):
+
+```
+# apps/web-passenger/.env.production.local
+# apps/admin/.env.production.local
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<cango-maps-browser>
+```
+
+Server key: IP-restrict to droplet `165.227.45.3`. Browser key: HTTP referrers for `www` / `admin` / local ports. Enable Places API (New) on the server key for `/api/maps/places`.
+
 ## Auto deploy
 
 Push to `main` → `.github/workflows/deploy.yml` SSHs to the droplet and runs `deploy/scripts/deploy.sh`.

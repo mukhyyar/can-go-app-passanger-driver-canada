@@ -369,62 +369,6 @@ class GtUnderlineField extends StatelessWidget {
   }
 }
 
-class GtMockMap extends StatelessWidget {
-  const GtMockMap({super.key, this.child, this.height});
-  final Widget? child;
-  final double? height;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height ?? double.infinity,
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        color: GtColors.soft,
-      ),
-      child: Stack(
-        children: [
-          CustomPaint(size: Size.infinite, painter: _MapGridPainter()),
-          if (child != null) child!,
-          const Positioned(
-            left: 12,
-            bottom: 12,
-            child: Text('Map', style: TextStyle(color: GtColors.brand, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MapGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = GtColors.brand.withValues(alpha: 0.08)
-      ..strokeWidth = 1;
-    for (double x = 0; x < size.width; x += 40) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += 40) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-    final road = Paint()
-      ..color = GtColors.white.withValues(alpha: 0.85)
-      ..strokeWidth = 6;
-    canvas.drawLine(Offset(0, size.height * 0.4), Offset(size.width, size.height * 0.55), road);
-    canvas.drawLine(Offset(size.width * 0.3, 0), Offset(size.width * 0.45, size.height), road);
-    final dash = Paint()
-      ..color = GtColors.brand
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(0, size.height * 0.4), Offset(size.width, size.height * 0.55), dash);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 Future<T?> showGtSheet<T>({
   required BuildContext context,
   required Widget child,

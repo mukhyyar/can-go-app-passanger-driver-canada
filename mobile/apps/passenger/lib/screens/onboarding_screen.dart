@@ -320,7 +320,7 @@ class _PageMarketplace extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _SlideHeader(
-          eyebrow: 'Welcome to CAN-GO',
+          eyebrow: 'Welcome to CAN-RIDE',
           title: 'Marketplace for every journey',
           subtitle:
               'Book transfers, intercity trips, rides and delivery — all in one place.',
@@ -371,10 +371,13 @@ class _PageMarketplace extends StatelessWidget {
                         const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            CanGoBrandMark(logoSize: 120),
+                            CanRideBrandHero(
+                              markSize: 72,
+                              wordmarkSize: 34,
+                            ),
                             SizedBox(height: 8),
                             Text(
-                              'Your next adventure starts here',
+                              'Your marketplace for every ride',
                               style: TextStyle(
                                 color: GtColors.textSecondary,
                                 fontSize: 13,
@@ -986,7 +989,7 @@ class _PageHospitality extends StatelessWidget {
                             Expanded(
                               child: _BigStat(
                                 value: '5y',
-                                label: 'With\nCAN-GO',
+                                label: 'With\nCAN-RIDE',
                               ),
                             ),
                             Expanded(

@@ -1,5 +1,5 @@
 name: gt_ui
-description: Shared CAN-GO prototype UI kit
+description: Shared CAN-RIDE prototype UI kit
 version: 0.0.1
 publish_to: none
 
@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  google_fonts: ^6.2.1
+  google_maps_flutter: ^2.12.1
 
 dev_dependencies:
   flutter_test:
@@ -18,5 +20,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/can-go-logo.png
+    - assets/can-ride-mark.png
+    - assets/can-ride-logo.png
+    - assets/can-ride-logo-white.png
+    - assets/can-ride-square.png
+    - assets/can-ride-writing.png
+    - assets/can-ride-car.png
     - assets/vehicles/

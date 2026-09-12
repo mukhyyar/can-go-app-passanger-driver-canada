@@ -20,7 +20,7 @@ type Delivery = {
 function Inner() {
   const sp = useSearchParams();
   const channel = sp.get('channel') ?? 'push';
-  const [title, setTitle] = useState('CAN-GO driver desk');
+  const [title, setTitle] = useState('CAN-RIDE driver desk');
   const [body, setBody] = useState('');
   const [segment, setSegment] = useState('DRIVERS');
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
@@ -57,7 +57,7 @@ function Inner() {
   return (
     <div>
       <h1 className="page-title">Driver notifications</h1>
-      <p className="page-sub">Broadcast to drivers, passengers, or VIP — same CAN-GO voice as the passenger app.</p>
+      <p className="page-sub">Broadcast to drivers, passengers, or VIP — same CAN-RIDE voice as the passenger app.</p>
       <div className="tabs">
         {channels.map((c) => (
           <Link key={c.id} href={`/notifications?channel=${c.id}`} className={channel === c.id ? 'active' : ''}>

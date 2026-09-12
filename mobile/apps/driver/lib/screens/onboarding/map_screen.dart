@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:gt_ui/gt_ui.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
-import 'zone/base_location_marker.dart';
 import 'zone/map_controls.dart';
 
 class MapScreen extends StatefulWidget {
@@ -17,7 +15,7 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  final MapController _controller = MapController();
+  GoogleMapController? _controller;
   late double _lat;
   late double _lng;
   bool _inited = false;
@@ -34,7 +32,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -84,51 +82,40 @@ class _MapScreenState extends State<MapScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                FlutterMap(
-                  mapController: _controller,
-                  options: MapOptions(
-                    initialCenter: LatLng(_lat, _lng),
-                    initialZoom: 14,
-                    onTap: (_, p) => setState(() {
-                      _lat = p.latitude;
-                      _lng = p.longitude;
-                    }),
-                    interactionOptions: const InteractionOptions(
-                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-                    ),
+                GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(_lat, _lng),
+                    zoom: 14,
                   ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.cango.driver',
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('base'),
+                      position: LatLng(_lat, _lng),
+                      infoWindow: const InfoWindow(title: 'Base'),
                     ),
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: LatLng(_lat, _lng),
-                          width: 200,
-                          height: 90,
-                          alignment: Alignment.bottomCenter,
-                          child: const BaseLocationMarker(),
-                        ),
-                      ],
-                    ),
-                  ],
+                  },
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  compassEnabled: false,
+                  rotateGesturesEnabled: false,
+                  onMapCreated: (c) => _controller = c,
+                  onTap: (p) => setState(() {
+                    _lat = p.latitude;
+                    _lng = p.longitude;
+                  }),
                 ),
                 Positioned(
                   right: 12,
                   top: 72,
                   child: MapControls(
-                    onZoomIn: () {
-                      final c = _controller.camera;
-                      _controller.move(c.center, (c.zoom + 1).clamp(3.0, 18.0));
-                    },
-                    onZoomOut: () {
-                      final c = _controller.camera;
-                      _controller.move(c.center, (c.zoom - 1).clamp(3.0, 18.0));
-                    },
-                    onRecenter: () => _controller.move(LatLng(_lat, _lng), 14),
+                    onZoomIn: () =>
+                        _controller?.animateCamera(CameraUpdate.zoomIn()),
+                    onZoomOut: () =>
+                        _controller?.animateCamera(CameraUpdate.zoomOut()),
+                    onRecenter: () => _controller?.animateCamera(
+                      CameraUpdate.newLatLngZoom(LatLng(_lat, _lng), 14),
+                    ),
                   ),
                 ),
               ],
@@ -148,10 +135,19 @@ class _MapScreenState extends State<MapScreen> {
                   'Base location of your transport',
                   style: TextStyle(fontSize: 12, color: GtColors.textMuted),
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  address,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 4),
-                Text(address, style: const TextStyle(fontSize: 14)),
-                const SizedBox(height: 12),
-                GtGreenButton(label: 'Done', onPressed: _done),
+                Text(
+                  '${_lat.toStringAsFixed(5)}, ${_lng.toStringAsFixed(5)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: GtColors.textSecondary,
+                  ),
+                ),
               ],
             ),
           ),

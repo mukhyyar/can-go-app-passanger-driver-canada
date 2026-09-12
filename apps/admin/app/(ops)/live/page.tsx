@@ -16,7 +16,7 @@ export default function LiveOps() {
   return (
     <div>
       <h1 className="page-title">Live Operations</h1>
-      <p className="page-sub">Fleet including vehicles still pending registration · OSM</p>
+      <p className="page-sub">Fleet including vehicles still pending registration · Google Maps</p>
       <div className="kpis">
         {live &&
           Object.entries(live).map(([k, v]) => (

@@ -46,7 +46,7 @@ export class PrismaOtpProvider implements OtpProvider {
 
     await this.sms.sendSms(
       phoneE164,
-      `CAN-GO verification code: ${code}. Expires in 5 minutes.`,
+      `CAN-RIDE verification code: ${code}. Expires in 5 minutes.`,
     );
 
     const debugCode =

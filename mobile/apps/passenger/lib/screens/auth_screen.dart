@@ -453,6 +453,21 @@ class _AuthScreenState extends State<AuthScreen> {
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 20),
+                  child: Row(
+                    children: [
+                      CanGoLogo(size: 40),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: CanRideWordmark(
+                          fontSize: 26,
+                          maxWidth: 220,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 if (_step != _AuthStep.otp)
                   Row(
                     children: [
@@ -584,7 +599,7 @@ class _AuthScreenState extends State<AuthScreen> {
       ),
       const SizedBox(height: 24),
       const Text(
-        'By registering, you agree to the CAN-GO Privacy Policy, as well as the CAN-GO Service Agreement.',
+        'By registering, you agree to the CAN-RIDE Privacy Policy, as well as the CAN-RIDE Service Agreement.',
         style: TextStyle(
           fontSize: 12,
           height: 1.45,

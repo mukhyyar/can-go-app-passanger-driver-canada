@@ -437,7 +437,7 @@ export class AuthService {
 
     return {
       secret,
-      otpauthUrl: `otpauth://totp/CAN-GO:${user.email}?secret=${secret}&issuer=CAN-GO`,
+      otpauthUrl: `otpauth://totp/CAN-RIDE:${user.email}?secret=${secret}&issuer=CAN-RIDE`,
       enabled: false,
       note: 'Call POST /auth/admin/2fa/enable with a valid code to enforce 2FA on login',
     };

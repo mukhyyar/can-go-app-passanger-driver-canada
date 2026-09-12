@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
@@ -21,7 +19,7 @@ class ZoneScreen extends StatefulWidget {
 
 class _ZoneScreenState extends State<ZoneScreen> {
   final List<OperatingZone> _zones = [];
-  final MapController _mapController = MapController();
+  ZoneMapController? _mapController;
 
   ZoneMapMode _mode = ZoneMapMode.viewing;
   ZoneCreationTool _tool = ZoneCreationTool.circle;
@@ -35,16 +33,14 @@ class _ZoneScreenState extends State<ZoneScreen> {
   bool _loaded = false;
 
   @override
-  void dispose() {
-    _mapController.dispose();
-    super.dispose();
-  }
-
-  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final s = context.read<AppState>();
+      _mapController = ZoneMapController(
+        lat: s.baseLatitude,
+        lng: s.baseLongitude,
+      );
       if (s.isAuthenticated) {
         await s.loadOperatingZones();
       }
@@ -76,13 +72,10 @@ class _ZoneScreenState extends State<ZoneScreen> {
   }
 
   GeoPoint _currentMapCenter() {
-    try {
-      final c = _mapController.camera.center;
-      return GeoPoint(latitude: c.latitude, longitude: c.longitude);
-    } catch (_) {
-      final s = context.read<AppState>();
-      return GeoPoint(latitude: s.baseLatitude, longitude: s.baseLongitude);
-    }
+    final c = _mapController;
+    if (c != null) return c.center;
+    final s = context.read<AppState>();
+    return GeoPoint(latitude: s.baseLatitude, longitude: s.baseLongitude);
   }
 
   Future<void> _showIntro() async {
@@ -120,13 +113,13 @@ class _ZoneScreenState extends State<ZoneScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            const Text('📍  Get rides that start or end in your zone.'),
+            const Text('Get rides that start or end in your zone.'),
             const SizedBox(height: 8),
-            const Text('🚗  Bigger zone = more rides.'),
+            const Text('Bigger zone = more rides.'),
             const SizedBox(height: 8),
-            const Text('🔄  You can change it later.'),
+            const Text('You can change it later.'),
             const SizedBox(height: 8),
-            const Text('💡  Tip: Include airports and neighborhoods.'),
+            const Text('Tip: Include airports and neighborhoods.'),
             const SizedBox(height: 20),
             GtGreenButton(
               label: 'OK',
@@ -148,12 +141,7 @@ class _ZoneScreenState extends State<ZoneScreen> {
       _draftPolygons.clear();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        _mapController.move(
-          LatLng(s.baseLatitude, s.baseLongitude),
-          9.5,
-        );
-      } catch (_) {}
+      _mapController?.move(s.baseLatitude, s.baseLongitude, 9.5);
     });
   }
 
@@ -167,8 +155,6 @@ class _ZoneScreenState extends State<ZoneScreen> {
   void _selectTool(ZoneCreationTool tool) {
     setState(() {
       _tool = tool;
-      // Switching tools must drop the other mode's draft entirely
-      // (circle radius ghost must not linger in Draw).
       _draftPolygons.clear();
       _draftRadiusKm = tool == ZoneCreationTool.circle ? 66 : 0;
     });
@@ -310,7 +296,6 @@ class _ZoneScreenState extends State<ZoneScreen> {
           context.go('/');
         }
       } else {
-        // First-time onboarding only.
         context.push('/onboarding/documents');
       }
     } finally {
@@ -326,6 +311,10 @@ class _ZoneScreenState extends State<ZoneScreen> {
     final settingsMode = s.onboardedComplete;
     final isCircleTool = creating && _tool == ZoneCreationTool.circle;
     final isDrawTool = creating && _tool == ZoneCreationTool.draw;
+    _mapController ??= ZoneMapController(
+      lat: s.baseLatitude,
+      lng: s.baseLongitude,
+    );
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -377,7 +366,6 @@ class _ZoneScreenState extends State<ZoneScreen> {
                     zones: _zones,
                     mode: _mode,
                     creationTool: creating ? _tool : null,
-                    // Radius only meaningful in Circle tool — never pass in Draw.
                     draftRadiusKm: isCircleTool ? _draftRadiusKm : 0,
                     showDraftCircle: isCircleTool,
                     draftPolygons: isDrawTool ? _draftPolygons : const [],

@@ -1,6 +1,6 @@
 :root {
-  --brand: #b41b1d;
-  --brand-dark: #8e1517;
+  --brand: #e50000;
+  --brand-dark: #b40000;
   --green: #2ea44f;
   --green-dark: #22863a;
   --green-soft: #e8f6ec;
@@ -11,7 +11,7 @@
   --line: #e6e6e6;
   --line-strong: #d8d6d4;
   --bg: #ffffff;
-  --soft: #f8eaea;
+  --soft: #fdeaea;
   --field: #fafafa;
   --shadow: 0 8px 28px rgba(26, 26, 26, 0.08);
   --radius: 12px;
@@ -237,10 +237,24 @@ button {
 
 .brand-lockup img,
 .brand-mark {
-  width: 48px;
-  height: 48px;
   object-fit: contain;
   display: block;
+}
+
+.brand-mark:not(.brand-mark-lg) {
+  width: 48px;
+  height: 48px;
+}
+
+.brand-mark-lg {
+  height: 48px;
+  width: auto;
+  max-width: min(220px, 42vw);
+}
+
+.footer-brand .brand-mark-lg {
+  height: 52px;
+  max-width: min(280px, 70vw);
 }
 
 .brand-copy {
@@ -682,7 +696,7 @@ button {
 
 .error-banner {
   background: #fdecea;
-  color: #8e1517;
+  color: #b40000;
   padding: 10px 12px;
   border-radius: 8px;
   margin: 8px 0;
@@ -2381,7 +2395,7 @@ button {
   padding: 8px 8px 10px;
   margin: -6px -4px 8px;
   border-radius: 14px;
-  background: linear-gradient(180deg, #fff 0%, #fff8f8 55%, #f8eaea 100%);
+  background: linear-gradient(180deg, #fff 0%, #fff8f8 55%, #fdeaea 100%);
 }
 
 .phone-book-head img {
@@ -2423,8 +2437,8 @@ button {
 
 .phone-chips span.on {
   background: #fff;
-  border-color: #b41b1d;
-  color: #b41b1d;
+  border-color: #e50000;
+  color: #e50000;
   box-shadow: 0 0 0 1px rgba(180, 27, 29, 0.15);
 }
 
@@ -2458,7 +2472,7 @@ button {
 }
 
 .phone-route-rail i.b {
-  background: #b41b1d;
+  background: #e50000;
 }
 
 .phone-route-rail span {
@@ -2505,7 +2519,7 @@ button {
 }
 
 .phone-class.on {
-  border-color: #b41b1d;
+  border-color: #e50000;
   box-shadow: 0 0 0 1px rgba(180, 27, 29, 0.2);
 }
 
@@ -2526,33 +2540,18 @@ button {
 .phone-map {
   border-radius: 12px;
   overflow: hidden;
-  background:
-    linear-gradient(180deg, #f3ecec 0%, #ebe4e4 100%);
+  background: #e8eef3;
   border: 1px solid #e6e6e6;
   height: 88px;
   margin-bottom: 8px;
 }
 
-.phone-map-svg {
+.phone-map-iframe {
   width: 100%;
   height: 100%;
+  border: 0;
+  pointer-events: none;
   display: block;
-}
-
-.phone-map-path {
-  stroke-dasharray: 220;
-  stroke-dashoffset: 220;
-  animation: phone-draw 3.2s ease forwards;
-}
-
-.phone-slide-book.is-active .phone-map-path {
-  animation: phone-draw 3.2s ease forwards;
-}
-
-.phone-map-car {
-  offset-path: path('M28 88 C 60 30, 120 20, 190 42');
-  offset-rotate: auto;
-  animation: phone-drive 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @keyframes phone-draw {
@@ -2582,7 +2581,7 @@ button {
   width: 100%;
   border: 0;
   border-radius: 12px;
-  background: linear-gradient(180deg, #c72224 0%, #b41b1d 100%);
+  background: linear-gradient(180deg, #c72224 0%, #e50000 100%);
   color: #fff;
   font-size: 12.5px;
   font-weight: 800;
@@ -2629,7 +2628,7 @@ button {
 }
 
 .phone-offer-list li.featured {
-  border-color: #b41b1d;
+  border-color: #e50000;
   animation: phone-offer-pulse 1.8s ease-in-out infinite;
 }
 
@@ -2692,33 +2691,17 @@ button {
 .phone-track-map {
   position: absolute;
   inset: 0 0 52px;
-  background:
-    radial-gradient(circle at 30% 70%, rgba(180, 27, 29, 0.12), transparent 40%),
-    linear-gradient(180deg, #efe8e8 0%, #e5dede 100%);
+  background: #e8eef3;
+  overflow: hidden;
 }
 
-.phone-track-svg {
+.phone-track-iframe {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: 72%;
-  display: block;
-  padding-top: 28px;
-}
-
-.phone-track-path {
-  stroke-dasharray: 8 6;
-  animation: phone-dash 1.1s linear infinite;
-}
-
-.phone-track-car {
-  offset-path: path('M40 210 C 70 150, 90 120, 120 90 S 170 40, 185 28');
-  offset-rotate: auto;
-  animation: phone-drive 4s linear infinite;
-}
-
-@keyframes phone-dash {
-  to {
-    stroke-dashoffset: -28;
-  }
+  height: 100%;
+  border: 0;
+  pointer-events: none;
 }
 
 .phone-track-card {
@@ -2797,7 +2780,7 @@ button {
 }
 
 .phone-tabbar span.on {
-  color: #b41b1d;
+  color: #e50000;
 }
 
 .phone-mock-dots {

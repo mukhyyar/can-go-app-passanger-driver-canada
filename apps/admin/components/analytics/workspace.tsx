@@ -57,7 +57,7 @@ type Overview = {
 
 type SavedView = { id: string; name: string; kind: string; query: Record<string, string> };
 
-const COLORS = ['#b41b1d', '#2ea44f', '#1d4ed8', '#f59e0b', '#7c3aed', '#111'];
+const COLORS = ['#e50000', '#2ea44f', '#1d4ed8', '#f59e0b', '#7c3aed', '#111'];
 
 export function AnalyticsWorkspace() {
   const params = useSearchParams();
@@ -141,7 +141,7 @@ export function AnalyticsWorkspace() {
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 className="page-title">Analytics &amp; BI Center</h1>
-          <p className="page-sub">Can-Go marketplace intelligence · timezone-safe · aggregated on the server</p>
+          <p className="page-sub">CAN-RIDE marketplace intelligence · timezone-safe · aggregated on the server</p>
         </div>
         <div className="row">
           {demo && <Chip tone="warn">Demo Data</Chip>}
@@ -366,7 +366,7 @@ function Kpi({
   onClick: () => void;
 }) {
   const up = (card.changePct ?? 0) >= 0;
-  const sparkColor = up ? '#2ea44f' : '#b41b1d';
+  const sparkColor = up ? '#2ea44f' : '#e50000';
   return (
     <button type="button" className="kpi kpi-spark analytics-kpi" onClick={onClick} title={card.definition || card.label}>
       <div className="label">{card.label}</div>

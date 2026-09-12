@@ -16,7 +16,7 @@ export const CMS_SEEDS: CmsSeed[] = [
     kind: 'page',
     title: 'Support',
     sortOrder: 10,
-    bodyMd: `CAN-GO support helps with bookings, driver offers, payments, and account access. For a trip that is already booked, open **My trips**, keep the driver chat handy, and we will stay with you until you are at the curb.
+    bodyMd: `CAN-RIDE support helps with bookings, driver offers, payments, and account access. For a trip that is already booked, open **My trips**, keep the driver chat handy, and we will stay with you until you are at the curb.
 
 ## Contact
 
@@ -30,14 +30,14 @@ export const CMS_SEEDS: CmsSeed[] = [
 2. Use in-ride chat with the driver for pickup, luggage, and waiting time.
 3. Email support with your ride code (starts with **CG-RIDE-**) if you need a refund, receipt, or complaint.
 
-We never ask for your password. CAN-GO staff will never ask you to pay a driver in cash outside the app.`,
+We never ask for your password. CAN-RIDE staff will never ask you to pay a driver in cash outside the app.`,
   },
   {
     slug: 'faq',
     kind: 'page',
     title: 'Frequently asked questions',
     sortOrder: 20,
-    bodyMd: `Answers about how CAN-GO works: tender-based pricing, when you pay, cancellations, flights, child seats, and price match. Open a question below. If you still need a person, write to [support@can-go.ca](mailto:support@can-go.ca).`,
+    bodyMd: `Answers about how CAN-RIDE works: tender-based pricing, when you pay, cancellations, flights, child seats, and price match. Open a question below. If you still need a person, write to [support@can-go.ca](mailto:support@can-go.ca).`,
   },
   {
     slug: 'agents',
@@ -64,7 +64,7 @@ Include your IATA/CLIA number (if any), cities you book, and monthly transfer vo
     kind: 'page',
     title: 'Feedback',
     sortOrder: 40,
-    bodyMd: `Tell us what to improve in booking, offers, the map, or hospitality. Product feedback goes to the CAN-GO team and shapes the next release.
+    bodyMd: `Tell us what to improve in booking, offers, the map, or hospitality. Product feedback goes to the CAN-RIDE team and shapes the next release.
 
 ## What to send
 
@@ -82,14 +82,14 @@ For a complaint about a completed trip, use Support and include the ride code so
     kind: 'page',
     title: 'From the road',
     sortOrder: 50,
-    bodyMd: `Guides on tender-based transfers, airport playbooks, and how hospitality scores work on CAN-GO. New articles publish here as the team writes them. Every post is editable from Admin → Content.`,
+    bodyMd: `Guides on tender-based transfers, airport playbooks, and how hospitality scores work on CAN-RIDE. New articles publish here as the team writes them. Every post is editable from Admin → Content.`,
   },
   {
     slug: 'destinations',
     kind: 'page',
     title: 'Destinations',
     sortOrder: 60,
-    bodyMd: `Book airport transfers, intercity rides, hourly chauffeur, and delivery in cities CAN-GO covers. Start with pickup and drop-off — nearby drivers bid, you pick the offer.
+    bodyMd: `Book airport transfers, intercity rides, hourly chauffeur, and delivery in cities CAN-RIDE covers. Start with pickup and drop-off — nearby drivers bid, you pick the offer.
 
 ## Popular corridors
 
@@ -105,9 +105,9 @@ Coverage grows with approved drivers. If your city is not listed yet, still send
   {
     slug: 'drivers',
     kind: 'page',
-    title: 'Drive with CAN-GO',
+    title: 'Drive with CAN-RIDE',
     sortOrder: 70,
-    bodyMd: `You set the price. Passengers choose the offer that fits. CAN-GO is a marketplace, not a dispatch meter.
+    bodyMd: `You set the price. Passengers choose the offer that fits. CAN-RIDE is a marketplace, not a dispatch meter.
 
 ## How it works
 
@@ -122,12 +122,12 @@ Coverage grows with approved drivers. If your city is not listed yet, still send
 - Vehicle photos that match what the passenger will see
 - Documents that ops can approve (licence, registration, insurance)
 
-Download the CAN-GO Driver app to go online. Questions: [partner@can-go.ca](mailto:partner@can-go.ca).`,
+Download the CAN-RIDE Driver app to go online. Questions: [partner@can-go.ca](mailto:partner@can-go.ca).`,
   },
   {
     slug: 'business',
     kind: 'page',
-    title: 'CAN-GO for business',
+    title: 'CAN-RIDE for business',
     sortOrder: 80,
     bodyMd: `Move staff and guests with the same marketplace model: request, compare driver offers, pay the selected trip. No surge surprise at the airport.
 
@@ -150,7 +150,7 @@ Write to [partner@can-go.ca](mailto:partner@can-go.ca) with company name, cities
     kind: 'legal',
     title: 'Service Agreement',
     sortOrder: 10,
-    bodyMd: `CAN-GO is a **marketplace**: passengers request a transfer, nearby drivers send offers, and you choose an offer before paying. CAN-GO is not a taxi company and does not employ the drivers who bid.
+    bodyMd: `CAN-RIDE is a **marketplace**: passengers request a transfer, nearby drivers send offers, and you choose an offer before paying. CAN-RIDE is not a taxi company and does not employ the drivers who bid.
 
 ## Prices
 
@@ -158,7 +158,7 @@ Prices shown in the app and on the web are **server-authoritative**. The fare yo
 
 ## Your contract
 
-When you accept an offer you contract with that driver (or their carrier) for the trip. CAN-GO provides the booking, payment, tracking, and support tools.
+When you accept an offer you contract with that driver (or their carrier) for the trip. CAN-RIDE provides the booking, payment, tracking, and support tools.
 
 ## Cancellations and waiting
 
@@ -181,7 +181,7 @@ We may update this agreement. The version on this page is the one that applies t
     kind: 'legal',
     title: 'Privacy Policy',
     sortOrder: 20,
-    bodyMd: `CAN-GO collects account details (name, email, phone), trip locations, and ride history to operate the marketplace. Driver KYC documents are stored privately and reviewed by ops. We do not sell personal data.
+    bodyMd: `CAN-RIDE collects account details (name, email, phone), trip locations, and ride history to operate the marketplace. Driver KYC documents are stored privately and reviewed by ops. We do not sell personal data.
 
 ## What we use
 
@@ -206,7 +206,7 @@ Privacy questions: [support@can-go.ca](mailto:support@can-go.ca). This page is e
     slug: 'faq-how-it-works',
     kind: 'faq',
     category: 'Booking',
-    title: 'How does CAN-GO work?',
+    title: 'How does CAN-RIDE work?',
     sortOrder: 10,
     bodyMd: `Create a ride request with pickup, drop-off, time, and vehicle classes. Nearby drivers send offers with the car photo, hospitality score, and their price. You compare and book the one you like — then pay that offer. That is tender-based pricing, not a fixed meter.`,
   },
@@ -270,7 +270,7 @@ Privacy questions: [support@can-go.ca](mailto:support@can-go.ca). This page is e
     slug: 'faq-safety',
     kind: 'faq',
     category: 'Account',
-    title: 'How does CAN-GO keep trips safe?',
+    title: 'How does CAN-RIDE keep trips safe?',
     sortOrder: 90,
     bodyMd: `Drivers complete KYC and vehicle checks before they can bid. You can share live tracking from the trip page. In-app chat is logged. For an emergency, call local emergency services first, then notify support.`,
   },
@@ -286,9 +286,9 @@ Privacy questions: [support@can-go.ca](mailto:support@can-go.ca). This page is e
     slug: 'blog-tender-marketplace',
     kind: 'app',
     category: 'blog',
-    title: 'Why CAN-GO uses driver bids, not a meter',
+    title: 'Why CAN-RIDE uses driver bids, not a meter',
     sortOrder: 10,
-    bodyMd: `Most ride apps show one price from the platform. CAN-GO opens a **tender**: you publish the trip, drivers who can actually cover it send offers, and you pick.
+    bodyMd: `Most ride apps show one price from the platform. CAN-RIDE opens a **tender**: you publish the trip, drivers who can actually cover it send offers, and you pick.
 
 That means you see the car, the hospitality score, and the fare **before** you pay. If one driver is expensive and another is right, you choose. If nobody can make your time, you are not stuck with a surge number on a screen — you wait for a real offer or adjust the request.
 
@@ -314,7 +314,7 @@ Add a comment if you have a tight connection or a lot of bags. Drivers bid with 
     category: 'blog',
     title: 'Hospitality score: greeting, luggage, and the ride',
     sortOrder: 30,
-    bodyMd: `Stars alone do not tell you if the driver helped with bags or met you at arrivals. CAN-GO asks travelers to rate **hospitality**: greeting, luggage help, and the ride itself.
+    bodyMd: `Stars alone do not tell you if the driver helped with bags or met you at arrivals. CAN-RIDE asks travelers to rate **hospitality**: greeting, luggage help, and the ride itself.
 
 That score sits on every bid next to the car photo. A cheaper offer with a weak hospitality record is still your choice — you can see it. After the trip, your rating is reviewed before it goes public when a comment is included.`,
   },

@@ -39,14 +39,14 @@ export default function CommandCenter() {
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
   }, [range]);
 
-  const donutColors = ['#b41b1d', '#2ea44f', '#1d4ed8', '#f59e0b', '#111'];
+  const donutColors = ['#e50000', '#2ea44f', '#1d4ed8', '#f59e0b', '#111'];
 
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div>
           <h1 className="page-title">Command Center</h1>
-          <p className="page-sub">Live fleet, marketplace loop, and revenue — CAN-GO ops</p>
+          <p className="page-sub">Live fleet, marketplace loop, and revenue — CAN-RIDE ops</p>
         </div>
         <select className="field" style={{ width: 140, margin: 0 }} value={range} onChange={(e) => setRange(e.target.value)}>
           <option value="today">Today</option>
@@ -59,7 +59,7 @@ export default function CommandCenter() {
       {err && <p className="err">{err}</p>}
 
       <div className="panel live-wall" style={{ marginBottom: 18 }}>
-        <FleetMap title="Live vehicles" compact forceRadar />
+        <FleetMap title="Live vehicles" compact />
       </div>
 
       {series && kpis && (
@@ -69,7 +69,7 @@ export default function CommandCenter() {
             <div className="kpi kpi-spark" style={{ animationDelay: '0ms' }}>
               <div className="label">GMV</div>
               <div className="value">{money(Number(kpis.revenue.gmv ?? 0))}</div>
-              <Sparkline values={series.trend.map((t) => t.gmv)} color="#b41b1d" />
+              <Sparkline values={series.trend.map((t) => t.gmv)} color="#e50000" />
             </div>
             <div className="kpi kpi-spark" style={{ animationDelay: '40ms' }}>
               <div className="label">Rides</div>

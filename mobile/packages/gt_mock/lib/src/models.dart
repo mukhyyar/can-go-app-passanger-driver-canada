@@ -7,12 +7,15 @@ class Place {
     this.subtitle = '',
     this.lat = 0,
     this.lng = 0,
+    this.placeId,
   });
   final String id;
   final String label;
   final String subtitle;
   final double lat;
   final double lng;
+  /// Google Places placeId when present (autocomplete may lack coords until details).
+  final String? placeId;
 
   bool get hasCoords => lat != 0 || lng != 0;
 }

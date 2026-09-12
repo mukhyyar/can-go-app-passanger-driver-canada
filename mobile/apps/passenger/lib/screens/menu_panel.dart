@@ -29,7 +29,14 @@ class MenuPanel extends StatelessWidget {
               Row(
                 children: [
                   const CanGoLogo(size: 40),
-                  const Spacer(),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: CanRideWordmark(
+                      fontSize: 22,
+                      compact: true,
+                      maxWidth: 200,
+                    ),
+                  ),
                   IconButton(
                     tooltip: 'Close',
                     onPressed: () => Navigator.of(context).maybePop(),

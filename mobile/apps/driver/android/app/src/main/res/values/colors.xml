@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="cango_brand">#B41B1D</color>
+    <color name="cango_brand">#E50000</color>
     <color name="cango_soft">#F8EAEA</color>
     <color name="cango_splash">#FFFFFF</color>
 </resources>

@@ -1,13 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:gt_mock/gt_mock.dart';
-import 'package:latlong2/latlong.dart';
 
 /// Geographic helpers for operating-zone circle / freehand drawing.
 class ZoneGeo {
   ZoneGeo._();
-
-  static const _distance = Distance();
 
   /// Approximate circle as a closed polygon using geodesic offsets.
   static List<GeoPoint> circleToPolygon(
@@ -15,37 +12,56 @@ class ZoneGeo {
     double radiusKm, {
     int steps = 64,
   }) {
-    final origin = LatLng(center.latitude, center.longitude);
     final meters = radiusKm * 1000.0;
     final out = <GeoPoint>[];
     for (var i = 0; i < steps; i++) {
       final bearing = (360.0 / steps) * i;
-      final p = _distance.offset(origin, meters, bearing);
-      out.add(GeoPoint(latitude: p.latitude, longitude: p.longitude));
+      out.add(_offset(center, meters, bearing));
     }
     return out;
   }
 
-  static double distanceKm(GeoPoint a, GeoPoint b) {
-    return _distance.as(
-          LengthUnit.Kilometer,
-          LatLng(a.latitude, a.longitude),
-          LatLng(b.latitude, b.longitude),
+  static GeoPoint _offset(GeoPoint origin, double meters, double bearingDeg) {
+    const earth = 6371000.0;
+    final brng = bearingDeg * math.pi / 180;
+    final lat1 = origin.latitude * math.pi / 180;
+    final lng1 = origin.longitude * math.pi / 180;
+    final ang = meters / earth;
+    final lat2 = math.asin(
+      math.sin(lat1) * math.cos(ang) +
+          math.cos(lat1) * math.sin(ang) * math.cos(brng),
+    );
+    final lng2 = lng1 +
+        math.atan2(
+          math.sin(brng) * math.sin(ang) * math.cos(lat1),
+          math.cos(ang) - math.sin(lat1) * math.sin(lat2),
         );
+    return GeoPoint(
+      latitude: lat2 * 180 / math.pi,
+      longitude: lng2 * 180 / math.pi,
+    );
   }
+
+  static double distanceKm(GeoPoint a, GeoPoint b) {
+    const r = 6371.0;
+    final dLat = _rad(b.latitude - a.latitude);
+    final dLng = _rad(b.longitude - a.longitude);
+    final la1 = _rad(a.latitude);
+    final la2 = _rad(b.latitude);
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(la1) * math.cos(la2) * math.sin(dLng / 2) * math.sin(dLng / 2);
+    return 2 * r * math.asin(math.min(1, math.sqrt(h)));
+  }
+
+  static double _rad(double d) => d * math.pi / 180;
 
   /// Point-in-circle using geodesic distance.
   static bool containsInCircle(
-    LatLng point,
+    GeoPoint point,
     GeoPoint center,
     double radiusKm,
   ) {
-    final d = _distance.as(
-      LengthUnit.Kilometer,
-      LatLng(center.latitude, center.longitude),
-      point,
-    );
-    return d <= radiusKm;
+    return distanceKm(point, center) <= radiusKm;
   }
 
   /// Ramer–Douglas–Peucker simplification (epsilon in degrees ≈ map units).

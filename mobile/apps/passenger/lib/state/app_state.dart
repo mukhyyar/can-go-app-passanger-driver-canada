@@ -153,13 +153,17 @@ class AppState extends ChangeNotifier {
       }
       placeSearchHistory = decoded
           .whereType<Map>()
-          .map((e) => Place(
-                id: e['id']?.toString() ?? '',
-                label: e['label']?.toString() ?? '',
-                subtitle: e['subtitle']?.toString() ?? '',
-                lat: (e['lat'] as num?)?.toDouble() ?? 0,
-                lng: (e['lng'] as num?)?.toDouble() ?? 0,
-              ))
+          .map((e) {
+            final pid = e['placeId']?.toString();
+            return Place(
+              id: e['id']?.toString() ?? '',
+              label: e['label']?.toString() ?? '',
+              subtitle: e['subtitle']?.toString() ?? '',
+              lat: (e['lat'] as num?)?.toDouble() ?? 0,
+              lng: (e['lng'] as num?)?.toDouble() ?? 0,
+              placeId: pid != null && pid.isNotEmpty ? pid : null,
+            );
+          })
           .where((p) => p.label.trim().isNotEmpty)
           .toList();
     } catch (_) {
@@ -195,6 +199,8 @@ class AppState extends ChangeNotifier {
               'subtitle': p.subtitle,
               'lat': p.lat,
               'lng': p.lng,
+              if (p.placeId != null && p.placeId!.isNotEmpty)
+                'placeId': p.placeId,
             },
           )
           .toList(),

@@ -19,7 +19,7 @@ class GtSplashScreen extends StatefulWidget {
     required this.onFinished,
     this.role = GtSplashRole.passenger,
     this.minDisplay = const Duration(milliseconds: 2800),
-    this.tagline = 'Your next adventure starts here',
+    this.tagline = 'Your marketplace for every ride',
   });
 
   /// App init finished (prefs / session restored).
@@ -294,25 +294,27 @@ class _GtSplashScreenState extends State<GtSplashScreen>
   }
 }
 
-/// Logo + soft brand glow — sized box so layout never collapses.
+/// Splash brand hero: square mark only (no writing.png).
 class _BrandHero extends StatelessWidget {
   const _BrandHero({required this.glowPulse});
 
   final double glowPulse;
 
+  static const _squareAsset = 'assets/can-ride-square.png';
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 220,
-      height: 220,
+      width: 200,
+      height: 200,
       child: Stack(
         alignment: Alignment.center,
         children: [
           Opacity(
             opacity: (glowPulse * 0.95).clamp(0.0, 1.0),
             child: Container(
-              width: 210,
-              height: 210,
+              width: 190,
+              height: 190,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
@@ -327,23 +329,13 @@ class _BrandHero extends StatelessWidget {
             ),
           ),
           Image.asset(
-            CanGoLogo.assetPath,
+            _squareAsset,
             package: CanGoLogo.assetPackage,
-            height: 168,
+            height: 148,
+            width: 148,
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
             gaplessPlayback: true,
-            errorBuilder: (context, error, stack) {
-              return const Text(
-                'CAN-GO',
-                style: TextStyle(
-                  color: GtColors.brand,
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.2,
-                ),
-              );
-            },
           ),
         ],
       ),
@@ -366,10 +358,10 @@ class _SplashAtmosphere extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Color(0xFFF8EAEA),
+                Color(0xFFFDEAEA),
                 Color(0xFFFFFFFF),
                 Color(0xFFFFFFFF),
-                Color(0xFFF8EAEA),
+                Color(0xFFFDEAEA),
               ],
               stops: [0.0, 0.28, 0.72, 1.0],
             ),
@@ -381,9 +373,9 @@ class _SplashAtmosphere extends StatelessWidget {
               begin: Alignment(-1.1, -0.8),
               end: Alignment(1.0, 0.9),
               colors: [
-                Color(0x12B41B1D),
+                Color(0x12E50000),
                 Color(0x00000000),
-                Color(0x0AB41B1D),
+                Color(0x0AE50000),
               ],
               stops: [0.0, 0.45, 1.0],
             ),
@@ -401,7 +393,7 @@ class _SoftDotsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0x09B41B1D)
+      ..color = const Color(0x09E50000)
       ..style = PaintingStyle.fill;
     const step = 28.0;
     for (var y = 0.0; y < size.height; y += step) {
@@ -539,9 +531,9 @@ class _SplashProgress extends StatelessWidget {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Color(0x00B41B1D),
+                          Color(0x00E50000),
                           GtColors.brand,
-                          Color(0x00B41B1D),
+                          Color(0x00E50000),
                         ],
                       ),
                     ),
@@ -564,7 +556,7 @@ class GtSplashGate extends StatefulWidget {
     required this.child,
     this.role = GtSplashRole.passenger,
     this.minDisplay = const Duration(milliseconds: 2800),
-    this.tagline = 'Your next adventure starts here',
+    this.tagline = 'Your marketplace for every ride',
   });
 
   final bool ready;

@@ -57,7 +57,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <BrandLogo size={36} />
           {!collapsed && (
             <div>
-              <h1>CAN-GO</h1>
+              <h1>CAN-RIDE</h1>
               <span>Admin Ops</span>
             </div>
           )}

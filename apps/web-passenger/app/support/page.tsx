@@ -7,7 +7,7 @@ export default function Page() {
       slug="support"
       kicker="Help center"
       fallbackTitle="Support"
-      fallbackBody={`CAN-GO support helps with bookings, driver offers, payments, and account access.
+      fallbackBody={`CAN-RIDE support helps with bookings, driver offers, payments, and account access.
 
 ## Contact
 

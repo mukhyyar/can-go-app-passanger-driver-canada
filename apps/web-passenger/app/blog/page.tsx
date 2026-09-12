@@ -47,7 +47,7 @@ export default function Page() {
       updatedAt={intro?.updatedAt}
     >
       {intro?.bodyMd ? <Markdown source={intro.bodyMd} /> : (
-        <p>Guides on tender-based transfers, airports, and hospitality on CAN-GO.</p>
+        <p>Guides on tender-based transfers, airports, and hospitality on CAN-RIDE.</p>
       )}
       {!ready ? (
         <p className="muted">Loading articles…</p>

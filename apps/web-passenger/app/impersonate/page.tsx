@@ -28,7 +28,7 @@ function Inner() {
 
   return (
     <main style={{ padding: 48, maxWidth: 560, margin: '0 auto' }}>
-      <h1>Opening CAN-GO as passenger…</h1>
+      <h1>Opening CAN-RIDE as passenger…</h1>
       {err ? <p>{err}</p> : <p>Validating secure login URL.</p>}
     </main>
   );

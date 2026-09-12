@@ -1,59 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { googleMapsApiKey, loadGoogleMaps, type GMap, type GOverlay } from '../lib/google-maps-loader';
 
 type Pt = { lat: number; lng: number; weight?: number };
 
-type LeafletMap = {
-  remove: () => void;
-  setView: (ll: [number, number], z: number) => LeafletMap;
-  invalidateSize: () => void;
-};
-type LeafletLayer = { addTo: (m: LeafletMap | LeafletLayer) => LeafletLayer; clearLayers?: () => void };
-type LeafletNS = {
-  map: (el: HTMLElement, opts?: object) => LeafletMap;
-  tileLayer: (url: string, opts: { attribution: string }) => { addTo: (m: LeafletMap) => void };
-  layerGroup: () => LeafletLayer;
-  circleMarker: (
-    ll: [number, number],
-    opts: { radius: number; color: string; fillColor?: string; fillOpacity?: number; weight?: number },
-  ) => { addTo: (m: LeafletLayer) => { bindPopup: (html: string) => void } };
-};
-
-function leafletFromWindow(): LeafletNS | undefined {
-  return (window as unknown as { L?: LeafletNS }).L;
-}
-
-async function ensureLeaflet(): Promise<LeafletNS | null> {
-  const already = leafletFromWindow();
-  if (already) return already;
-  try {
-    if (!document.querySelector('link[href="/vendor/leaflet/leaflet.css"]')) {
-      const l = document.createElement('link');
-      l.rel = 'stylesheet';
-      l.href = '/vendor/leaflet/leaflet.css';
-      document.head.appendChild(l);
-    }
-    await new Promise<void>((resolve, reject) => {
-      if (document.querySelector('script[src="/vendor/leaflet/leaflet.js"]')) {
-        resolve();
-        return;
-      }
-      const s = document.createElement('script');
-      s.src = '/vendor/leaflet/leaflet.js';
-      s.async = true;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('leaflet'));
-      document.body.appendChild(s);
-    });
-    return leafletFromWindow() ?? null;
-  } catch {
-    return null;
-  }
-}
-
 const LAYER_COLOR: Record<string, string> = {
-  requests: '#b41b1d',
+  requests: '#e50000',
   pickups: '#2ea44f',
   dropoffs: '#1d4ed8',
   drivers: '#f59e0b',
@@ -68,46 +21,77 @@ export function AnalyticsMap({
   active: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<GMap | null>(null);
+  const overlaysRef = useRef<GOverlay[]>([]);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const pts = layers[active] ?? [];
 
   useEffect(() => {
-    let map: LeafletMap | null = null;
     let cancelled = false;
+
     (async () => {
-      const L = await ensureLeaflet();
-      if (!L || !host.current || cancelled) return;
-      map = L.map(host.current, { zoomControl: true });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OSM',
-      }).addTo(map);
-      const group = L.layerGroup().addTo(map);
-      const color = LAYER_COLOR[active] ?? '#b41b1d';
-      const shown = pts.slice(0, 600);
-      for (const p of shown) {
-        L.circleMarker([p.lat, p.lng], {
-          radius: 5 + (p.weight ?? 1),
-          color,
-          fillColor: color,
-          fillOpacity: 0.35,
-          weight: 1,
-        }).addTo(group);
+      if (!host.current) return;
+      if (!googleMapsApiKey()) {
+        setError('Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY');
+        return;
       }
-      if (shown[0]) map.setView([shown[0].lat, shown[0].lng], 11);
-      else map.setView([24.8607, 67.0011], 11);
-      setTimeout(() => map?.invalidateSize(), 80);
+      const g = await loadGoogleMaps();
+      if (!g || cancelled || !host.current) {
+        if (!cancelled) setError('Google Maps failed to load');
+        return;
+      }
+
+      for (const o of overlaysRef.current) o.setMap(null);
+      overlaysRef.current = [];
+
+      if (!mapRef.current) {
+        mapRef.current = new g.Map(host.current, {
+          center: { lat: 24.8607, lng: 67.0011 },
+          zoom: 11,
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+      }
+      const map = mapRef.current;
+      const color = LAYER_COLOR[active] ?? '#e50000';
+      const shown = pts.slice(0, 600);
+      const bounds = new g.LatLngBounds();
+      for (const p of shown) {
+        overlaysRef.current.push(
+          new g.Circle({
+            map,
+            center: { lat: p.lat, lng: p.lng },
+            radius: 40 + (p.weight ?? 1) * 15,
+            strokeColor: color,
+            strokeWeight: 1,
+            fillColor: color,
+            fillOpacity: 0.35,
+          }),
+        );
+        bounds.extend({ lat: p.lat, lng: p.lng });
+      }
+      if (shown[0]) map.fitBounds(bounds, 40);
+      else {
+        map.setCenter({ lat: 24.8607, lng: 67.0011 });
+        map.setZoom(11);
+      }
       setReady(true);
+      setError(null);
     })();
+
     return () => {
       cancelled = true;
-      map?.remove();
+      for (const o of overlaysRef.current) o.setMap(null);
+      overlaysRef.current = [];
     };
   }, [active, pts]);
 
   return (
-    <div className="map" style={{ height: 420 }}>
-      <div ref={host} className="leaflet-host" />
-      {!ready && <p className="radar-empty">Loading map…</p>}
+    <div className="map" style={{ height: 420, position: 'relative' }}>
+      <div ref={host} className="gmaps-host" style={{ height: '100%' }} />
+      {!ready && !error && <p className="radar-empty">Loading map…</p>}
+      {error && <p className="radar-empty">{error}</p>}
     </div>
   );
 }

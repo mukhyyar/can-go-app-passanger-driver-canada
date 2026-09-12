@@ -223,8 +223,16 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: GtGreenButton(
-              label: 'Next',
-              onPressed: _busy ? null : () => context.push('/onboarding/photos'),
+              label: 'Save',
+              onPressed: _busy
+                  ? null
+                  : () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/');
+                      }
+                    },
             ),
           ),
         ],

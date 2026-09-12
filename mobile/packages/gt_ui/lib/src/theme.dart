@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// CAN-GO palette with readable contrast:
+/// CAN-RIDE palette with readable contrast:
 /// white surfaces, black body text, red for highlights / CTAs only.
 class GtColors {
-  /// Logo primary red `#B41B1D`
-  static const brand = Color(0xFFB41B1D);
-  static const brandDark = Color(0xFF8E1517);
+  /// Logo primary red `#E50000`
+  static const brand = Color(0xFFE50000);
+  static const brandDark = Color(0xFFB40000);
   static const white = Color(0xFFFFFFFF);
-  static const soft = Color(0xFFF8EAEA);
+  static const soft = Color(0xFFFDEAEA);
 
   /// Alias for accent call-sites.
   static const orange = brand;
