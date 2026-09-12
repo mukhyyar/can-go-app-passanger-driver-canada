@@ -71,7 +71,7 @@ export function FleetMap({
       if (cancelled || !host.current) return;
       if (!mapRef.current) {
         mapRef.current = new g.Map(host.current, {
-          center: { lat: 24.86, lng: 67.01 },
+          center: { lat: 43.83, lng: -79.54 },
           zoom: 11,
           mapTypeControl: false,
           streetViewControl: false,

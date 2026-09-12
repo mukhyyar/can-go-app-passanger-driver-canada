@@ -61,8 +61,8 @@ function fallbackCoord(id: string, baseLat?: number | null, baseLng?: number | n
   let h = 0;
   for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return {
-    lat: 24.8607 + ((h % 180) - 90) / 380,
-    lng: 67.0011 + (((h >> 8) % 180) - 90) / 380,
+    lat: 43.8341 + ((h % 180) - 90) / 380,
+    lng: -79.5389 + (((h >> 8) % 180) - 90) / 380,
   };
 }
 

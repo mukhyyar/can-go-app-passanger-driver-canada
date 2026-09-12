@@ -125,7 +125,7 @@ export function resolveAnalyticsRange(opts: {
   timezone?: string;
   now?: Date;
 }): ResolvedRange {
-  const timezone = opts.timezone && opts.timezone.length > 0 ? opts.timezone : 'Asia/Karachi';
+  const timezone = opts.timezone && opts.timezone.length > 0 ? opts.timezone : 'America/Toronto';
   const now = opts.now ?? new Date();
   const range = RANGE_KEYS.has(opts.range ?? '') ? (opts.range as string) : '7d';
   const todayStart = startOfZonedDay(now, timezone);

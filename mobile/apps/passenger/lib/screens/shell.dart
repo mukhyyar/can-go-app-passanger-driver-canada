@@ -27,7 +27,7 @@ Future<void> openPassengerMenu([BuildContext? context]) async {
       return Align(
         alignment: Alignment.centerLeft,
         child: Material(
-          color: Colors.white,
+          color: GtColors.bgGrey,
           child: SizedBox(
             width: width,
             height: double.infinity,

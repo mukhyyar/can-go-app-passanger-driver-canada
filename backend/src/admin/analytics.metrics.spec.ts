@@ -71,15 +71,15 @@ describe('analytics formulas', () => {
 });
 
 describe('analytics timezone ranges', () => {
-  it('fromZoned maps Karachi midnight to the previous UTC evening', () => {
-    const d = fromZoned(2026, 9, 8, 0, 0, 'Asia/Karachi');
-    expect(d.toISOString()).toBe('2026-09-07T19:00:00.000Z');
+  it('fromZoned maps Toronto midnight to UTC morning (EDT)', () => {
+    const d = fromZoned(2026, 9, 8, 0, 0, 'America/Toronto');
+    expect(d.toISOString()).toBe('2026-09-08T04:00:00.000Z');
   });
 
   it('today stays inside the zoned calendar day', () => {
-    const now = new Date('2026-09-08T10:00:00.000Z'); // 15:00 Karachi
-    const r = resolveAnalyticsRange({ range: 'today', timezone: 'Asia/Karachi', now });
-    const start = zonedParts(r.current.start, 'Asia/Karachi');
+    const now = new Date('2026-09-08T19:00:00.000Z'); // 15:00 Toronto (EDT)
+    const r = resolveAnalyticsRange({ range: 'today', timezone: 'America/Toronto', now });
+    const start = zonedParts(r.current.start, 'America/Toronto');
     expect(start.y).toBe(2026);
     expect(start.m).toBe(9);
     expect(start.d).toBe(8);
@@ -88,16 +88,16 @@ describe('analytics timezone ranges', () => {
   });
 
   it('last 7 days is inclusive of today and 6 prior zoned days', () => {
-    const now = new Date('2026-09-08T12:00:00.000+05:00');
-    const r = resolveAnalyticsRange({ range: '7d', timezone: 'Asia/Karachi', now });
-    const start = zonedParts(r.current.start, 'Asia/Karachi');
+    const now = new Date('2026-09-08T12:00:00.000-04:00');
+    const r = resolveAnalyticsRange({ range: '7d', timezone: 'America/Toronto', now });
+    const start = zonedParts(r.current.start, 'America/Toronto');
     expect(`${start.y}-${start.m}-${start.d}`).toBe('2026-9-2');
     expect(r.compareLabel).toContain('vs');
   });
 
-  it('does not bucket UTC timestamps as the previous UTC date for Karachi evenings', () => {
-    const now = new Date('2026-09-08T21:30:00.000+05:00');
-    const r = resolveAnalyticsRange({ range: 'today', timezone: 'Asia/Karachi', now });
+  it('does not bucket UTC timestamps as the previous UTC date for Toronto evenings', () => {
+    const now = new Date('2026-09-08T21:30:00.000-04:00');
+    const r = resolveAnalyticsRange({ range: 'today', timezone: 'America/Toronto', now });
     expect(r.currentLabel).toContain('Sep 8');
   });
 });

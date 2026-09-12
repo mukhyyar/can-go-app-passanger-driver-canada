@@ -208,10 +208,10 @@ export function AnalyticsWorkspace() {
             <option value="year">Compare previous year</option>
             <option value="none">No comparison</option>
           </select>
-          <select className="field" style={{ width: 160, margin: 0 }} value={params.get('timezone') ?? 'Asia/Karachi'} onChange={(e) => setParam({ timezone: e.target.value })}>
-            <option value="Asia/Karachi">Asia/Karachi</option>
-            <option value="UTC">UTC</option>
+          <select className="field" style={{ width: 160, margin: 0 }} value={params.get('timezone') ?? 'America/Toronto'} onChange={(e) => setParam({ timezone: e.target.value })}>
             <option value="America/Toronto">America/Toronto</option>
+            <option value="UTC">UTC</option>
+            <option value="America/Vancouver">America/Vancouver</option>
             <option value="Europe/London">Europe/London</option>
           </select>
           <select className="field" style={{ width: 140, margin: 0 }} value={params.get('groupBy') ?? 'day'} onChange={(e) => setParam({ groupBy: e.target.value })}>

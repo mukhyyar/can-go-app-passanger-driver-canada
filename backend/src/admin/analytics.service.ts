@@ -157,7 +157,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       this.prisma.operatingZone.findMany({ distinct: ['name'], select: { name: true }, take: 80 }),
     ]);
     return {
-      timezoneDefault: 'Asia/Karachi',
+      timezoneDefault: 'America/Toronto',
       serviceTypes: serviceTypes.map((s) => s.serviceType),
       vehicleClasses: vehicles.map((v) => v.vehicleClass),
       paymentMethods: providers.map((p) => p.provider),
@@ -643,7 +643,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
 
   async liveNow() {
     const onlineSince = new Date(Date.now() - 5 * 60_000);
-    const today = resolveAnalyticsRange({ range: 'today', timezone: 'Asia/Karachi' });
+    const today = resolveAnalyticsRange({ range: 'today', timezone: 'America/Toronto' });
     const [
       online,
       onTrip,

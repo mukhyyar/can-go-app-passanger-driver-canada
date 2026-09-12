@@ -47,7 +47,7 @@ export function AnalyticsMap({
 
       if (!mapRef.current) {
         mapRef.current = new g.Map(host.current, {
-          center: { lat: 24.8607, lng: 67.0011 },
+          center: { lat: 43.8341, lng: -79.5389 },
           zoom: 11,
           mapTypeControl: false,
           streetViewControl: false,
@@ -73,7 +73,7 @@ export function AnalyticsMap({
       }
       if (shown[0]) map.fitBounds(bounds, 40);
       else {
-        map.setCenter({ lat: 24.8607, lng: 67.0011 });
+        map.setCenter({ lat: 43.8341, lng: -79.5389 });
         map.setZoom(11);
       }
       setReady(true);

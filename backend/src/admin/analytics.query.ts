@@ -71,7 +71,7 @@ export function parseAnalyticsQuery(q: Record<string, string | undefined>): Anal
     range: q.range ?? '7d',
     from: q.from || undefined,
     to: q.to || undefined,
-    timezone: q.timezone || 'Asia/Karachi',
+    timezone: q.timezone || 'America/Toronto',
     compare,
     city: q.city || undefined,
     zone: q.zone || undefined,

@@ -5,138 +5,144 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
 
-/// Settings-style menu content (GetTransfer passenger layout).
+/// Settings-style menu content (CAN-RIDE passenger layout).
 /// Used in the hamburger drawer and the Settings tab.
-class MenuPanel extends StatelessWidget {
+class MenuPanel extends StatefulWidget {
   const MenuPanel({super.key, this.inDrawer = false});
 
   final bool inDrawer;
 
   @override
+  State<MenuPanel> createState() => _MenuPanelState();
+}
+
+class _MenuPanelState extends State<MenuPanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _enter;
+  late final Animation<double> _fade0;
+  late final Animation<double> _fade1;
+  late final Animation<double> _fade2;
+  late final Animation<Offset> _slide0;
+  late final Animation<Offset> _slide1;
+  late final Animation<Offset> _slide2;
+
+  @override
+  void initState() {
+    super.initState();
+    _enter = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _fade0 = CurvedAnimation(
+      parent: _enter,
+      curve: const Interval(0.0, 0.45, curve: Curves.easeOut),
+    );
+    _fade1 = CurvedAnimation(
+      parent: _enter,
+      curve: const Interval(0.12, 0.58, curve: Curves.easeOut),
+    );
+    _fade2 = CurvedAnimation(
+      parent: _enter,
+      curve: const Interval(0.24, 0.72, curve: Curves.easeOut),
+    );
+    _slide0 = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(_fade0);
+    _slide1 = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(_fade1);
+    _slide2 = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(_fade2);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _enter.value = 1;
+      } else {
+        _enter.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _enter.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final rides = state.completedRideCount;
-    final unitWord = state.distanceUnit == 'mi' ? 'miles' : 'km';
+    final unitWord = state.distanceUnit == 'mi' ? 'mi' : 'km';
+    final name = state.isAuthenticated
+        ? (state.me?['fullName']?.toString().trim().isNotEmpty == true
+            ? state.me!['fullName'].toString()
+            : 'My account')
+        : 'Log in or sign up';
 
     return ColoredBox(
-      color: Colors.white,
+      color: GtColors.bgGrey,
       child: SafeArea(
         right: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, widget.inDrawer ? 8 : 12, 16, 28),
           children: [
-            if (inDrawer) ...[
-              Row(
-                children: [
-                  const CanGoLogo(size: 40),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: CanRideWordmark(
-                      fontSize: 22,
-                      compact: true,
-                      maxWidth: 200,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.close, color: GtColors.textSecondary),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
+            if (widget.inDrawer) ...[
+              const _DrawerHeader(),
+              const SizedBox(height: 12),
             ],
-            if (state.isAuthenticated) ...[
-              Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8E8DE),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '0 $unitWord collected in $rides rides',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: GtColors.text,
-                    ),
-                  ),
+            FadeTransition(
+              opacity: _fade0,
+              child: SlideTransition(
+                position: _slide0,
+                child: _ProfileHero(
+                  name: name,
+                  subtitle: state.isAuthenticated
+                      ? '$rides rides · $unitWord'
+                      : 'Sign in to manage trips',
+                  initials: _initials(name, state.isAuthenticated),
+                  onTap: () {
+                    if (widget.inDrawer) Navigator.of(context).pop();
+                    context.push(
+                      state.isAuthenticated ? '/account' : '/auth',
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 8),
-            ],
-            _MenuTile(
-              icon: Icons.account_circle_outlined,
-              label: state.isAuthenticated
-                  ? (state.me?['fullName']?.toString().trim().isNotEmpty == true
-                      ? state.me!['fullName'].toString()
-                      : 'My account')
-                  : 'Log in or sign up',
-              onTap: () {
-                if (inDrawer) Navigator.of(context).pop();
-                context.push(
-                  state.isAuthenticated ? '/account' : '/auth',
-                );
-              },
-            ),
-            _MenuTile(
-              icon: Icons.notifications_outlined,
-              label: 'Notifications',
-              onTap: () => _toggleNotifications(context, state),
-            ),
-            _MenuTile(
-              icon: Icons.monetization_on_outlined,
-              label: 'Currency',
-              trailingValue: state.currencyCode,
-              onTap: () => _pickCurrency(context, state),
-            ),
-            _MenuTile(
-              icon: Icons.straighten,
-              label: 'Distance unit',
-              trailingValue: state.distanceUnit,
-              onTap: () => _pickDistanceUnit(context, state),
-            ),
-            _MenuTile(
-              icon: Icons.language,
-              label: 'Language',
-              trailingValue: state.language,
-              onTap: () => _pickLanguage(context, state),
-              showDivider: false,
-            ),
-            const SizedBox(height: 16),
-            _PromoCard(
-              title: 'Request a VIP account',
-              subtitle: 'Access to premium services',
-              actionLabel: 'Request',
-              onAction: () async {
-                final app = context.read<AppState>();
-                if (!app.isAuthenticated) {
-                  if (inDrawer) Navigator.of(context).pop();
-                  context.push('/auth');
-                  return;
-                }
-                try {
-                  await app.api.auth.requestVip();
-                  if (context.mounted) {
-                    _toast(context, 'VIP request submitted');
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    _toast(context, 'VIP request failed: $e');
-                  }
-                }
-              },
-            ),
-            const SizedBox(height: 10),
-            _PromoCard(
-              title: 'Join as a driver!',
-              subtitle: 'Download the application and earn with us',
-              actionLabel: 'Download',
-              onAction: () => _toast(context, 'Driver app coming soon'),
             ),
             const SizedBox(height: 20),
+            FadeTransition(
+              opacity: _fade1,
+              child: SlideTransition(
+                position: _slide1,
+                child: _PrefsGroup(
+                  notificationsEnabled: state.notificationsEnabled,
+                  onNotificationsChanged: state.setNotificationsEnabled,
+                  currencyCode: state.currencyCode,
+                  distanceUnit: state.distanceUnit,
+                  language: state.language,
+                  onCurrency: () => _pickCurrency(context, state),
+                  onDistance: () => _pickDistanceUnit(context, state),
+                  onLanguage: () => _pickLanguage(context, state),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FadeTransition(
+              opacity: _fade2,
+              child: SlideTransition(
+                position: _slide2,
+                child: _DriverPromo(
+                  onDownload: () => _toast(context, 'Driver app coming soon'),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
             const Center(
               child: Text(
                 'Version 1.0.0 (100)',
@@ -152,18 +158,18 @@ class MenuPanel extends StatelessWidget {
     );
   }
 
-  void _toast(BuildContext context, String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  String? _initials(String name, bool authenticated) {
+    if (!authenticated || name == 'My account' || name == 'Log in or sign up') {
+      return null;
+    }
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return null;
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 
-  void _toggleNotifications(BuildContext context, AppState state) {
-    state.setNotificationsEnabled(!state.notificationsEnabled);
-    _toast(
-      context,
-      state.notificationsEnabled
-          ? 'Notifications enabled'
-          : 'Notifications disabled',
-    );
+  void _toast(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _pickLanguage(BuildContext context, AppState state) async {
@@ -176,7 +182,7 @@ class MenuPanel extends StatelessWidget {
               (l) => ListTile(
                 title: Text(l),
                 trailing: state.language == l
-                    ? const Icon(Icons.check, color: GtColors.orange)
+                    ? const Icon(Icons.check, color: GtColors.brand)
                     : null,
                 onTap: () => Navigator.pop(context, l),
               ),
@@ -198,7 +204,7 @@ class MenuPanel extends StatelessWidget {
               (c) => ListTile(
                 title: Text(c),
                 trailing: state.currency == c
-                    ? const Icon(Icons.check, color: GtColors.orange)
+                    ? const Icon(Icons.check, color: GtColors.brand)
                     : null,
                 onTap: () => Navigator.pop(context, c),
               ),
@@ -220,7 +226,7 @@ class MenuPanel extends StatelessWidget {
               (u) => ListTile(
                 title: Text(u),
                 trailing: state.distanceUnit == u
-                    ? const Icon(Icons.check, color: GtColors.orange)
+                    ? const Icon(Icons.check, color: GtColors.brand)
                     : null,
                 onTap: () => Navigator.pop(context, u),
               ),
@@ -232,135 +238,369 @@ class MenuPanel extends StatelessWidget {
   }
 }
 
-class _MenuTile extends StatelessWidget {
-  const _MenuTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.trailingValue,
-    this.showDivider = true,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final String? trailingValue;
-  final bool showDivider;
+class _DrawerHeader extends StatelessWidget {
+  const _DrawerHeader();
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Row(
-              children: [
-                Icon(icon, size: 24, color: GtColors.text),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: GtColors.text,
-                    ),
-                  ),
-                ),
-                if (trailingValue != null) ...[
-                  Text(
-                    trailingValue!,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      color: GtColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                const Icon(Icons.chevron_right, color: GtColors.textMuted),
-              ],
+        Row(
+          children: [
+            const CanGoLogo(size: 40),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: CanRideWordmark(
+                fontSize: 22,
+                compact: true,
+                maxWidth: 200,
+              ),
             ),
-          ),
+            IconButton(
+              tooltip: 'Close',
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.close, color: GtColors.textSecondary),
+            ),
+          ],
         ),
-        if (showDivider)
-          const Divider(height: 1, thickness: 1, color: GtColors.border),
+        const SizedBox(height: 4),
+        const Divider(height: 1, thickness: 1, color: GtColors.border),
       ],
     );
   }
 }
 
-class _PromoCard extends StatelessWidget {
-  const _PromoCard({
-    required this.title,
+class _ProfileHero extends StatelessWidget {
+  const _ProfileHero({
+    required this.name,
     required this.subtitle,
-    required this.actionLabel,
-    required this.onAction,
+    required this.onTap,
+    this.initials,
   });
 
-  final String title;
+  final String name;
   final String subtitle;
-  final String actionLabel;
-  final VoidCallback onAction;
+  final String? initials;
+  final VoidCallback onTap;
 
-  static const _actionGreen = Color(0xFF5BAE4A);
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                GtColors.soft,
+                Color(0xFFFFFFFF),
+              ],
+            ),
+            border: Border.all(color: GtColors.border),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: GtColors.soft,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: GtColors.brand.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: initials != null
+                      ? Text(
+                          initials!,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: GtColors.brand,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.person_outline,
+                          size: 28,
+                          color: GtColors.brand,
+                        ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: GtColors.text,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: GtColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: GtColors.textMuted),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PrefsGroup extends StatelessWidget {
+  const _PrefsGroup({
+    required this.notificationsEnabled,
+    required this.onNotificationsChanged,
+    required this.currencyCode,
+    required this.distanceUnit,
+    required this.language,
+    required this.onCurrency,
+    required this.onDistance,
+    required this.onLanguage,
+  });
+
+  final bool notificationsEnabled;
+  final ValueChanged<bool> onNotificationsChanged;
+  final String currencyCode;
+  final String distanceUnit;
+  final String language;
+  final VoidCallback onCurrency;
+  final VoidCallback onDistance;
+  final VoidCallback onLanguage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'Preferences',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+              color: GtColors.textSecondary,
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: GtColors.border),
+          ),
+          child: Column(
+            children: [
+              _PrefRow(
+                icon: Icons.notifications_outlined,
+                label: 'Notifications',
+                trailing: Switch.adaptive(
+                  value: notificationsEnabled,
+                  onChanged: onNotificationsChanged,
+                  activeTrackColor: GtColors.brand,
+                  inactiveTrackColor: GtColors.border,
+                ),
+              ),
+              const _PrefDivider(),
+              _PrefRow(
+                icon: Icons.monetization_on_outlined,
+                label: 'Currency',
+                value: currencyCode,
+                onTap: onCurrency,
+              ),
+              const _PrefDivider(),
+              _PrefRow(
+                icon: Icons.straighten,
+                label: 'Distance unit',
+                value: distanceUnit,
+                onTap: onDistance,
+              ),
+              const _PrefDivider(),
+              _PrefRow(
+                icon: Icons.language,
+                label: 'Language',
+                value: language,
+                onTap: onLanguage,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PrefDivider extends StatelessWidget {
+  const _PrefDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(left: 56),
+      child: Divider(height: 1, thickness: 1, color: GtColors.border),
+    );
+  }
+}
+
+class _PrefRow extends StatelessWidget {
+  const _PrefRow({
+    required this.icon,
+    required this.label,
+    this.value,
+    this.trailing,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              color: GtColors.soft,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 20, color: GtColors.brand),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: GtColors.text,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            trailing!
+          else ...[
+            if (value != null)
+              Text(
+                value!,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: GtColors.textMuted,
+                ),
+              ),
+            const SizedBox(width: 2),
+            const Icon(Icons.chevron_right, color: GtColors.textMuted, size: 22),
+          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) return row;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: row,
+      ),
+    );
+  }
+}
+
+class _DriverPromo extends StatelessWidget {
+  const _DriverPromo({required this.onDownload});
+
+  final VoidCallback onDownload;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: GtColors.border),
+        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            GtColors.soft,
+            GtColors.brand.withValues(alpha: 0.08),
+            Colors.white,
+          ],
+        ),
+        border: Border.all(color: GtColors.brand.withValues(alpha: 0.18)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: GtColors.text,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: GtColors.textSecondary,
-                    height: 1.25,
-                  ),
-                ),
-              ],
+          const Text(
+            'Join as a driver!',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: GtColors.text,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(height: 4),
+          const Text(
+            'Download the application and earn with us',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.3,
+              color: GtColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 36,
+            width: double.infinity,
+            height: 42,
             child: ElevatedButton(
-              onPressed: onAction,
+              onPressed: onDownload,
               style: ElevatedButton.styleFrom(
-                backgroundColor: _actionGreen,
+                backgroundColor: GtColors.brand,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                minimumSize: const Size(0, 36),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 textStyle: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              child: Text(actionLabel),
+              child: const Text('Download'),
             ),
           ),
         ],
@@ -376,7 +616,7 @@ class PassengerMenuDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     // Kept for compatibility; menu opens via [openPassengerMenu].
     return const Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: GtColors.bgGrey,
       child: MenuPanel(inDrawer: true),
     );
   }

@@ -237,9 +237,6 @@ class AuthApi {
     await client.tokens.clear();
   }
 
-  Future<Map<String, dynamic>> requestVip() =>
-      client.post('/passenger/vip/request', body: {});
-
   Future<Map<String, dynamic>> vipStatus() => client.get('/passenger/vip');
 
   Future<Map<String, dynamic>> ensureReferralCode() =>

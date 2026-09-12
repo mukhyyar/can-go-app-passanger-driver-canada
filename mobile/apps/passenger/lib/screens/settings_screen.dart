@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/screens/menu_panel.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -7,7 +8,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: GtColors.bgGrey,
       body: SafeArea(child: MenuPanel()),
     );
   }
