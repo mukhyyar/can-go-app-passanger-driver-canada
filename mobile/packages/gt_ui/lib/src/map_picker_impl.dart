@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'map_picker.dart';
 
 /// Native has no browser Geocoder — caller uses PlacesSearch.reverse.
 Future<String?> reverseGeocodeLatLng(double lat, double lng) async => null;
 
-/// Native Google Maps picker embed.
+/// Native OpenStreetMap picker embed.
 Widget buildMapPicker({
   required double initialLat,
   required double initialLng,
@@ -47,7 +48,7 @@ class _NativeMapPicker extends StatefulWidget {
 }
 
 class _NativeMapPickerState extends State<_NativeMapPicker> {
-  GoogleMapController? _map;
+  final MapController _map = MapController();
   LatLng _center = const LatLng(0, 0);
   bool _moving = false;
 
@@ -62,7 +63,7 @@ class _NativeMapPickerState extends State<_NativeMapPicker> {
     widget.controller?.bind(
       animateTo: _animateTo,
       readCenter: () => (_center.latitude, _center.longitude),
-      onDispose: () => _map = null,
+      onDispose: () {},
     );
   }
 
@@ -78,20 +79,14 @@ class _NativeMapPickerState extends State<_NativeMapPicker> {
   @override
   void dispose() {
     widget.controller?.unbind();
-    _map?.dispose();
+    _map.dispose();
     super.dispose();
   }
 
   Future<void> _animateTo(double lat, double lng) async {
-    final c = _map;
-    if (c == null) return;
     final target = LatLng(lat, lng);
     _center = target;
-    await c.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: widget.initialZoom),
-      ),
-    );
+    _map.move(target, widget.initialZoom);
     widget.onCenterChanged?.call(lat, lng);
   }
 
@@ -103,29 +98,44 @@ class _NativeMapPickerState extends State<_NativeMapPicker> {
 
   @override
   Widget build(BuildContext context) {
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: LatLng(widget.initialLat, widget.initialLng),
-        zoom: widget.initialZoom,
+    return FlutterMap(
+      mapController: _map,
+      options: MapOptions(
+        initialCenter: LatLng(widget.initialLat, widget.initialLng),
+        initialZoom: widget.initialZoom,
+        onMapReady: () {
+          widget.onCenterChanged?.call(widget.initialLat, widget.initialLng);
+        },
+        onPositionChanged: (camera, hasGesture) {
+          _center = camera.center;
+          if (hasGesture) _setMoving(true);
+        },
+        onMapEvent: (event) {
+          if (event is MapEventMoveEnd || event is MapEventFlingAnimationEnd) {
+            _setMoving(false);
+            widget.onCenterChanged?.call(_center.latitude, _center.longitude);
+          }
+        },
       ),
-      markers: const {},
-      myLocationButtonEnabled: false,
-      myLocationEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: false,
-      onMapCreated: (controller) {
-        _map = controller;
-        widget.onCenterChanged?.call(widget.initialLat, widget.initialLng);
-      },
-      onCameraMove: (pos) {
-        _center = pos.target;
-        _setMoving(true);
-      },
-      onCameraIdle: () {
-        _setMoving(false);
-        widget.onCenterChanged?.call(_center.latitude, _center.longitude);
-      },
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.gettransfer',
+        ),
+        const Align(
+          alignment: Alignment.bottomRight,
+          child: ColoredBox(
+            color: Color(0xCCFFFFFF),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Text(
+                '© OpenStreetMap contributors',
+                style: TextStyle(fontSize: 10),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
