@@ -28,13 +28,8 @@ export type GMapsNS = {
   Circle: new (opts: object) => GOverlay;
   LatLngBounds: new () => GLatLngBounds;
   SymbolPath: { CIRCLE: number; FORWARD_CLOSED_ARROW: number };
-  OverlayView: new () => {
-    setMap: (m: GMap | null) => void;
-    getPanes: () => { overlayMouseTarget?: HTMLElement } | null;
-    getProjection: () => {
-      fromLatLngToDivPixel: (ll: GLatLng) => { x: number; y: number } | null;
-    } | null;
-  };
+  // OverlayView is subclassed at runtime; keep the constructor loose for prototype assignment.
+  OverlayView: new () => object;
 };
 
 declare global {
@@ -117,9 +112,11 @@ export function createHtmlMarker(
     this.position = position;
     this.heading = 0;
   }
-  HtmlOverlay.prototype = new g.OverlayView();
+  // OverlayView prototypes are assigned at runtime; keep TS loose here.
+  const proto = new g.OverlayView() as OverlayInst;
+  HtmlOverlay.prototype = proto;
 
-  HtmlOverlay.prototype.onAdd = function onAdd(this: OverlayInst) {
+  proto.onAdd = function onAdd(this: OverlayInst) {
     const el = document.createElement('div');
     el.style.position = 'absolute';
     el.style.width = `${size}px`;
@@ -132,7 +129,7 @@ export function createHtmlMarker(
     this.getPanes()?.overlayMouseTarget?.appendChild(el);
   };
 
-  HtmlOverlay.prototype.draw = function draw(this: OverlayInst) {
+  proto.draw = function draw(this: OverlayInst) {
     const proj = this.getProjection();
     const el = this.el;
     if (!proj || !el) return;
@@ -144,7 +141,7 @@ export function createHtmlMarker(
     if (inner) inner.style.transform = `rotate(${this.heading}deg)`;
   };
 
-  HtmlOverlay.prototype.onRemove = function onRemove(this: OverlayInst) {
+  proto.onRemove = function onRemove(this: OverlayInst) {
     this.el?.remove();
     this.el = undefined;
   };
