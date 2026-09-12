@@ -41,24 +41,76 @@ export class GoogleMapsProvider implements MapsProvider {
     uri.searchParams.set('address', q);
     uri.searchParams.set('key', this.key!);
     uri.searchParams.set('region', 'ca');
-    const res = await fetch(uri);
-    const data = (await res.json()) as {
-      status?: string;
-      results?: Array<{
-        formatted_address: string;
-        place_id?: string;
-        geometry: { location: { lat: number; lng: number } };
-      }>;
-    };
-    if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    try {
+      const res = await fetch(uri);
+      const data = (await res.json()) as {
+        status?: string;
+        results?: Array<{
+          formatted_address: string;
+          place_id?: string;
+          geometry: { location: { lat: number; lng: number } };
+        }>;
+      };
+      if (data.status === 'OK' && (data.results?.length ?? 0) > 0) {
+        return (data.results ?? []).slice(0, 8).map((r) => ({
+          label: r.formatted_address,
+          lat: r.geometry.location.lat,
+          lng: r.geometry.location.lng,
+          provider: this.name,
+        }));
+      }
+      // Referrer-restricted keys / disabled APIs → open-data fallback.
+      if (
+        data.status &&
+        data.status !== 'OK' &&
+        data.status !== 'ZERO_RESULTS'
+      ) {
+        return this.geocodeViaPhoton(q);
+      }
+    } catch {
+      return this.geocodeViaPhoton(q);
+    }
+    return this.geocodeViaPhoton(q);
+  }
+
+  /** Photon forward geocode — used when the Google server key is blocked. */
+  private async geocodeViaPhoton(query: string): Promise<GeocodeResult[]> {
+    try {
+      const uri = new URL('https://photon.komoot.io/api/');
+      uri.searchParams.set('q', query);
+      uri.searchParams.set('limit', '8');
+      uri.searchParams.set('lat', String(DEFAULT_BIAS.lat));
+      uri.searchParams.set('lon', String(DEFAULT_BIAS.lng));
+      const res = await fetch(uri);
+      if (!res.ok) return [];
+      const data = (await res.json()) as {
+        features?: Array<{
+          geometry?: { coordinates?: [number, number] };
+          properties?: Record<string, unknown>;
+        }>;
+      };
+      return (data.features ?? [])
+        .map((f) => {
+          const coords = f.geometry?.coordinates;
+          const props = f.properties;
+          if (!coords || !props) return null;
+          const [lng, lat] = coords;
+          const label = this.formatPhotonLabel(props);
+          if (!label || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+            return null;
+          }
+          return {
+            label,
+            lat,
+            lng,
+            provider: 'photon',
+          } satisfies GeocodeResult;
+        })
+        .filter((x): x is GeocodeResult => !!x)
+        .slice(0, 8);
+    } catch {
       return [];
     }
-    return (data.results ?? []).slice(0, 8).map((r) => ({
-      label: r.formatted_address,
-      lat: r.geometry.location.lat,
-      lng: r.geometry.location.lng,
-      provider: this.name,
-    }));
   }
 
   async reverseGeocode(lat: number, lng: number): Promise<GeocodeResult | null> {
