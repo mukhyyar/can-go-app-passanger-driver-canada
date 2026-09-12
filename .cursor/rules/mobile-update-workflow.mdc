@@ -1,0 +1,75 @@
+---
+description: After mobile changes — localhost preview, WiFi-debug install, and 4 APKs (passenger/driver × local/live)
+alwaysApply: true
+---
+
+# Mobile update workflow (required after mobile changes)
+
+When finishing work that touches `mobile/` (apps, packages, Android, or shared API client), do **all** of the following before stopping. Do not skip APKs unless the user explicitly says so.
+
+## 1. Localhost preview (web)
+
+Follow [localhost-refresh](localhost-refresh.mdc):
+
+- Run the app under edit with `flutter run -d web-server --web-port=5050 --web-hostname=127.0.0.1` (fallback port OK).
+- Never open Chrome/Edge. Refresh Cursor IDE browser at `http://127.0.0.1:5050`.
+- Prefer hot restart / same process if already running.
+
+## 2. WiFi debugging → update phone
+
+ADB: `D:\Android\Sdk\platform-tools\adb.exe` (or `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe` if present).
+
+1. Run `adb devices -l`.
+2. If a device is listed (USB or WiFi `IP:port`), **install** the apps you changed:
+   - Passenger: `adb -s <serial> install -r mobile/apks/can-go-passenger-local.apk` (local testing) **or** `…-release.apk` when verifying live.
+   - Driver: same with `can-go-driver-local.apk` / `can-go-driver-release.apk`.
+3. Default when WiFi debug is up and local backend is the target: install the **local** APKs.
+4. If no device: note that and still produce the 4 APKs.
+
+## 3. Always build 4 release APKs
+
+Build **one APK at a time** (never parallel passenger+driver or local+live). Do not run `gradlew --stop` or kill Java/Dart while a build is running.
+
+Copy into `mobile/apks/`:
+
+| File | App | `CANGO_API_BASE` |
+|------|-----|------------------|
+| `can-go-passenger-local.apk` | passenger | `http://<LAN_IP>:4000/api` |
+| `can-go-passenger-release.apk` | passenger | `https://www.can-rides.ca/api` |
+| `can-go-driver-local.apk` | driver | `http://<LAN_IP>:4000/api` |
+| `can-go-driver-release.apk` | driver | `https://www.can-rides.ca/api` |
+
+**LAN IP for local APKs:** prefer the host IPv4 on the same subnet as the phone (often `192.168.100.x`). Never bake `127.0.0.1` into phone APKs — the device cannot reach the PC that way.
+
+```powershell
+$adb = "D:\Android\Sdk\platform-tools\adb.exe"
+$lan = (Get-NetIPAddress -AddressFamily IPv4 |
+  Where-Object { $_.IPAddress -like '192.168.*' -and $_.IPAddress -notlike '*.1' } |
+  Select-Object -First 1 -ExpandProperty IPAddress)
+if (-not $lan) { $lan = "192.168.100.5" }
+$localApi = "http://${lan}:4000/api"
+$liveApi = "https://www.can-rides.ca/api"
+$apks = "d:\xampp\htdocs\get-transfer\mobile\apks"
+New-Item -ItemType Directory -Force -Path $apks | Out-Null
+
+# Passenger local + live
+cd "d:\xampp\htdocs\get-transfer\mobile\apps\passenger"
+flutter build apk --release --dart-define=CANGO_API_BASE=$localApi
+Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-passenger-local.apk" -Force
+flutter build apk --release --dart-define=CANGO_API_BASE=$liveApi
+Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-passenger-release.apk" -Force
+
+# Driver local + live
+cd "d:\xampp\htdocs\get-transfer\mobile\apps\driver"
+flutter build apk --release --dart-define=CANGO_API_BASE=$localApi
+Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-driver-local.apk" -Force
+flutter build apk --release --dart-define=CANGO_API_BASE=$liveApi
+Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-driver-release.apk" -Force
+```
+
+Tell the user the four APK paths and which one was installed on the device (if any).
+
+## When this does NOT apply
+
+- Pure backend/admin/web-only changes with **no** `mobile/` edits — skip APKs unless the user asks.
+- User explicitly says skip builds / skip device install.

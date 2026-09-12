@@ -10,6 +10,9 @@ class BookHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final unread = app.isAuthenticated ? app.unreadNotificationCount : 0;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(0, 4, 0, 0),
       padding: const EdgeInsets.fromLTRB(6, 8, 8, 10),
@@ -64,36 +67,86 @@ class BookHeader extends StatelessWidget {
           Expanded(
             child: CanRideHeaderLockup(
               markSize: 44,
-              trailing: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    final app = context.read<AppState>();
-                    if (app.isAuthenticated) {
-                      openPassengerMenu(context);
-                    } else {
-                      context.push('/auth');
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(22),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: GtColors.soft,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: GtColors.brand.withValues(alpha: 0.18),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (app.isAuthenticated) ...[
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => context.push('/notifications'),
+                        borderRadius: BorderRadius.circular(22),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: GtColors.soft,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: GtColors.brand.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: Badge(
+                            isLabelVisible: unread > 0,
+                            label: Text(
+                              unread > 99 ? '99+' : '$unread',
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            child: const Icon(
+                              Icons.notifications_outlined,
+                              color: GtColors.brand,
+                              size: 22,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    child: const Icon(
-                      Icons.person_outline_rounded,
-                      color: GtColors.brand,
-                      size: 22,
+                    const SizedBox(width: 6),
+                  ],
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        if (app.isAuthenticated) {
+                          openPassengerMenu(context);
+                        } else {
+                          context.push('/auth');
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(22),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: GtColors.soft,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: GtColors.brand.withValues(alpha: 0.18),
+                          ),
+                          image: app.isAuthenticated &&
+                                  app.avatarUrl != null &&
+                                  app.avatarUrl!.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(app.avatarUrl!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: app.isAuthenticated &&
+                                app.avatarUrl != null &&
+                                app.avatarUrl!.isNotEmpty
+                            ? null
+                            : const Icon(
+                                Icons.person_outline_rounded,
+                                color: GtColors.brand,
+                                size: 22,
+                              ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ),

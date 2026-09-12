@@ -157,12 +157,32 @@ class _RideList extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (_, i) {
           final r = rides[i];
+          final app = context.watch<AppState>();
+          final offerId = r.selectedOfferId;
+          final offer =
+              offerId != null ? app.offerByIds(r.id, offerId) : null;
+          String? driverSubtitle;
+          if (offer != null) {
+            final name = (offer.driverName ?? '').trim();
+            final plate = (offer.plate ?? '').trim();
+            if (name.isNotEmpty && plate.isNotEmpty) {
+              driverSubtitle = '$name · ${plate.toUpperCase()}';
+            } else if (name.isNotEmpty) {
+              driverSubtitle = name;
+            } else if (plate.isNotEmpty) {
+              driverSubtitle = '${offer.displayName} · ${plate.toUpperCase()}';
+            } else if (r.status == RideStatus.booked ||
+                r.status == RideStatus.past) {
+              driverSubtitle = offer.displayName;
+            }
+          }
           return GtCard(
             onTap: () => _openRide(context, r),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: Text(
@@ -191,21 +211,24 @@ class _RideList extends StatelessWidget {
                           ),
                         ),
                       ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _badgeColor(r.status).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _statusText(r),
-                        style: TextStyle(
-                          color: _badgeColor(r.status),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _badgeColor(r.status).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _statusText(r),
+                          textAlign: TextAlign.end,
+                          style: TextStyle(
+                            color: _badgeColor(r.status),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -220,6 +243,16 @@ class _RideList extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (driverSubtitle != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    driverSubtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
                 if (r.createdAtLabel != null &&
                     r.createdAtLabel!.isNotEmpty) ...[
                   const SizedBox(height: 2),

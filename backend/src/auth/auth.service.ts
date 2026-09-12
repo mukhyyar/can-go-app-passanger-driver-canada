@@ -17,6 +17,7 @@ import { TokensService } from './tokens.service';
 import type { AuthUser } from './decorators/current-user.decorator';
 import { OTP_PROVIDER } from '../providers/otp/otp-provider.interface';
 import type { OtpProvider } from '../providers/otp/otp-provider.interface';
+import { StorageService } from '../storage/storage.service';
 import {
   AdminTotpDisableDto,
   AdminTotpEnableDto,
@@ -42,6 +43,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly jwt: JwtService,
     private readonly oauthVerify: OAuthVerifyService,
+    private readonly storage: StorageService,
     @Inject(OTP_PROVIDER) private readonly otp: OtpProvider,
   ) {}
 
@@ -334,14 +336,90 @@ export class AuthService {
         : (user.adminRole?.permissions.map((p) => p.permission) ??
           actor?.permissions ??
           []);
+    const base = this.publicUser(user);
+    const avatarKey =
+      user.passengerProfile?.avatarStorageKey ??
+      user.driverProfile?.avatarStorageKey ??
+      null;
+    let avatarUrl: string | null = null;
+    if (avatarKey && this.storage.isReady()) {
+      try {
+        avatarUrl = await this.storage.getSignedGetUrl(avatarKey, 3600);
+      } catch {
+        avatarUrl = null;
+      }
+    }
+    if (base.passenger) {
+      (base.passenger as Record<string, unknown>).avatarUrl = avatarUrl;
+      (base.passenger as Record<string, unknown>).avatarStorageKey =
+        user.passengerProfile?.avatarStorageKey ?? null;
+    }
+    if (base.driver) {
+      (base.driver as Record<string, unknown>).avatarUrl = avatarUrl;
+      (base.driver as Record<string, unknown>).avatarStorageKey =
+        user.driverProfile?.avatarStorageKey ?? null;
+    }
     return {
-      ...this.publicUser(user),
+      ...base,
+      avatarUrl,
       permissions,
       adminRole: user.adminRole
         ? { slug: user.adminRole.slug, name: user.adminRole.name }
         : null,
       impersonation: actor?.impersonation,
     };
+  }
+
+  async uploadAvatar(
+    userId: string,
+    file: { buffer: Buffer; mimetype: string; originalname?: string },
+  ) {
+    await this.requireDb();
+    if (!this.storage.isReady()) {
+      throw new ServiceUnavailableException('Object storage is not available');
+    }
+    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
+    if (!allowed.has(file.mimetype)) {
+      throw new BadRequestException('Avatar must be jpeg, png, or webp');
+    }
+    if (file.buffer.length > 5 * 1024 * 1024) {
+      throw new BadRequestException('Avatar max size is 5MB');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+    if (!user) throw new NotFoundException();
+    const ext =
+      file.mimetype === 'image/png'
+        ? 'png'
+        : file.mimetype === 'image/webp'
+          ? 'webp'
+          : 'jpg';
+    const key = `avatars/${userId}/${Date.now()}-${randomBytes(4).toString('hex')}.${ext}`;
+    await this.storage.putObject({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+    });
+
+    if (user.passengerProfile) {
+      await this.prisma.passengerProfile.update({
+        where: { id: user.passengerProfile.id },
+        data: { avatarStorageKey: key },
+      });
+    } else if (user.driverProfile) {
+      await this.prisma.driverProfile.update({
+        where: { id: user.driverProfile.id },
+        data: { avatarStorageKey: key },
+      });
+    } else {
+      throw new BadRequestException('No profile to attach avatar');
+    }
+
+    const avatarUrl = await this.storage.getSignedGetUrl(key, 3600);
+    await this.audit(userId, 'avatar.upload', 'User', userId);
+    return { avatarUrl, avatarStorageKey: key };
   }
 
   async listSessions(userId: string) {

@@ -769,6 +769,7 @@ class _ScheduledRideCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Text(
@@ -776,26 +777,31 @@ class _ScheduledRideCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
-                if (showStatus)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: GtColors.soft,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: GtColors.brand.withValues(alpha: 0.14),
+                if (showStatus) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: GtColors.soft,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: GtColors.brand.withValues(alpha: 0.14),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      statusLabel,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: GtColors.brand,
+                      child: Text(
+                        statusLabel,
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: GtColors.brand,
+                        ),
                       ),
                     ),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 2),
@@ -803,6 +809,16 @@ class _ScheduledRideCard extends StatelessWidget {
               'Ride #${request.displayId}',
               style: const TextStyle(color: GtColors.textMuted, fontSize: 12),
             ),
+            if ((request.passengerName ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                request.passengerName!.trim(),
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
             if (request.isRoundTrip && request.returnDatetimeLabel != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -823,12 +839,15 @@ class _ScheduledRideCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  request.vehicleNeed,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                Expanded(
+                  child: Text(
+                    request.vehicleNeed,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 const Icon(
                   Icons.person_outline,
                   size: 18,

@@ -23,6 +23,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   bool _acting = false;
   String? _error;
   AppState? _app;
+  Map<String, dynamic>? _contact;
 
   @override
   void didChangeDependencies() {
@@ -50,9 +51,17 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     });
     try {
       final detail = await s.loadTripDetail(widget.rideId);
+      Map<String, dynamic>? contact;
+      try {
+        final st = (detail.status ?? '').toUpperCase();
+        if (AppState.chatAllowedStatuses.contains(st)) {
+          contact = await s.getRideContact(widget.rideId);
+        }
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _ride = detail;
+        _contact = contact;
         _loading = false;
       });
       _syncLocationTracking(detail.status);
@@ -69,11 +78,31 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final s = context.read<AppState>();
     final upper = (status ?? '').toUpperCase();
     if (upper == 'DRIVER_EN_ROUTE' ||
+        upper == 'DRIVER_ARRIVED' ||
         upper == 'TRIP_STARTED' ||
         upper == 'IN_PROGRESS') {
       s.startTripLocationTracking(widget.rideId);
     } else {
       s.stopTripLocationTracking();
+    }
+  }
+
+  Future<void> _callPassenger() async {
+    final phone = _contact?['phoneE164']?.toString();
+    if (phone == null || phone.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Future<void> _whatsAppPassenger() async {
+    final phone = _contact?['phoneE164']?.toString() ?? '';
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 8) return;
+    final uri = Uri.parse('https://wa.me/$digits');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -208,6 +237,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
                                           child: Text(
@@ -218,21 +249,26 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                             ),
                                           ),
                                         ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: GtColors.soft,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            friendlyRideStatus(r.status),
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700,
-                                              color: GtColors.brand,
+                                        const SizedBox(width: 8),
+                                        Flexible(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: GtColors.soft,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              friendlyRideStatus(r.status),
+                                              textAlign: TextAlign.end,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: GtColors.brand,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -259,14 +295,18 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     ),
                                     const SizedBox(height: 12),
                                     Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          r.vehicleNeed,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
+                                        Expanded(
+                                          child: Text(
+                                            r.vehicleNeed,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
                                         ),
-                                        const Spacer(),
+                                        const SizedBox(width: 8),
                                         const Icon(
                                           Icons.person_outline,
                                           size: 18,
@@ -290,6 +330,91 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                 ),
                               ),
                               const SizedBox(height: 16),
+                              GtCard(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Passenger',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    if ((r.passengerName ?? '')
+                                        .trim()
+                                        .isNotEmpty) ...[
+                                      Text(
+                                        r.passengerName!.trim(),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 17,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                    ],
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        _TripChip(
+                                          label: 'Adults × ${r.passengers}',
+                                        ),
+                                        ..._childSeatChips(r),
+                                        if ((r.flight ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          _TripChip(
+                                            label:
+                                                'Flight ${r.flight!.trim()}',
+                                            icon: Icons.flight,
+                                          ),
+                                        if ((r.returnFlight ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          _TripChip(
+                                            label:
+                                                'Return flight ${r.returnFlight!.trim()}',
+                                            icon: Icons.flight_land,
+                                          ),
+                                        if ((r.signage ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          _TripChip(
+                                            label:
+                                                'Name sign: ${r.signage!.trim()}',
+                                            icon: Icons.badge_outlined,
+                                          ),
+                                        if (r.flightWait != null)
+                                          _TripChip(
+                                            label:
+                                                'Wait ${r.flightWait}',
+                                            icon: Icons.schedule,
+                                          )
+                                        else if (r.pickupWaitMin != null)
+                                          _TripChip(
+                                            label:
+                                                'Wait ${r.pickupWaitMin} min',
+                                            icon: Icons.schedule,
+                                          ),
+                                        if (r.returnWaitMin != null)
+                                          _TripChip(
+                                            label:
+                                                'Return wait ${r.returnWaitMin} min',
+                                            icon: Icons.schedule,
+                                          ),
+                                        for (final o in r.requiredOptions)
+                                          if (o != 'name_sign')
+                                            _TripChip(
+                                              label: o.replaceAll('_', ' '),
+                                            ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
                               const Text(
                                 'Trip progress',
                                 style: TextStyle(
@@ -307,11 +432,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                 const SizedBox(height: 16),
                                 GtCard(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       const Text(
                                         'Passenger note',
-                                        style: TextStyle(fontWeight: FontWeight.w600),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
@@ -363,6 +491,33 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     ),
                                   ],
                                 ),
+                                if (_contact?['canCall'] == true ||
+                                    _contact?['canWhatsApp'] == true) ...[
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      if (_contact?['canCall'] == true)
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: _callPassenger,
+                                            icon: const Icon(Icons.phone_outlined),
+                                            label: const Text('Call'),
+                                          ),
+                                        ),
+                                      if (_contact?['canCall'] == true &&
+                                          _contact?['canWhatsApp'] == true)
+                                        const SizedBox(width: 8),
+                                      if (_contact?['canWhatsApp'] == true)
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: _whatsAppPassenger,
+                                            icon: const Icon(Icons.chat),
+                                            label: const Text('WhatsApp'),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
                                 const SizedBox(height: 10),
                                 GtGreenButton(
                                   label: _acting ? 'Updating…' : _primaryLabel!,
@@ -392,6 +547,60 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                           ),
                       ],
                     ),
+    );
+  }
+
+  List<Widget> _childSeatChips(DriverRequest req) {
+    final out = <Widget>[];
+    final convertible = (req.childSeats['convertible'] as num?)?.toInt() ??
+        (req.childSeats['child'] as num?)?.toInt() ??
+        0;
+    final infant = (req.childSeats['infant'] as num?)?.toInt() ?? 0;
+    final booster = (req.childSeats['booster'] as num?)?.toInt() ?? 0;
+    if (infant > 0) {
+      out.add(_TripChip(label: 'Infant carrier × $infant'));
+    }
+    if (convertible > 0) {
+      out.add(_TripChip(label: 'Convertible seat × $convertible'));
+    }
+    if (booster > 0) {
+      out.add(_TripChip(label: 'Booster seat × $booster'));
+    }
+    return out;
+  }
+}
+
+class _TripChip extends StatelessWidget {
+  const _TripChip({required this.label, this.icon});
+
+  final String label;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: GtColors.bgGrey,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: GtColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: GtColors.brand),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

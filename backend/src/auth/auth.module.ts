@@ -12,6 +12,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { ImpersonationReadOnlyInterceptor } from './guards/impersonation-readonly.interceptor';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ImpersonationReadOnlyInterceptor } from './guards/impersonation-readonl
         secret: config.get<string>('jwt.accessSecret'),
       }),
     }),
+    StorageModule,
   ],
   controllers: [AuthController],
   providers: [
@@ -44,8 +46,8 @@ import { ImpersonationReadOnlyInterceptor } from './guards/impersonation-readonl
     RolesGuard,
     PermissionsGuard,
     ImpersonationReadOnlyInterceptor,
-    PassportModule,
     JwtModule,
+    PassportModule,
   ],
 })
 export class AuthModule {}

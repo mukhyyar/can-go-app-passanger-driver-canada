@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'map_picker.dart';
 
 /// Native has no browser Geocoder — caller uses PlacesSearch.reverse.
 Future<String?> reverseGeocodeLatLng(double lat, double lng) async => null;
 
-/// Native Google Maps picker embed.
+/// Native map picker (OpenStreetMap tiles — works without an Android Maps SDK key).
 Widget buildMapPicker({
   required double initialLat,
   required double initialLng,
@@ -47,22 +48,26 @@ class _NativeMapPicker extends StatefulWidget {
 }
 
 class _NativeMapPickerState extends State<_NativeMapPicker> {
-  GoogleMapController? _map;
+  late final MapController _map;
   LatLng _center = const LatLng(0, 0);
   bool _moving = false;
 
   @override
   void initState() {
     super.initState();
+    _map = MapController();
     _center = LatLng(widget.initialLat, widget.initialLng);
     _bindController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onCenterChanged?.call(widget.initialLat, widget.initialLng);
+    });
   }
 
   void _bindController() {
     widget.controller?.bind(
       animateTo: _animateTo,
       readCenter: () => (_center.latitude, _center.longitude),
-      onDispose: () => _map = null,
+      onDispose: () {},
     );
   }
 
@@ -78,20 +83,14 @@ class _NativeMapPickerState extends State<_NativeMapPicker> {
   @override
   void dispose() {
     widget.controller?.unbind();
-    _map?.dispose();
+    _map.dispose();
     super.dispose();
   }
 
   Future<void> _animateTo(double lat, double lng) async {
-    final c = _map;
-    if (c == null) return;
     final target = LatLng(lat, lng);
     _center = target;
-    await c.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: widget.initialZoom),
-      ),
-    );
+    _map.move(target, widget.initialZoom);
     widget.onCenterChanged?.call(lat, lng);
   }
 
@@ -103,29 +102,39 @@ class _NativeMapPickerState extends State<_NativeMapPicker> {
 
   @override
   Widget build(BuildContext context) {
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: LatLng(widget.initialLat, widget.initialLng),
-        zoom: widget.initialZoom,
+    return FlutterMap(
+      mapController: _map,
+      options: MapOptions(
+        initialCenter: LatLng(widget.initialLat, widget.initialLng),
+        initialZoom: widget.initialZoom,
+        onPositionChanged: (pos, hasGesture) {
+          final c = pos.center;
+          _center = c;
+          if (hasGesture) _setMoving(true);
+        },
+        onMapEvent: (event) {
+          if (event is MapEventMoveEnd || event is MapEventFlingAnimationEnd) {
+            _setMoving(false);
+            widget.onCenterChanged?.call(_center.latitude, _center.longitude);
+          }
+        },
       ),
-      markers: const {},
-      myLocationButtonEnabled: false,
-      myLocationEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: false,
-      onMapCreated: (controller) {
-        _map = controller;
-        widget.onCenterChanged?.call(widget.initialLat, widget.initialLng);
-      },
-      onCameraMove: (pos) {
-        _center = pos.target;
-        _setMoving(true);
-      },
-      onCameraIdle: () {
-        _setMoving(false);
-        widget.onCenterChanged?.call(_center.latitude, _center.longitude);
-      },
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.gettransfer.passenger',
+        ),
+        // Center pin is drawn by the parent screen overlay; keep map clean.
+        RichAttributionWidget(
+          attributions: [
+            TextSourceAttribution(
+              'OpenStreetMap',
+              onTap: () {},
+            ),
+          ],
+          alignment: AttributionAlignment.bottomLeft,
+        ),
+      ],
     );
   }
 }

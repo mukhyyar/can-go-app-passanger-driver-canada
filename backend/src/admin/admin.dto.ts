@@ -246,4 +246,25 @@ export class BroadcastDto {
   @IsOptional()
   @IsString()
   templateKey?: string;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  userIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  deepLink?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  guestBanner?: boolean;
 }

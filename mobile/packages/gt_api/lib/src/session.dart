@@ -3,15 +3,17 @@ import 'auth_api.dart';
 import 'cms_api.dart';
 import 'driver_api.dart';
 import 'marketplace_api.dart';
+import 'notifications_api.dart';
 
 /// Shared API façade for Passenger + Driver apps.
 class CanGoSession {
   CanGoSession({String? baseUrl})
-      : client = ApiClient(baseUrl: baseUrl ?? kDefaultApiBaseUrl) {
+      : client = ApiClient(baseUrl: baseUrl) {
     auth = AuthApi(client);
     marketplace = MarketplaceApi(client);
     driver = DriverApi(client);
     cms = CmsApi(client);
+    notifications = NotificationsApi(client);
   }
 
   final ApiClient client;
@@ -19,6 +21,7 @@ class CanGoSession {
   late final MarketplaceApi marketplace;
   late final DriverApi driver;
   late final CmsApi cms;
+  late final NotificationsApi notifications;
 
   bool get hasTokenSync => false; // prefer async check
 

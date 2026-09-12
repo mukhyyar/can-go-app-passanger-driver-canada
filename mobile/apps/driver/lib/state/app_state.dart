@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,6 +22,9 @@ class AppState extends ChangeNotifier {
   String? pendingRequestAlert;
   String? pendingRequestRideId;
 
+  /// Pending chat deep-link from push (`/chat/:rideId`).
+  String? pendingChatRideId;
+
   static const _kOnboarded = 'driver_onboarded';
   static const _kOperatingZones = 'driver_operating_zones';
   static const _kBaseLat = 'driver_base_lat';
@@ -31,6 +35,9 @@ class AppState extends ChangeNotifier {
   bool loaded = false;
   bool onboardedComplete = false;
   bool isAuthenticated = false;
+
+  /// Wired from [PushService] so token sync runs after login / load.
+  Future<void> Function()? syncPushToken;
   bool isActivated = false;
   String approvalStatus = 'PENDING_KYC';
   Map<String, dynamic>? me;
@@ -125,6 +132,7 @@ class AppState extends ChangeNotifier {
           await refreshMyRides();
           await startMarketplaceRealtime();
         }
+        await syncPushToken?.call();
       } catch (_) {
         isAuthenticated = false;
         await api.clear();
@@ -170,6 +178,7 @@ class AppState extends ChangeNotifier {
       await refreshMyRides();
       await startMarketplaceRealtime();
     }
+    await syncPushToken?.call();
     notifyListeners();
   }
 
@@ -186,7 +195,72 @@ class AppState extends ChangeNotifier {
       await refreshMyRides();
       await startMarketplaceRealtime();
     }
+    await syncPushToken?.call();
     notifyListeners();
+  }
+
+  Future<void> registerPushTokenIfAvailable({
+    required String token,
+    required String platform,
+  }) async {
+    if (!isAuthenticated) return;
+    try {
+      await api.marketplace.registerDeviceToken(
+        token: token,
+        platform: platform,
+        appRole: 'DRIVER',
+      );
+    } catch (e) {
+      debugPrint('registerPushTokenIfAvailable: $e');
+    }
+  }
+
+  void applyPushAlert({
+    required String rideId,
+    String? title,
+    String? type,
+  }) {
+    if (type == 'chat') {
+      pendingChatRideId = rideId;
+      pendingRequestAlert = title ?? 'New message';
+      notifyListeners();
+      return;
+    }
+    pendingRequestRideId = rideId;
+    pendingRequestAlert = title ?? 'New ride request';
+    notifyListeners();
+  }
+
+  String? consumeChatDeepLinkPath() {
+    final rideId = pendingChatRideId;
+    if (rideId == null || rideId.isEmpty) return null;
+    pendingChatRideId = null;
+    return '/chat/$rideId';
+  }
+
+  Future<Map<String, dynamic>> getChat(String rideId) =>
+      api.marketplace.getChatThread(rideId);
+
+  Future<Map<String, dynamic>> sendChat(String rideId, String body) =>
+      api.marketplace.sendChatMessage(rideId, body);
+
+  Future<Map<String, dynamic>> getRideContact(String rideId) =>
+      api.marketplace.getRideContact(rideId);
+
+  static const chatAllowedStatuses = {
+    'BOOKED',
+    'DRIVER_EN_ROUTE',
+    'DRIVER_ARRIVED',
+    'TRIP_STARTED',
+    'IN_PROGRESS',
+    'COMPLETED',
+  };
+
+  List<DriverRequest> get chatableRides {
+    return myRides.where((r) {
+      final status = (r.status ?? '').toUpperCase();
+      return chatAllowedStatuses.contains(status);
+    }).toList();
   }
 
   Future<void> refreshMe() async {
@@ -206,13 +280,104 @@ class AppState extends ChangeNotifier {
         repo.driver.fullName = name;
         defaultDriverName = name;
       }
+      final url = driver['avatarUrl']?.toString();
+      avatarUrl = (url != null && url.isNotEmpty) ? url : null;
       await _syncOnboardedFromServer(hasDocuments: false);
       if (isActivated) {
         unawaited(startMarketplaceRealtime());
       } else {
         stopMarketplaceRealtime();
       }
+    } else {
+      final top = me?['avatarUrl']?.toString();
+      avatarUrl = (top != null && top.isNotEmpty) ? top : null;
     }
+    unawaited(refreshUnreadNotificationCount());
+  }
+
+  String? avatarUrl;
+  int unreadNotificationCount = 0;
+
+  void setAvatarUrl(String? url) {
+    avatarUrl = url;
+    if (me != null && url != null) {
+      final driver = me!['driver'];
+      if (driver is Map) {
+        me = {
+          ...me!,
+          'driver': {...Map<String, dynamic>.from(driver), 'avatarUrl': url},
+        };
+      } else {
+        me = {...me!, 'avatarUrl': url};
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<String?> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    if (!isAuthenticated) return null;
+    final res = await api.auth.uploadAvatar(
+      bytes: Uint8List.fromList(bytes),
+      filename: filename,
+    );
+    final url = res['avatarUrl']?.toString();
+    if (url != null && url.isNotEmpty) {
+      setAvatarUrl(url);
+    } else {
+      await refreshMe();
+      notifyListeners();
+    }
+    return avatarUrl;
+  }
+
+  Future<List<Map<String, dynamic>>> listNotifications({int limit = 50}) async {
+    if (!isAuthenticated) return const [];
+    final raw = await api.notifications.list(limit: limit);
+    final items = (raw['items'] as List?) ??
+        (raw['_list'] as List?) ??
+        const [];
+    return items
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<int> refreshUnreadNotificationCount() async {
+    if (!isAuthenticated) {
+      unreadNotificationCount = 0;
+      notifyListeners();
+      return 0;
+    }
+    try {
+      final raw = await api.notifications.unreadCount();
+      unreadNotificationCount = (raw['count'] as num?)?.toInt() ?? 0;
+      notifyListeners();
+      return unreadNotificationCount;
+    } catch (e) {
+      debugPrint('refreshUnreadNotificationCount: $e');
+      return unreadNotificationCount;
+    }
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    if (!isAuthenticated) return;
+    await api.notifications.markRead(id);
+    if (unreadNotificationCount > 0) {
+      unreadNotificationCount--;
+      notifyListeners();
+    } else {
+      await refreshUnreadNotificationCount();
+    }
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    if (!isAuthenticated) return;
+    await api.notifications.markAllRead();
+    unreadNotificationCount = 0;
+    notifyListeners();
   }
 
   /// Load profile, zones, vehicles, documents, payment from backend.
@@ -630,6 +795,7 @@ class AppState extends ChangeNotifier {
     await refreshOpenRequests();
     await refreshMyRides();
     await startMarketplaceRealtime();
+    unawaited(refreshUnreadNotificationCount());
   }
 
   List<OperatingZone> _decodeZones(String? raw) {
@@ -974,6 +1140,8 @@ class AppState extends ChangeNotifier {
     accountStatus = null;
     paymentDetails = null;
     authUserId = null;
+    avatarUrl = null;
+    unreadNotificationCount = 0;
     documents = [];
     vehicles = [];
     openRequests = [];
@@ -1329,11 +1497,29 @@ class AppState extends ChangeNotifier {
 
   Future<void> _pushCurrentLocation(String rideId) async {
     try {
-      await pushTripLocation(
-        rideId: rideId,
-        lat: baseLatitude,
-        lng: baseLongitude,
-      );
+      double lat = baseLatitude;
+      double lng = baseLongitude;
+      try {
+        final permission = await Geolocator.checkPermission();
+        var perm = permission;
+        if (perm == LocationPermission.denied) {
+          perm = await Geolocator.requestPermission();
+        }
+        if (perm == LocationPermission.whileInUse ||
+            perm == LocationPermission.always) {
+          final pos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 8),
+            ),
+          );
+          lat = pos.latitude;
+          lng = pos.longitude;
+        }
+      } catch (e) {
+        debugPrint('geolocator fallback to base: $e');
+      }
+      await pushTripLocation(rideId: rideId, lat: lat, lng: lng);
     } catch (e) {
       debugPrint('pushTripLocation: $e');
     }

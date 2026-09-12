@@ -3,24 +3,19 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
+import 'api_base.dart';
 import 'models.dart';
 
 /// Live place search via Nest `/api/maps/places` (Google when MAPS_PROVIDER=google).
 class PlacesSearch {
   PlacesSearch._();
 
-  static const _apiBase = String.fromEnvironment(
-    'CANGO_API_BASE',
-    defaultValue: 'http://127.0.0.1:4000/api',
-  );
   static final _client = http.Client();
   static final _rng = Random();
 
   static Uri _maps(String path, [Map<String, String>? query]) {
-    final base = _apiBase.endsWith('/')
-        ? _apiBase.substring(0, _apiBase.length - 1)
-        : _apiBase;
-    return Uri.parse('$base$path').replace(queryParameters: query);
+    return Uri.parse('${normalizedApiBaseUrl()}$path')
+        .replace(queryParameters: query);
   }
 
   /// UUID-like session token for Google Places Autocomplete billing sessions.

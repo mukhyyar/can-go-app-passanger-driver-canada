@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
@@ -16,28 +18,39 @@ class RideChatScreen extends StatefulWidget {
 class _RideChatScreenState extends State<RideChatScreen> {
   final _controller = TextEditingController();
   final _messages = <_ChatMsg>[];
+  final _scroll = ScrollController();
   bool _loading = true;
   bool _sending = false;
   String? _error;
+  Timer? _poll;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load(showSpinner: true);
+      _poll = Timer.periodic(const Duration(seconds: 4), (_) {
+        if (mounted && !_sending) _load(showSpinner: false);
+      });
+    });
   }
 
   @override
   void dispose() {
+    _poll?.cancel();
     _controller.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({required bool showSpinner}) async {
     final app = context.read<AppState>();
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (showSpinner) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final raw = await app.getChat(widget.rideId);
       final meId = app.me?['id']?.toString();
@@ -51,17 +64,35 @@ class _RideChatScreenState extends State<RideChatScreen> {
         );
       }).toList();
       if (!mounted) return;
+      final grew = parsed.length != _messages.length;
       setState(() {
         _messages
           ..clear()
           ..addAll(parsed);
         _loading = false;
+        _error = null;
       });
+      if (grew && _scroll.hasClients) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) {
+            _scroll.jumpTo(_scroll.position.maxScrollExtent);
+          }
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Could not load chat';
+        if (showSpinner || _messages.isEmpty) {
+          final s = e.toString().toLowerCase();
+          if (s.contains('unavailable') || s.contains('status')) {
+            _error = 'Chat unavailable for this ride status';
+          } else if (s.contains('forbidden') || s.contains('participant')) {
+            _error = 'You are not a participant on this ride';
+          } else {
+            _error = 'Could not load chat';
+          }
+        }
       });
     }
   }
@@ -74,7 +105,7 @@ class _RideChatScreenState extends State<RideChatScreen> {
     try {
       await app.sendChat(widget.rideId, text);
       _controller.clear();
-      await _load();
+      await _load(showSpinner: false);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -109,12 +140,27 @@ class _RideChatScreenState extends State<RideChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _loading
+            child: _loading && _messages.isEmpty
                 ? const Center(
                     child: CircularProgressIndicator(color: GtColors.brand),
                   )
-                : _error != null
-                    ? Center(child: Text(_error!))
+                : _error != null && _messages.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(_error!, textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              TextButton(
+                                onPressed: () => _load(showSpinner: true),
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
                     : _messages.isEmpty
                         ? const Center(
                             child: Text(
@@ -123,6 +169,7 @@ class _RideChatScreenState extends State<RideChatScreen> {
                             ),
                           )
                         : ListView.builder(
+                            controller: _scroll,
                             padding: const EdgeInsets.all(16),
                             itemCount: _messages.length,
                             itemBuilder: (_, i) {

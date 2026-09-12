@@ -1,3 +1,6 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:go_router/go_router.dart';
@@ -7,10 +10,16 @@ import 'package:passenger/services/push_service.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // So /offers/:id and other deep links work on Flutter web (not only /#/...).
   usePathUrlStrategy();
+
+  if (!kIsWeb) {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+
   runApp(const PassengerApp());
 }
 
@@ -29,11 +38,13 @@ class _PassengerAppState extends State<PassengerApp> {
   @override
   void initState() {
     super.initState();
+    _state.syncPushToken = _push.syncToken;
     _push.start();
   }
 
   @override
   void dispose() {
+    _state.syncPushToken = null;
     _push.stop();
     super.dispose();
   }

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:provider/provider.dart';
 
+import '../state/app_state.dart';
 import 'menu_panel.dart';
 
 final GlobalKey<ScaffoldState> driverShellKey = GlobalKey<ScaffoldState>();
@@ -61,6 +64,10 @@ class DriverBrandHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final unread = app.unreadNotificationCount;
+    final avatarUrl = app.avatarUrl;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(0, 8, 0, 0),
       padding: const EdgeInsets.fromLTRB(6, 8, 8, 10),
@@ -118,29 +125,74 @@ class DriverBrandHeader extends StatelessWidget {
             child: CanRideHeaderLockup(
               subtitle: subtitle,
               markSize: 44,
-              trailing: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onProfileTap ?? () => openDriverMenu(context),
-                  borderRadius: BorderRadius.circular(22),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: GtColors.soft,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: GtColors.brand.withValues(alpha: 0.18),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => context.push('/notifications'),
+                      borderRadius: BorderRadius.circular(22),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: GtColors.soft,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: GtColors.brand.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: Badge(
+                          isLabelVisible: unread > 0,
+                          label: Text(
+                            unread > 99 ? '99+' : '$unread',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                          child: const Icon(
+                            Icons.notifications_outlined,
+                            color: GtColors.brand,
+                            size: 22,
+                          ),
+                        ),
                       ),
                     ),
-                    child: const Icon(
-                      Icons.person_outline_rounded,
-                      color: GtColors.brand,
-                      size: 22,
+                  ),
+                  const SizedBox(width: 6),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onProfileTap ?? () => openDriverMenu(context),
+                      borderRadius: BorderRadius.circular(22),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: GtColors.soft,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: GtColors.brand.withValues(alpha: 0.18),
+                          ),
+                          image: avatarUrl != null && avatarUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(avatarUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: avatarUrl != null && avatarUrl.isNotEmpty
+                            ? null
+                            : const Icon(
+                                Icons.person_outline_rounded,
+                                color: GtColors.brand,
+                                size: 22,
+                              ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ),

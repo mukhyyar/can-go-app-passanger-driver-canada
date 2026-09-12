@@ -6,25 +6,49 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import 'brand_chrome.dart';
 
-class DriverShell extends StatelessWidget {
+class DriverShell extends StatefulWidget {
   const DriverShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
+  State<DriverShell> createState() => _DriverShellState();
+}
+
+class _DriverShellState extends State<DriverShell> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _consumeChatLink());
+  }
+
+  void _consumeChatLink() {
+    final app = context.read<AppState>();
+    final path = app.consumeChatDeepLinkPath();
+    if (path != null && mounted) {
+      context.push(path);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    if (app.pendingChatRideId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _consumeChatLink());
+    }
+
     return Scaffold(
       key: driverShellKey,
-      body: navigationShell,
+      body: widget.navigationShell,
       bottomNavigationBar: GtBottomNav(
-        index: navigationShell.currentIndex,
+        index: widget.navigationShell.currentIndex,
         onTap: (i) {
           if (i == 0) {
             context.read<AppState>().refreshOpenRequests();
           }
-          navigationShell.goBranch(
+          widget.navigationShell.goBranch(
             i,
-            initialLocation: i == navigationShell.currentIndex,
+            initialLocation: i == widget.navigationShell.currentIndex,
           );
         },
         items: const [

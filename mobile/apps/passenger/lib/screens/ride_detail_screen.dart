@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class RideDetailScreen extends StatefulWidget {
   const RideDetailScreen({super.key, required this.rideId});
@@ -19,6 +22,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
   Map<String, dynamic>? _paymentStatus;
   bool _ratingPromptShown = false;
   bool _actionBusy = false;
+  Map<String, dynamic>? _contact;
+  Map<String, dynamic>? _tracking;
+  Timer? _trackingPoll;
 
   @override
   void initState() {
@@ -26,19 +32,92 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  @override
+  void dispose() {
+    _trackingPoll?.cancel();
+    super.dispose();
+  }
+
+  void _ensureTrackingPoll() {
+    _trackingPoll?.cancel();
+    if (!_isLiveTrackStatus(_serverStatus)) return;
+    unawaited(_refreshTracking());
+    _trackingPoll = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) unawaited(_refreshTracking());
+    });
+  }
+
+  bool _isLiveTrackStatus(String status) {
+    const live = {
+      'DRIVER_EN_ROUTE',
+      'DRIVER_ARRIVED',
+      'TRIP_STARTED',
+      'IN_PROGRESS',
+    };
+    return live.contains(status);
+  }
+
+  Future<void> _refreshTracking() async {
+    try {
+      final t = await context.read<AppState>().getRideTracking(widget.rideId);
+      if (mounted) setState(() => _tracking = t);
+    } catch (_) {}
+  }
+
   Future<void> _load() async {
     final app = context.read<AppState>();
     await app.refreshRide(widget.rideId);
     Map<String, dynamic>? payment;
+    Map<String, dynamic>? contact;
     try {
       payment = await app.getPaymentStatus(widget.rideId);
+    } catch (_) {}
+    try {
+      if (_canChatStatus(
+        (app.rideById(widget.rideId)?.serverStatus ?? '').toUpperCase(),
+      )) {
+        contact = await app.getRideContact(widget.rideId);
+      }
     } catch (_) {}
     if (!mounted) return;
     setState(() {
       _paymentStatus = payment;
+      _contact = contact;
       _loading = false;
     });
+    _ensureTrackingPoll();
     _maybeShowRating();
+  }
+
+  bool _canChatStatus(String status) {
+    const allowed = {
+      'BOOKED',
+      'DRIVER_EN_ROUTE',
+      'DRIVER_ARRIVED',
+      'TRIP_STARTED',
+      'IN_PROGRESS',
+      'COMPLETED',
+    };
+    return allowed.contains(status);
+  }
+
+  Future<void> _callPhone() async {
+    final phone = _contact?['phoneE164']?.toString();
+    if (phone == null || phone.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Future<void> _openWhatsApp() async {
+    final phone = _contact?['phoneE164']?.toString() ?? '';
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 8) return;
+    final uri = Uri.parse('https://wa.me/$digits');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   void _maybeShowRating() {
@@ -498,6 +577,74 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                         ),
                       ),
                     ),
+                    if (_isLiveTrackStatus(status)) ...[
+                      const SizedBox(height: 12),
+                      _Section(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  'Live tracking',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                const Spacer(),
+                                if (_tracking?['eta'] is Map)
+                                  Text(
+                                    'ETA ~${(_tracking!['eta'] as Map)['minutes']} min',
+                                    style: const TextStyle(
+                                      color: GtColors.brand,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Builder(
+                              builder: (_) {
+                                final live = _tracking?['live'];
+                                final pickup = _tracking?['pickup'];
+                                final dropoff = _tracking?['dropoff'];
+                                final eta = _tracking?['eta'];
+                                if (live is! Map || pickup is! Map) {
+                                  return const Text(
+                                    'Waiting for driver location…',
+                                    style: TextStyle(
+                                      color: GtColors.textSecondary,
+                                    ),
+                                  );
+                                }
+                                final toDrop =
+                                    eta is Map &&
+                                    eta['target']?.toString() == 'DROPOFF' &&
+                                    dropoff is Map;
+                                final toLat = toDrop
+                                    ? (dropoff['lat'] as num?)?.toDouble()
+                                    : (pickup['lat'] as num?)?.toDouble();
+                                final toLng = toDrop
+                                    ? (dropoff['lng'] as num?)?.toDouble()
+                                    : (pickup['lng'] as num?)?.toDouble();
+                                return GtGoogleRouteMap(
+                                  fromLat:
+                                      (live['lat'] as num).toDouble(),
+                                  fromLng:
+                                      (live['lng'] as num).toDouble(),
+                                  fromLabel: 'Driver',
+                                  toLat: toLat,
+                                  toLng: toLng,
+                                  toLabel: toDrop ? 'Dropoff' : 'Pickup',
+                                  distanceLabel: eta is Map
+                                      ? '${eta['distanceKm']} km'
+                                      : null,
+                                  height: 200,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     _Section(
                       child: Column(
@@ -534,80 +681,179 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     if (offer != null) ...[
                       const SizedBox(height: 12),
                       _Section(
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (offer.imageUrl != null)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  offer.imageUrl!,
-                                  width: 56,
-                                  height: 56,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
-                                    Icons.directions_car,
-                                    size: 40,
-                                    color: GtColors.textMuted,
-                                  ),
-                                ),
-                              )
-                            else
-                              const Icon(
-                                Icons.directions_car,
-                                size: 40,
-                                color: GtColors.textMuted,
-                              ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${offer.vehicleBrand} ${offer.vehicleModel}'
-                                        .trim(),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  Text(
-                                    offer.vehicleClass,
-                                    style: const TextStyle(
-                                      color: GtColors.textSecondary,
-                                    ),
-                                  ),
-                                  if (offer.plate != null &&
-                                      offer.plate!.isNotEmpty)
-                                    Text(
-                                      offer.plate!,
-                                      style: const TextStyle(
-                                        color: GtColors.textMuted,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                ],
+                            const Text(
+                              'Your driver',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
                               ),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                            const SizedBox(height: 12),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  formatMoney(offer.price, offer.currency),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
+                                if (offer.imageUrl != null)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      offer.imageUrl!,
+                                      width: 72,
+                                      height: 72,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(
+                                        Icons.directions_car,
+                                        size: 48,
+                                        color: GtColors.textMuted,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  Container(
+                                    width: 72,
+                                    height: 72,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: GtColors.bgGrey,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(
+                                      Icons.directions_car,
+                                      size: 40,
+                                      color: GtColors.textMuted,
+                                    ),
+                                  ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if ((offer.driverName ?? '')
+                                          .trim()
+                                          .isNotEmpty)
+                                        Text(
+                                          offer.driverName!.trim(),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 17,
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          offer.displayName,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 17,
+                                          ),
+                                        ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.star,
+                                            size: 16,
+                                            color: GtColors.warn,
+                                          ),
+                                          Text(
+                                            ' ${offer.rating.toStringAsFixed(1)}'
+                                            '${offer.ratingCount > 0 ? ' (${offer.ratingCount})' : ''}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if ((offer.driverName ?? '')
+                                          .trim()
+                                          .isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          offer.displayName,
+                                          style: const TextStyle(
+                                            color: GtColors.textSecondary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                      Text(
+                                        [
+                                          offer.vehicleClass,
+                                          if ((offer.color ?? '')
+                                              .trim()
+                                              .isNotEmpty)
+                                            offer.color!.trim(),
+                                        ].join(' · '),
+                                        style: const TextStyle(
+                                          color: GtColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
+                              ],
+                            ),
+                            if (offer.plate != null &&
+                                offer.plate!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: GtColors.bgGrey,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border:
+                                      Border.all(color: GtColors.border),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(
-                                      Icons.star,
-                                      size: 14,
-                                      color: GtColors.warn,
+                                    const Text(
+                                      'License plate',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: GtColors.textMuted,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                    Text(' ${offer.rating.toStringAsFixed(1)}'),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      offer.plate!.trim().toUpperCase(),
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
                                   ],
                                 ),
-                              ],
+                              ),
+                            ],
+                            if (offer.languages.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                'Languages: ${offer.languages.join(', ')}',
+                                style: const TextStyle(
+                                  color: GtColors.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            Text(
+                              formatMoney(offer.price, offer.currency),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 18,
+                                color: GtColors.brand,
+                              ),
                             ),
                           ],
                         ),
@@ -630,7 +876,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                     ],
                     const SizedBox(height: 20),
-                    if (_canChat)
+                    if (_canChat) ...[
                       GtGreenButton(
                         label: 'Chat with driver',
                         fullWidth: true,
@@ -640,6 +886,35 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                   '/ride/${widget.rideId}/chat',
                                 ),
                       ),
+                      if (_contact?['canCall'] == true ||
+                          _contact?['canWhatsApp'] == true) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            if (_contact?['canCall'] == true)
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _actionBusy ? null : _callPhone,
+                                  icon: const Icon(Icons.phone_outlined),
+                                  label: const Text('Call'),
+                                ),
+                              ),
+                            if (_contact?['canCall'] == true &&
+                                _contact?['canWhatsApp'] == true)
+                              const SizedBox(width: 8),
+                            if (_contact?['canWhatsApp'] == true)
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed:
+                                      _actionBusy ? null : _openWhatsApp,
+                                  icon: const Icon(Icons.chat),
+                                  label: const Text('WhatsApp'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
                     if (_canCancel) ...[
                       const SizedBox(height: 10),
                       OutlinedButton(

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, RideStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const MAX_BODY = 2000;
 const ALLOWED_STATUSES: RideStatus[] = [
@@ -19,7 +20,10 @@ const ALLOWED_STATUSES: RideStatus[] = [
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private sanitize(body: string) {
     return body
@@ -41,7 +45,15 @@ export class ChatService {
     const isAdmin =
       user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
     const isPassenger = ride.passenger.userId === userId;
-    const isDriver = ride.selectedOffer?.driver.userId === userId;
+    const isDriver =
+      ride.selectedOffer?.driver.userId === userId ||
+      (ride.assignedDriverId != null &&
+        (
+          await this.prisma.driverProfile.findUnique({
+            where: { id: ride.assignedDriverId },
+            select: { userId: true },
+          })
+        )?.userId === userId);
     if (!isAdmin && !isPassenger && !isDriver) {
       throw new ForbiddenException('Not a chat participant');
     }
@@ -67,8 +79,55 @@ export class ChatService {
     });
   }
 
+  /** Other party's verified phone — only for booked ride participants. */
+  async getContact(userId: string, rideId: string) {
+    const ride = await this.assertParticipant(userId, rideId);
+    const passengerUserId = ride.passenger.userId;
+    let driverUserId = ride.selectedOffer?.driver.userId ?? null;
+    if (!driverUserId && ride.assignedDriverId) {
+      const assigned = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      driverUserId = assigned?.userId ?? null;
+    }
+
+    const isPassenger = passengerUserId === userId;
+    const otherUserId = isPassenger ? driverUserId : passengerUserId;
+    const otherParty = isPassenger ? 'DRIVER' : 'PASSENGER';
+
+    let phoneE164: string | null = null;
+    if (otherUserId) {
+      const other = await this.prisma.user.findUnique({
+        where: { id: otherUserId },
+        select: { phoneE164: true, phoneVerifiedAt: true },
+      });
+      if (other?.phoneE164 && other.phoneVerifiedAt) {
+        phoneE164 = other.phoneE164;
+      }
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: userId,
+        action: 'contact.view',
+        resource: 'Ride',
+        resourceId: rideId,
+        meta: { otherParty } as Prisma.InputJsonValue,
+      },
+    });
+
+    const digits = phoneE164?.replace(/\D/g, '') ?? '';
+    return {
+      otherParty,
+      phoneE164,
+      canCall: !!phoneE164,
+      canWhatsApp: digits.length >= 8,
+    };
+  }
+
   async send(userId: string, rideId: string, rawBody: string) {
-    await this.assertParticipant(userId, rideId);
+    const ride = await this.assertParticipant(userId, rideId);
     const body = this.sanitize(rawBody ?? '');
     if (!body) throw new BadRequestException('Message body required');
     if (body.length > MAX_BODY) {
@@ -91,6 +150,44 @@ export class ChatService {
         meta: { rideId } as Prisma.InputJsonValue,
       },
     });
+
+    const passengerUserId = ride.passenger.userId;
+    let driverUserId = ride.selectedOffer?.driver.userId ?? null;
+    if (!driverUserId && ride.assignedDriverId) {
+      const assigned = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      driverUserId = assigned?.userId ?? null;
+    }
+    const recipientId =
+      userId === passengerUserId
+        ? driverUserId
+        : userId === driverUserId
+          ? passengerUserId
+          : null;
+    if (recipientId) {
+      const preview = body.length > 120 ? `${body.slice(0, 117)}…` : body;
+      void this.notifications
+        .sendToUser({
+          userId: recipientId,
+          title: 'New message',
+          body: preview,
+          templateKey: 'chat_message',
+          eventId: `chat.message.${msg.id}`,
+          data: {
+            type: 'chat',
+            rideId,
+            messageId: msg.id,
+            deepLink:
+              recipientId === passengerUserId
+                ? `/ride/${rideId}/chat`
+                : `/chat/${rideId}`,
+          },
+        })
+        .catch(() => undefined);
+    }
+
     return msg;
   }
 

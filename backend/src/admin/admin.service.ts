@@ -2451,6 +2451,176 @@ export class AdminOpsService {
     });
   }
 
+  async listChatThreads(opts?: { flaggedOnly?: boolean; take?: number }) {
+    const take = Math.min(opts?.take ?? 100, 200);
+    const threads = await this.prisma.chatThread.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: {
+        ride: {
+          select: {
+            id: true,
+            status: true,
+            fromLabel: true,
+            toLabel: true,
+            passenger: { select: { fullName: true, userId: true } },
+            assignedDriverId: true,
+            selectedOffer: {
+              select: {
+                driver: { select: { fullName: true, userId: true } },
+              },
+            },
+          },
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+        _count: { select: { messages: true } },
+      },
+    });
+
+    const mapped = threads.map((t) => {
+      const last = t.messages[0];
+      const flaggedInLast = last?.flagged === true;
+      return {
+        id: t.id,
+        rideId: t.rideId,
+        publicCode: ridePublicCode(t.rideId),
+        status: t.ride.status,
+        fromLabel: t.ride.fromLabel,
+        toLabel: t.ride.toLabel,
+        passengerName: t.ride.passenger.fullName,
+        driverName:
+          t.ride.selectedOffer?.driver.fullName ??
+          null,
+        messageCount: t._count.messages,
+        lastMessage: last?.body ?? null,
+        lastMessageAt: last?.createdAt ?? t.createdAt,
+        lastFlagged: flaggedInLast,
+        createdAt: t.createdAt,
+      };
+    });
+
+    if (opts?.flaggedOnly) {
+      const flaggedThreadIds = await this.prisma.chatMessage.findMany({
+        where: { flagged: true },
+        select: { threadId: true },
+        distinct: ['threadId'],
+      });
+      const set = new Set(flaggedThreadIds.map((f) => f.threadId));
+      return mapped.filter((m) => set.has(m.id));
+    }
+    return mapped;
+  }
+
+  async getChatThreadByRide(rideId: string, adminId?: string) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      select: {
+        id: true,
+        status: true,
+        fromLabel: true,
+        toLabel: true,
+        passenger: {
+          select: {
+            fullName: true,
+            userId: true,
+            user: { select: { id: true, email: true, phoneE164: true } },
+          },
+        },
+        selectedOffer: {
+          select: {
+            driver: {
+              select: {
+                fullName: true,
+                userId: true,
+                user: { select: { id: true, email: true, phoneE164: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const thread = await this.prisma.chatThread.findUnique({
+      where: { rideId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          take: 500,
+        },
+      },
+    });
+
+    const senderIds = [
+      ...new Set((thread?.messages ?? []).map((m) => m.senderId)),
+    ];
+    const senders = senderIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: senderIds } },
+          select: {
+            id: true,
+            role: true,
+            email: true,
+            passengerProfile: { select: { fullName: true } },
+            driverProfile: { select: { fullName: true } },
+          },
+        })
+      : [];
+    const senderMap = new Map(senders.map((s) => [s.id, s]));
+
+    if (adminId) {
+      await this.prisma.auditLog.create({
+        data: {
+          actorId: adminId,
+          action: 'chat.admin.view',
+          resource: 'ChatThread',
+          resourceId: thread?.id ?? rideId,
+          meta: { rideId } as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    return {
+      rideId: ride.id,
+      publicCode: ridePublicCode(ride.id),
+      status: ride.status,
+      fromLabel: ride.fromLabel,
+      toLabel: ride.toLabel,
+      passenger: {
+        name: ride.passenger.fullName,
+        userId: ride.passenger.userId,
+      },
+      driver: ride.selectedOffer
+        ? {
+            name: ride.selectedOffer.driver.fullName,
+            userId: ride.selectedOffer.driver.userId,
+          }
+        : null,
+      threadId: thread?.id ?? null,
+      messages: (thread?.messages ?? []).map((m) => {
+        const s = senderMap.get(m.senderId);
+        const name =
+          s?.passengerProfile?.fullName ||
+          s?.driverProfile?.fullName ||
+          s?.email ||
+          m.senderId;
+        return {
+          id: m.id,
+          senderId: m.senderId,
+          senderName: name,
+          senderRole: s?.role ?? null,
+          body: m.body,
+          flagged: m.flagged,
+          deletedAt: m.deletedAt,
+          createdAt: m.createdAt,
+        };
+      }),
+    };
+  }
+
   async riskAccounts() {
     const users = await this.prisma.user.findMany({
       where: { role: { in: [UserRole.PASSENGER, UserRole.DRIVER] } },
@@ -2671,6 +2841,11 @@ export class AdminOpsService {
       body: string;
       city?: string;
       templateKey?: string;
+      userId?: string;
+      userIds?: string[];
+      imageUrl?: string;
+      deepLink?: string;
+      guestBanner?: boolean;
     },
   ) {
     const campaign = await this.prisma.notificationCampaign.create({
@@ -2682,12 +2857,33 @@ export class AdminOpsService {
         templateKey: dto.templateKey,
         bodyTitle: dto.title,
         bodyText: dto.body,
+        imageUrl: dto.imageUrl,
+        targetUserIds: dto.userIds ?? (dto.userId ? [dto.userId] : undefined),
         status: 'SENDING',
         createdById: adminId,
         sentAt: new Date(),
       },
     });
-    const users = await this.resolveSegment(dto.segment, dto.city);
+
+    if (dto.guestBanner || dto.segment === 'GUESTS') {
+      await this.prisma.inAppAnnouncement.create({
+        data: {
+          title: dto.title,
+          body: dto.body,
+          imageUrl: dto.imageUrl,
+          ctaUrl: dto.deepLink,
+          ctaLabel: dto.deepLink ? 'Open' : null,
+          audience: 'GUESTS',
+          active: true,
+          createdById: adminId,
+        },
+      });
+    }
+
+    const users = await this.resolveSegment(dto.segment, dto.city, {
+      userId: dto.userId,
+      userIds: dto.userIds,
+    });
     let sent = 0;
     for (const u of users) {
       if (dto.channel === 'sms' && u.phoneE164) {
@@ -2711,15 +2907,21 @@ export class AdminOpsService {
             status: 'failed',
           });
         }
-      } else {
-        await this.notifications.sendToUser({
+      } else if (dto.channel !== 'sms') {
+        const result = await this.notifications.sendToUser({
           userId: u.id,
           title: dto.title,
           body: dto.body,
           templateKey: dto.templateKey ?? 'admin_broadcast',
-          data: { campaignId: campaign.id },
+          imageUrl: dto.imageUrl,
+          eventId: `campaign.${campaign.id}.${u.id}`,
+          data: {
+            campaignId: campaign.id,
+            type: 'admin_broadcast',
+            ...(dto.deepLink ? { deepLink: dto.deepLink } : {}),
+          },
         });
-        sent += 1;
+        if (!('skipped' in result && result.skipped)) sent += 1;
       }
     }
     await this.prisma.notificationCampaign.update({
@@ -2729,20 +2931,71 @@ export class AdminOpsService {
     await this.audit(adminId, 'NOTIFICATION_SEND', 'NotificationCampaign', campaign.id, {
       meta: { sent, segment: dto.segment },
     });
-    return { campaign, sent };
+    return { campaign, sent, recipients: users.length };
   }
 
-  private async resolveSegment(segment: string, city?: string) {
+  async estimateBroadcast(dto: {
+    segment: string;
+    city?: string;
+    userId?: string;
+    userIds?: string[];
+  }) {
+    const users = await this.resolveSegment(dto.segment, dto.city, {
+      userId: dto.userId,
+      userIds: dto.userIds,
+    });
+    return { count: users.length };
+  }
+
+  async listActiveAnnouncements(audience?: string) {
+    const now = new Date();
+    return this.prisma.inAppAnnouncement.findMany({
+      where: {
+        active: true,
+        startsAt: { lte: now },
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        ...(audience
+          ? { audience: { in: [audience, 'ALL', 'GUESTS'] } }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+  }
+
+  private async resolveSegment(
+    segment: string,
+    city?: string,
+    opts?: { userId?: string; userIds?: string[] },
+  ) {
+    if (segment === 'SINGLE' || opts?.userId || opts?.userIds?.length) {
+      const ids = [
+        ...(opts?.userIds ?? []),
+        ...(opts?.userId ? [opts.userId] : []),
+      ].filter(Boolean);
+      if (!ids.length) return [];
+      return this.prisma.user.findMany({
+        where: { id: { in: ids }, isSuspended: false },
+        select: { id: true, phoneE164: true, role: true },
+      });
+    }
+    if (segment === 'GUESTS') {
+      return [];
+    }
     const where: Prisma.UserWhereInput = { isSuspended: false };
     if (segment === 'DRIVERS') where.role = UserRole.DRIVER;
-    else if (segment === 'PASSENGERS') where.role = UserRole.PASSENGER;
-    else if (segment === 'VIP') {
+    else if (segment === 'PASSENGERS' || segment === 'PASSENGERS_WITH_TOKEN') {
+      where.role = UserRole.PASSENGER;
+      if (segment === 'PASSENGERS_WITH_TOKEN') {
+        where.deviceTokens = { some: {} };
+      }
+    } else if (segment === 'VIP') {
       where.passengerProfile = { isVip: true };
     }
     const users = await this.prisma.user.findMany({
       where,
       select: { id: true, phoneE164: true, role: true },
-      take: 200,
+      take: 500,
     });
     if (segment === 'CITY' && city) {
       const inCity = await this.prisma.catalogItem.findMany({

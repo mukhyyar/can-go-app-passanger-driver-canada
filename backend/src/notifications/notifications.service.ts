@@ -179,9 +179,10 @@ export class NotificationsService {
           data: dataWithEvent,
           android: {
             priority: 'high',
-            ...(payload.imageUrl
-              ? { notification: { imageUrl: payload.imageUrl } }
-              : {}),
+            notification: {
+              channelId: 'can_ride_high',
+              ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+            },
           },
           apns: {
             payload: {

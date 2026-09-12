@@ -198,6 +198,12 @@ class MarketplaceApi {
   Future<Map<String, dynamic>> sendChatMessage(String rideId, String body) =>
       client.post('/rides/$rideId/chat/messages', body: {'body': body});
 
+  Future<Map<String, dynamic>> getRideContact(String rideId) =>
+      client.get('/rides/$rideId/contact');
+
+  Future<Map<String, dynamic>> getRideTracking(String rideId) =>
+      client.get('/rides/$rideId/tracking');
+
   Future<Map<String, dynamic>> createChangeRequest(
     String rideId, {
     required String type,

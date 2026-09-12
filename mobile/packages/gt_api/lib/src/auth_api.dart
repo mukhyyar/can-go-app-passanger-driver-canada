@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:http/http.dart' as http;
+
 import 'api_client.dart';
 
 class AuthSession {
@@ -170,12 +174,8 @@ class AuthApi {
   }
 
   Future<OAuthConfig> oauthConfig() async {
-    try {
-      final data = await client.get('/auth/oauth/config', auth: false);
-      return OAuthConfig.fromJson(data);
-    } catch (_) {
-      return OAuthConfig.disabled();
-    }
+    final data = await client.get('/auth/oauth/config', auth: false);
+    return OAuthConfig.fromJson(data);
   }
 
   Future<OAuthResult> oauthGoogle({
@@ -224,6 +224,23 @@ class AuthApi {
   }
 
   Future<Map<String, dynamic>> me() => client.get('/auth/me');
+
+  /// POST /auth/me/avatar — multipart field `file`.
+  Future<Map<String, dynamic>> uploadAvatar({
+    required Uint8List bytes,
+    required String filename,
+  }) {
+    return client.postMultipart(
+      '/auth/me/avatar',
+      files: [
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: filename,
+        ),
+      ],
+    );
+  }
 
   Future<void> logout({String? refreshToken}) async {
     try {

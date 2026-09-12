@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
@@ -46,6 +47,8 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _error;
   String? _debugHint;
   OAuthConfig? _oauthConfig;
+  bool _oauthConfigLoading = true;
+  String? _oauthConfigError;
 
   _OtpOrigin _otpOrigin = _OtpOrigin.phone;
   String _otpPurpose = 'login';
@@ -64,8 +67,26 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _loadOAuthConfig() async {
     if (!mounted) return;
-    final cfg = await context.read<AppState>().loadOAuthConfig();
-    if (mounted) setState(() => _oauthConfig = cfg);
+    setState(() {
+      _oauthConfigLoading = true;
+      _oauthConfigError = null;
+    });
+    try {
+      final cfg = await context.read<AppState>().loadOAuthConfig();
+      if (!mounted) return;
+      setState(() {
+        _oauthConfig = cfg;
+        _oauthConfigLoading = false;
+        _oauthConfigError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _oauthConfig = null;
+        _oauthConfigLoading = false;
+        _oauthConfigError = e.toString();
+      });
+    }
   }
 
   @override
@@ -170,19 +191,68 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _onGoogle() async {
     await _run(() async {
+      if (_oauthConfigLoading) {
+        throw Exception('Still loading sign-in options — try again in a moment.');
+      }
+      if (_oauthConfigError != null) {
+        throw Exception(
+          'Could not reach the server for Google sign-in. Check your connection and try again.',
+        );
+      }
       final cfg = _oauthConfig?.google;
       if (cfg == null || !cfg.enabled) {
         throw Exception('Google sign-in is not available right now.');
       }
-      setState(() {
-        _oauthProvider = 'google';
-        _step = _AuthStep.oauthLocal;
-      });
+
+      // Local Nest mock: collect email/name without a real Google ID token.
+      if (cfg.localMock) {
+        setState(() {
+          _oauthProvider = 'google';
+          _step = _AuthStep.oauthLocal;
+        });
+        return;
+      }
+
+      final clientId = cfg.clientId?.trim();
+      if (clientId == null || clientId.isEmpty) {
+        throw Exception('Google sign-in is not configured on the server.');
+      }
+
+      final app = context.read<AppState>();
+      final signIn = GoogleSignIn.instance;
+      await signIn.initialize(serverClientId: clientId);
+      if (!signIn.supportsAuthenticate()) {
+        throw Exception('Google sign-in is not supported on this device.');
+      }
+
+      final account = await signIn.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception(
+          'Google did not return an ID token. Register an Android OAuth client '
+          'for com.gettransfer.passenger with this app’s SHA-1.',
+        );
+      }
+
+      final result = await app.oauthGoogle(
+        idToken: idToken,
+        email: account.email,
+        fullName: account.displayName,
+      );
+      await _handleOAuthResult(result);
     });
   }
 
   Future<void> _onApple() async {
     await _run(() async {
+      if (_oauthConfigLoading) {
+        throw Exception('Still loading sign-in options — try again in a moment.');
+      }
+      if (_oauthConfigError != null) {
+        throw Exception(
+          'Could not reach the server for Apple sign-in. Check your connection and try again.',
+        );
+      }
       final cfg = _oauthConfig?.apple;
       if (cfg == null || !cfg.enabled) {
         throw Exception('Apple sign-in is not available right now.');

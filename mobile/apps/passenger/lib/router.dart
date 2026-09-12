@@ -4,6 +4,7 @@ import 'package:passenger/screens/auth_screen.dart';
 import 'package:passenger/screens/booking_confirmed_screen.dart';
 import 'package:passenger/screens/location_screen.dart';
 import 'package:passenger/screens/map_pick_screen.dart';
+import 'package:passenger/screens/notifications_screen.dart';
 import 'package:passenger/screens/offer_detail_screen.dart';
 import 'package:passenger/screens/offers_screen.dart';
 import 'package:passenger/screens/onboarding_screen.dart';
@@ -29,6 +30,7 @@ GoRouter createRouter(AppState state) {
 
       final needsAuth = loc == '/account' ||
           loc == '/edit-field' ||
+          loc == '/notifications' ||
           loc.startsWith('/payment') ||
           loc.startsWith('/booking-confirmed') ||
           loc.startsWith('/ride/');
@@ -120,6 +122,10 @@ GoRouter createRouter(AppState state) {
       GoRoute(
         path: '/account',
         builder: (_, __) => const AccountScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (_, __) => const NotificationsScreen(),
       ),
       GoRoute(
         path: '/edit-field',

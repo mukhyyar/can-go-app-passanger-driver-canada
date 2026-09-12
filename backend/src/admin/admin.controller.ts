@@ -464,6 +464,23 @@ export class AdminOpsController {
     return this.ops.flaggedChat();
   }
 
+  @Get('chat/threads')
+  @RequirePermission('chat.view')
+  chatThreads(@Query('flagged') flagged?: string) {
+    return this.ops.listChatThreads({
+      flaggedOnly: flagged === '1' || flagged === 'true',
+    });
+  }
+
+  @Get('chat/threads/:rideId')
+  @RequirePermission('chat.view')
+  chatThread(
+    @CurrentUser() user: AuthUser,
+    @Param('rideId') rideId: string,
+  ) {
+    return this.ops.getChatThreadByRide(rideId, user.id);
+  }
+
   @Get('risk/accounts')
   @RequirePermission('risk.view')
   risk() {
@@ -549,6 +566,26 @@ export class AdminOpsController {
   @RequirePermission('notifications.view')
   campaigns() {
     return this.ops.listCampaigns();
+  }
+
+  @Get('notifications/estimate')
+  @RequirePermission('notifications.send')
+  estimate(
+    @Query('segment') segment?: string,
+    @Query('userId') userId?: string,
+    @Query('city') city?: string,
+  ) {
+    return this.ops.estimateBroadcast({
+      segment: segment || 'PASSENGERS',
+      userId,
+      city,
+    });
+  }
+
+  @Get('announcements/active')
+  @RequirePermission('notifications.view')
+  announcements() {
+    return this.ops.listActiveAnnouncements();
   }
 
   @Post('notifications/send')

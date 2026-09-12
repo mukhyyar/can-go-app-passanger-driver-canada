@@ -1,13 +1,23 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import 'router.dart';
+import 'services/push_service.dart';
 import 'state/app_state.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kIsWeb) {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
+
   runApp(const DriverApp());
 }
 
@@ -24,15 +34,26 @@ class DriverApp extends StatefulWidget {
 class _DriverAppState extends State<DriverApp> {
   late final AppState _state;
   late final GoRouter _router;
+  late final PushService _push;
 
   @override
   void initState() {
     super.initState();
     _state = widget.appState ?? AppState();
     _router = createRouter(_state);
+    _push = PushService(_state);
+    _state.syncPushToken = _push.syncToken;
     if (widget.appState == null || !_state.loaded) {
       _state.load();
     }
+    _push.start();
+  }
+
+  @override
+  void dispose() {
+    _state.syncPushToken = null;
+    _push.stop();
+    super.dispose();
   }
 
   @override

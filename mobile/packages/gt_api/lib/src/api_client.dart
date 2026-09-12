@@ -1,14 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:gt_mock/gt_mock.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Default Nest API for local Phase 1 (see docker-compose / backend PORT).
-const kDefaultApiBaseUrl = String.fromEnvironment(
-  'CANGO_API_BASE',
-  defaultValue: 'http://127.0.0.1:4000/api',
-);
+/// Resolved Nest API base (see [resolveApiBaseUrl]).
+String get kDefaultApiBaseUrl => resolveApiBaseUrl();
 
 class ApiException implements Exception {
   ApiException(this.statusCode, this.message, {this.body});
@@ -90,10 +88,11 @@ class TokenStore {
 
 class ApiClient {
   ApiClient({
-    this.baseUrl = kDefaultApiBaseUrl,
+    String? baseUrl,
     TokenStore? tokens,
     http.Client? httpClient,
-  })  : tokens = tokens ?? TokenStore(),
+  })  : baseUrl = baseUrl ?? resolveApiBaseUrl(),
+        tokens = tokens ?? TokenStore(),
         _http = httpClient ?? http.Client();
 
   final String baseUrl;

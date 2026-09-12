@@ -4,6 +4,7 @@ import 'screens/auth_screen.dart';
 import 'screens/chat_detail_screen.dart';
 import 'screens/chats_screen.dart';
 import 'screens/instructions_screen.dart';
+import 'screens/notifications_screen.dart';
 import 'screens/onboarding/documents_screen.dart';
 import 'screens/onboarding/edit_vehicle_screen.dart';
 import 'screens/onboarding/location_screen.dart';
@@ -142,6 +143,10 @@ GoRouter createRouter(AppState appState) {
       GoRoute(
         path: '/instructions',
         builder: (_, __) => const InstructionsScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (_, __) => const NotificationsScreen(),
       ),
       GoRoute(
         path: '/chat/:id',

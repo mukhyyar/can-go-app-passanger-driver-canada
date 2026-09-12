@@ -12,6 +12,7 @@ build/
 # Android
 **/android/.gradle/
 **/android/local.properties
+**/android/maps.properties
 **/.kotlin/
 
 # IDE / OS

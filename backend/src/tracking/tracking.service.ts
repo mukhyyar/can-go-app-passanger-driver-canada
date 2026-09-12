@@ -155,6 +155,8 @@ export class TrackingService {
     const allowed =
       ride.passenger.userId === userId ||
       ride.selectedOffer?.driver.userId === userId ||
+      (ride.assignedDriverId != null &&
+        user?.driverProfile?.id === ride.assignedDriverId) ||
       user?.role === UserRole.ADMIN ||
       user?.role === UserRole.SUPER_ADMIN;
     if (!allowed) throw new ForbiddenException();
@@ -194,6 +196,48 @@ export class TrackingService {
             }
           : null),
       samples,
+      pickup: { lat: ride.fromLat, lng: ride.fromLng },
+      dropoff:
+        ride.toLat != null && ride.toLng != null
+          ? { lat: ride.toLat, lng: ride.toLng }
+          : null,
+      eta: this.computeEta(ride, live ?? (current
+        ? { lat: current.lat, lng: current.lng, speedMps: current.speedMps ?? undefined }
+        : null)),
+    };
+  }
+
+  /** GET /rides/:id/tracking — alias with ETA + endpoints for live map UI. */
+  async getRideTracking(userId: string, rideId: string) {
+    return this.getRideLocation(userId, rideId);
+  }
+
+  private computeEta(
+    ride: {
+      status: RideStatus;
+      fromLat: number;
+      fromLng: number;
+      toLat: number | null;
+      toLng: number | null;
+    },
+    live: { lat: number; lng: number; speedMps?: number } | null,
+  ) {
+    if (!live) return null;
+    const toPickup =
+      ride.status === RideStatus.BOOKED ||
+      ride.status === RideStatus.DRIVER_EN_ROUTE ||
+      ride.status === RideStatus.DRIVER_ARRIVED;
+    const targetLat = toPickup ? ride.fromLat : ride.toLat;
+    const targetLng = toPickup ? ride.fromLng : ride.toLng;
+    if (targetLat == null || targetLng == null) return null;
+    const distM = haversineM(live.lat, live.lng, targetLat, targetLng);
+    const speed = live.speedMps && live.speedMps > 1 ? live.speedMps : 11; // ~40 km/h default
+    const minutes = Math.max(1, Math.round(distM / speed / 60));
+    return {
+      minutes,
+      target: toPickup ? 'PICKUP' : 'DROPOFF',
+      distanceKm: Math.round((distM / 1000) * 10) / 10,
+      updatedAt: new Date().toISOString(),
     };
   }
 

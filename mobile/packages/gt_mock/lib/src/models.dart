@@ -225,6 +225,7 @@ class Offer {
     this.color,
     this.vehicleDisplayName,
     this.plate,
+    this.driverName,
   });
 
   final String id;
@@ -255,6 +256,8 @@ class Offer {
   final String? color;
   final String? vehicleDisplayName;
   final String? plate;
+  /// Driver / carrier display name after booking (from server `driver.fullName`).
+  final String? driverName;
 
   String get displayName {
     if (vehicleDisplayName != null && vehicleDisplayName!.trim().isNotEmpty) {
@@ -615,6 +618,7 @@ class DriverRequest {
     this.status,
     this.shortId,
     this.pickupAt,
+    this.passengerName,
   });
 
   final String id;
@@ -652,6 +656,8 @@ class DriverRequest {
   final String? status;
   final String? shortId;
   final DateTime? pickupAt;
+  /// Booked passenger display name (from API `passengerName` / `passenger.fullName`).
+  final String? passengerName;
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
@@ -704,6 +710,7 @@ class DriverRequest {
       status: status ?? this.status,
       shortId: shortId,
       pickupAt: pickupAt ?? this.pickupAt,
+      passengerName: passengerName,
     );
   }
 }

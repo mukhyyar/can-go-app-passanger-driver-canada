@@ -254,15 +254,18 @@ Offer offerFromServer(Map<String, dynamic> json) {
   final vehicle = json['vehicle'];
   final vehicleMap = vehicle is Map ? asStringKeyedMap(vehicle) : null;
 
+  final driver = json['driver'];
+  final driverMap = driver is Map ? asStringKeyedMap(driver) : null;
+  final driverName = driverMap?['fullName']?.toString().trim();
+  final driverNameOrNull =
+      (driverName != null && driverName.isNotEmpty) ? driverName : null;
+
   final brand = pres['brand']?.toString() ??
       () {
         final name = vehicleMap?['name']?.toString().trim() ?? '';
         if (name.isEmpty) return null;
         return name.split(RegExp(r'\s+')).first;
       }() ??
-      (json['driver'] is Map
-          ? (json['driver'] as Map)['fullName']?.toString()
-          : null) ??
       'Vehicle';
   final model = pres['model']?.toString() ?? '';
   final vehicleClass = pres['vehicleClass']?.toString() ??
@@ -294,9 +297,8 @@ Offer offerFromServer(Map<String, dynamic> json) {
     options: options,
     languages: languages.isNotEmpty ? languages : const ['EN'],
     carrierId: pres['carrierId']?.toString() ??
-        (json['driver'] is Map
-            ? (json['driver'] as Map)['id']?.toString() ?? ''
-            : ''),
+        driverMap?['id']?.toString() ??
+        '',
     passengers: _asInt(pres['passengers'], fallback: 3),
     yearsWithPlatform: ratingBreakdown.yearsWithPlatform > 0
         ? ratingBreakdown.yearsWithPlatform
@@ -314,6 +316,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
     vehicleDisplayName: pres['vehicleDisplayName']?.toString() ??
         vehicleMap?['name']?.toString(),
     plate: pres['plate']?.toString() ?? vehicleMap?['plate']?.toString(),
+    driverName: driverNameOrNull,
   );
 }
 
@@ -378,11 +381,11 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
     }
 
     final price = pickPrice();
+    final driverName = driver['fullName']?.toString().trim();
     return Offer(
       id: id,
       vehicleBrand: pres['brand']?.toString() ??
           vehicle['name']?.toString() ??
-          driver['fullName']?.toString() ??
           'Vehicle',
       vehicleModel: pres['model']?.toString() ?? '',
       vehicleClass: pres['vehicleClass']?.toString() ??
@@ -408,6 +411,9 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
       vehicleDisplayName: pres['vehicleDisplayName']?.toString() ??
           vehicle['name']?.toString(),
       plate: pres['plate']?.toString() ?? vehicle['plate']?.toString(),
+      driverName: (driverName != null && driverName.isNotEmpty)
+          ? driverName
+          : null,
     );
   }
 }
@@ -643,6 +649,15 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
   final pickupRaw = json['pickupAt'];
   if (pickupRaw != null) pickupAt = DateTime.tryParse(pickupRaw.toString());
 
+  String? passengerName = json['passengerName']?.toString().trim();
+  if (passengerName == null || passengerName.isEmpty) {
+    final passenger = json['passenger'];
+    if (passenger is Map) {
+      passengerName = passenger['fullName']?.toString().trim();
+    }
+  }
+  if (passengerName != null && passengerName.isEmpty) passengerName = null;
+
   return DriverRequest(
     id: id,
     datetimeLabel: _formatPickup(json['pickupAt']),
@@ -682,6 +697,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     status: json['status']?.toString(),
     shortId: json['shortId']?.toString(),
     pickupAt: pickupAt,
+    passengerName: passengerName,
   );
 }
 

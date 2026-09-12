@@ -139,7 +139,7 @@ export const NAV: NavGroup[] = [
     label: 'Trust & Safety',
     items: [
       { href: '/ratings', label: 'Ratings', permission: 'ratings.view' },
-      { href: '/chat', label: 'Flagged Chats', permission: 'chat.view' },
+      { href: '/chat', label: 'Ride Chats', permission: 'chat.view' },
       { href: '/risk', label: 'Risk Center', permission: 'risk.view' },
       { href: '/disputes', label: 'Disputes', permission: 'cases.view' },
       { href: '/watchlist', label: 'Watchlist', permission: 'risk.view' },

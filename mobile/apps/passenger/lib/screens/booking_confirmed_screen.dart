@@ -131,8 +131,13 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
                       ],
                       if (offer != null) ...[
                         const Divider(height: 24),
+                        if ((offer.driverName ?? '').trim().isNotEmpty)
+                          _row('Driver', offer.driverName!.trim()),
                         _row('Vehicle', offer.displayName),
                         _row('Class', offer.vehicleClass),
+                        if (offer.plate != null &&
+                            offer.plate!.trim().isNotEmpty)
+                          _row('Plate', offer.plate!.trim().toUpperCase()),
                       ],
                       const Divider(height: 24),
                       _row('Payment', payStatus),

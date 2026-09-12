@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
@@ -16,6 +17,8 @@ class DriverMenuPanel extends StatefulWidget {
 }
 
 class _DriverMenuPanelState extends State<DriverMenuPanel> {
+  bool _uploadingAvatar = false;
+
   @override
   void initState() {
     super.initState();
@@ -31,6 +34,42 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
     await context.read<AppState>().refreshDriverSettings(force: true);
   }
 
+  Future<void> _pickAndUploadAvatar(AppState s) async {
+    if (!s.isAuthenticated || _uploadingAvatar) return;
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1024,
+    );
+    if (file == null || !mounted) return;
+    setState(() => _uploadingAvatar = true);
+    try {
+      final bytes = await file.readAsBytes();
+      await s.uploadAvatar(bytes: bytes, filename: file.name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile photo updated')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
+    }
+  }
+
+  String? _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return null;
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -39,6 +78,7 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
     final cta = s.accountStatus?['cta'];
     final ctaRoute = cta is Map ? cta['route']?.toString() : null;
     final ctaLabel = cta is Map ? cta['label']?.toString() : null;
+    final initials = _initials(name);
 
     return ColoredBox(
       color: Colors.white,
@@ -64,6 +104,26 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                       ),
                     ),
                     IconButton(
+                      tooltip: 'Notifications',
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        context.push('/notifications');
+                      },
+                      icon: Badge(
+                        isLabelVisible: s.unreadNotificationCount > 0,
+                        label: Text(
+                          s.unreadNotificationCount > 99
+                              ? '99+'
+                              : '${s.unreadNotificationCount}',
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                        child: const Icon(
+                          Icons.notifications_outlined,
+                          color: GtColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
                       tooltip: 'Close',
                       onPressed: () => Navigator.of(context).maybePop(),
                       icon: const Icon(Icons.close,
@@ -85,6 +145,89 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                 ),
                 const SizedBox(height: 12),
               ],
+              Center(
+                child: GestureDetector(
+                  onTap: () => _pickAndUploadAvatar(s),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: GtColors.soft,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: GtColors.brand.withValues(alpha: 0.2),
+                          ),
+                          image: s.avatarUrl != null && s.avatarUrl!.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(s.avatarUrl!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: s.avatarUrl != null && s.avatarUrl!.isNotEmpty
+                            ? null
+                            : (initials != null
+                                ? Text(
+                                    initials,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w700,
+                                      color: GtColors.brand,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person_outline,
+                                    size: 32,
+                                    color: GtColors.brand,
+                                  )),
+                      ),
+                      if (_uploadingAvatar)
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                        )
+                      else
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: GtColors.brand,
+                              shape: BoxShape.circle,
+                              border:
+                                  Border.all(color: Colors.white, width: 1.5),
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               Center(
                 child: Container(
                   padding:

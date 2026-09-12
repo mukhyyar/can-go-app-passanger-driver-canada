@@ -68,4 +68,10 @@ export class TrackingController {
   rideLocation(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.tracking.getRideLocation(user.id, id);
   }
+
+  @Get('rides/:id/tracking')
+  @UseGuards(JwtAuthGuard)
+  rideTracking(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tracking.getRideTracking(user.id, id);
+  }
 }

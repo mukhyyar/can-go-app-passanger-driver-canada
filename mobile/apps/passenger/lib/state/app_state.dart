@@ -40,6 +40,9 @@ class AppState extends ChangeNotifier {
   bool onboarded = false;
   bool ready = false;
   bool isAuthenticated = false;
+
+  /// Wired from [PushService] so token sync runs after login / bootstrap.
+  Future<void> Function()? syncPushToken;
   Map<String, dynamic>? me;
   List<Place> placeSearchHistory = const [];
   final Map<String, List<Offer>> _serverOffers = {};
@@ -119,6 +122,8 @@ class AppState extends ChangeNotifier {
         await refreshRidesFromServer();
         await startRideRealtime();
         _syncOpenRidePolling();
+        await syncPushToken?.call();
+        unawaited(refreshUnreadNotificationCount());
       } catch (_) {
         isAuthenticated = false;
         me = null;
@@ -295,6 +300,8 @@ class AppState extends ChangeNotifier {
     await startRideRealtime();
     _syncOpenRidePolling();
     await _loadPlaceSearchHistory();
+    await syncPushToken?.call();
+    unawaited(refreshUnreadNotificationCount());
     notifyListeners();
   }
 
@@ -309,12 +316,116 @@ class AppState extends ChangeNotifier {
     repo.passenger.phone = m['phoneE164']?.toString() ??
         m['phone']?.toString() ??
         '';
+    _avatarUrl = _extractAvatarUrl(m);
   }
 
   void _clearLocalProfile() {
     repo.passenger.fullName = '';
     repo.passenger.email = '';
     repo.passenger.phone = '';
+    _avatarUrl = null;
+    unreadNotificationCount = 0;
+  }
+
+  String? _avatarUrl;
+
+  /// Profile photo URL from GET /auth/me (`passenger.avatarUrl` or top-level).
+  String? get avatarUrl => _avatarUrl;
+
+  void setAvatarUrl(String? url) {
+    _avatarUrl = url;
+    if (me != null && url != null) {
+      final passenger = me!['passenger'];
+      if (passenger is Map) {
+        me = {
+          ...me!,
+          'passenger': {...Map<String, dynamic>.from(passenger), 'avatarUrl': url},
+        };
+      } else {
+        me = {...me!, 'avatarUrl': url};
+      }
+    }
+    notifyListeners();
+  }
+
+  static String? _extractAvatarUrl(Map<String, dynamic> m) {
+    final passenger = m['passenger'];
+    if (passenger is Map) {
+      final url = passenger['avatarUrl']?.toString();
+      if (url != null && url.isNotEmpty) return url;
+    }
+    final top = m['avatarUrl']?.toString();
+    if (top != null && top.isNotEmpty) return top;
+    return null;
+  }
+
+  Future<String?> uploadAvatar({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    if (!isAuthenticated) return null;
+    final res = await api.auth.uploadAvatar(
+      bytes: Uint8List.fromList(bytes),
+      filename: filename,
+    );
+    final url = res['avatarUrl']?.toString();
+    if (url != null && url.isNotEmpty) {
+      setAvatarUrl(url);
+    } else {
+      me = await api.auth.me();
+      _syncLocalProfileFromMe();
+      notifyListeners();
+    }
+    return avatarUrl;
+  }
+
+  int unreadNotificationCount = 0;
+
+  Future<List<Map<String, dynamic>>> listNotifications({int limit = 50}) async {
+    if (!isAuthenticated) return const [];
+    final raw = await api.notifications.list(limit: limit);
+    final items = (raw['items'] as List?) ??
+        (raw['_list'] as List?) ??
+        const [];
+    return items
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<int> refreshUnreadNotificationCount() async {
+    if (!isAuthenticated) {
+      unreadNotificationCount = 0;
+      notifyListeners();
+      return 0;
+    }
+    try {
+      final raw = await api.notifications.unreadCount();
+      unreadNotificationCount = (raw['count'] as num?)?.toInt() ?? 0;
+      notifyListeners();
+      return unreadNotificationCount;
+    } catch (e) {
+      debugPrint('refreshUnreadNotificationCount: $e');
+      return unreadNotificationCount;
+    }
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    if (!isAuthenticated) return;
+    await api.notifications.markRead(id);
+    if (unreadNotificationCount > 0) {
+      unreadNotificationCount--;
+      notifyListeners();
+    } else {
+      await refreshUnreadNotificationCount();
+    }
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    if (!isAuthenticated) return;
+    await api.notifications.markAllRead();
+    unreadNotificationCount = 0;
+    notifyListeners();
   }
 
   Future<void> refreshRidesFromServer() async {
@@ -331,7 +442,7 @@ class AppState extends ChangeNotifier {
         final id = ride.id;
         final status = map['status'] as String?;
         if (status != null) statuses[id] = status;
-        offers[id] = _parseOffersList(map['offers']);
+        offers[id] = _offersWithSelected(map);
       }
       repo.rides
         ..clear()
@@ -352,13 +463,36 @@ class AppState extends ChangeNotifier {
 
   List<Offer> _parseOffersList(dynamic raw) => parseOffersList(raw);
 
+  List<Offer> _offersWithSelected(Map<String, dynamic> map) {
+    final parsed = List<Offer>.from(_parseOffersList(map['offers']));
+    final selectedRaw = map['selectedOffer'];
+    if (selectedRaw is Map) {
+      try {
+        final selected = offerFromServerOrMinimal(
+          Map<String, dynamic>.from(
+            selectedRaw.map((k, v) => MapEntry(k.toString(), v)),
+          ),
+        );
+        final idx = parsed.indexWhere((o) => o.id == selected.id);
+        if (idx >= 0) {
+          parsed[idx] = selected;
+        } else {
+          parsed.add(selected);
+        }
+      } catch (_) {
+        // Keep parsed offers as-is.
+      }
+    }
+    return parsed;
+  }
+
   /// Refresh a single ride (and its offers) from GET /rides/:id.
   Future<RideRequest?> refreshRide(String rideId) async {
     if (!isAuthenticated) return rideById(rideId);
     try {
       final raw = await api.marketplace.getRide(rideId);
       // Parse offers first so a ride-mapping failure never blanks the list.
-      final parsedOffers = _parseOffersList(raw['offers']);
+      final parsedOffers = _offersWithSelected(raw);
       _serverOffers[rideId] = parsedOffers;
       _realtime?.subscribeRide(rideId);
 
@@ -448,10 +582,16 @@ class AppState extends ChangeNotifier {
   /// Pending deep-link target after auth / splash.
   String? pendingDeepLinkRideId;
   String? pendingDeepLinkOfferId;
+  String? pendingDeepLinkType;
 
-  void applyDeepLink({required String rideId, String? offerId}) {
+  void applyDeepLink({
+    required String rideId,
+    String? offerId,
+    String? type,
+  }) {
     pendingDeepLinkRideId = rideId;
     pendingDeepLinkOfferId = offerId;
+    pendingDeepLinkType = type;
     notifyListeners();
   }
 
@@ -460,8 +600,13 @@ class AppState extends ChangeNotifier {
     final rideId = pendingDeepLinkRideId;
     if (rideId == null || rideId.isEmpty) return null;
     final offerId = pendingDeepLinkOfferId;
+    final type = pendingDeepLinkType;
     pendingDeepLinkRideId = null;
     pendingDeepLinkOfferId = null;
+    pendingDeepLinkType = null;
+    if (type == 'chat') {
+      return '/ride/$rideId/chat';
+    }
     if (offerId != null && offerId.isNotEmpty) {
       return '/offers/$rideId?offerId=$offerId';
     }
@@ -596,6 +741,12 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> sendChat(String rideId, String body) =>
       api.marketplace.sendChatMessage(rideId, body);
 
+  Future<Map<String, dynamic>> getRideContact(String rideId) =>
+      api.marketplace.getRideContact(rideId);
+
+  Future<Map<String, dynamic>> getRideTracking(String rideId) =>
+      api.marketplace.getRideTracking(rideId);
+
   Future<Map<String, dynamic>> createChangeRequest(
     String rideId, {
     required String type,
@@ -716,6 +867,7 @@ class AppState extends ChangeNotifier {
     if (isAuthenticated) {
       unawaited(refreshRidesFromServer());
       unawaited(startRideRealtime());
+      unawaited(refreshUnreadNotificationCount());
       _syncOpenRidePolling();
     }
   }
@@ -1137,6 +1289,8 @@ class AppState extends ChangeNotifier {
     termsAccepted = false;
     me = null;
     isAuthenticated = false;
+    unreadNotificationCount = 0;
+    _avatarUrl = null;
     _serverOffers.clear();
     _serverRideStatus.clear();
     repo.rides.clear();
