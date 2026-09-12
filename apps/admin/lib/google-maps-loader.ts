@@ -27,6 +27,7 @@ export type GMapsNS = {
   Polyline: new (opts: object) => GOverlay;
   Circle: new (opts: object) => GOverlay;
   LatLngBounds: new () => GLatLngBounds;
+  SymbolPath: { CIRCLE: number; FORWARD_CLOSED_ARROW: number };
   OverlayView: new () => {
     setMap: (m: GMap | null) => void;
     getPanes: () => { overlayMouseTarget?: HTMLElement } | null;
