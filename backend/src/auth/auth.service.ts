@@ -63,6 +63,26 @@ export class AuthService {
     }
   }
 
+  /** Rejects password/OTP/OAuth when the account role does not match the requesting app. */
+  private assertMobileAppRole(userRole: UserRole, requestedRole?: UserRole) {
+    if (!requestedRole || userRole === requestedRole) {
+      return;
+    }
+    if (userRole === UserRole.PASSENGER) {
+      throw new ForbiddenException(
+        'This account is registered as a passenger. Use the passenger app.',
+      );
+    }
+    if (userRole === UserRole.DRIVER) {
+      throw new ForbiddenException(
+        'This account is registered as a driver. Use the driver app.',
+      );
+    }
+    throw new ForbiddenException(
+      'This account cannot sign in to this app.',
+    );
+  }
+
   async register(
     dto: RegisterDto,
     meta?: { userAgent?: string; ip?: string },
@@ -137,7 +157,10 @@ export class AuthService {
       include: { passengerProfile: true, driverProfile: true },
     });
 
-    // Phone-first signup: create passenger when OTP login/register has no user yet
+    const signupRole =
+      dto.role === UserRole.DRIVER ? UserRole.DRIVER : UserRole.PASSENGER;
+
+    // Phone-first signup when OTP login/register has no user yet
     if (
       !user &&
       (result.purpose === 'login' ||
@@ -148,8 +171,18 @@ export class AuthService {
         data: {
           phoneE164: result.phoneE164,
           phoneVerifiedAt: new Date(),
-          role: UserRole.PASSENGER,
-          passengerProfile: { create: { fullName: '' } },
+          role: signupRole,
+          ...(signupRole === UserRole.PASSENGER
+            ? { passengerProfile: { create: { fullName: '' } } }
+            : {
+                driverProfile: {
+                  create: {
+                    fullName: '',
+                    approvalStatus: 'PENDING_KYC',
+                    isActivated: false,
+                  },
+                },
+              }),
         },
         include: { passengerProfile: true, driverProfile: true },
       });
@@ -162,6 +195,8 @@ export class AuthService {
     if (user.isSuspended || user.archivedAt) {
       throw new ForbiddenException('Account suspended');
     }
+
+    this.assertMobileAppRole(user.role, dto.role);
 
     if (
       result.purpose === 'verify_phone' ||
@@ -239,6 +274,8 @@ export class AuthService {
     if (user.isSuspended || user.archivedAt) {
       throw new ForbiddenException('Account suspended');
     }
+
+    this.assertMobileAppRole(user.role, dto.role);
 
     if (
       (user.role === UserRole.PASSENGER || user.role === UserRole.DRIVER) &&
@@ -798,12 +835,8 @@ export class AuthService {
       }
     }
 
-    if (user && user.role !== role) {
-      throw new ForbiddenException(
-        user.role === UserRole.PASSENGER
-          ? 'This Google account is registered as a passenger. Use the passenger app or a different Google account.'
-          : 'This Google account is registered as a driver. Use the driver app or a different Google account.',
-      );
+    if (user) {
+      this.assertMobileAppRole(user.role, role);
     }
 
     if (!user) {

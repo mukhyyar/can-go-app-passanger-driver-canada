@@ -148,17 +148,23 @@ class AuthApi {
   Future<AuthSession> verifyOtp({
     required String challengeId,
     required String code,
+    required String role,
   }) async {
     final data = await client.post(
       '/auth/otp/verify',
       auth: false,
-      body: {'challengeId': challengeId, 'code': code},
+      body: {
+        'challengeId': challengeId,
+        'code': code,
+        'role': role,
+      },
     );
     return _saveSession(data);
   }
 
   Future<AuthSession> login({
     required String password,
+    required String role,
     String? email,
     String? phoneE164,
   }) async {
@@ -167,6 +173,7 @@ class AuthApi {
       auth: false,
       body: {
         'password': password,
+        'role': role,
         if (email != null) 'email': email,
         if (phoneE164 != null) 'phoneE164': phoneE164,
       },

@@ -221,8 +221,47 @@ class _PaymentScreenState extends State<PaymentScreen> {
         app.rideById(widget.rideId)?.status == RideStatus.booked;
   }
 
+  Future<void> _confirmCancel() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel ride?'),
+        content: const Text(
+          'Cancel this payment and the ride request?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel ride'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await context.read<AppState>().cancelRide(widget.rideId);
+      if (!mounted) return;
+      context.go('/');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final status =
+        (app.rideById(widget.rideId)?.serverStatus ?? '').toUpperCase();
+    final canCancel = status == 'PAYMENT_PENDING' ||
+        status == 'WAITING_FOR_OFFERS' ||
+        status == 'OFFER_SELECTION';
     final offer =
         context.watch<AppState>().offerByIds(widget.rideId, widget.offerId);
     final quote = _quote;
@@ -247,6 +286,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          if (canCancel)
+            TextButton(
+              onPressed: _paying ? null : _confirmCancel,
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: GtColors.brand),
+              ),
+            ),
+        ],
       ),
       body: _loadingQuote
           ? const Center(

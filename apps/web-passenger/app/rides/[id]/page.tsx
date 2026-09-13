@@ -34,6 +34,10 @@ export default function RideDetailPage() {
   const [payingOfferId, setPayingOfferId] = useState<string | null>(null);
   const [paymentMode, setPaymentMode] = useState<'FULL' | 'PARTIAL'>('FULL');
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editPickup, setEditPickup] = useState('');
+  const [editComment, setEditComment] = useState('');
+  const [editFlight, setEditFlight] = useState('');
 
   async function load(access = token) {
     if (!access) return;
@@ -138,14 +142,61 @@ export default function RideDetailPage() {
   }
 
   async function cancel() {
-    if (!token) return;
+    if (!token || !ride) return;
     setBusy(true);
     try {
-      await api(`/rides/${params.id}/cancel`, {
-        method: 'POST',
+      const bookedCancel = ['BOOKED', 'DRIVER_EN_ROUTE', 'DRIVER_ARRIVED'];
+      if (bookedCancel.includes(ride.status)) {
+        await api(`/rides/${params.id}/transitions`, {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ status: 'PASSENGER_CANCELLED' }),
+        });
+      } else {
+        await api(`/rides/${params.id}/cancel`, {
+          method: 'POST',
+          token,
+          body: '{}',
+        });
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startEdit() {
+    if (!ride) return;
+    setEditPickup(
+      ride.pickupAt
+        ? new Date(ride.pickupAt).toISOString().slice(0, 16)
+        : '',
+    );
+    setEditComment(ride.comment ?? '');
+    setEditFlight(ride.flight ?? '');
+    setEditing(true);
+  }
+
+  async function saveEdit() {
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const pickupAt = editPickup
+        ? new Date(editPickup).toISOString()
+        : undefined;
+      await api(`/rides/${params.id}`, {
+        method: 'PATCH',
         token,
-        body: '{}',
+        body: JSON.stringify({
+          ...(pickupAt ? { pickupAt } : {}),
+          comment: editComment,
+          flight: editFlight,
+        }),
       });
+      setEditing(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -346,14 +397,96 @@ export default function RideDetailPage() {
           )}
 
           {ride &&
-            ['WAITING_FOR_OFFERS', 'OFFER_SELECTION', 'PAYMENT_PENDING'].includes(
-              ride.status,
-            ) && (
+            (ride.canEdit === true ||
+              ['WAITING_FOR_OFFERS', 'OFFER_SELECTION'].includes(ride.status)) && (
+              <div style={{ marginTop: 12 }}>
+                {!editing ? (
+                  <button
+                    className="linkish"
+                    type="button"
+                    disabled={busy}
+                    onClick={startEdit}
+                  >
+                    Edit request
+                  </button>
+                ) : (
+                  <div className="card" style={{ padding: 12 }}>
+                    <label className="muted" style={{ display: 'block' }}>
+                      Pickup
+                      <input
+                        type="datetime-local"
+                        value={editPickup}
+                        onChange={(e) => setEditPickup(e.target.value)}
+                        style={{ display: 'block', width: '100%', marginTop: 4 }}
+                      />
+                    </label>
+                    <label
+                      className="muted"
+                      style={{ display: 'block', marginTop: 8 }}
+                    >
+                      Flight
+                      <input
+                        type="text"
+                        value={editFlight}
+                        onChange={(e) => setEditFlight(e.target.value)}
+                        style={{ display: 'block', width: '100%', marginTop: 4 }}
+                      />
+                    </label>
+                    <label
+                      className="muted"
+                      style={{ display: 'block', marginTop: 8 }}
+                    >
+                      Comment
+                      <textarea
+                        value={editComment}
+                        onChange={(e) => setEditComment(e.target.value)}
+                        rows={3}
+                        style={{ display: 'block', width: '100%', marginTop: 4 }}
+                      />
+                    </label>
+                    <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                      <button
+                        className="cta"
+                        type="button"
+                        disabled={busy}
+                        onClick={saveEdit}
+                      >
+                        Save changes
+                      </button>
+                      <button
+                        className="linkish"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setEditing(false)}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+                      Changing pickup time withdraws open offers so drivers can
+                      rebid.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+          {ride &&
+            (ride.canCancel === true ||
+              [
+                'WAITING_FOR_OFFERS',
+                'OFFER_SELECTION',
+                'PAYMENT_PENDING',
+                'BOOKED',
+                'DRIVER_EN_ROUTE',
+                'DRIVER_ARRIVED',
+              ].includes(ride.status)) && (
               <button
                 className="linkish"
                 type="button"
                 disabled={busy}
                 onClick={cancel}
+                style={{ marginTop: 8 }}
               >
                 Cancel request
               </button>

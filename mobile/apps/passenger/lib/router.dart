@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 import 'package:passenger/screens/account_screen.dart';
 import 'package:passenger/screens/auth_screen.dart';
 import 'package:passenger/screens/booking_confirmed_screen.dart';
+import 'package:passenger/screens/edit_ride_screen.dart';
 import 'package:passenger/screens/location_screen.dart';
 import 'package:passenger/screens/map_pick_screen.dart';
 import 'package:passenger/screens/notifications_screen.dart';
@@ -33,7 +34,8 @@ GoRouter createRouter(AppState state) {
           loc == '/notifications' ||
           loc.startsWith('/payment') ||
           loc.startsWith('/booking-confirmed') ||
-          loc.startsWith('/ride/');
+          loc.startsWith('/ride/') ||
+          loc.startsWith('/edit-ride/');
       if (!state.isAuthenticated && needsAuth) return '/auth';
 
       if (state.isAuthenticated &&
@@ -116,6 +118,12 @@ GoRouter createRouter(AppState state) {
       GoRoute(
         path: '/ride/:rideId',
         builder: (_, state) => RideDetailScreen(
+          rideId: state.pathParameters['rideId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/edit-ride/:rideId',
+        builder: (_, state) => EditRideScreen(
           rideId: state.pathParameters['rideId']!,
         ),
       ),

@@ -35,6 +35,7 @@ import type {
   CreateRideDto,
   PaymentQuoteDto,
   UpdateOfferDto,
+  UpdateRideDto,
 } from './dto/marketplace.dto';
 import { isAllowedOfferValidity, OFFER_OPTION_KEYS } from './offer.constants';
 import { TrackingGateway } from '../tracking/tracking.gateway';
@@ -44,6 +45,10 @@ import {
   serializeLifecycleFlags,
 } from './ride-lifecycle';
 import { OfferPresentationService } from './offer-presentation.service';
+import {
+  isMaterialRideEdit,
+  isPassengerEditableStatus,
+} from './ride-update.logic';
 
 const DEFAULT_OFFER_VALIDITY_SECONDS = 30 * 60;
 
@@ -209,6 +214,249 @@ export class MarketplaceService {
     await this.audit(userId, 'ride.create', 'Ride', ride.id, ip);
     void this.notifyDriversOfNewRequest(ride);
     return this.getRideForActor(userId, ride.id);
+  }
+
+  async updateRide(
+    userId: string,
+    rideId: string,
+    dto: UpdateRideDto,
+    ip?: string,
+  ) {
+    const passenger = await this.requirePassenger(userId);
+    const ride = await this.prisma.ride.findFirst({
+      where: { id: rideId, passengerId: passenger.id },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+    if (!isPassengerEditableStatus(ride.status)) {
+      throw new BadRequestException(`Cannot edit ride in ${ride.status}`);
+    }
+
+    const priorSnap =
+      ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
+        ? (ride.priceSnapshot as Record<string, unknown>)
+        : {};
+
+    const fromLabel = dto.fromLabel ?? ride.fromLabel;
+    const toLabel =
+      dto.toLabel !== undefined ? dto.toLabel : ride.toLabel;
+    const fromLat = dto.fromLat ?? ride.fromLat;
+    const fromLng = dto.fromLng ?? ride.fromLng;
+    const toLat = dto.toLat !== undefined ? dto.toLat : ride.toLat;
+    const toLng = dto.toLng !== undefined ? dto.toLng : ride.toLng;
+    const pickupAt = dto.pickupAt ? new Date(dto.pickupAt) : ride.pickupAt;
+    if (Number.isNaN(pickupAt.getTime())) {
+      throw new BadRequestException('Invalid pickupAt');
+    }
+    const isRoundTrip =
+      dto.isRoundTrip !== undefined ? dto.isRoundTrip : ride.isRoundTrip;
+    const returnAtRaw =
+      dto.returnAt !== undefined
+        ? dto.returnAt
+          ? new Date(dto.returnAt)
+          : null
+        : ride.returnAt;
+    if (isRoundTrip && !returnAtRaw) {
+      throw new BadRequestException('returnAt required for round-trip rides');
+    }
+    const vehicleClassIds =
+      dto.vehicleClassIds ?? ride.vehicleClassIds;
+    if (!vehicleClassIds.length) {
+      throw new BadRequestException('vehicleClassIds required');
+    }
+
+    const hours =
+      dto.hours ??
+      (typeof priorSnap.hours === 'number' ? priorSnap.hours : undefined);
+    const days =
+      dto.days ??
+      (typeof priorSnap.days === 'number' ? priorSnap.days : undefined);
+    const catalogItemId =
+      dto.catalogItemId ??
+      (typeof priorSnap.catalogItemId === 'string'
+        ? priorSnap.catalogItemId
+        : undefined);
+
+    const material = isMaterialRideEdit(
+      {
+        fromLabel: ride.fromLabel,
+        toLabel: ride.toLabel,
+        fromLat: ride.fromLat,
+        fromLng: ride.fromLng,
+        toLat: ride.toLat,
+        toLng: ride.toLng,
+        pickupAt: ride.pickupAt,
+        returnAt: ride.returnAt,
+        isRoundTrip: ride.isRoundTrip,
+        vehicleClassIds: ride.vehicleClassIds,
+        hours: typeof priorSnap.hours === 'number' ? priorSnap.hours : null,
+        days: typeof priorSnap.days === 'number' ? priorSnap.days : null,
+      },
+      {
+        fromLabel,
+        toLabel,
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+        pickupAt,
+        returnAt: returnAtRaw,
+        isRoundTrip,
+        vehicleClassIds,
+        hours: hours ?? null,
+        days: days ?? null,
+      },
+    );
+
+    const passengerUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { passengerProfile: true },
+    });
+    const vip = passengerUser?.passengerProfile?.isVip === true;
+    const vehicleClass = vehicleClassIds[0] ?? '*';
+    const currency = ride.currency;
+    const quote = await this.pricing.quote({
+      serviceType: ride.serviceType as
+        | 'RIDE'
+        | 'PER_HOUR'
+        | 'DELIVERY'
+        | 'CAR_RENTAL'
+        | 'EXPERIENCES',
+      fromLat,
+      fromLng,
+      toLat: toLat ?? undefined,
+      toLng: toLng ?? undefined,
+      vehicleClass,
+      currency,
+      hours,
+      days,
+      catalogItemId,
+      vip,
+    });
+
+    let snapshot: PriceSnapshot & { promo?: Record<string, unknown> } = {
+      ...quote,
+      isRoundTrip,
+      legs: isRoundTrip ? 2 : 1,
+    };
+    if (isRoundTrip) {
+      const guidance = round2(quote.guidanceAmount * 2);
+      const minMul = quote.minBid / Math.max(quote.guidanceAmount, 0.01);
+      const maxMul = quote.maxBid / Math.max(quote.guidanceAmount, 0.01);
+      snapshot = {
+        ...snapshot,
+        distanceKm: round2(quote.distanceKm * 2),
+        durationMin: round2(quote.durationMin * 2),
+        guidanceAmount: guidance,
+        minBid: round2(guidance * minMul),
+        maxBid: round2(guidance * maxMul),
+      };
+    }
+    if (priorSnap.promo && typeof priorSnap.promo === 'object') {
+      snapshot = {
+        ...snapshot,
+        promo: priorSnap.promo as Record<string, unknown>,
+      };
+    }
+
+    const adults = dto.adults ?? ride.adults;
+    const childSeatsJson =
+      dto.childSeatsJson !== undefined
+        ? dto.childSeatsJson
+        : ((ride.childSeatsJson as Record<string, unknown>) ?? {});
+    const flight = dto.flight !== undefined ? dto.flight : ride.flight;
+    const returnFlight =
+      dto.returnFlight !== undefined ? dto.returnFlight : ride.returnFlight;
+    const signage = dto.signage !== undefined ? dto.signage : ride.signage;
+    const comment = dto.comment !== undefined ? dto.comment : ride.comment;
+    const pickupWaitMin =
+      dto.pickupWaitMin !== undefined ? dto.pickupWaitMin : ride.pickupWaitMin;
+    const returnWaitMin =
+      dto.returnWaitMin !== undefined ? dto.returnWaitMin : ride.returnWaitMin;
+
+    const requiredOptions = this.resolveRequiredOptions({
+      serviceType: ride.serviceType as CreateRideDto['serviceType'],
+      fromLabel,
+      fromLat,
+      fromLng,
+      pickupAt: pickupAt.toISOString(),
+      vehicleClassIds,
+      signage: signage ?? undefined,
+      childSeatsJson,
+      requiredOptions:
+        dto.requiredOptions ??
+        (Array.isArray(ride.requiredOptions)
+          ? (ride.requiredOptions as string[])
+          : undefined),
+    });
+
+    const nextStatus = material
+      ? RideStatus.WAITING_FOR_OFFERS
+      : ride.status;
+
+    if (material) {
+      await this.prisma.offer.updateMany({
+        where: {
+          rideId,
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] },
+        },
+        data: { status: OfferStatus.WITHDRAWN, withdrawnAt: new Date() },
+      });
+    }
+
+    await this.prisma.ride.update({
+      where: { id: rideId },
+      data: {
+        fromLabel,
+        toLabel,
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+        pickupAt,
+        returnAt: returnAtRaw ?? undefined,
+        isRoundTrip,
+        pickupWaitMin,
+        returnWaitMin,
+        vehicleClassIds,
+        adults,
+        childSeatsJson: childSeatsJson as Prisma.InputJsonValue,
+        flight,
+        returnFlight,
+        signage,
+        comment,
+        requiredOptions: requiredOptions as Prisma.InputJsonValue,
+        priceSnapshot: asJson(snapshot),
+        requestExpiresAt: this.lifecycle.computeRequestExpiresAt(pickupAt),
+        status: nextStatus,
+        ...(material
+          ? { selectedOfferId: null, assignedDriverId: null }
+          : {}),
+      },
+    });
+
+    await this.transition(
+      rideId,
+      ride.status,
+      nextStatus,
+      'passenger',
+      userId,
+      {
+        action: 'updateRide',
+        material,
+        quote: snapshot,
+        withdrawnOffers: material,
+      },
+    );
+    await this.audit(userId, 'ride.update', 'Ride', rideId, ip);
+
+    if (material) {
+      const updated = await this.prisma.ride.findUnique({
+        where: { id: rideId },
+      });
+      if (updated) void this.notifyDriversOfNewRequest(updated);
+    }
+
+    return this.getRideForActor(userId, rideId);
   }
 
   /** Fan-out new open request to zone-matched (or zoneless) activated drivers. */

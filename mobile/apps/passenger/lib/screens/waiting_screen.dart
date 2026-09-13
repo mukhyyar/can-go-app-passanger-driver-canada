@@ -58,6 +58,39 @@ class _WaitingScreenState extends State<WaitingScreen>
     super.dispose();
   }
 
+  Future<void> _confirmCancel() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel ride?'),
+        content: const Text(
+          'Are you sure you want to cancel this ride request?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel ride'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await context.read<AppState>().cancelRide(widget.rideId);
+      if (!mounted) return;
+      context.go('/');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
@@ -68,6 +101,13 @@ class _WaitingScreenState extends State<WaitingScreen>
     final hasOffers = offerCount > 0 ||
         ride?.status == RideStatus.chooseOffer ||
         ride?.serverStatus == 'OFFER_SELECTION';
+    final status = (ride?.serverStatus ?? '').toUpperCase();
+    final canEdit =
+        status == 'WAITING_FOR_OFFERS' || status == 'OFFER_SELECTION';
+    final canCancel = status == 'WAITING_FOR_OFFERS' ||
+        status == 'OFFER_SELECTION' ||
+        status == 'PAYMENT_PENDING' ||
+        status.isEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
@@ -79,6 +119,21 @@ class _WaitingScreenState extends State<WaitingScreen>
           icon: const Icon(Icons.close),
           onPressed: () => context.go('/'),
         ),
+        actions: [
+          if (canEdit)
+            TextButton(
+              onPressed: () => context.push('/edit-ride/${widget.rideId}'),
+              child: const Text('Edit'),
+            ),
+          if (canCancel)
+            TextButton(
+              onPressed: _confirmCancel,
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: GtColors.brand),
+              ),
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),

@@ -30,6 +30,7 @@ import {
   PricingQuoteDto,
   SelectOfferDto,
   UpdateOfferDto,
+  UpdateRideDto,
   ValidateBookDto,
 } from './dto/marketplace.dto';
 
@@ -71,6 +72,19 @@ export class MarketplaceController {
   @UseGuards(JwtAuthGuard)
   getRide(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.marketplace.getRideForActor(user.id, id);
+  }
+
+  @Patch('rides/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  updateRide(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateRideDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.updateRide(user.id, id, dto, req.ip);
   }
 
   @Post('rides/:id/view')

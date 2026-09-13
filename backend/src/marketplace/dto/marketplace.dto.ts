@@ -367,6 +367,120 @@ export class CreateRideDto {
   catalogItemId?: string;
 }
 
+/** Partial passenger edit while ride is still open for offers. */
+export class UpdateRideDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  fromLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  toLabel?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  fromLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  fromLng?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  toLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  toLng?: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}T/)
+  pickupAt?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  vehicleClassIds?: string[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  adults?: number;
+
+  @IsOptional()
+  childSeatsJson?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  flight?: string;
+
+  @IsOptional()
+  @IsString()
+  returnFlight?: string;
+
+  @IsOptional()
+  @IsString()
+  signage?: string;
+
+  @IsOptional()
+  @IsString()
+  comment?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isRoundTrip?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}T/)
+  returnAt?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  pickupWaitMin?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  returnWaitMin?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requiredOptions?: string[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(720)
+  hours?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(90)
+  days?: number;
+
+  @IsOptional()
+  @IsString()
+  catalogItemId?: string;
+}
+
 export class CreateOfferDto {
   /**
    * Combined passenger-facing bid. Optional when outboundPrice is provided.

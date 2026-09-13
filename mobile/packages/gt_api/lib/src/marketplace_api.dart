@@ -192,6 +192,56 @@ class MarketplaceApi {
         body: {'status': 'PASSENGER_CANCELLED'},
       );
 
+  Future<Map<String, dynamic>> updateRide(
+    String rideId, {
+    String? fromLabel,
+    String? toLabel,
+    double? fromLat,
+    double? fromLng,
+    double? toLat,
+    double? toLng,
+    String? pickupAt,
+    List<String>? vehicleClassIds,
+    int? adults,
+    Map<String, int>? childSeatsJson,
+    String? flight,
+    String? returnFlight,
+    String? signage,
+    String? comment,
+    bool? isRoundTrip,
+    String? returnAt,
+    int? pickupWaitMin,
+    int? returnWaitMin,
+    double? hours,
+    double? days,
+  }) {
+    return client.patch(
+      '/rides/$rideId',
+      body: {
+        if (fromLabel != null) 'fromLabel': fromLabel,
+        if (toLabel != null) 'toLabel': toLabel,
+        if (fromLat != null) 'fromLat': fromLat,
+        if (fromLng != null) 'fromLng': fromLng,
+        if (toLat != null) 'toLat': toLat,
+        if (toLng != null) 'toLng': toLng,
+        if (pickupAt != null) 'pickupAt': pickupAt,
+        if (vehicleClassIds != null) 'vehicleClassIds': vehicleClassIds,
+        if (adults != null) 'adults': adults,
+        if (childSeatsJson != null) 'childSeatsJson': childSeatsJson,
+        if (flight != null) 'flight': flight,
+        if (returnFlight != null) 'returnFlight': returnFlight,
+        if (signage != null) 'signage': signage,
+        if (comment != null) 'comment': comment,
+        if (isRoundTrip != null) 'isRoundTrip': isRoundTrip,
+        if (returnAt != null) 'returnAt': returnAt,
+        if (pickupWaitMin != null) 'pickupWaitMin': pickupWaitMin,
+        if (returnWaitMin != null) 'returnWaitMin': returnWaitMin,
+        if (hours != null) 'hours': hours,
+        if (days != null) 'days': days,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> getChatThread(String rideId) =>
       client.get('/rides/$rideId/chat');
 

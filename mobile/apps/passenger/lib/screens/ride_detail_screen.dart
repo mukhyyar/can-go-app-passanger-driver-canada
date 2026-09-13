@@ -159,6 +159,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     return allowed.contains(_serverStatus);
   }
 
+  bool get _canEdit {
+    return _serverStatus == 'WAITING_FOR_OFFERS' ||
+        _serverStatus == 'OFFER_SELECTION';
+  }
+
   bool get _isOngoing {
     const ongoing = {
       'DRIVER_EN_ROUTE',
@@ -914,6 +919,18 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           ],
                         ),
                       ],
+                    ],
+                    if (_canEdit) ...[
+                      const SizedBox(height: 10),
+                      OutlinedButton(
+                        onPressed: _actionBusy
+                            ? null
+                            : () => context.push('/edit-ride/${widget.rideId}'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                        child: const Text('Edit ride'),
+                      ),
                     ],
                     if (_canCancel) ...[
                       const SizedBox(height: 10),

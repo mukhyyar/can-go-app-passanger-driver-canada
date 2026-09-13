@@ -154,6 +154,39 @@ class _OffersScreenState extends State<OffersScreen> {
     }
   }
 
+  Future<void> _confirmCancel() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel ride?'),
+        content: const Text(
+          'Are you sure you want to cancel this ride request?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel ride'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await context.read<AppState>().cancelRide(widget.rideId);
+      if (!mounted) return;
+      context.go('/');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
@@ -163,6 +196,12 @@ class _OffersScreenState extends State<OffersScreen> {
     final offers = _sorted(source);
     final offerCount =
         offers.isNotEmpty ? offers.length : (ride?.offerCount ?? 0);
+    final status = (ride?.serverStatus ?? '').toUpperCase();
+    final canEdit =
+        status == 'WAITING_FOR_OFFERS' || status == 'OFFER_SELECTION';
+    final canCancel = status == 'WAITING_FOR_OFFERS' ||
+        status == 'OFFER_SELECTION' ||
+        status == 'PAYMENT_PENDING';
 
     // Flutter web: ListView children were laying out but not painting.
     // ColoredBox + SingleChildScrollView + Column paints reliably.
@@ -463,6 +502,19 @@ class _OffersScreenState extends State<OffersScreen> {
           onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
         actions: [
+          if (canEdit)
+            TextButton(
+              onPressed: () => context.push('/edit-ride/${widget.rideId}'),
+              child: const Text('Edit'),
+            ),
+          if (canCancel)
+            TextButton(
+              onPressed: _confirmCancel,
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: GtColors.brand),
+              ),
+            ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loading ? null : _reload,

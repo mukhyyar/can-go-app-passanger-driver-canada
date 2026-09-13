@@ -281,7 +281,11 @@ class AppState extends ChangeNotifier {
     required String challengeId,
     required String code,
   }) async {
-    await api.auth.verifyOtp(challengeId: challengeId, code: code);
+    await api.auth.verifyOtp(
+      challengeId: challengeId,
+      code: code,
+      role: 'PASSENGER',
+    );
     await _afterAuth();
   }
 
@@ -289,7 +293,11 @@ class AppState extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    await api.auth.login(email: email, password: password);
+    await api.auth.login(
+      email: email,
+      password: password,
+      role: 'PASSENGER',
+    );
     await _afterAuth();
   }
 
@@ -720,6 +728,57 @@ class AppState extends ChangeNotifier {
     }
     await refreshRide(rideId);
     notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> updateRide(
+    String rideId, {
+    String? fromLabel,
+    String? toLabel,
+    double? fromLat,
+    double? fromLng,
+    double? toLat,
+    double? toLng,
+    String? pickupAt,
+    List<String>? vehicleClassIds,
+    int? adults,
+    Map<String, int>? childSeatsJson,
+    String? flight,
+    String? returnFlight,
+    String? signage,
+    String? comment,
+    bool? isRoundTrip,
+    String? returnAt,
+    int? pickupWaitMin,
+    int? returnWaitMin,
+    double? hours,
+    double? days,
+  }) async {
+    final updated = await api.marketplace.updateRide(
+      rideId,
+      fromLabel: fromLabel,
+      toLabel: toLabel,
+      fromLat: fromLat,
+      fromLng: fromLng,
+      toLat: toLat,
+      toLng: toLng,
+      pickupAt: pickupAt,
+      vehicleClassIds: vehicleClassIds,
+      adults: adults,
+      childSeatsJson: childSeatsJson,
+      flight: flight,
+      returnFlight: returnFlight,
+      signage: signage,
+      comment: comment,
+      isRoundTrip: isRoundTrip,
+      returnAt: returnAt,
+      pickupWaitMin: pickupWaitMin,
+      returnWaitMin: returnWaitMin,
+      hours: hours,
+      days: days,
+    );
+    await refreshRide(rideId);
+    notifyListeners();
+    return updated;
   }
 
   Future<Map<String, dynamic>> rateRide(

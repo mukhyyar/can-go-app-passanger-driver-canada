@@ -91,7 +91,12 @@ export type Ride = {
   isRoundTrip?: boolean;
   vehicleClassIds?: string[];
   adults?: number;
+  flight?: string | null;
+  signage?: string | null;
+  comment?: string | null;
   currency?: string;
+  canEdit?: boolean;
+  canCancel?: boolean;
   requestExpiresAt?: string;
   paymentExpiresAt?: string;
   viewCount?: number;

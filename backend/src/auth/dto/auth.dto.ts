@@ -58,6 +58,11 @@ export class LoginDto {
   @IsOptional()
   @IsString()
   totpCode?: string;
+
+  /** App requesting sign-in. When set, must match the account role. */
+  @IsOptional()
+  @IsIn([UserRole.PASSENGER, UserRole.DRIVER])
+  role?: UserRole;
 }
 
 export class RefreshDto {
@@ -92,6 +97,11 @@ export class OtpVerifyDto {
   @IsOptional()
   @IsString()
   deviceId?: string;
+
+  /** App requesting sign-in. When set, must match the account role. */
+  @IsOptional()
+  @IsIn([UserRole.PASSENGER, UserRole.DRIVER])
+  role?: UserRole;
 }
 
 export class PasswordResetRequestDto {

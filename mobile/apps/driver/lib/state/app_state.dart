@@ -170,7 +170,11 @@ class AppState extends ChangeNotifier {
     required String challengeId,
     required String code,
   }) async {
-    await api.auth.verifyOtp(challengeId: challengeId, code: code);
+    await api.auth.verifyOtp(
+      challengeId: challengeId,
+      code: code,
+      role: 'DRIVER',
+    );
     isAuthenticated = true;
     await refreshMe();
     await refreshDriverSettings(force: true);
@@ -225,7 +229,11 @@ class AppState extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    await api.auth.login(email: email, password: password);
+    await api.auth.login(
+      email: email,
+      password: password,
+      role: 'DRIVER',
+    );
     isAuthenticated = true;
     await refreshMe();
     await refreshDriverSettings(force: true);
