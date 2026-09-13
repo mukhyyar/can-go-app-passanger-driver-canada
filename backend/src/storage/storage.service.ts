@@ -97,6 +97,32 @@ export class StorageService implements OnModuleInit {
   async getSignedGetUrl(key: string, expiresInSeconds = 900) {
     const client = this.assertClient();
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+    const signed = await getSignedUrl(client, command, {
+      expiresIn: expiresInSeconds,
+    });
+    return this.rewritePublicEndpoint(signed);
+  }
+
+  /**
+   * Signed URLs inherit S3_ENDPOINT (often http://127.0.0.1:9000). Phones cannot
+   * reach the host's localhost — rewrite to S3_PUBLIC_ENDPOINT when set.
+   */
+  private rewritePublicEndpoint(url: string): string {
+    const internal = this.config.get<string>('s3.endpoint');
+    const pub = this.config.get<string>('s3.publicEndpoint');
+    if (!internal || !pub || internal === pub) return url;
+    try {
+      const signed = new URL(url);
+      const from = new URL(internal);
+      const to = new URL(pub);
+      if (signed.host === from.host) {
+        signed.protocol = to.protocol;
+        signed.host = to.host;
+        return signed.toString();
+      }
+    } catch {
+      /* keep original */
+    }
+    return url;
   }
 }

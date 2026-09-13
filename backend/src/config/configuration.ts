@@ -105,6 +105,8 @@ export default () => ({
   },
   s3: {
     endpoint: process.env.S3_ENDPOINT,
+    /** Host phones/browsers should use (LAN IP or public MinIO). Falls back to endpoint. */
+    publicEndpoint: process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT,
     region: process.env.S3_REGION ?? 'us-east-1',
     accessKey: process.env.S3_ACCESS_KEY,
     secretKey: process.env.S3_SECRET_KEY,

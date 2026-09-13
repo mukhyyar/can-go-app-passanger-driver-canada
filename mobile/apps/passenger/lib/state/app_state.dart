@@ -246,6 +246,7 @@ class AppState extends ChangeNotifier {
       idToken: idToken,
       email: email,
       fullName: fullName,
+      role: 'PASSENGER',
     );
     if (!result.requiresPhoneLink) await _afterAuth();
     return result;
@@ -260,6 +261,7 @@ class AppState extends ChangeNotifier {
       idToken: idToken,
       email: email,
       fullName: fullName,
+      role: 'PASSENGER',
     );
     if (!result.requiresPhoneLink) await _afterAuth();
     return result;
@@ -333,7 +335,7 @@ class AppState extends ChangeNotifier {
   String? get avatarUrl => _avatarUrl;
 
   void setAvatarUrl(String? url) {
-    _avatarUrl = url;
+    _avatarUrl = rewriteMediaUrl(url);
     if (me != null && url != null) {
       final passenger = me!['passenger'];
       if (passenger is Map) {
@@ -352,10 +354,10 @@ class AppState extends ChangeNotifier {
     final passenger = m['passenger'];
     if (passenger is Map) {
       final url = passenger['avatarUrl']?.toString();
-      if (url != null && url.isNotEmpty) return url;
+      if (url != null && url.isNotEmpty) return rewriteMediaUrl(url);
     }
     final top = m['avatarUrl']?.toString();
-    if (top != null && top.isNotEmpty) return top;
+    if (top != null && top.isNotEmpty) return rewriteMediaUrl(top);
     return null;
   }
 

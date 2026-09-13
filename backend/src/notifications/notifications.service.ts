@@ -131,6 +131,7 @@ export class NotificationsService {
     const dataWithEvent = {
       ...payload.data,
       ...(payload.eventId ? { eventId: payload.eventId } : {}),
+      ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
     };
 

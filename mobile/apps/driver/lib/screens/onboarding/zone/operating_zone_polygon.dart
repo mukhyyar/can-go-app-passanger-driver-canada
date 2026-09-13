@@ -4,7 +4,7 @@ import 'package:gt_mock/gt_mock.dart';
 
 import 'zone_geo.dart';
 
-/// Builds Google Maps [Polygon]s for saved operating zones.
+/// Builds polygon point rings for saved operating zones (Google Maps).
 class OperatingZonePolygons {
   OperatingZonePolygons._();
 
@@ -13,30 +13,7 @@ class OperatingZonePolygons {
   static const selectedFill = Color(0x88445555);
   static const selectedStroke = Color(0xFF1A1A1A);
 
-  static Set<Polygon> build({
-    required List<OperatingZone> zones,
-    String? selectedId,
-  }) {
-    final out = <Polygon>{};
-    for (final z in zones) {
-      final pts = _pointsFor(z);
-      if (pts.length < 3) continue;
-      final selected = z.id == selectedId;
-      out.add(
-        Polygon(
-          polygonId: PolygonId(z.id),
-          points: pts,
-          fillColor: selected ? selectedFill : fill,
-          strokeColor: selected ? selectedStroke : stroke,
-          strokeWidth: selected ? 3 : 2,
-          consumeTapEvents: true,
-        ),
-      );
-    }
-    return out;
-  }
-
-  static List<LatLng> _pointsFor(OperatingZone z) {
+  static List<LatLng> pointsFor(OperatingZone z) {
     if (z.coordinates.length >= 3) {
       return z.coordinates
           .map((c) => LatLng(c.latitude, c.longitude))

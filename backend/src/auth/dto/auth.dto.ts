@@ -159,6 +159,11 @@ export class OAuthGoogleDto {
   @IsOptional()
   @IsString()
   deviceId?: string;
+
+  /** App requesting sign-in. Defaults to PASSENGER. */
+  @IsOptional()
+  @IsIn([UserRole.PASSENGER, UserRole.DRIVER])
+  role?: UserRole;
 }
 
 export class OAuthAppleDto {
@@ -178,6 +183,11 @@ export class OAuthAppleDto {
   @IsOptional()
   @IsString()
   deviceId?: string;
+
+  /** App requesting sign-in. Defaults to PASSENGER. */
+  @IsOptional()
+  @IsIn([UserRole.PASSENGER, UserRole.DRIVER])
+  role?: UserRole;
 }
 
 export class OAuthLinkPhoneDto {

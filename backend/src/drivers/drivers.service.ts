@@ -258,6 +258,44 @@ export class DriversService {
     };
   }
 
+  async getAvailability(userId: string) {
+    const driver = await this.requireDriverProfile(userId);
+    const enabled =
+      (driver as { drivingEnabled?: boolean }).drivingEnabled ?? false;
+    return {
+      enabled,
+      isActivated: driver.isActivated,
+      approvalStatus: driver.approvalStatus,
+    };
+  }
+
+  async setAvailability(userId: string, enabled: boolean) {
+    const driver = await this.requireDriverProfile(userId);
+    if (enabled) {
+      if (!driver.isActivated) {
+        throw new ForbiddenException(
+          'Activate your account before turning on driving mode',
+        );
+      }
+      if (driver.approvalStatus !== DriverApprovalStatus.APPROVED) {
+        throw new ForbiddenException(
+          'KYC must be approved before turning on driving mode',
+        );
+      }
+    }
+    const updated = await this.prisma.driverProfile.update({
+      where: { id: driver.id },
+      // Field added in migration 20260913060000_driver_driving_enabled
+      data: { drivingEnabled: enabled } as Prisma.DriverProfileUpdateInput,
+    });
+    return {
+      enabled:
+        (updated as { drivingEnabled?: boolean }).drivingEnabled ?? enabled,
+      isActivated: updated.isActivated,
+      approvalStatus: updated.approvalStatus,
+    };
+  }
+
   async updateMyProfile(
     userId: string,
     dto: UpdateDriverProfileDto,
@@ -711,6 +749,7 @@ export class DriversService {
       isIndividual: boolean;
       approvalStatus: DriverApprovalStatus;
       isActivated: boolean;
+      drivingEnabled?: boolean;
       baseLocation: string;
       baseLatitude: number | null;
       baseLongitude: number | null;
@@ -767,6 +806,7 @@ export class DriversService {
       phoneE164: user?.phoneE164 ?? null,
       approvalStatus: driver.approvalStatus,
       isActivated: driver.isActivated,
+      drivingEnabled: driver.drivingEnabled ?? false,
       carrierType: driver.isIndividual ? 'INDIVIDUAL' : 'LEGAL_ENTITY',
       payout: this.parsePayout(driver.payoutSettingsJson),
       createdAt: driver.createdAt,

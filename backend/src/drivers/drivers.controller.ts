@@ -26,6 +26,7 @@ import {
 import { DriversService } from './drivers.service';
 import {
   CreateVehicleDto,
+  SetAvailabilityDto,
   UpdateDriverProfileDto,
   UpdatePaymentDetailsDto,
   UpdateVehicleDto,
@@ -57,6 +58,19 @@ export class DriversController {
   @Get('me/account-status')
   accountStatus(@CurrentUser() user: AuthUser) {
     return this.drivers.getAccountStatus(user.id);
+  }
+
+  @Get('me/availability')
+  getAvailability(@CurrentUser() user: AuthUser) {
+    return this.drivers.getAvailability(user.id);
+  }
+
+  @Patch('me/availability')
+  setAvailability(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: SetAvailabilityDto,
+  ) {
+    return this.drivers.setAvailability(user.id, dto.enabled);
   }
 
   @Get('me/payment-details')

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'map_picker.dart';
 
 /// Native has no browser Geocoder — caller uses PlacesSearch.reverse.
 Future<String?> reverseGeocodeLatLng(double lat, double lng) async => null;
 
-/// Native map picker (OpenStreetMap tiles — works without an Android Maps SDK key).
+/// Native map picker via Google Maps SDK (API key in AndroidManifest).
 Widget buildMapPicker({
   required double initialLat,
   required double initialLng,
@@ -48,14 +47,14 @@ class _NativeMapPicker extends StatefulWidget {
 }
 
 class _NativeMapPickerState extends State<_NativeMapPicker> {
-  late final MapController _map;
+  GoogleMapController? _map;
   LatLng _center = const LatLng(0, 0);
   bool _moving = false;
+  bool _programmaticMove = false;
 
   @override
   void initState() {
     super.initState();
-    _map = MapController();
     _center = LatLng(widget.initialLat, widget.initialLng);
     _bindController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,14 +82,23 @@ class _NativeMapPickerState extends State<_NativeMapPicker> {
   @override
   void dispose() {
     widget.controller?.unbind();
-    _map.dispose();
+    // Do not dispose GoogleMapController — the GoogleMap widget owns it.
+    _map = null;
     super.dispose();
   }
 
   Future<void> _animateTo(double lat, double lng) async {
     final target = LatLng(lat, lng);
     _center = target;
-    _map.move(target, widget.initialZoom);
+    final map = _map;
+    if (map == null) return;
+    _programmaticMove = true;
+    await map.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: target, zoom: widget.initialZoom),
+      ),
+    );
+    _programmaticMove = false;
     widget.onCenterChanged?.call(lat, lng);
   }
 
@@ -102,39 +110,26 @@ class _NativeMapPickerState extends State<_NativeMapPicker> {
 
   @override
   Widget build(BuildContext context) {
-    return FlutterMap(
-      mapController: _map,
-      options: MapOptions(
-        initialCenter: LatLng(widget.initialLat, widget.initialLng),
-        initialZoom: widget.initialZoom,
-        onPositionChanged: (pos, hasGesture) {
-          final c = pos.center;
-          _center = c;
-          if (hasGesture) _setMoving(true);
-        },
-        onMapEvent: (event) {
-          if (event is MapEventMoveEnd || event is MapEventFlingAnimationEnd) {
-            _setMoving(false);
-            widget.onCenterChanged?.call(_center.latitude, _center.longitude);
-          }
-        },
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: LatLng(widget.initialLat, widget.initialLng),
+        zoom: widget.initialZoom,
       ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.gettransfer.passenger',
-        ),
-        // Center pin is drawn by the parent screen overlay; keep map clean.
-        RichAttributionWidget(
-          attributions: [
-            TextSourceAttribution(
-              'OpenStreetMap',
-              onTap: () {},
-            ),
-          ],
-          alignment: AttributionAlignment.bottomLeft,
-        ),
-      ],
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: false,
+      onMapCreated: (c) {
+        _map = c;
+      },
+      onCameraMove: (pos) {
+        _center = pos.target;
+        if (!_programmaticMove) _setMoving(true);
+      },
+      onCameraIdle: () {
+        _setMoving(false);
+        widget.onCenterChanged?.call(_center.latitude, _center.longitude);
+      },
     );
   }
 }

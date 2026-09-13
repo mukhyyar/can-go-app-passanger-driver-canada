@@ -191,6 +191,10 @@ class MockData {
           vehicleNeed: 'Van, SUV',
           passengers: 2,
           ttlLabel: '15 min',
+          fromLat: 43.6702,
+          fromLng: -79.3915,
+          toLat: 43.6777,
+          toLng: -79.6248,
         ),
         DriverRequest(
           id: '25120504',
@@ -203,6 +207,10 @@ class MockData {
           passengers: 1,
           ttlLabel: '5 min',
           flightWait: '60 min',
+          fromLat: 43.6777,
+          fromLng: -79.6248,
+          toLat: 44.5008,
+          toLng: -80.2167,
         ),
         DriverRequest(
           id: '25120999',
@@ -214,6 +222,10 @@ class MockData {
           vehicleNeed: 'Any',
           passengers: 3,
           ttlLabel: '15 min',
+          fromLat: 49.4987,
+          fromLng: 11.0780,
+          toLat: 48.1402,
+          toLng: 11.5583,
         ),
       ];
 

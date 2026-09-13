@@ -31,66 +31,63 @@ class GtGoogleRouteMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        height: height,
-        width: double.infinity,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            map_impl.buildGoogleMapEmbed(
-              fromLat: fromLat,
-              fromLng: fromLng,
-              toLat: _hasRoute ? toLat : null,
-              toLng: _hasRoute ? toLng : null,
+    // Do not wrap GoogleMap in ClipRRect — it blanks the Android platform view.
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          map_impl.buildGoogleMapEmbed(
+            fromLat: fromLat,
+            fromLng: fromLng,
+            toLat: _hasRoute ? toLat : null,
+            toLng: _hasRoute ? toLng : null,
+          ),
+          Positioned(
+            left: 10,
+            top: 10,
+            child: _Chip(
+              icon: Icons.place,
+              label: _hasRoute ? 'A → B route' : 'A · Pickup',
             ),
+          ),
+          if (distanceLabel != null)
             Positioned(
-              left: 10,
+              right: 10,
               top: 10,
               child: _Chip(
-                icon: Icons.place,
-                label: _hasRoute ? 'A → B route' : 'A · Pickup',
+                icon: Icons.straighten,
+                label: distanceLabel!,
+                emphasize: true,
               ),
             ),
-            if (distanceLabel != null)
-              Positioned(
-                right: 10,
-                top: 10,
-                child: _Chip(
-                  icon: Icons.straighten,
-                  label: distanceLabel!,
-                  emphasize: true,
-                ),
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.94),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: GtColors.border),
               ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.94),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: GtColors.border),
-                ),
-                child: Text(
-                  _hasRoute
-                      ? '${_short(fromLabel)}  →  ${_short(toLabel!)}'
-                      : fromLabel,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: GtColors.text,
-                  ),
+              child: Text(
+                _hasRoute
+                    ? '${_short(fromLabel)}  →  ${_short(toLabel!)}'
+                    : fromLabel,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: GtColors.text,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

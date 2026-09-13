@@ -327,6 +327,50 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                 showDivider: false,
               ),
               const SizedBox(height: 16),
+              const SizedBox(height: 16),
+              const _SectionLabel('Driving'),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                secondary: Icon(
+                  s.drivingEnabled
+                      ? Icons.directions_car
+                      : Icons.directions_car_outlined,
+                  color: GtColors.brand,
+                ),
+                title: const Text(
+                  'Driving mode',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  s.drivingEnabled
+                      ? 'You are available for new ride offers'
+                      : s.isActivated
+                          ? 'Turn on to receive ride offers'
+                          : 'Activate your account first',
+                ),
+                value: s.drivingEnabled,
+                onChanged: s.isActivated
+                    ? (v) async {
+                        try {
+                          await s.setDrivingMode(v);
+                          if (context.mounted) {
+                            _toast(
+                              context,
+                              v ? 'Driving mode on' : 'Driving mode off',
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            _toast(
+                              context,
+                              e.toString().replaceFirst('ApiException: ', ''),
+                            );
+                          }
+                        }
+                      }
+                    : null,
+              ),
+              const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(

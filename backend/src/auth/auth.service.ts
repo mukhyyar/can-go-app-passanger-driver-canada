@@ -379,7 +379,22 @@ export class AuthService {
       throw new ServiceUnavailableException('Object storage is not available');
     }
     const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
-    if (!allowed.has(file.mimetype)) {
+    const normalizeMime = (m?: string | null) => {
+      if (!m) return undefined;
+      const lower = m.toLowerCase().trim();
+      if (lower === 'image/jpg') return 'image/jpeg';
+      return lower;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const FileType = require('file-type') as {
+      fromBuffer: (
+        buf: Buffer,
+      ) => Promise<{ ext: string; mime: string } | undefined>;
+    };
+    const detected = await FileType.fromBuffer(file.buffer);
+    const mime =
+      normalizeMime(detected?.mime) ?? normalizeMime(file.mimetype);
+    if (!mime || !allowed.has(mime)) {
       throw new BadRequestException('Avatar must be jpeg, png, or webp');
     }
     if (file.buffer.length > 5 * 1024 * 1024) {
@@ -391,16 +406,12 @@ export class AuthService {
     });
     if (!user) throw new NotFoundException();
     const ext =
-      file.mimetype === 'image/png'
-        ? 'png'
-        : file.mimetype === 'image/webp'
-          ? 'webp'
-          : 'jpg';
+      mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
     const key = `avatars/${userId}/${Date.now()}-${randomBytes(4).toString('hex')}.${ext}`;
     await this.storage.putObject({
       key,
       body: file.buffer,
-      contentType: file.mimetype,
+      contentType: mime,
     });
 
     if (user.passengerProfile) {
@@ -697,7 +708,7 @@ export class AuthService {
     const identity = dto.idToken
       ? await this.oauthVerify.verifyGoogleIdToken(dto.idToken)
       : this.oauthVerify.mockIdentity('google', dto.email!, dto.fullName);
-    return this.completeOAuth(identity, dto.deviceId, meta);
+    return this.completeOAuth(identity, dto.deviceId, meta, dto.role);
   }
 
   async oauthApple(
@@ -711,7 +722,7 @@ export class AuthService {
     if (dto.fullName?.trim() && !identity.fullName) {
       identity.fullName = dto.fullName.trim();
     }
-    return this.completeOAuth(identity, dto.deviceId, meta);
+    return this.completeOAuth(identity, dto.deviceId, meta, dto.role);
   }
 
   async linkOAuthPhone(dto: OAuthLinkPhoneDto) {
@@ -744,10 +755,16 @@ export class AuthService {
     identity: OAuthIdentity,
     deviceId?: string,
     meta?: { userAgent?: string; ip?: string },
+    requestedRole?: UserRole,
   ) {
     if (!identity.email && identity.provider === 'google') {
       throw new BadRequestException('Google account email is required');
     }
+
+    const role =
+      requestedRole === UserRole.DRIVER
+        ? UserRole.DRIVER
+        : UserRole.PASSENGER;
 
     const linked = await this.prisma.oAuthAccount.findUnique({
       where: {
@@ -781,13 +798,31 @@ export class AuthService {
       }
     }
 
+    if (user && user.role !== role) {
+      throw new ForbiddenException(
+        user.role === UserRole.PASSENGER
+          ? 'This Google account is registered as a passenger. Use the passenger app or a different Google account.'
+          : 'This Google account is registered as a driver. Use the driver app or a different Google account.',
+      );
+    }
+
     if (!user) {
       const fullName = identity.fullName ?? '';
       user = await this.prisma.user.create({
         data: {
           email: identity.email,
-          role: UserRole.PASSENGER,
-          passengerProfile: { create: { fullName } },
+          role,
+          ...(role === UserRole.PASSENGER
+            ? { passengerProfile: { create: { fullName } } }
+            : {
+                driverProfile: {
+                  create: {
+                    fullName,
+                    approvalStatus: 'PENDING_KYC',
+                    isActivated: false,
+                  },
+                },
+              }),
           oauthAccounts: {
             create: {
               provider: identity.provider,
@@ -888,6 +923,7 @@ export class AuthService {
       fullName: string;
       approvalStatus: string;
       isActivated: boolean;
+      drivingEnabled?: boolean;
     } | null;
   }) {
     return {
@@ -912,6 +948,7 @@ export class AuthService {
             fullName: user.driverProfile.fullName,
             approvalStatus: user.driverProfile.approvalStatus,
             isActivated: user.driverProfile.isActivated,
+            drivingEnabled: user.driverProfile.drivingEnabled ?? false,
           }
         : undefined,
     };

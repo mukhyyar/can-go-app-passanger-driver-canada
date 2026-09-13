@@ -39,6 +39,7 @@ class AppState extends ChangeNotifier {
   /// Wired from [PushService] so token sync runs after login / load.
   Future<void> Function()? syncPushToken;
   bool isActivated = false;
+  bool drivingEnabled = false;
   String approvalStatus = 'PENDING_KYC';
   Map<String, dynamic>? me;
   Map<String, dynamic>? driverProfile;
@@ -182,6 +183,44 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<OAuthConfig> loadOAuthConfig() => api.auth.oauthConfig();
+
+  Future<OAuthResult> oauthGoogle({
+    String? idToken,
+    String? email,
+    String? fullName,
+  }) async {
+    final result = await api.auth.oauthGoogle(
+      idToken: idToken,
+      email: email,
+      fullName: fullName,
+      role: 'DRIVER',
+    );
+    if (!result.requiresPhoneLink) {
+      isAuthenticated = true;
+      await refreshMe();
+      await refreshDriverSettings(force: true);
+      if (isActivated) {
+        await refreshOpenRequests();
+        await refreshMyRides();
+        await startMarketplaceRealtime();
+      }
+      await syncPushToken?.call();
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> linkOAuthPhone({
+    required String linkToken,
+    required String phoneE164,
+  }) {
+    return api.auth.linkOAuthPhone(
+      linkToken: linkToken,
+      phoneE164: phoneE164,
+    );
+  }
+
   Future<void> login({
     required String email,
     required String password,
@@ -270,6 +309,7 @@ class AppState extends ChangeNotifier {
     if (driver != null) {
       isActivated = driver['isActivated'] == true;
       repo.driver.isActivated = isActivated;
+      drivingEnabled = driver['drivingEnabled'] == true;
       final status = driver['approvalStatus']?.toString();
       if (status != null && status.isNotEmpty) {
         approvalStatus = status;
@@ -281,7 +321,7 @@ class AppState extends ChangeNotifier {
         defaultDriverName = name;
       }
       final url = driver['avatarUrl']?.toString();
-      avatarUrl = (url != null && url.isNotEmpty) ? url : null;
+      avatarUrl = (url != null && url.isNotEmpty) ? rewriteMediaUrl(url) : null;
       await _syncOnboardedFromServer(hasDocuments: false);
       if (isActivated) {
         unawaited(startMarketplaceRealtime());
@@ -290,16 +330,22 @@ class AppState extends ChangeNotifier {
       }
     } else {
       final top = me?['avatarUrl']?.toString();
-      avatarUrl = (top != null && top.isNotEmpty) ? top : null;
+      avatarUrl = (top != null && top.isNotEmpty) ? rewriteMediaUrl(top) : null;
     }
     unawaited(refreshUnreadNotificationCount());
+  }
+
+  Future<void> setDrivingMode(bool enabled) async {
+    final res = await api.driver.setAvailability(enabled: enabled);
+    drivingEnabled = res['enabled'] == true;
+    notifyListeners();
   }
 
   String? avatarUrl;
   int unreadNotificationCount = 0;
 
   void setAvatarUrl(String? url) {
-    avatarUrl = url;
+    avatarUrl = rewriteMediaUrl(url);
     if (me != null && url != null) {
       final driver = me!['driver'];
       if (driver is Map) {
@@ -621,7 +667,7 @@ class AppState extends ChangeNotifier {
   Future<String?> fetchDocumentPreviewUrl(String documentId) async {
     if (!isAuthenticated) return null;
     final data = await api.driver.getDocument(documentId);
-    return data['url']?.toString();
+    return rewriteMediaUrl(data['url']?.toString());
   }
 
   Future<void> deleteDocument(String documentId) async {
@@ -1134,6 +1180,7 @@ class AppState extends ChangeNotifier {
     await api.clear();
     isAuthenticated = false;
     isActivated = false;
+    drivingEnabled = false;
     approvalStatus = 'PENDING_KYC';
     me = null;
     driverProfile = null;

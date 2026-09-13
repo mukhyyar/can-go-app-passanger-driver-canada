@@ -1921,7 +1921,8 @@ export class AdminOpsService {
           ? 'PENDING_KYC'
           : stats.active > 0
             ? 'ON_TRIP'
-            : online
+            : online &&
+                ((d as { drivingEnabled?: boolean }).drivingEnabled ?? false)
               ? 'ONLINE'
               : 'OFFLINE';
       return {

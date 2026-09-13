@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -18,6 +18,7 @@ class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _controller;
   late double _lat;
   late double _lng;
+  double _zoom = 14;
   bool _inited = false;
 
   @override
@@ -85,34 +86,42 @@ class _MapScreenState extends State<MapScreen> {
                 GoogleMap(
                   initialCameraPosition: CameraPosition(
                     target: LatLng(_lat, _lng),
-                    zoom: 14,
+                    zoom: _zoom,
                   ),
-                  markers: {
-                    Marker(
-                      markerId: const MarkerId('base'),
-                      position: LatLng(_lat, _lng),
-                      infoWindow: const InfoWindow(title: 'Base'),
-                    ),
-                  },
                   myLocationButtonEnabled: false,
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
                   compassEnabled: false,
-                  rotateGesturesEnabled: false,
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('base'),
+                      position: LatLng(_lat, _lng),
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                        BitmapDescriptor.hueRed,
+                      ),
+                    ),
+                  },
                   onMapCreated: (c) => _controller = c,
                   onTap: (p) => setState(() {
                     _lat = p.latitude;
                     _lng = p.longitude;
                   }),
+                  onCameraMove: (pos) {
+                    _zoom = pos.zoom;
+                  },
                 ),
                 Positioned(
                   right: 12,
                   top: 72,
                   child: MapControls(
-                    onZoomIn: () =>
-                        _controller?.animateCamera(CameraUpdate.zoomIn()),
-                    onZoomOut: () =>
-                        _controller?.animateCamera(CameraUpdate.zoomOut()),
+                    onZoomIn: () {
+                      _zoom = (_zoom + 1).clamp(3.0, 20.0);
+                      _controller?.animateCamera(CameraUpdate.zoomTo(_zoom));
+                    },
+                    onZoomOut: () {
+                      _zoom = (_zoom - 1).clamp(3.0, 20.0);
+                      _controller?.animateCamera(CameraUpdate.zoomTo(_zoom));
+                    },
                     onRecenter: () => _controller?.animateCamera(
                       CameraUpdate.newLatLngZoom(LatLng(_lat, _lng), 14),
                     ),

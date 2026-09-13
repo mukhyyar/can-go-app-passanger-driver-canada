@@ -222,6 +222,8 @@ model DriverProfile {
   isIndividual         Boolean               @default(true)
   approvalStatus       DriverApprovalStatus  @default(PENDING_KYC)
   isActivated          Boolean               @default(false)
+  /// When true, driver is in driving mode (eligible for new ride offers + ONLINE presence).
+  drivingEnabled       Boolean               @default(false)
   baseLocation         String                @default("")
   baseLatitude         Float?
   baseLongitude        Float?

@@ -21,3 +21,17 @@ String normalizedApiBaseUrl() {
   final base = resolveApiBaseUrl();
   return base.endsWith('/') ? base.substring(0, base.length - 1) : base;
 }
+
+/// Rewrite signed MinIO/S3 URLs that point at localhost so phones can load them
+/// via the same host as [CANGO_API_BASE] (LAN IP), keeping path + query intact.
+String? rewriteMediaUrl(String? url) {
+  if (url == null || url.isEmpty) return url;
+  final uri = Uri.tryParse(url);
+  if (uri == null || !uri.hasScheme) return url;
+  final host = uri.host.toLowerCase();
+  if (host != '127.0.0.1' && host != 'localhost') return url;
+  final api = Uri.tryParse(normalizedApiBaseUrl());
+  if (api == null || api.host.isEmpty) return url;
+  if (api.host == '127.0.0.1' || api.host == 'localhost') return url;
+  return uri.replace(host: api.host).toString();
+}

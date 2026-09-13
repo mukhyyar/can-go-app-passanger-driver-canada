@@ -345,6 +345,11 @@ export class UpdateDriverProfileDto {
   referralCode?: string;
 }
 
+export class SetAvailabilityDto {
+  @IsBoolean()
+  enabled!: boolean;
+}
+
 export class UpdatePaymentDetailsDto {
   @IsOptional()
   @IsString()

@@ -6,7 +6,8 @@
 
 param(
     [string]$LiveApiBase = "https://www.can-rides.ca/api",
-    [string]$LocalApiBase = "",
+    # Prefer explicit LAN IP for physical devices (127.0.0.1 does not work on phone).
+    [string]$LocalApiBase = "http://192.168.100.5:4000/api",
     [switch]$InstallLive
 )
 

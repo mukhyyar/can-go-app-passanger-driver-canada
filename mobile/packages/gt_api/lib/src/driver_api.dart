@@ -13,6 +13,12 @@ class DriverApi {
   Future<Map<String, dynamic>> updateMe(Map<String, dynamic> body) =>
       client.patch('/driver/me', body: body);
 
+  Future<Map<String, dynamic>> getAvailability() =>
+      client.get('/driver/me/availability');
+
+  Future<Map<String, dynamic>> setAvailability({required bool enabled}) =>
+      client.patch('/driver/me/availability', body: {'enabled': enabled});
+
   Future<Map<String, dynamic>> accountStatus() =>
       client.get('/driver/me/account-status');
 

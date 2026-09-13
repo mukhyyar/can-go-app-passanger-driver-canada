@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'route_path.dart';
 import 'theme.dart';
@@ -24,7 +23,7 @@ String get _normalizedApiBase {
   return raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
 }
 
-/// Native route map (OpenStreetMap tiles — works without an Android Maps SDK key).
+/// Native route map via Google Maps SDK (API key in AndroidManifest).
 Widget buildGoogleMapEmbed({
   required double fromLat,
   required double fromLng,
@@ -58,13 +57,16 @@ class _NativeRouteMap extends StatefulWidget {
 
 class _NativeRouteMapState extends State<_NativeRouteMap>
     with SingleTickerProviderStateMixin {
-  final MapController _map = MapController();
+  GoogleMapController? _map;
   List<LatLng> _routePoints = const [];
   bool _fitted = false;
   RoutePathSampler? _sampler;
   late final AnimationController _carCtrl;
   LatLng? _carPos;
   double _carBearing = 0;
+  BitmapDescriptor? _carIcon;
+  BitmapDescriptor? _pinA;
+  BitmapDescriptor? _pinB;
 
   bool get _hasRoute => widget.toLat != null && widget.toLng != null;
 
@@ -77,11 +79,59 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     super.initState();
     _carCtrl = AnimationController(vsync: this, duration: _carAnimDuration)
       ..addListener(_onCarTick);
+    unawaited(_loadIcons());
     if (_hasRoute) {
       unawaited(_loadRoute());
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) => _fitBounds());
     }
+  }
+
+  Future<void> _loadIcons() async {
+    final car = await BitmapDescriptor.asset(
+      const ImageConfiguration(size: Size(40, 40)),
+      'assets/can-ride-car.png',
+      package: 'gt_ui',
+    );
+    final a = await _circlePinBitmap('A', GtColors.brand);
+    final b = await _circlePinBitmap('B', const Color(0xFF1A1A1A));
+    if (!mounted) return;
+    setState(() {
+      _carIcon = car;
+      _pinA = a;
+      _pinB = b;
+    });
+  }
+
+  Future<BitmapDescriptor> _circlePinBitmap(String label, Color color) async {
+    const size = 72.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final fill = Paint()..color = color;
+    final border = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 4, fill);
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 4, border);
+    final tp = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: 28,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(
+      canvas,
+      Offset((size - tp.width) / 2, (size - tp.height) / 2),
+    );
+    final img = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
   }
 
   @override
@@ -107,7 +157,8 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   void dispose() {
     _carCtrl.removeListener(_onCarTick);
     _carCtrl.dispose();
-    _map.dispose();
+    // Do not dispose GoogleMapController — the GoogleMap widget owns it.
+    _map = null;
     super.dispose();
   }
 
@@ -241,11 +292,15 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     return coords;
   }
 
-  void _fitBounds({List<LatLng> extra = const []}) {
+  Future<void> _fitBounds({List<LatLng> extra = const []}) async {
     if (_fitted) return;
+    final map = _map;
+    if (map == null) return;
     final pts = <LatLng>[_from, if (_to != null) _to!, ...extra];
     if (pts.length == 1) {
-      _map.move(pts.first, 13);
+      await map.animateCamera(
+        CameraUpdate.newLatLngZoom(pts.first, 13),
+      );
       _fitted = true;
       return;
     }
@@ -259,114 +314,84 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
-    final bounds = LatLngBounds(
-      LatLng(minLat, minLng),
-      LatLng(maxLat, maxLng),
-    );
-    _map.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(48)),
+    await map.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        48,
+      ),
     );
     _fitted = true;
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Set<Marker> get _markers {
+    final out = <Marker>{
+      Marker(
+        markerId: const MarkerId('from'),
+        position: _from,
+        icon: _pinA ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        anchor: const Offset(0.5, 0.5),
+      ),
+    };
     final to = _to;
+    if (to != null) {
+      out.add(
+        Marker(
+          markerId: const MarkerId('to'),
+          position: to,
+          icon: _pinB ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
+    }
     final car = _carPos;
-    return FlutterMap(
-      mapController: _map,
-      options: MapOptions(
-        initialCenter: _from,
-        initialZoom: 13,
-        onMapReady: () {
-          if (!_fitted) _fitBounds(extra: _routePoints);
-        },
-      ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.gettransfer.passenger',
+    if (car != null) {
+      out.add(
+        Marker(
+          markerId: const MarkerId('car'),
+          position: car,
+          rotation: _carBearing,
+          flat: true,
+          anchor: const Offset(0.5, 0.5),
+          icon: _carIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          zIndexInt: 2,
         ),
-        if (_routePoints.length >= 2)
-          PolylineLayer(
-            polylines: [
-              Polyline(
-                points: _routePoints,
-                color: GtColors.brand,
-                strokeWidth: 5,
-              ),
-            ],
-          ),
-        MarkerLayer(
-          markers: [
-            Marker(
-              point: _from,
-              width: 36,
-              height: 36,
-              child: const _EndpointPin(label: 'A', color: GtColors.brand),
-            ),
-            if (to != null)
-              Marker(
-                point: to,
-                width: 36,
-                height: 36,
-                child: const _EndpointPin(label: 'B', color: Color(0xFF1A1A1A)),
-              ),
-            if (car != null)
-              Marker(
-                point: car,
-                width: 48,
-                height: 48,
-                child: Transform.rotate(
-                  angle: _carBearing * math.pi / 180,
-                  child: Image.asset(
-                    'assets/can-ride-car.png',
-                    package: 'gt_ui',
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const RichAttributionWidget(
-          attributions: [
-            TextSourceAttribution('OpenStreetMap'),
-          ],
-          alignment: AttributionAlignment.bottomLeft,
-        ),
-      ],
-    );
+      );
+    }
+    return out;
   }
-}
 
-class _EndpointPin extends StatelessWidget {
-  const _EndpointPin({required this.label, required this.color});
-
-  final String label;
-  final Color color;
+  Set<Polyline> get _polylines {
+    if (_routePoints.length < 2) return {};
+    return {
+      Polyline(
+        polylineId: const PolylineId('route'),
+        points: _routePoints,
+        color: GtColors.brand,
+        width: 5,
+      ),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1)),
-        ],
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-        ),
-      ),
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(target: _from, zoom: 13),
+      markers: _markers,
+      polylines: _polylines,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: false,
+      onMapCreated: (c) {
+        _map = c;
+        if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
+      },
     );
   }
 }

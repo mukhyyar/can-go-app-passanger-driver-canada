@@ -128,6 +128,54 @@ class DriverBrandHeader extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Tooltip(
+                    message: app.drivingEnabled
+                        ? 'Driving mode on'
+                        : 'Driving mode off',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          app.drivingEnabled ? 'On' : 'Off',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: app.drivingEnabled
+                                ? GtColors.green
+                                : GtColors.textMuted,
+                          ),
+                        ),
+                        SizedBox(
+                          height: 32,
+                          child: Switch.adaptive(
+                            value: app.drivingEnabled,
+                            onChanged: app.isActivated
+                                ? (v) async {
+                                    try {
+                                      await app.setDrivingMode(v);
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              e.toString().replaceFirst(
+                                                    'ApiException: ',
+                                                    '',
+                                                  ),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  }
+                                : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
                   Material(
                     color: Colors.transparent,
                     child: InkWell(

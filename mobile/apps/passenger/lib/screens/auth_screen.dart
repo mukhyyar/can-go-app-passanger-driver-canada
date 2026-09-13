@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:gt_api/gt_api.dart';
@@ -38,6 +39,8 @@ class _AuthScreenState extends State<AuthScreen> {
   final _phone = TextEditingController(text: '+1');
   final _name = TextEditingController();
   final _otp = TextEditingController();
+  final _credentials = CredentialStore(namespace: 'passenger');
+  final _biometrics = GtBiometricAuth();
 
   _AuthStep _step = _AuthStep.methods;
   String _oauthProvider = 'google';
@@ -59,10 +62,101 @@ class _AuthScreenState extends State<AuthScreen> {
   int _resendLeft = _resendSeconds;
   Timer? _resendTimer;
 
+  bool _rememberMe = true;
+  bool _biometricAvailable = false;
+  bool _hasSavedCredentials = false;
+  String _biometricLabel = 'Sign in with biometrics';
+  String? _savedPassword;
+  bool _bioAutoPrompted = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadOAuthConfig());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadOAuthConfig();
+      _loadCredentialPrefs();
+    });
+  }
+
+  Future<void> _loadCredentialPrefs() async {
+    final remember = await _credentials.readRememberMe();
+    final saved = await _credentials.read();
+    final bioOk = await _biometrics.isAvailable();
+    final label = await _biometrics.signInLabel();
+    if (!mounted) return;
+    setState(() {
+      _rememberMe = remember;
+      _hasSavedCredentials = saved != null;
+      _savedPassword = saved?.password;
+      _biometricAvailable = bioOk;
+      _biometricLabel = label;
+      if (saved != null && _email.text.isEmpty) {
+        _email.text = saved.email;
+      }
+    });
+  }
+
+  Future<void> _openEmailStep() async {
+    setState(() {
+      _step = _AuthStep.email;
+      _error = null;
+      _bioAutoPrompted = false;
+    });
+    await _prepareEmailCredentials(autoPrompt: true);
+  }
+
+  Future<void> _prepareEmailCredentials({required bool autoPrompt}) async {
+    final saved = await _credentials.read();
+    final bioOk = await _biometrics.isAvailable();
+    final label = await _biometrics.signInLabel();
+    final remember = await _credentials.readRememberMe();
+    if (!mounted) return;
+    setState(() {
+      _rememberMe = remember;
+      _hasSavedCredentials = saved != null;
+      _savedPassword = saved?.password;
+      _biometricAvailable = bioOk;
+      _biometricLabel = label;
+      if (saved != null) {
+        _email.text = saved.email;
+        _password.clear();
+      }
+    });
+    if (autoPrompt &&
+        saved != null &&
+        bioOk &&
+        !_bioAutoPrompted &&
+        !_busy) {
+      _bioAutoPrompted = true;
+      await _onBiometricLogin();
+    }
+  }
+
+  Future<void> _persistCredentialsAfterLogin() async {
+    await _credentials.setRememberMe(_rememberMe);
+    if (_rememberMe) {
+      await _credentials.save(
+        email: _email.text.trim(),
+        password: _password.text,
+      );
+      TextInput.finishAutofillContext(shouldSave: true);
+    } else {
+      await _credentials.clear();
+      TextInput.finishAutofillContext(shouldSave: false);
+    }
+    if (!mounted) return;
+    setState(() {
+      _hasSavedCredentials = _rememberMe;
+      _savedPassword = _rememberMe ? _password.text : null;
+    });
+  }
+
+  Future<void> _onBiometricLogin() async {
+    if (_busy || !_hasSavedCredentials || _savedPassword == null) return;
+    final ok = await _biometrics.authenticate();
+    if (!ok || !mounted) return;
+    setState(() => _password.text = _savedPassword!);
+    await _onEmailLogin();
   }
 
   Future<void> _loadOAuthConfig() async {
@@ -98,6 +192,14 @@ class _AuthScreenState extends State<AuthScreen> {
     _name.dispose();
     _otp.dispose();
     super.dispose();
+  }
+
+  void _close() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/');
+    }
   }
 
   void _goMethods() {
@@ -165,6 +267,16 @@ class _AuthScreenState extends State<AuthScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
+    } on GoogleSignInException catch (e) {
+      if (!mounted) return;
+      // User dismissed the picker / reauth prompt — not an error to show.
+      if (e.code == GoogleSignInExceptionCode.canceled) return;
+      setState(() {
+        _error = e.description?.isNotEmpty == true
+            ? e.description
+            : 'Google sign-in failed. Check that an Android OAuth client is '
+                'registered for com.gettransfer.passenger with this app’s SHA-1.';
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -288,12 +400,14 @@ class _AuthScreenState extends State<AuthScreen> {
           email: _email.text.trim(),
           password: _password.text,
         );
+        await _persistCredentialsAfterLogin();
         _finishAuthed();
       } on ApiException catch (err) {
         if (err.code == 'PHONE_NOT_VERIFIED') {
           final body = err.flatBody;
           final cid = body['challengeId'];
           if (cid is String && cid.isNotEmpty) {
+            await _persistCredentialsAfterLogin();
             _enterOtp(
               challengeId: cid,
               debugCode: body['debugCode']?.toString(),
@@ -505,6 +619,46 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  String? get _subtitle {
+    switch (_step) {
+      case _AuthStep.methods:
+        return 'Choose how you’d like to continue';
+      case _AuthStep.email:
+        return 'Sign in with your email and password';
+      case _AuthStep.register:
+        return 'We’ll verify your phone to secure your account';
+      case _AuthStep.phone:
+        return 'We’ll text a code to sign in or create your account';
+      case _AuthStep.oauthLocal:
+        final label = _oauthProvider == 'google' ? 'Google' : 'Apple';
+        return 'Local/dev $label sign-in. Configure OAuth client IDs for production.';
+      case _AuthStep.oauthPhone:
+        return 'Passengers need a verified phone number to book rides.';
+      case _AuthStep.otp:
+        return 'Enter the 6-digit code sent to';
+    }
+  }
+
+  VoidCallback? get _onBack {
+    if (_busy) return null;
+    switch (_step) {
+      case _AuthStep.methods:
+        return _close;
+      case _AuthStep.email:
+      case _AuthStep.phone:
+      case _AuthStep.oauthLocal:
+      case _AuthStep.oauthPhone:
+        return _goMethods;
+      case _AuthStep.register:
+        return () => setState(() {
+              _step = _AuthStep.email;
+              _error = null;
+            });
+      case _AuthStep.otp:
+        return _onChangeNumber;
+    }
+  }
+
   String _formatCountdown(int s) {
     final m = (s ~/ 60).toString().padLeft(2, '0');
     final sec = (s % 60).toString().padLeft(2, '0');
@@ -513,553 +667,410 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: GtColors.white,
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 20),
-                  child: Row(
-                    children: [
-                      CanGoLogo(size: 40),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: CanRideWordmark(
-                          fontSize: 26,
-                          maxWidth: 220,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_step != _AuthStep.otp)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _title,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: GtColors.text,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () {
-                          if (context.canPop()) {
-                            context.pop();
-                          } else {
-                            context.go('/');
-                          }
-                        },
-                        icon: const Icon(
-                          Icons.close,
-                          color: GtColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Back',
-                        onPressed: _busy ? null : _onChangeNumber,
-                        icon: const Icon(Icons.arrow_back_rounded),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () {
-                          if (context.canPop()) {
-                            context.pop();
-                          } else {
-                            context.go('/');
-                          }
-                        },
-                        icon: const Icon(
-                          Icons.close,
-                          color: GtColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                const SizedBox(height: 8),
-                if (_error != null && _step != _AuthStep.otp)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF0F0),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFFFD0D0)),
-                      ),
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(color: GtColors.brand),
-                      ),
-                    ),
-                  ),
-                if (_step == _AuthStep.methods) ..._methods(),
-                if (_step == _AuthStep.email) ..._emailForm(),
-                if (_step == _AuthStep.register) ..._registerForm(),
-                if (_step == _AuthStep.phone) ..._phoneForm(),
-                if (_step == _AuthStep.oauthLocal) ..._oauthLocalForm(),
-                if (_step == _AuthStep.oauthPhone) ..._oauthPhoneForm(),
-                if (_step == _AuthStep.otp) ..._otpForm(),
-              ],
-            ),
-          ),
-        ),
+    return GtAuthShell(
+      title: _title,
+      subtitle: _subtitle,
+      onBack: _onBack,
+      footer: _step == _AuthStep.methods
+          ? const Text(
+              'By registering, you agree to the CAN-RIDE Privacy Policy, as well as the CAN-RIDE Service Agreement.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.45,
+                color: GtColors.textMuted,
+              ),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null && _step != _AuthStep.otp)
+            GtAuthErrorBanner(message: _error!),
+          if (_step == _AuthStep.methods) _methods(),
+          if (_step == _AuthStep.email) _emailForm(),
+          if (_step == _AuthStep.register) _registerForm(),
+          if (_step == _AuthStep.phone) _phoneForm(),
+          if (_step == _AuthStep.oauthLocal) _oauthLocalForm(),
+          if (_step == _AuthStep.oauthPhone) _oauthPhoneForm(),
+          if (_step == _AuthStep.otp) _otpForm(),
+        ],
       ),
     );
   }
 
-  List<Widget> _methods() {
-    return [
-      _AuthMethodButton(
-        icon: const _GoogleMark(),
-        label: 'Continue with Google',
-        onPressed: _busy ? null : _onGoogle,
-      ),
-      const SizedBox(height: 10),
-      _AuthMethodButton(
-        icon: const Icon(Icons.apple, size: 22, color: GtColors.text),
-        label: 'Continue with Apple',
-        onPressed: _busy ? null : _onApple,
-      ),
-      const SizedBox(height: 18),
-      _AuthMethodButton(
-        icon: const Text(
-          '@',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: GtColors.text,
-          ),
+  Widget _methods() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GtAuthMethodButton(
+          leading: const _GoogleMark(),
+          label: 'Continue with Google',
+          emphasized: true,
+          onPressed: _busy ? null : _onGoogle,
         ),
-        label: 'Continue with email',
-        onPressed: _busy
-            ? null
-            : () => setState(() {
-                  _step = _AuthStep.email;
-                  _error = null;
-                }),
-      ),
-      const SizedBox(height: 10),
-      _AuthMethodButton(
-        icon: const Icon(Icons.smartphone_outlined, color: GtColors.text),
-        label: 'Continue with phone',
-        onPressed: _busy
-            ? null
-            : () => setState(() {
-                  _step = _AuthStep.phone;
-                  _error = null;
-                }),
-      ),
-      const SizedBox(height: 24),
-      const Text(
-        'By registering, you agree to the CAN-RIDE Privacy Policy, as well as the CAN-RIDE Service Agreement.',
-        style: TextStyle(
-          fontSize: 12,
-          height: 1.45,
-          color: GtColors.textMuted,
+        const SizedBox(height: 10),
+        GtAuthMethodButton(
+          leading: const Icon(Icons.apple, size: 22, color: GtColors.text),
+          label: 'Continue with Apple',
+          onPressed: _busy ? null : _onApple,
         ),
-      ),
-    ];
-  }
-
-  List<Widget> _emailForm() {
-    return [
-      TextField(
-        controller: _email,
-        keyboardType: TextInputType.emailAddress,
-        autofillHints: const [AutofillHints.email],
-        decoration: const InputDecoration(labelText: 'Email'),
-      ),
-      TextField(
-        controller: _password,
-        obscureText: true,
-        autofillHints: const [AutofillHints.password],
-        decoration: const InputDecoration(labelText: 'Password'),
-      ),
-      const SizedBox(height: 20),
-      GtGreenButton(
-        label: _busy ? 'Please wait…' : 'Sign in',
-        onPressed: _busy ? null : _onEmailLogin,
-      ),
-      TextButton(
-        onPressed: _busy
-            ? null
-            : () => setState(() {
-                  _step = _AuthStep.register;
-                  _error = null;
-                }),
-        child: const Text('Need an account? Register'),
-      ),
-      TextButton(
-        onPressed: _busy ? null : _goMethods,
-        child: const Text('Back'),
-      ),
-    ];
-  }
-
-  List<Widget> _registerForm() {
-    return [
-      TextField(
-        controller: _name,
-        autofillHints: const [AutofillHints.name],
-        decoration: const InputDecoration(labelText: 'Full name'),
-      ),
-      TextField(
-        controller: _email,
-        keyboardType: TextInputType.emailAddress,
-        autofillHints: const [AutofillHints.email],
-        decoration: const InputDecoration(labelText: 'Email'),
-      ),
-      TextField(
-        controller: _phone,
-        keyboardType: TextInputType.phone,
-        autofillHints: const [AutofillHints.telephoneNumber],
-        decoration: const InputDecoration(
-          labelText: 'Phone (E.164)',
-          hintText: '+14165551234',
-        ),
-      ),
-      TextField(
-        controller: _password,
-        obscureText: true,
-        autofillHints: const [AutofillHints.newPassword],
-        decoration: const InputDecoration(
-          labelText: 'Password',
-          hintText: '8+ characters',
-        ),
-      ),
-      const SizedBox(height: 20),
-      GtGreenButton(
-        label: _busy ? 'Please wait…' : 'Create account',
-        onPressed: _busy ? null : _onRegister,
-      ),
-      TextButton(
-        onPressed: _busy
-            ? null
-            : () => setState(() {
-                  _step = _AuthStep.email;
-                  _error = null;
-                }),
-        child: const Text('Back'),
-      ),
-    ];
-  }
-
-  List<Widget> _phoneForm() {
-    return [
-      const Text(
-        'We\'ll text a code to sign in or create your account.',
-        style: TextStyle(color: GtColors.textSecondary),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _phone,
-        keyboardType: TextInputType.phone,
-        autofillHints: const [AutofillHints.telephoneNumber],
-        decoration: const InputDecoration(
-          labelText: 'Phone (E.164)',
-          hintText: '+14165551234',
-        ),
-      ),
-      const SizedBox(height: 20),
-      GtGreenButton(
-        label: _busy ? 'Please wait…' : 'Send code',
-        onPressed: _busy ? null : _onPhone,
-      ),
-      TextButton(
-        onPressed: _busy ? null : _goMethods,
-        child: const Text('Back'),
-      ),
-    ];
-  }
-
-  List<Widget> _oauthLocalForm() {
-    final label = _oauthProvider == 'google' ? 'Google' : 'Apple';
-    return [
-      Text(
-        'Local/dev $label sign-in. Configure OAuth client IDs for production.',
-        style: const TextStyle(color: GtColors.textSecondary),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _name,
-        autofillHints: const [AutofillHints.name],
-        decoration: const InputDecoration(labelText: 'Full name'),
-      ),
-      TextField(
-        controller: _email,
-        keyboardType: TextInputType.emailAddress,
-        autofillHints: const [AutofillHints.email],
-        decoration: const InputDecoration(labelText: 'Email'),
-      ),
-      const SizedBox(height: 20),
-      GtGreenButton(
-        label: _busy ? 'Please wait…' : 'Continue',
-        onPressed: _busy ? null : _onOAuthLocal,
-      ),
-      TextButton(
-        onPressed: _busy ? null : _goMethods,
-        child: const Text('Back'),
-      ),
-    ];
-  }
-
-  List<Widget> _oauthPhoneForm() {
-    return [
-      const Text(
-        'Passengers need a verified phone number to book rides.',
-        style: TextStyle(color: GtColors.textSecondary),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _phone,
-        keyboardType: TextInputType.phone,
-        autofillHints: const [AutofillHints.telephoneNumber],
-        decoration: const InputDecoration(
-          labelText: 'Phone (E.164)',
-          hintText: '+14165551234',
-        ),
-      ),
-      const SizedBox(height: 20),
-      GtGreenButton(
-        label: _busy ? 'Please wait…' : 'Send code',
-        onPressed: _busy ? null : _onOAuthPhone,
-      ),
-      TextButton(
-        onPressed: _busy ? null : _goMethods,
-        child: const Text('Back'),
-      ),
-    ];
-  }
-
-  List<Widget> _otpForm() {
-    final complete = _otp.text.replaceAll(RegExp(r'\D'), '').length == _otpLength;
-    return [
-      const SizedBox(height: 8),
-      const GtOtpHeader(
-        title: 'Verify your phone',
-        subtitle: 'Enter the 6-digit code sent to',
-      ),
-      const SizedBox(height: 10),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            maskPhoneE164(_phone.text),
-            style: const TextStyle(
-              fontSize: 16,
+        const SizedBox(height: 18),
+        GtAuthMethodButton(
+          leading: const Text(
+            '@',
+            style: TextStyle(
+              fontSize: 20,
               fontWeight: FontWeight.w700,
               color: GtColors.text,
             ),
           ),
-          TextButton(
-            onPressed: _busy ? null : _onChangeNumber,
-            child: const Text(
-              'Change',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-      if (_debugHint != null) ...[
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFFBEB),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFC9B07A), style: BorderStyle.solid),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'DEVELOPMENT MODE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
-                  color: Color(0xFF8A6D2B),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Test OTP: $_debugHint',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF5C4A1F),
-                ),
-              ),
-            ],
-          ),
+          label: 'Continue with email',
+          onPressed: _busy ? null : _openEmailStep,
+        ),
+        const SizedBox(height: 10),
+        GtAuthMethodButton(
+          leading: const Icon(Icons.smartphone_outlined, color: GtColors.text),
+          label: 'Continue with phone',
+          onPressed: _busy
+              ? null
+              : () => setState(() {
+                    _step = _AuthStep.phone;
+                    _error = null;
+                  }),
         ),
       ],
-      const SizedBox(height: 20),
-      GtOtpInput(
-        controller: _otp,
-        length: _otpLength,
-        enabled: !_busy && !_verifiedFlash,
-        status: _otpStatus,
-        onChanged: (_) {
-          if (_otpStatus == GtOtpStatus.error) {
-            setState(() {
-              _otpStatus = GtOtpStatus.idle;
-              _otpMessage = null;
-            });
-          } else {
-            setState(() {});
-          }
-        },
-        onCompleted: (code) => _onVerify(code),
-      ),
-      if (_otpMessage != null) ...[
-        const SizedBox(height: 12),
-        Text(
-          _otpStatus == GtOtpStatus.success
-              ? '✓ $_otpMessage'
-              : _otpMessage!,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 13.5,
-            height: 1.4,
-            fontWeight: _otpStatus == GtOtpStatus.success
-                ? FontWeight.w600
-                : FontWeight.w400,
-            color: _otpStatus == GtOtpStatus.error
-                ? GtColors.brandDark
-                : _otpStatus == GtOtpStatus.success
-                    ? GtColors.green
-                    : GtColors.textSecondary,
-          ),
-        ),
-      ],
-      if (_resendNotice != null && _otpMessage == null) ...[
-        const SizedBox(height: 12),
-        Text(
-          '✓ $_resendNotice',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
-            color: GtColors.green,
-          ),
-        ),
-      ],
-      const SizedBox(height: 18),
-      const Text(
-        "Didn't receive a code?",
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 13.5, color: GtColors.textSecondary),
-      ),
-      const SizedBox(height: 4),
-      if (_resendLeft > 0)
-        Text(
-          'Resend code in ${_formatCountdown(_resendLeft)}',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: GtColors.text,
-          ),
-        )
-      else
-        TextButton(
-          onPressed: _busy ? null : _onResend,
-          child: Text(
-            _busy ? 'Sending…' : 'Resend code',
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-        ),
-      const SizedBox(height: 20),
-      GtGreenButton(
-        label: _busy
-            ? 'Verifying…'
-            : _verifiedFlash
-                ? '✓ Phone verified'
-                : 'Verify & Continue',
-        onPressed: (!_busy && complete && !_verifiedFlash) ? _onVerify : null,
-      ),
-      const SizedBox(height: 16),
-      const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.lock_outline, size: 14, color: GtColors.textMuted),
-          SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              'Secure verification · Your information is protected',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: GtColors.textMuted),
-            ),
-          ),
-        ],
-      ),
-    ];
+    );
   }
-}
 
-class _AuthMethodButton extends StatelessWidget {
-  const _AuthMethodButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final Widget icon;
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: GtColors.text,
-          side: const BorderSide(color: GtColors.border),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+  Widget _emailForm() {
+    return AutofillGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
+            decoration: GtAuthFieldDecoration.of('Email'),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          const SizedBox(height: 12),
+          GtAuthPasswordField(
+            controller: _password,
+            onSubmitted: (_) => _onEmailLogin(),
+          ),
+          const SizedBox(height: 8),
+          GtAuthRememberMe(
+            value: _rememberMe,
+            onChanged: (v) => setState(() => _rememberMe = v ?? false),
+          ),
+          if (_hasSavedCredentials && _biometricAvailable) ...[
+            const SizedBox(height: 12),
+            GtAuthMethodButton(
+              leading: const Icon(
+                Icons.fingerprint,
+                color: GtColors.text,
+              ),
+              label: _biometricLabel,
+              emphasized: true,
+              onPressed: _busy ? null : _onBiometricLogin,
+            ),
+          ],
+          const SizedBox(height: 16),
+          GtAuthPrimaryButton(
+            label: 'Sign in',
+            busy: _busy,
+            onPressed: _onEmailLogin,
+          ),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                      _step = _AuthStep.register;
+                      _error = null;
+                    }),
+            child: const Text('Need an account? Register'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _registerForm() {
+    return AutofillGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _name,
+            autofillHints: const [AutofillHints.name],
+            decoration: GtAuthFieldDecoration.of('Full name'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
+            decoration: GtAuthFieldDecoration.of('Email'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            autofillHints: const [AutofillHints.telephoneNumber],
+            decoration: GtAuthFieldDecoration.of(
+              'Phone (E.164)',
+              hint: '+14165551234',
+            ),
+          ),
+          const SizedBox(height: 12),
+          GtAuthPasswordField(
+            controller: _password,
+            hint: '8+ characters',
+            autofillHints: const [AutofillHints.newPassword],
+          ),
+          const SizedBox(height: 20),
+          GtAuthPrimaryButton(
+            label: 'Create account',
+            busy: _busy,
+            onPressed: _onRegister,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _phoneForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _phone,
+          keyboardType: TextInputType.phone,
+          autofillHints: const [AutofillHints.telephoneNumber],
+          decoration: GtAuthFieldDecoration.of(
+            'Phone (E.164)',
+            hint: '+14165551234',
+          ),
         ),
-        child: Row(
+        const SizedBox(height: 20),
+        GtAuthPrimaryButton(
+          label: 'Send code',
+          busy: _busy,
+          onPressed: _onPhone,
+        ),
+      ],
+    );
+  }
+
+  Widget _oauthLocalForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _name,
+          autofillHints: const [AutofillHints.name],
+          decoration: GtAuthFieldDecoration.of('Full name'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _email,
+          keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email],
+          decoration: GtAuthFieldDecoration.of('Email'),
+        ),
+        const SizedBox(height: 20),
+        GtAuthPrimaryButton(
+          label: 'Continue',
+          busy: _busy,
+          onPressed: _onOAuthLocal,
+        ),
+      ],
+    );
+  }
+
+  Widget _oauthPhoneForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _phone,
+          keyboardType: TextInputType.phone,
+          autofillHints: const [AutofillHints.telephoneNumber],
+          decoration: GtAuthFieldDecoration.of(
+            'Phone (E.164)',
+            hint: '+14165551234',
+          ),
+        ),
+        const SizedBox(height: 20),
+        GtAuthPrimaryButton(
+          label: 'Send code',
+          busy: _busy,
+          onPressed: _onOAuthPhone,
+        ),
+      ],
+    );
+  }
+
+  Widget _otpForm() {
+    final complete =
+        _otp.text.replaceAll(RegExp(r'\D'), '').length == _otpLength;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(width: 28, child: Center(child: icon)),
-            Expanded(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+            Text(
+              maskPhoneE164(_phone.text),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: GtColors.text,
               ),
             ),
-            const SizedBox(width: 28),
+            TextButton(
+              onPressed: _busy ? null : _onChangeNumber,
+              child: const Text(
+                'Change',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
           ],
         ),
-      ),
+        if (_debugHint != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFC9B07A)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'DEVELOPMENT MODE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    color: Color(0xFF8A6D2B),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Test OTP: $_debugHint',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF5C4A1F),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+        GtOtpInput(
+          controller: _otp,
+          length: _otpLength,
+          enabled: !_busy && !_verifiedFlash,
+          status: _otpStatus,
+          onChanged: (_) {
+            if (_otpStatus == GtOtpStatus.error) {
+              setState(() {
+                _otpStatus = GtOtpStatus.idle;
+                _otpMessage = null;
+              });
+            } else {
+              setState(() {});
+            }
+          },
+          onCompleted: (code) => _onVerify(code),
+        ),
+        if (_otpMessage != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _otpStatus == GtOtpStatus.success
+                ? '✓ $_otpMessage'
+                : _otpMessage!,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              height: 1.4,
+              fontWeight: _otpStatus == GtOtpStatus.success
+                  ? FontWeight.w600
+                  : FontWeight.w400,
+              color: _otpStatus == GtOtpStatus.error
+                  ? GtColors.brandDark
+                  : _otpStatus == GtOtpStatus.success
+                      ? GtColors.green
+                      : GtColors.textSecondary,
+            ),
+          ),
+        ],
+        if (_resendNotice != null && _otpMessage == null) ...[
+          const SizedBox(height: 12),
+          Text(
+            '✓ $_resendNotice',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: GtColors.green,
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        const Text(
+          "Didn't receive a code?",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13.5, color: GtColors.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        if (_resendLeft > 0)
+          Text(
+            'Resend code in ${_formatCountdown(_resendLeft)}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: GtColors.text,
+            ),
+          )
+        else
+          TextButton(
+            onPressed: _busy ? null : _onResend,
+            child: Text(
+              _busy ? 'Sending…' : 'Resend code',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        const SizedBox(height: 20),
+        GtAuthPrimaryButton(
+          label: _verifiedFlash ? '✓ Phone verified' : 'Verify & Continue',
+          busy: _busy,
+          onPressed: (!_busy && complete && !_verifiedFlash) ? _onVerify : null,
+        ),
+        const SizedBox(height: 16),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.lock_outline, size: 14, color: GtColors.textMuted),
+            SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Secure verification · Your information is protected',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: GtColors.textMuted),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

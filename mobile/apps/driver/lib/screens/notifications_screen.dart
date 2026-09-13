@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
@@ -64,48 +64,52 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Future<void> _openItem(Map<String, dynamic> item) async {
+  Future<void> _markRead(Map<String, dynamic> item) async {
     final id = item['id']?.toString();
     final unread = item['readAt'] == null;
-    if (id != null && unread) {
-      try {
-        await context.read<AppState>().markNotificationRead(id);
-        setState(() {
-          _items = _items.map((e) {
-            if (e['id']?.toString() != id) return e;
-            return {...e, 'readAt': DateTime.now().toIso8601String()};
-          }).toList();
-        });
-      } catch (_) {}
-    }
+    if (id == null || !unread) return;
+    try {
+      await context.read<AppState>().markNotificationRead(id);
+      if (!mounted) return;
+      setState(() {
+        _items = _items.map((e) {
+          if (e['id']?.toString() != id) return e;
+          return {...e, 'readAt': DateTime.now().toIso8601String()};
+        }).toList();
+      });
+    } catch (_) {}
+  }
+
+  void _openDeepLink(Map<String, dynamic> item) {
     final data = item['data'];
-    if (!mounted) return;
-    if (data is Map) {
-      final rideId = data['rideId']?.toString();
-      final type = data['type']?.toString();
-      if (rideId != null && rideId.isNotEmpty) {
-        if (type == 'chat') {
-          context.push('/chat/$rideId');
-        } else {
-          context.push('/request/$rideId');
-        }
-      }
+    if (data is! Map) return;
+    final rideId = data['rideId']?.toString();
+    final type = data['type']?.toString();
+    if (rideId == null || rideId.isEmpty) return;
+    if (type == 'chat') {
+      context.push('/chat/$rideId');
+    } else {
+      context.push('/request/$rideId');
     }
   }
 
-  String _formatWhen(dynamic raw) {
-    if (raw == null) return '';
-    final dt = raw is DateTime
-        ? raw
-        : DateTime.tryParse(raw.toString())?.toLocal();
-    if (dt == null) return '';
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return DateFormat.MMMd().add_jm().format(dt);
+  String? _imageUrl(Map<String, dynamic> item) {
+    final data = item['data'];
+    if (data is Map) {
+      final raw = data['imageUrl']?.toString();
+      if (raw != null && raw.isNotEmpty) return rewriteMediaUrl(raw);
+    }
+    return null;
+  }
+
+  String? _ctaLabel(Map<String, dynamic> item) {
+    final data = item['data'];
+    if (data is! Map) return null;
+    final rideId = data['rideId']?.toString();
+    if (rideId == null || rideId.isEmpty) return null;
+    final type = data['type']?.toString();
+    if (type == 'chat') return 'Open chat';
+    return 'Open request';
   }
 
   @override
@@ -195,111 +199,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final item = _items[index];
-                          final unreadItem = item['readAt'] == null;
-                          final title = item['title']?.toString() ?? 'Update';
-                          final body = item['body']?.toString() ?? '';
-                          final when = _formatWhen(item['createdAt']);
-                          return Material(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => _openItem(item),
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: unreadItem
-                                        ? GtColors.brand
-                                            .withValues(alpha: 0.25)
-                                        : GtColors.border,
-                                  ),
-                                  color: unreadItem
-                                      ? GtColors.soft.withValues(alpha: 0.55)
-                                      : Colors.white,
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: const BoxDecoration(
-                                        color: GtColors.soft,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Icon(
-                                        unreadItem
-                                            ? Icons
-                                                .notifications_active_outlined
-                                            : Icons.notifications_outlined,
-                                        color: GtColors.brand,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  title,
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                    fontWeight: unreadItem
-                                                        ? FontWeight.w700
-                                                        : FontWeight.w600,
-                                                    color: GtColors.text,
-                                                  ),
-                                                ),
-                                              ),
-                                              if (unreadItem)
-                                                Container(
-                                                  width: 8,
-                                                  height: 8,
-                                                  decoration:
-                                                      const BoxDecoration(
-                                                    color: GtColors.brand,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                          if (body.isNotEmpty) ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              body,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                height: 1.35,
-                                                color: GtColors.textSecondary,
-                                              ),
-                                            ),
-                                          ],
-                                          if (when.isNotEmpty) ...[
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              when,
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: GtColors.textMuted,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
+                          final cta = _ctaLabel(item);
+                          return GtNotificationCard(
+                            title: item['title']?.toString() ?? 'Update',
+                            body: item['body']?.toString() ?? '',
+                            createdAt: item['createdAt'],
+                            unread: item['readAt'] == null,
+                            imageUrl: _imageUrl(item),
+                            ctaLabel: cta,
+                            onMarkRead: () => _markRead(item),
+                            onOpen: cta == null
+                                ? null
+                                : () {
+                                    _markRead(item);
+                                    _openDeepLink(item);
+                                  },
                           );
                         },
                       ),

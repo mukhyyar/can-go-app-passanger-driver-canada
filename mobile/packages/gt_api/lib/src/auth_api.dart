@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import 'api_client.dart';
 
@@ -182,6 +183,7 @@ class AuthApi {
     String? idToken,
     String? email,
     String? fullName,
+    String role = 'PASSENGER',
   }) async {
     final data = await client.post(
       '/auth/oauth/google',
@@ -190,6 +192,7 @@ class AuthApi {
         if (idToken != null) 'idToken': idToken,
         if (email != null) 'email': email,
         if (fullName != null) 'fullName': fullName,
+        'role': role,
       },
     );
     return _applyOAuthResult(data);
@@ -199,6 +202,7 @@ class AuthApi {
     String? idToken,
     String? email,
     String? fullName,
+    String role = 'PASSENGER',
   }) async {
     final data = await client.post(
       '/auth/oauth/apple',
@@ -207,6 +211,7 @@ class AuthApi {
         if (idToken != null) 'idToken': idToken,
         if (email != null) 'email': email,
         if (fullName != null) 'fullName': fullName,
+        'role': role,
       },
     );
     return _applyOAuthResult(data);
@@ -237,9 +242,22 @@ class AuthApi {
           'file',
           bytes,
           filename: filename,
+          contentType: mediaTypeForImageFilename(filename),
         ),
       ],
     );
+  }
+
+  /// Infer image MediaType from filename (Multer uses part Content-Type).
+  static MediaType mediaTypeForImageFilename(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      return MediaType('image', 'jpeg');
+    }
+    // Default jpeg — server also sniffs magic bytes.
+    return MediaType('image', 'jpeg');
   }
 
   Future<void> logout({String? refreshToken}) async {

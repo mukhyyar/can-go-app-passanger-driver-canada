@@ -270,6 +270,7 @@ export class MarketplaceService {
          INNER JOIN "OperatingZone" z ON z."driverId" = d.id
          WHERE d."isActivated" = true
            AND d."approvalStatus" = 'APPROVED'
+           AND d."drivingEnabled" = true
            AND z.geom IS NOT NULL
            AND ST_Contains(
              z.geom,
@@ -294,6 +295,7 @@ export class MarketplaceService {
          FROM "DriverProfile" d
          WHERE d."isActivated" = true
            AND d."approvalStatus" = 'APPROVED'
+           AND d."drivingEnabled" = true
            AND NOT EXISTS (
              SELECT 1 FROM "OperatingZone" z
              WHERE z."driverId" = d.id AND z.geom IS NOT NULL
