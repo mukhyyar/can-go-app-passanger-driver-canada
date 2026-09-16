@@ -58,7 +58,12 @@ export function UserPreviewDrawer({
       }
     >
       <div className="preview-hero">
-        <UserAvatar name={user.displayName} size={48} />
+        <UserAvatar
+          name={user.displayName}
+          size={48}
+          hasAvatar={Boolean(user.hasAvatar)}
+          avatarPath={user.avatarPath}
+        />
         <div>
           <strong style={{ fontSize: 18 }}>{user.displayName}</strong>
           <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>

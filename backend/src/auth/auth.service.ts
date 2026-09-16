@@ -387,6 +387,11 @@ export class AuthService {
     if (avatarKey && this.storage.isReady()) {
       try {
         avatarUrl = await this.storage.getSignedGetUrl(avatarKey, 3600);
+        // Phones/browsers cannot load MinIO signed against 127.0.0.1/localhost.
+        // Clients should use GET /auth/me/avatar (authenticated proxy) instead.
+        if (/:\/\/(127\.0\.0\.1|localhost)(:|\/)/i.test(avatarUrl)) {
+          avatarUrl = null;
+        }
       } catch {
         avatarUrl = null;
       }
@@ -535,6 +540,9 @@ export class AuthService {
     let avatarUrl: string | null = null;
     try {
       avatarUrl = await this.storage.getSignedGetUrl(key, 3600);
+      if (avatarUrl && /:\/\/(127\.0\.0\.1|localhost)(:|\/)/i.test(avatarUrl)) {
+        avatarUrl = null;
+      }
     } catch {
       avatarUrl = null;
     }

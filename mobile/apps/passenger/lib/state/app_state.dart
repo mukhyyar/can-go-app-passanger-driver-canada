@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:gt_api/gt_api.dart';
@@ -118,7 +119,7 @@ class AppState extends ChangeNotifier {
     if (isAuthenticated) {
       try {
         me = await api.auth.me();
-        _syncLocalProfileFromMe();
+        await _syncLocalProfileFromMe();
         await refreshRidesFromServer();
         await startRideRealtime();
         _syncOpenRidePolling();
@@ -304,7 +305,7 @@ class AppState extends ChangeNotifier {
   Future<void> _afterAuth() async {
     me = await api.auth.me();
     isAuthenticated = true;
-    _syncLocalProfileFromMe();
+    await _syncLocalProfileFromMe();
     await setOnboarded(true);
     await refreshRidesFromServer();
     await startRideRealtime();
@@ -315,18 +316,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _syncLocalProfileFromMe() {
+  Future<void> _syncLocalProfileFromMe() async {
     final m = me;
     if (m == null) {
       _clearLocalProfile();
       return;
     }
-    repo.passenger.fullName = m['fullName']?.toString() ?? '';
+    final passenger = m['passenger'];
+    final nestedName =
+        passenger is Map ? passenger['fullName']?.toString().trim() : null;
+    final topName = m['fullName']?.toString().trim();
+    repo.passenger.fullName = (topName != null && topName.isNotEmpty)
+        ? topName
+        : (nestedName ?? '');
     repo.passenger.email = m['email']?.toString() ?? '';
     repo.passenger.phone = m['phoneE164']?.toString() ??
         m['phone']?.toString() ??
         '';
-    _applyAvatarMetaFromMe(m);
+    await _applyAvatarMetaFromMe(m);
   }
 
   void _clearLocalProfile() {
@@ -364,7 +371,53 @@ class AppState extends ChangeNotifier {
     _avatarOwnerUserId = null;
   }
 
-  void _applyAvatarMetaFromMe(Map<String, dynamic> m) {
+  static const _avatarCacheMaxBytes = 400000;
+
+  String _avatarCacheKey(String userId) => 'avatar_bytes_$userId';
+  String _avatarCacheVerKey(String userId) => 'avatar_ver_$userId';
+
+  Future<void> _persistAvatarCache({
+    required String userId,
+    required String version,
+    required Uint8List bytes,
+  }) async {
+    if (bytes.length > _avatarCacheMaxBytes) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_avatarCacheKey(userId), base64Encode(bytes));
+      await prefs.setString(_avatarCacheVerKey(userId), version);
+    } catch (e) {
+      debugPrint('avatar cache write: $e');
+    }
+  }
+
+  Future<Uint8List?> _readAvatarCache({
+    required String userId,
+    required String version,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ver = prefs.getString(_avatarCacheVerKey(userId));
+      if (ver == null || ver != version) return null;
+      final raw = prefs.getString(_avatarCacheKey(userId));
+      if (raw == null || raw.isEmpty) return null;
+      return base64Decode(raw);
+    } catch (e) {
+      debugPrint('avatar cache read: $e');
+      return null;
+    }
+  }
+
+  Future<void> _clearAvatarCache(String? userId) async {
+    if (userId == null || userId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_avatarCacheKey(userId));
+      await prefs.remove(_avatarCacheVerKey(userId));
+    } catch (_) {}
+  }
+
+  Future<void> _applyAvatarMetaFromMe(Map<String, dynamic> m) async {
     final userId = m['id']?.toString() ?? m['user']?['id']?.toString();
     if (_avatarOwnerUserId != null &&
         userId != null &&
@@ -384,10 +437,23 @@ class AppState extends ChangeNotifier {
     if (key == null || key.isEmpty) {
       avatarBytes = null;
       avatarLoading = false;
+      if (userId != null) await _clearAvatarCache(userId);
       return;
     }
+
+    // Instant restore after logout/reinstall session — then refresh from API.
+    if (avatarBytes == null && userId != null && version != null) {
+      final cached = await _readAvatarCache(userId: userId, version: version);
+      if (cached != null && cached.isNotEmpty) {
+        avatarBytes = cached;
+        notifyListeners();
+      }
+    }
+
     if (keyChanged || avatarBytes == null) {
-      unawaited(loadAvatar());
+      await loadAvatar(force: avatarBytes == null);
+    } else {
+      unawaited(loadAvatar(force: true));
     }
   }
 
@@ -447,11 +513,18 @@ class AppState extends ChangeNotifier {
       if (avatarUploading) return; // don't clobber optimistic upload
       avatarBytes = bytes;
       avatarLoading = false;
+      final owner = _avatarOwnerUserId;
+      if (owner != null && version != null) {
+        unawaited(
+          _persistAvatarCache(userId: owner, version: version, bytes: bytes),
+        );
+      }
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('loadAvatar failed: $e');
       if (gen != _avatarLoadGen) return;
       avatarLoading = false;
-      // Keep existing bytes if any; otherwise stay on initials.
+      // Keep existing bytes (incl. disk cache) if any; otherwise stay on initials.
       notifyListeners();
     }
   }
@@ -482,6 +555,16 @@ class AppState extends ChangeNotifier {
       if (url != null && url.isNotEmpty) {
         _avatarUrl = rewriteMediaUrl(url);
       }
+      final owner = _avatarOwnerUserId ?? me?['id']?.toString();
+      if (owner != null && avatarVersion != null) {
+        unawaited(
+          _persistAvatarCache(
+            userId: owner,
+            version: avatarVersion!,
+            bytes: bytes,
+          ),
+        );
+      }
       // Keep optimistic bytes (exact uploaded payload).
       avatarUploading = false;
       notifyListeners();
@@ -502,6 +585,7 @@ class AppState extends ChangeNotifier {
     final prevKey = avatarStorageKey;
     final prevVersion = avatarVersion;
     final prevUrl = _avatarUrl;
+    final owner = _avatarOwnerUserId;
 
     _avatarLoadGen++;
     avatarUploading = true;
@@ -513,6 +597,7 @@ class AppState extends ChangeNotifier {
 
     try {
       await api.auth.deleteAvatar();
+      await _clearAvatarCache(owner);
       avatarUploading = false;
       notifyListeners();
     } catch (e) {

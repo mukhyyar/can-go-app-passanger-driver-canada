@@ -10,6 +10,7 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole, SupportCaseStatus, SupportCaseType } from '@prisma/client';
@@ -30,6 +31,7 @@ import {
   LoginLinkDto,
   RefundDto,
   ResetPasswordDto,
+  ReviewPayoutDetailsDto,
   SuspendDto,
   UserAnonymizeDto,
   UserArchiveDto,
@@ -142,6 +144,17 @@ export class AdminOpsController {
   @RequirePermission('users.view')
   user360(@Param('id') id: string) {
     return this.ops.user360(id);
+  }
+
+  @Get('users/:id/avatar')
+  @RequirePermission('users.view')
+  @Header('Cache-Control', 'private, max-age=300')
+  async userAvatar(@Param('id') id: string): Promise<StreamableFile> {
+    const file = await this.ops.getUserAvatarContent(id);
+    return new StreamableFile(file.body, {
+      type: file.contentType,
+      disposition: 'inline; filename="avatar"',
+    });
   }
 
   @Post('users/:id/suspend')
@@ -377,6 +390,30 @@ export class AdminOpsController {
   @RequirePermission('finance.view')
   earnings() {
     return this.ops.earnings();
+  }
+
+  /** Queue of driver bank / payout details awaiting (or already) reviewed. */
+  @Get('payout-reviews')
+  @RequirePermission('finance.payout_review')
+  payoutReviews(@Query('status') status?: string) {
+    return this.ops.listPayoutReviews(status);
+  }
+
+  @Get('users/:id/payout-details')
+  @RequirePermission('finance.payout_review')
+  userPayoutDetails(@Param('id') id: string) {
+    return this.ops.getPayoutDetailsForUser(id);
+  }
+
+  @Post('users/:id/payout-details/review')
+  @RequirePermission('finance.payout_review')
+  reviewPayoutDetails(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ReviewPayoutDetailsDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.reviewPayoutDetails(user.id, id, dto, req.ip);
   }
 
   @Get('fare-rules')

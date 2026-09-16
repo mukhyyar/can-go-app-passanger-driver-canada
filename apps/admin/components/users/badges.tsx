@@ -1,10 +1,23 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Chip, statusTone } from '../ui';
+import { apiBlobUrl } from '../../lib/api';
 import { kycShort, roleLabel } from '../../lib/users';
 import { kycStatusTone } from '../../lib/kyc';
 
-export function UserAvatar({ name, size = 36 }: { name?: string | null; size?: number }) {
+export function UserAvatar({
+  name,
+  size = 36,
+  avatarPath,
+  hasAvatar,
+}: {
+  name?: string | null;
+  size?: number;
+  /** Admin API path e.g. `/admin/users/:id/avatar` — fetched with Bearer. */
+  avatarPath?: string | null;
+  hasAvatar?: boolean;
+}) {
   const initials = (name ?? '?')
     .trim()
     .split(/\s+/)
@@ -12,13 +25,45 @@ export function UserAvatar({ name, size = 36 }: { name?: string | null; size?: n
     .slice(0, 2)
     .map((p) => p[0]!.toUpperCase())
     .join('');
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setSrc(null);
+    if (!hasAvatar || !avatarPath) return;
+    (async () => {
+      try {
+        objectUrl = await apiBlobUrl(avatarPath);
+        if (!cancelled) setSrc(objectUrl);
+      } catch {
+        if (!cancelled) setSrc(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [avatarPath, hasAvatar]);
+
   return (
     <span
       className="user-avatar"
       style={{ width: size, height: size, fontSize: size * 0.34 }}
       aria-hidden
     >
-      {initials || '?'}
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          width={size}
+          height={size}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      ) : (
+        initials || '?'
+      )}
     </span>
   );
 }

@@ -119,6 +119,7 @@ export const NAV: NavGroup[] = [
       { href: '/payments', label: 'Payments', permission: 'payments.view' },
       { href: '/refunds', label: 'Refunds', permission: 'payments.view' },
       { href: '/earnings', label: 'Driver Earnings', permission: 'finance.view' },
+      { href: '/payouts', label: 'Payout Reviews', permission: 'finance.payout_review' },
       { href: '/finance#commission', label: 'Commission', permission: 'finance.view' },
       { href: '/finance#recon', label: 'Reconciliation', permission: 'finance.view' },
     ],

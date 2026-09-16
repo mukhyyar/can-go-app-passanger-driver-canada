@@ -26,6 +26,7 @@ type TabId =
   | 'overview'
   | 'rides'
   | 'payments'
+  | 'payout'
   | 'kyc'
   | 'vehicles'
   | 'devices'
@@ -37,6 +38,9 @@ type TabId =
 
 type User360 = {
   user: Record<string, unknown>;
+  hasAvatar?: boolean;
+  avatarPath?: string | null;
+  avatarStorageKey?: string | null;
   marketplace: {
     rides: number;
     completed: number;
@@ -85,6 +89,26 @@ export function User360Workspace() {
 
   useEffect(() => {
     if (searchParams.get('danger') === '1') setDangerOpen(true);
+    const t = searchParams.get('tab');
+    if (
+      t &&
+      [
+        'overview',
+        'rides',
+        'payments',
+        'payout',
+        'kyc',
+        'vehicles',
+        'devices',
+        'sessions',
+        'support',
+        'risk',
+        'notes',
+        'audit',
+      ].includes(t)
+    ) {
+      setTab(t as TabId);
+    }
   }, [searchParams]);
 
   async function load() {
@@ -123,6 +147,7 @@ export function User360Workspace() {
       { id: 'overview', label: 'Overview', show: true },
       { id: 'rides', label: 'Rides', show: true },
       { id: 'payments', label: 'Payments', show: true },
+      { id: 'payout', label: 'Payout', show: isDriver },
       { id: 'kyc', label: 'KYC', show: isDriver },
       { id: 'vehicles', label: 'Vehicles', show: isDriver },
       { id: 'devices', label: 'Devices', show: true },
@@ -143,6 +168,7 @@ export function User360Workspace() {
   const canArchive = hasPermission(me?.permissions, 'users.archive');
   const canAnonymize = hasPermission(me?.permissions, 'users.anonymize');
   const canDelete = hasPermission(me?.permissions, 'users.delete');
+  const canPayoutReview = hasPermission(me?.permissions, 'finance.payout_review');
   const tags = asArr(data?.tags).map((t) => asObj(asObj(t).tag));
   const isArchived = Boolean(user.archivedAt);
   const isAnonymized = Boolean(user.anonymizedAt);
@@ -259,7 +285,12 @@ export function User360Workspace() {
 
       <div className="user360-header">
         <div className="user360-identity">
-          <UserAvatar name={name} size={56} />
+          <UserAvatar
+            name={name}
+            size={56}
+            hasAvatar={Boolean(data?.hasAvatar)}
+            avatarPath={data?.avatarPath ?? null}
+          />
           <div>
             <h1 className="page-title" style={{ marginBottom: 6 }}>
               {name}
@@ -446,6 +477,14 @@ export function User360Workspace() {
         )}
         {tab === 'rides' && <RidesTab rides={data.rides ?? []} marketplace={mkt} userId={String(id)} />}
         {tab === 'payments' && <PaymentsTab payments={data.payments} refunds={data.refunds} />}
+        {tab === 'payout' && (
+          <PayoutTab
+            userId={String(id)}
+            drv={drv}
+            canReview={canPayoutReview}
+            onChanged={() => void load()}
+          />
+        )}
         {tab === 'kyc' && <KycTab drv={drv} documents={documents} driverId={String(drv.id || '')} />}
         {tab === 'vehicles' && <VehiclesTab vehicles={vehicles} />}
         {tab === 'devices' && <DevicesTab sessions={sessions} />}
@@ -585,6 +624,12 @@ function OverviewTab(props: {
         { label: 'Documents submitted', done: Boolean(drv.kycSubmittedAt) || asArr(drv.documents).length > 0 },
         { label: 'KYC review', done: ['APPROVED', 'IN_REVIEW'].includes(String(drv.approvalStatus)) },
         { label: 'Vehicle approved', done: asArr(drv.vehicles).length > 0 },
+        {
+          label: 'Payout details verified',
+          done: ['VERIFIED', 'CONFIGURED'].includes(
+            String(asObj(drv.payoutSettingsJson).status || ''),
+          ),
+        },
         { label: 'Driver approved', done: drv.approvalStatus === 'APPROVED' && Boolean(drv.isActivated) },
       ]
     : [];
@@ -651,6 +696,11 @@ function OverviewTab(props: {
           {drv.id ? (
             <Link className="btn ghost sm" href={`/kyc/${drv.id}`} style={{ marginTop: 8 }}>
               Open KYC review
+            </Link>
+          ) : null}
+          {drv.id ? (
+            <Link className="btn ghost sm" href={`?tab=payout`} style={{ marginTop: 8, marginLeft: 8 }}>
+              Review payout details
             </Link>
           ) : null}
         </Card>
@@ -836,6 +886,134 @@ function PaymentsTab({
             </div>
           ))}
         </>
+      )}
+    </div>
+  );
+}
+
+function PayoutTab({
+  userId,
+  drv,
+  canReview,
+  onChanged,
+}: {
+  userId: string;
+  drv: Record<string, unknown>;
+  canReview: boolean;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const payout = asObj(drv.payoutSettingsJson);
+  const status = String(
+    payout.status ?? (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
+  );
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const configured = Boolean(
+    payout.payoutMethod && payout.outpaymentCurrency && payout.bankCountry,
+  );
+  const canApprove =
+    canReview && configured && (status === 'PENDING' || status === 'REJECTED');
+  const canReject =
+    canReview &&
+    configured &&
+    (status === 'PENDING' || status === 'VERIFIED' || status === 'CONFIGURED');
+
+  async function review(decision: 'APPROVE' | 'REJECT') {
+    setBusy(true);
+    try {
+      await api(`/admin/users/${userId}/payout-details/review`, {
+        method: 'POST',
+        body: JSON.stringify({
+          decision,
+          ...(decision === 'REJECT' || note.trim() ? { note: note.trim() || undefined } : {}),
+        }),
+      });
+      toast.push(decision === 'APPROVE' ? 'Payout details approved' : 'Payout details rejected');
+      setNote('');
+      onChanged();
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!drv.id) {
+    return (
+      <div className="panel">
+        <EmptyState title="No driver profile" description="Payout details apply to drivers only." />
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel">
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ marginTop: 0 }}>Bank / payout details</h3>
+        <Chip tone={statusTone(status)}>{status}</Chip>
+      </div>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Driver must have verified payout details before wallet withdrawals are allowed.
+      </p>
+      <div className="grid-2" style={{ marginTop: 12 }}>
+        <Card title="Submitted details">
+          <Row label="Account holder" value={String(payout.accountHolderName || '—')} />
+          <Row label="Account mask" value={String(payout.accountMask || '—')} />
+          <Row label="Bank country" value={String(payout.bankCountry || '—')} />
+          <Row label="Currency" value={String(payout.outpaymentCurrency || '—')} />
+          <Row label="Method" value={String(payout.payoutMethod || '—')} />
+          <Row label="Billing period" value={String(payout.billingPeriod || '—')} />
+        </Card>
+        <Card title="Review">
+          <Row label="Status" value={<Chip tone={statusTone(status)}>{status}</Chip>} />
+          <Row label="Reviewed at" value={when((payout.reviewedAt as string) || null)} />
+          <Row label="Reviewed by" value={String(payout.reviewedByAdminId || '—')} />
+          <Row label="Note" value={String(payout.reviewNote || '—')} />
+        </Card>
+      </div>
+
+      {canReview && (
+        <div style={{ marginTop: 16 }}>
+          <label className="muted" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+            Review note {canReject && status !== 'REJECTED' ? '(required to reject)' : '(optional)'}
+          </label>
+          <textarea
+            className="input"
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Reason for rejection or internal note…"
+            style={{ width: '100%', maxWidth: 520 }}
+          />
+          <div className="row" style={{ gap: 8, marginTop: 10 }}>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || !canApprove}
+              onClick={() => void review('APPROVE')}
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              className="btn danger"
+              disabled={busy || !canReject || note.trim().length < 2}
+              onClick={() => void review('REJECT')}
+            >
+              Reject
+            </button>
+            <Link className="btn ghost" href="/payouts">
+              Open queue
+            </Link>
+          </div>
+        </div>
+      )}
+      {!canReview && (
+        <p className="muted" style={{ marginTop: 12 }}>
+          You need finance.payout_review to approve or reject.
+        </p>
       )}
     </div>
   );

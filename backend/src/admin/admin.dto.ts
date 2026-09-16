@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -18,6 +19,18 @@ export class ImpersonateDto {
   @IsOptional()
   @IsBoolean()
   readOnly?: boolean;
+}
+
+export class ReviewPayoutDetailsDto {
+  /** APPROVE → VERIFIED (withdraw allowed); REJECT → REJECTED */
+  @IsString()
+  @IsIn(['APPROVE', 'REJECT'])
+  decision!: 'APPROVE' | 'REJECT';
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  note?: string;
 }
 
 export class SuspendDto {

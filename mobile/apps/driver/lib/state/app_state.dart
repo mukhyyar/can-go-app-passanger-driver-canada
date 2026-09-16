@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -337,7 +338,7 @@ class AppState extends ChangeNotifier {
       }
     }
     if (me != null) {
-      _applyAvatarMetaFromMe(me!);
+      await _applyAvatarMetaFromMe(me!);
     } else {
       clearAvatarState();
     }
@@ -376,7 +377,53 @@ class AppState extends ChangeNotifier {
     _avatarOwnerUserId = null;
   }
 
-  void _applyAvatarMetaFromMe(Map<String, dynamic> m) {
+  static const _avatarCacheMaxBytes = 400000;
+
+  String _avatarCacheKey(String userId) => 'avatar_bytes_$userId';
+  String _avatarCacheVerKey(String userId) => 'avatar_ver_$userId';
+
+  Future<void> _persistAvatarCache({
+    required String userId,
+    required String version,
+    required Uint8List bytes,
+  }) async {
+    if (bytes.length > _avatarCacheMaxBytes) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_avatarCacheKey(userId), base64Encode(bytes));
+      await prefs.setString(_avatarCacheVerKey(userId), version);
+    } catch (e) {
+      debugPrint('avatar cache write: $e');
+    }
+  }
+
+  Future<Uint8List?> _readAvatarCache({
+    required String userId,
+    required String version,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ver = prefs.getString(_avatarCacheVerKey(userId));
+      if (ver == null || ver != version) return null;
+      final raw = prefs.getString(_avatarCacheKey(userId));
+      if (raw == null || raw.isEmpty) return null;
+      return base64Decode(raw);
+    } catch (e) {
+      debugPrint('avatar cache read: $e');
+      return null;
+    }
+  }
+
+  Future<void> _clearAvatarCache(String? userId) async {
+    if (userId == null || userId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_avatarCacheKey(userId));
+      await prefs.remove(_avatarCacheVerKey(userId));
+    } catch (_) {}
+  }
+
+  Future<void> _applyAvatarMetaFromMe(Map<String, dynamic> m) async {
     final userId = m['id']?.toString() ?? m['user']?['id']?.toString();
     if (_avatarOwnerUserId != null &&
         userId != null &&
@@ -397,10 +444,22 @@ class AppState extends ChangeNotifier {
     if (key == null || key.isEmpty) {
       avatarBytes = null;
       avatarLoading = false;
+      if (userId != null) await _clearAvatarCache(userId);
       return;
     }
+
+    if (avatarBytes == null && userId != null && version != null) {
+      final cached = await _readAvatarCache(userId: userId, version: version);
+      if (cached != null && cached.isNotEmpty) {
+        avatarBytes = cached;
+        notifyListeners();
+      }
+    }
+
     if (keyChanged || avatarBytes == null) {
-      unawaited(loadAvatar());
+      await loadAvatar(force: avatarBytes == null);
+    } else {
+      unawaited(loadAvatar(force: true));
     }
   }
 
@@ -460,8 +519,15 @@ class AppState extends ChangeNotifier {
       if (avatarUploading) return;
       avatarBytes = bytes;
       avatarLoading = false;
+      final owner = _avatarOwnerUserId;
+      if (owner != null && version != null) {
+        unawaited(
+          _persistAvatarCache(userId: owner, version: version, bytes: bytes),
+        );
+      }
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('loadAvatar failed: $e');
       if (gen != _avatarLoadGen) return;
       avatarLoading = false;
       notifyListeners();
@@ -494,6 +560,16 @@ class AppState extends ChangeNotifier {
       if (url != null && url.isNotEmpty) {
         avatarUrl = rewriteMediaUrl(url);
       }
+      final owner = _avatarOwnerUserId ?? authUserId ?? me?['id']?.toString();
+      if (owner != null && avatarVersion != null) {
+        unawaited(
+          _persistAvatarCache(
+            userId: owner,
+            version: avatarVersion!,
+            bytes: bytes,
+          ),
+        );
+      }
       avatarUploading = false;
       notifyListeners();
     } catch (e) {
@@ -513,6 +589,7 @@ class AppState extends ChangeNotifier {
     final prevKey = avatarStorageKey;
     final prevVersion = avatarVersion;
     final prevUrl = avatarUrl;
+    final owner = _avatarOwnerUserId;
 
     _avatarLoadGen++;
     avatarUploading = true;
@@ -524,6 +601,7 @@ class AppState extends ChangeNotifier {
 
     try {
       await api.auth.deleteAvatar();
+      await _clearAvatarCache(owner);
       avatarUploading = false;
       notifyListeners();
     } catch (e) {

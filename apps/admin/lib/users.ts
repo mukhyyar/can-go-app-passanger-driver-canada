@@ -66,6 +66,9 @@ export type UserListRow = {
   watchlisted: boolean;
   riskBand: string;
   riskOpen: number;
+  hasAvatar?: boolean;
+  avatarPath?: string | null;
+  avatarStorageKey?: string | null;
   passengerProfile?: {
     id: string;
     fullName?: string;

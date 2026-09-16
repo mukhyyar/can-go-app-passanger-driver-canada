@@ -135,9 +135,18 @@ class _MenuPanelState extends State<MenuPanel>
     final rides = state.completedRideCount;
     final unitWord = state.distanceUnit == 'mi' ? 'mi' : 'km';
     final name = state.isAuthenticated
-        ? (state.me?['fullName']?.toString().trim().isNotEmpty == true
-            ? state.me!['fullName'].toString()
-            : 'My account')
+        ? () {
+            final top = state.me?['fullName']?.toString().trim();
+            if (top != null && top.isNotEmpty) return top;
+            final pax = state.me?['passenger'];
+            if (pax is Map) {
+              final n = pax['fullName']?.toString().trim();
+              if (n != null && n.isNotEmpty) return n;
+            }
+            final local = state.repo.passenger.fullName.trim();
+            if (local.isNotEmpty) return local;
+            return 'My account';
+          }()
         : 'Log in or sign up';
 
     return ColoredBox(

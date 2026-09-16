@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +19,7 @@ import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from '../auth/password.service';
 import { TokensService } from '../auth/tokens.service';
+import { StorageService } from '../storage/storage.service';
 import { PAYMENT_PROVIDER } from '../providers/payment/payment-provider.interface';
 import type { PaymentProvider } from '../providers/payment/payment-provider.interface';
 import { SMS_PROVIDER } from '../providers/sms/sms-provider.interface';
@@ -76,9 +78,37 @@ export class AdminOpsService {
     private readonly firebase: FirebaseService,
     private readonly passwords: PasswordService,
     private readonly tokens: TokensService,
+    private readonly storage: StorageService,
     @Inject(PAYMENT_PROVIDER) private readonly payments: PaymentProvider,
     @Inject(SMS_PROVIDER) private readonly sms: SmsProvider,
   ) {}
+
+  /** Authenticated avatar bytes for admin UI (never expose loopback MinIO URLs). */
+  async getUserAvatarContent(userId: string): Promise<{
+    body: Buffer;
+    contentType: string;
+    avatarVersion: string;
+  }> {
+    if (!this.storage.isReady()) {
+      throw new ServiceUnavailableException('Object storage is not available');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const key =
+      user.passengerProfile?.avatarStorageKey ??
+      user.driverProfile?.avatarStorageKey ??
+      null;
+    if (!key) throw new NotFoundException('No avatar');
+    const object = await this.storage.getObjectBytes(key);
+    return {
+      body: object.body,
+      contentType: object.contentType,
+      avatarVersion: key,
+    };
+  }
 
   private async audit(
     actorId: string | undefined,
@@ -795,6 +825,7 @@ export class AdminOpsService {
           isVip: true,
           vipRequestedAt: true,
           language: true,
+          avatarStorageKey: true,
           _count: { select: { rides: true } },
         },
       },
@@ -806,6 +837,7 @@ export class AdminOpsService {
           isActivated: true,
           baseLocation: true,
           kycSubmittedAt: true,
+          avatarStorageKey: true,
           vehicles: { take: 1, select: { plate: true, vehicleClass: true } },
         },
       },
@@ -850,6 +882,11 @@ export class AdminOpsService {
       else if (openRisk >= 2 || watchlisted) riskBand = 'HIGH';
       else if (openRisk === 1) riskBand = 'MEDIUM';
 
+      const avatarStorageKey =
+        u.passengerProfile?.avatarStorageKey ??
+        u.driverProfile?.avatarStorageKey ??
+        null;
+
       return {
         ...u,
         displayName: name,
@@ -868,6 +905,10 @@ export class AdminOpsService {
         watchlisted,
         riskBand,
         riskOpen: openRisk,
+        avatarStorageKey,
+        hasAvatar: Boolean(avatarStorageKey),
+        /** Same-origin admin proxy — fetch with Bearer; do not use MinIO signed URLs. */
+        avatarPath: avatarStorageKey ? `/admin/users/${u.id}/avatar` : null,
       };
     });
 
@@ -1046,8 +1087,15 @@ export class AdminOpsService {
     });
 
     const { passwordHash: _ph, adminTotpSecret: _totp, ...safe } = user;
+    const avatarStorageKey =
+      user.passengerProfile?.avatarStorageKey ??
+      user.driverProfile?.avatarStorageKey ??
+      null;
     return {
       user: safe,
+      avatarStorageKey,
+      hasAvatar: Boolean(avatarStorageKey),
+      avatarPath: avatarStorageKey ? `/admin/users/${user.id}/avatar` : null,
       marketplace: {
         rides: rides.length,
         completed,
@@ -2370,6 +2418,225 @@ export class AdminOpsService {
       ...(byDriver.get(d.id) ?? { earning: 0, commission: 0, n: 0 }),
       ...(walletByDriver.get(d.id) ?? { available: '0.00', pending: '0.00' }),
     }));
+  }
+
+  // ---------- Driver payout / bank details review ----------
+
+  private parsePayoutSettings(raw: unknown): Record<string, unknown> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    return raw as Record<string, unknown>;
+  }
+
+  private serializePayoutReview(driver: {
+    id: string;
+    userId: string;
+    fullName: string;
+    approvalStatus: DriverApprovalStatus;
+    isActivated: boolean;
+    payoutSettingsJson: Prisma.JsonValue;
+    updatedAt: Date;
+    user?: { email: string | null; phoneE164: string | null } | null;
+  }) {
+    const payout = this.parsePayoutSettings(driver.payoutSettingsJson);
+    const status = String(
+      payout.status ??
+        (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
+    );
+    return {
+      driverId: driver.id,
+      userId: driver.userId,
+      fullName: driver.fullName,
+      email: driver.user?.email ?? null,
+      phoneE164: driver.user?.phoneE164 ?? null,
+      approvalStatus: driver.approvalStatus,
+      isActivated: driver.isActivated,
+      payoutStatus: status,
+      billingPeriod: payout.billingPeriod ?? null,
+      outpaymentCurrency: payout.outpaymentCurrency ?? null,
+      bankCountry: payout.bankCountry ?? null,
+      payoutMethod: payout.payoutMethod ?? null,
+      accountHolderName: payout.accountHolderName ?? null,
+      accountMask: payout.accountMask ?? null,
+      reviewedAt: payout.reviewedAt ?? null,
+      reviewedByAdminId: payout.reviewedByAdminId ?? null,
+      reviewNote: payout.reviewNote ?? null,
+      updatedAt: driver.updatedAt.toISOString(),
+    };
+  }
+
+  async listPayoutReviews(statusFilter?: string) {
+    const wanted = (statusFilter || 'PENDING').trim().toUpperCase();
+    const drivers = await this.prisma.driverProfile.findMany({
+      where: {
+        NOT: { payoutSettingsJson: { equals: {} } },
+      },
+      select: {
+        id: true,
+        userId: true,
+        fullName: true,
+        approvalStatus: true,
+        isActivated: true,
+        payoutSettingsJson: true,
+        updatedAt: true,
+        user: { select: { email: true, phoneE164: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
+    });
+
+    const rows = drivers
+      .map((d) => this.serializePayoutReview(d))
+      .filter((r) => {
+        if (wanted === 'ALL') {
+          return r.payoutStatus !== 'NOT_CONFIGURED';
+        }
+        return r.payoutStatus === wanted;
+      });
+
+    return rows;
+  }
+
+  async getPayoutDetailsForUser(userId: string) {
+    const driver = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        userId: true,
+        fullName: true,
+        approvalStatus: true,
+        isActivated: true,
+        payoutSettingsJson: true,
+        updatedAt: true,
+        user: { select: { email: true, phoneE164: true } },
+      },
+    });
+    if (!driver) throw new NotFoundException('Driver profile not found');
+    return this.serializePayoutReview(driver);
+  }
+
+  async reviewPayoutDetails(
+    adminId: string,
+    userId: string,
+    dto: { decision: 'APPROVE' | 'REJECT'; note?: string },
+    ip?: string,
+  ) {
+    const driver = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        userId: true,
+        fullName: true,
+        approvalStatus: true,
+        isActivated: true,
+        payoutSettingsJson: true,
+        updatedAt: true,
+        user: { select: { email: true, phoneE164: true } },
+      },
+    });
+    if (!driver) throw new NotFoundException('Driver profile not found');
+
+    const current = this.parsePayoutSettings(driver.payoutSettingsJson);
+    const configured = !!(
+      current.payoutMethod &&
+      current.outpaymentCurrency &&
+      current.bankCountry
+    );
+    if (!configured) {
+      throw new BadRequestException(
+        'Driver has not submitted complete payout details yet',
+      );
+    }
+
+    const currentStatus = String(current.status ?? 'NOT_CONFIGURED');
+    if (dto.decision === 'APPROVE') {
+      if (currentStatus === 'VERIFIED' || currentStatus === 'CONFIGURED') {
+        return this.serializePayoutReview(driver);
+      }
+      if (currentStatus !== 'PENDING' && currentStatus !== 'REJECTED') {
+        throw new BadRequestException(
+          `Cannot approve payout details in status ${currentStatus}`,
+        );
+      }
+    } else {
+      // REJECT
+      if (
+        currentStatus !== 'PENDING' &&
+        currentStatus !== 'VERIFIED' &&
+        currentStatus !== 'CONFIGURED' &&
+        currentStatus !== 'REJECTED'
+      ) {
+        throw new BadRequestException(
+          `Cannot reject payout details in status ${currentStatus}`,
+        );
+      }
+      if (!(dto.note && dto.note.trim().length >= 2)) {
+        throw new BadRequestException('A rejection note is required');
+      }
+    }
+
+    const nextStatus = dto.decision === 'APPROVE' ? 'VERIFIED' : 'REJECTED';
+    const nowIso = new Date().toISOString();
+    const next = {
+      ...current,
+      status: nextStatus,
+      reviewedAt: nowIso,
+      reviewedByAdminId: adminId,
+      reviewNote: dto.note?.trim() || null,
+    };
+
+    const updated = await this.prisma.driverProfile.update({
+      where: { id: driver.id },
+      data: { payoutSettingsJson: next as Prisma.InputJsonValue },
+      select: {
+        id: true,
+        userId: true,
+        fullName: true,
+        approvalStatus: true,
+        isActivated: true,
+        payoutSettingsJson: true,
+        updatedAt: true,
+        user: { select: { email: true, phoneE164: true } },
+      },
+    });
+
+    await this.audit(
+      adminId,
+      dto.decision === 'APPROVE'
+        ? 'PAYOUT_DETAILS_APPROVED'
+        : 'PAYOUT_DETAILS_REJECTED',
+      'DriverProfile',
+      driver.id,
+      {
+        ip,
+        before: { status: currentStatus },
+        after: { status: nextStatus, note: next.reviewNote },
+        userId,
+      },
+    );
+
+    void this.notifications.sendToUser({
+      userId,
+      title:
+        dto.decision === 'APPROVE'
+          ? 'Payout details approved'
+          : 'Payout details need update',
+      body:
+        dto.decision === 'APPROVE'
+          ? 'Your bank / payout details were verified. You can withdraw available earnings.'
+          : `Your payout details were rejected${dto.note ? `: ${dto.note.trim()}` : ''}. Please update them in the app.`,
+      templateKey:
+        dto.decision === 'APPROVE'
+          ? 'wallet.payout_details_approved'
+          : 'wallet.payout_details_rejected',
+      eventId: `wallet.payout_details.${nextStatus.toLowerCase()}.${driver.id}.${nowIso}`,
+      data: {
+        type: 'wallet.payout_details',
+        status: nextStatus,
+        deepLink: '/onboarding/payment',
+      },
+    });
+
+    return this.serializePayoutReview(updated);
   }
 
   // ---------- Pricing / promos / cms / catalog ----------

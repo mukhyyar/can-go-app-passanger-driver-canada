@@ -92,6 +92,35 @@ export async function api<T = unknown>(
   return data as T;
 }
 
+/** Authenticated binary GET (avatars, document previews). Returns a blob URL. */
+export async function apiBlobUrl(
+  path: string,
+  opts: { token?: string | null } = {},
+): Promise<string> {
+  const tokens = readTokens();
+  const token = opts.token ?? tokens?.accessToken;
+  const headers = new Headers();
+  headers.set('Accept', '*/*');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  let res = await fetch(`${API_BASE}${path}`, { headers });
+
+  if (res.status === 401 && tokens?.refreshToken && !path.includes('/auth/refresh')) {
+    const next = await refreshAccess(tokens.refreshToken);
+    if (next?.accessToken) {
+      saveTokens({ ...tokens, ...next });
+      headers.set('Authorization', `Bearer ${next.accessToken}`);
+      res = await fetch(`${API_BASE}${path}`, { headers });
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 /** Multipart upload — sets Bearer auth but does not force JSON Content-Type. */
 export async function apiForm<T = unknown>(
   path: string,

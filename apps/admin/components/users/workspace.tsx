@@ -463,7 +463,12 @@ export function UsersWorkspace() {
                   </td>
                   <td className="col-user">
                     <div className="user-cell">
-                      <UserAvatar name={r.displayName} size={32} />
+                      <UserAvatar
+                        name={r.displayName}
+                        size={32}
+                        hasAvatar={Boolean(r.hasAvatar)}
+                        avatarPath={r.avatarPath}
+                      />
                       <div>
                         <div className="user-cell-name">{r.displayName}</div>
                         <div className="muted mono" style={{ fontSize: 11 }}>
