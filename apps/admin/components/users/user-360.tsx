@@ -977,7 +977,7 @@ function PayoutTab({
       {canReview && (
         <div style={{ marginTop: 16 }}>
           <label className="muted" style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-            Review note {canReject && status !== 'REJECTED' ? '(required to reject)' : '(optional)'}
+            Review note {canReject ? '(required to reject)' : '(optional)'}
           </label>
           <textarea
             className="input"
