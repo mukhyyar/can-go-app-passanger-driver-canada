@@ -595,6 +595,7 @@ class DriverRequest {
     this.flightWait,
     this.hasOffer = false,
     this.offerPrice,
+    this.driverEarning,
     this.fromLat,
     this.fromLng,
     this.toLat,
@@ -633,6 +634,8 @@ class DriverRequest {
   final String? flightWait;
   final bool hasOffer;
   final double? offerPrice;
+  /// Net driver earning from frozen priceSnapshot (completed trips).
+  final double? driverEarning;
   final double? fromLat;
   final double? fromLng;
   final double? toLat;
@@ -687,6 +690,7 @@ class DriverRequest {
       flightWait: flightWait,
       hasOffer: hasOffer ?? this.hasOffer,
       offerPrice: offerPrice ?? this.offerPrice,
+      driverEarning: driverEarning,
       fromLat: fromLat,
       fromLng: fromLng,
       toLat: toLat,

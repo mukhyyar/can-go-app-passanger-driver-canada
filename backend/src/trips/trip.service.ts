@@ -10,6 +10,7 @@ import { RideStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
+import { DriverWalletService } from '../wallet/driver-wallet.service';
 
 @Injectable()
 export class TripService {
@@ -18,6 +19,7 @@ export class TripService {
     private readonly notifications: NotificationsService,
     @Inject(forwardRef(() => TrackingGateway))
     private readonly tracking: TrackingGateway,
+    private readonly wallet: DriverWalletService,
   ) {}
 
   async transition(
@@ -84,6 +86,13 @@ export class TripService {
           ip,
         },
       });
+
+      if (toStatus === RideStatus.COMPLETED) {
+        await this.wallet.creditEarningForCompletedRide(rideId, {
+          tx,
+          actorId: userId,
+        });
+      }
     });
 
     // Auto-advance TRIP_STARTED → IN_PROGRESS for simpler clients

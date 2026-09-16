@@ -113,4 +113,12 @@ export default () => ({
     documentsBucket: process.env.S3_BUCKET_DOCUMENTS ?? 'cango-documents',
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
   },
+  wallet: {
+    currency: (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase(),
+    minWithdrawalCad: process.env.WALLET_MIN_WITHDRAWAL_CAD ?? '10',
+    maxWithdrawalCad: process.env.WALLET_MAX_WITHDRAWAL_CAD ?? '5000',
+    holdDays: parseInt(process.env.WALLET_HOLD_DAYS ?? '3', 10),
+    dailyWithdrawalLimitCad: process.env.WALLET_DAILY_WITHDRAWAL_LIMIT_CAD || '',
+    defaultCommissionPct: process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '15',
+  },
 });

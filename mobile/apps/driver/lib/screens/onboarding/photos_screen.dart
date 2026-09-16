@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
@@ -15,7 +17,8 @@ class PhotosScreen extends StatefulWidget {
 }
 
 class _PhotosScreenState extends State<PhotosScreen> {
-  final Map<String, String?> _previewUrls = {};
+  final Map<String, Uint8List> _previewBytes = {};
+  final Set<String> _previewFailed = {};
   bool _busy = false;
 
   @override
@@ -39,10 +42,26 @@ class _PhotosScreenState extends State<PhotosScreen> {
     for (final doc in s.vehiclePhotoDocuments) {
       final id = doc['id']?.toString();
       if (id == null) continue;
+      final cached = s.cachedDocumentPreview(id);
+      if (cached != null) {
+        if (mounted) setState(() => _previewBytes[id] = cached);
+        continue;
+      }
+      if (_previewBytes.containsKey(id) || _previewFailed.contains(id)) continue;
       try {
-        final url = await s.fetchDocumentPreviewUrl(id);
-        if (mounted) setState(() => _previewUrls[id] = url);
-      } catch (_) {}
+        final bytes = await s.fetchDocumentPreviewBytes(id);
+        if (!mounted) return;
+        setState(() {
+          if (bytes != null) {
+            _previewBytes[id] = bytes;
+            _previewFailed.remove(id);
+          } else {
+            _previewFailed.add(id);
+          }
+        });
+      } catch (_) {
+        if (mounted) setState(() => _previewFailed.add(id));
+      }
     }
   }
 
@@ -115,7 +134,19 @@ class _PhotosScreenState extends State<PhotosScreen> {
         bytes: bytes,
         filename: file.name,
       );
-      if (mounted) await _loadPreviews();
+      for (final doc in s.vehiclePhotoDocuments) {
+        final id = doc['id']?.toString();
+        if (id != null && !_previewBytes.containsKey(id)) {
+          s.rememberDocumentPreview(id, bytes);
+          _previewBytes[id] = bytes;
+          _previewFailed.remove(id);
+          break;
+        }
+      }
+      if (mounted) {
+        setState(() {});
+        await _loadPreviews();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -154,7 +185,8 @@ class _PhotosScreenState extends State<PhotosScreen> {
     setState(() => _busy = true);
     try {
       await context.read<AppState>().deleteDocument(id);
-      _previewUrls.remove(id);
+      _previewBytes.remove(id);
+      _previewFailed.remove(id);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -166,7 +198,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
     }
   }
 
-  void _openPreview(String url) {
+  void _openPreview(Uint8List bytes) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(
@@ -178,7 +210,15 @@ class _PhotosScreenState extends State<PhotosScreen> {
           ),
           body: Center(
             child: InteractiveViewer(
-              child: Image.network(url, fit: BoxFit.contain),
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.broken_image_outlined,
+                  size: 64,
+                  color: Colors.white54,
+                ),
+              ),
             ),
           ),
         ),
@@ -291,13 +331,14 @@ class _PhotosScreenState extends State<PhotosScreen> {
                     }
                     final doc = photos[i];
                     final id = doc['id']?.toString() ?? '';
-                    final url = _previewUrls[id];
+                    final bytes = _previewBytes[id];
+                    final failed = _previewFailed.contains(id);
                     final locked = s.isDocumentLocked(doc);
                     return Stack(
                       fit: StackFit.expand,
                       children: [
                         InkWell(
-                          onTap: url != null ? () => _openPreview(url) : null,
+                          onTap: bytes != null ? () => _openPreview(bytes) : null,
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
                             decoration: BoxDecoration(
@@ -306,10 +347,22 @@ class _PhotosScreenState extends State<PhotosScreen> {
                               border: Border.all(color: GtColors.border),
                             ),
                             clipBehavior: Clip.antiAlias,
-                            child: url != null
-                                ? Image.network(url, fit: BoxFit.cover)
-                                : const Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                            child: bytes != null
+                                ? Image.memory(
+                                    bytes,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.broken_image_outlined,
+                                    ),
+                                  )
+                                : Center(
+                                    child: failed
+                                        ? const Icon(
+                                            Icons.broken_image_outlined,
+                                          )
+                                        : const CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
                                   ),
                           ),
                         ),

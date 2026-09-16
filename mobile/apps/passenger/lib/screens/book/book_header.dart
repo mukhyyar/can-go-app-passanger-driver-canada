@@ -115,34 +115,12 @@ class BookHeader extends StatelessWidget {
                         }
                       },
                       borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: GtColors.soft,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: GtColors.brand.withValues(alpha: 0.18),
-                          ),
-                          image: app.isAuthenticated &&
-                                  app.avatarUrl != null &&
-                                  app.avatarUrl!.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(app.avatarUrl!),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        child: app.isAuthenticated &&
-                                app.avatarUrl != null &&
-                                app.avatarUrl!.isNotEmpty
-                            ? null
-                            : const Icon(
-                                Icons.person_outline_rounded,
-                                color: GtColors.brand,
-                                size: 22,
-                              ),
+                      child: GtProfileAvatar(
+                        size: 40,
+                        bytes: app.isAuthenticated ? app.avatarBytes : null,
+                        loading: app.isAuthenticated &&
+                            (app.avatarLoading || app.avatarUploading),
+                        initials: null,
                       ),
                     ),
                   ),

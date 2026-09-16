@@ -29,11 +29,52 @@ class DriverApi {
           Map<String, dynamic> body) =>
       client.patch('/driver/me/payment-details', body: body);
 
+  Future<Map<String, dynamic>> wallet() => client.get('/driver/me/wallet');
+
+  Future<Map<String, dynamic>> walletEntries({
+    String? cursor,
+    int? limit,
+    String? type,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+  }) {
+    final q = <String, String>{};
+    if (cursor != null) q['cursor'] = cursor;
+    if (limit != null) q['limit'] = '$limit';
+    if (type != null) q['type'] = type;
+    if (status != null) q['status'] = status;
+    if (dateFrom != null) q['dateFrom'] = dateFrom;
+    if (dateTo != null) q['dateTo'] = dateTo;
+    final qs = q.entries
+        .map((e) =>
+            '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    return client.get('/driver/me/wallet/entries${qs.isEmpty ? '' : '?$qs'}');
+  }
+
+  Future<Map<String, dynamic>> withdrawWallet({
+    required String amount,
+    required String idempotencyKey,
+    String? currency,
+  }) =>
+      client.post(
+        '/driver/me/wallet/withdraw',
+        body: {
+          'amount': amount,
+          if (currency != null) 'currency': currency,
+        },
+        idempotencyKey: idempotencyKey,
+      );
+
   Future<Map<String, dynamic>> documentsStatus() =>
       client.get('/driver/documents');
 
   Future<Map<String, dynamic>> getDocument(String documentId) =>
       client.get('/driver/documents/$documentId');
+
+  Future<Uint8List> getDocumentContent(String documentId) =>
+      client.getBytes('/driver/documents/$documentId/content');
 
   Future<Map<String, dynamic>> deleteDocument(String documentId) =>
       client.delete('/driver/documents/$documentId');

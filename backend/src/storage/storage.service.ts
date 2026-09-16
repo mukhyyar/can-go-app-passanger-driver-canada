@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
@@ -95,34 +96,69 @@ export class StorageService implements OnModuleInit {
   }
 
   async getSignedGetUrl(key: string, expiresInSeconds = 900) {
-    const client = this.assertClient();
+    // Sign against the public endpoint when set. Rewriting the host *after*
+    // SigV4 signing invalidates the signature (phones then get blank/broken images).
+    const client = this.clientForSigning();
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    const signed = await getSignedUrl(client, command, {
+    return getSignedUrl(client, command, {
       expiresIn: expiresInSeconds,
     });
-    return this.rewritePublicEndpoint(signed);
   }
 
   /**
-   * Signed URLs inherit S3_ENDPOINT (often http://127.0.0.1:9000). Phones cannot
-   * reach the host's localhost — rewrite to S3_PUBLIC_ENDPOINT when set.
+   * Fetch object bytes for authenticated API proxies (mobile preview).
+   * Prefer this over signed URLs when MinIO is not reachable from the device.
    */
-  private rewritePublicEndpoint(url: string): string {
+  async getObjectBytes(key: string): Promise<{
+    body: Buffer;
+    contentType: string;
+  }> {
+    const client = this.assertClient();
+    const out = await client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    const bytes = await out.Body?.transformToByteArray();
+    if (!bytes?.length) {
+      throw new ServiceUnavailableException('Object body empty');
+    }
+    return {
+      body: Buffer.from(bytes),
+      contentType: out.ContentType || 'application/octet-stream',
+    };
+  }
+
+  /** Best-effort delete. Logs failures; does not throw. */
+  async deleteObject(key: string): Promise<boolean> {
+    if (!key || !this.client || !this.ready) return false;
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete object key=${key}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return false;
+    }
+  }
+
+  /** S3 client whose endpoint matches what browsers/phones will call. */
+  private clientForSigning(): S3Client {
     const internal = this.config.get<string>('s3.endpoint');
     const pub = this.config.get<string>('s3.publicEndpoint');
-    if (!internal || !pub || internal === pub) return url;
-    try {
-      const signed = new URL(url);
-      const from = new URL(internal);
-      const to = new URL(pub);
-      if (signed.host === from.host) {
-        signed.protocol = to.protocol;
-        signed.host = to.host;
-        return signed.toString();
-      }
-    } catch {
-      /* keep original */
-    }
-    return url;
+    const base = this.assertClient();
+    if (!internal || !pub || internal === pub) return base;
+    return new S3Client({
+      region: this.config.get<string>('s3.region') ?? 'us-east-1',
+      endpoint: pub,
+      forcePathStyle: this.config.get<boolean>('s3.forcePathStyle') ?? true,
+      credentials: {
+        accessKeyId: this.config.get<string>('s3.accessKey')!,
+        secretAccessKey: this.config.get<string>('s3.secretKey')!,
+      },
+    });
   }
 }

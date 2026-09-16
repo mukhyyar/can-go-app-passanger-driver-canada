@@ -99,6 +99,21 @@ export class DriversService {
     return { ...this.kycDocs.serializeDoc(doc), url, expiresInSeconds: 900 };
   }
 
+  /** Authenticated binary stream — used by mobile thumbnails/preview. */
+  async getDocumentContent(userId: string, documentId: string) {
+    const driver = await this.requireDriverProfile(userId);
+    const doc = await this.prisma.driverDocument.findFirst({
+      where: { id: documentId, driverId: driver.id },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+    const object = await this.storage.getObjectBytes(doc.storageKey);
+    return {
+      body: object.body,
+      contentType: doc.mimeType || object.contentType,
+      filename: doc.originalFilename ?? `${doc.docType}`,
+    };
+  }
+
   async uploadDocument(
     userId: string,
     file: Express.Multer.File | undefined,
@@ -412,6 +427,7 @@ export class DriversService {
   async getPaymentDetails(userId: string) {
     const driver = await this.requireDriverProfile(userId);
     const payout = this.parsePayout(driver.payoutSettingsJson);
+    const commissionPct = await this.resolveCommissionPct();
     return {
       paymentPeriod: '30 working days',
       billingPeriod: payout.billingPeriod ?? '3 days',
@@ -421,8 +437,22 @@ export class DriversService {
       accountHolderName: payout.accountHolderName ?? '',
       accountMask: payout.accountMask ?? '',
       status: payout.status ?? (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
-      commissionPct: 5,
+      commissionPct,
     };
+  }
+
+  /** Active FareRule commission, else platform configured default. Never rewrite snapshots. */
+  private async resolveCommissionPct(): Promise<number> {
+    const rule = await this.prisma.fareRule.findFirst({
+      where: { isActive: true, serviceType: 'RIDE' },
+      orderBy: { updatedAt: 'desc' },
+      select: { platformCommissionPct: true },
+    });
+    if (rule?.platformCommissionPct != null) {
+      return Number(rule.platformCommissionPct.toString());
+    }
+    const fallback = process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '15';
+    return Number(fallback);
   }
 
   async updatePaymentDetails(

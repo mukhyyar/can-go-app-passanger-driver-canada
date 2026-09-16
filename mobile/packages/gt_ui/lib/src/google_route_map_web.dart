@@ -22,8 +22,16 @@ const _browserKeyDefine = String.fromEnvironment(
   defaultValue: '',
 );
 
-const _carAnimMs = 10000;
+const _carAnimMinMs = 6000;
+const _carAnimMaxMs = 18000;
+const _carAnimMetersPerSec = 80.0;
 const _carAssetUrl = 'assets/packages/gt_ui/assets/can-ride-car.png';
+
+int _carAnimMsFor(double totalMeters) {
+  return (totalMeters / _carAnimMetersPerSec * 1000)
+      .round()
+      .clamp(_carAnimMinMs, _carAnimMaxMs);
+}
 
 String get _normalizedApiBase {
   final api = _apiBase.endsWith('/')
@@ -428,6 +436,7 @@ Future<void> _mountMap({
   final sampler = RoutePathSampler(routePoints);
   if (sampler.isEmpty) return;
 
+  final carAnimMs = _carAnimMsFor(sampler.totalMeters);
   final carImg = await _loadCarImage();
   final first = sampler.sample(0);
 
@@ -464,7 +473,7 @@ Future<void> _mountMap({
       return;
     }
     final elapsed = html.window.performance.now() - startMs;
-    final t = (elapsed % _carAnimMs) / _carAnimMs;
+    final t = (elapsed % carAnimMs) / carAnimMs;
     final sample = sampler.sample(t);
     js_util.callMethod(
       carMarker,

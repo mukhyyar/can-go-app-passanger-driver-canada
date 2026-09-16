@@ -21,6 +21,7 @@ import 'screens/settings/add_vehicle_screen.dart';
 import 'screens/settings/vehicles_list_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/shell.dart';
+import 'screens/wallet_screen.dart';
 import 'state/app_state.dart';
 
 GoRouter createRouter(AppState appState) {
@@ -81,6 +82,10 @@ GoRouter createRouter(AppState appState) {
       GoRoute(
         path: '/onboarding/payment',
         builder: (_, __) => const PaymentScreen(),
+      ),
+      GoRoute(
+        path: '/wallet',
+        builder: (_, __) => const WalletScreen(),
       ),
       GoRoute(
         path: '/settings/vehicles',

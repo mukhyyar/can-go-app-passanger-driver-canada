@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'route_path.dart';
@@ -14,7 +16,20 @@ const _apiBaseFromEnv = String.fromEnvironment('CANGO_API_BASE');
 const _localApiBase = 'http://127.0.0.1:4000/api';
 const _prodApiBase = 'https://www.can-rides.ca/api';
 
-const _carAnimDuration = Duration(seconds: 10);
+/// Logical size of A/B circle pin bitmaps.
+const _pinLogicalSize = 40.0;
+
+/// Visual car speed along the route (~80 m/s), clamped for short/long trips.
+const _carAnimMetersPerSec = 80.0;
+const _carAnimMinMs = 6000;
+const _carAnimMaxMs = 18000;
+
+Duration _carAnimDurationFor(double totalMeters) {
+  final ms = (totalMeters / _carAnimMetersPerSec * 1000)
+      .round()
+      .clamp(_carAnimMinMs, _carAnimMaxMs);
+  return Duration(milliseconds: ms);
+}
 
 String get _normalizedApiBase {
   final raw = _apiBaseFromEnv.isNotEmpty
@@ -77,8 +92,10 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   @override
   void initState() {
     super.initState();
-    _carCtrl = AnimationController(vsync: this, duration: _carAnimDuration)
-      ..addListener(_onCarTick);
+    _carCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..addListener(_onCarTick);
     unawaited(_loadIcons());
     if (_hasRoute) {
       unawaited(_loadRoute());
@@ -88,11 +105,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   }
 
   Future<void> _loadIcons() async {
-    final car = await BitmapDescriptor.asset(
-      const ImageConfiguration(size: Size(40, 40)),
-      'assets/can-ride-car.png',
-      package: 'gt_ui',
-    );
+    final car = await _carBitmap();
     final a = await _circlePinBitmap('A', GtColors.brand);
     final b = await _circlePinBitmap('B', const Color(0xFF1A1A1A));
     if (!mounted) return;
@@ -103,24 +116,79 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     });
   }
 
+  /// Same aspect as web (`kCanRideCarMarkerWidth` × height) on a square canvas
+  /// so `Marker.rotation` does not squash the tall top-down car PNG.
+  Future<BitmapDescriptor> _carBitmap() async {
+    final dpr = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+    final displayW = kCanRideCarMarkerWidth * dpr;
+    final displayH = kCanRideCarMarkerHeight * dpr;
+    final canvasLogical =
+        math.sqrt(
+          kCanRideCarMarkerWidth * kCanRideCarMarkerWidth +
+              kCanRideCarMarkerHeight * kCanRideCarMarkerHeight,
+        );
+    final canvasSize = (canvasLogical * dpr).ceilToDouble();
+
+    final data = await rootBundle.load(
+      'packages/gt_ui/assets/can-ride-car.png',
+    );
+    final codec = await ui.instantiateImageCodec(
+      data.buffer.asUint8List(),
+      targetWidth: displayW.round(),
+      targetHeight: displayH.round(),
+    );
+    final frame = await codec.getNextFrame();
+    final img = frame.image;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawImageRect(
+      img,
+      Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+      Rect.fromCenter(
+        center: Offset(canvasSize / 2, canvasSize / 2),
+        width: displayW,
+        height: displayH,
+      ),
+      Paint()..filterQuality = FilterQuality.high,
+    );
+    img.dispose();
+
+    final out = await recorder.endRecording().toImage(
+      canvasSize.ceil(),
+      canvasSize.ceil(),
+    );
+    final bytes = await out.toByteData(format: ui.ImageByteFormat.png);
+    out.dispose();
+    // Declare logical size so DPR-baked pixels are not treated as 1× dp.
+    return BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      width: canvasLogical,
+      height: canvasLogical,
+    );
+  }
+
   Future<BitmapDescriptor> _circlePinBitmap(String label, Color color) async {
-    const size = 72.0;
+    final dpr = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+    final size = _pinLogicalSize * dpr;
+    final stroke = 2.5 * dpr;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final fill = Paint()..color = color;
     final border = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4;
-    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 4, fill);
-    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2 - 4, border);
+      ..strokeWidth = stroke;
+    final radius = size / 2 - stroke;
+    canvas.drawCircle(Offset(size / 2, size / 2), radius, fill);
+    canvas.drawCircle(Offset(size / 2, size / 2), radius, border);
     final tp = TextPainter(
       text: TextSpan(
         text: label,
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w700,
-          fontSize: 28,
+          fontSize: 15 * dpr,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -129,9 +197,17 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       canvas,
       Offset((size - tp.width) / 2, (size - tp.height) / 2),
     );
-    final img = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final img = await recorder.endRecording().toImage(
+      size.ceil(),
+      size.ceil(),
+    );
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    img.dispose();
+    return BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      width: _pinLogicalSize,
+      height: _pinLogicalSize,
+    );
   }
 
   @override
@@ -166,8 +242,16 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     final sampler = _sampler;
     if (sampler == null || sampler.isEmpty) return;
     final sample = sampler.sample(_carCtrl.value);
+    final next = LatLng(sample.lat, sample.lng);
+    final prev = _carPos;
+    var bearingDelta = (sample.bearingDeg - _carBearing).abs();
+    if (bearingDelta > 180) bearingDelta = 360 - bearingDelta;
+    final moved = prev == null ||
+        (next.latitude - prev.latitude).abs() > 1e-7 ||
+        (next.longitude - prev.longitude).abs() > 1e-7;
+    if (!moved && bearingDelta < 0.5) return;
     setState(() {
-      _carPos = LatLng(sample.lat, sample.lng);
+      _carPos = next;
       _carBearing = sample.bearingDeg;
     });
   }
@@ -197,7 +281,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     _carPos = LatLng(first.lat, first.lng);
     _carBearing = first.bearingDeg;
     _carCtrl
-      ..duration = _carAnimDuration
+      ..duration = _carAnimDurationFor(sampler.totalMeters)
       ..repeat();
   }
 

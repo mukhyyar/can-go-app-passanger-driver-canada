@@ -1,8 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
 
@@ -26,7 +27,7 @@ class _MenuPanelState extends State<MenuPanel>
   late final Animation<Offset> _slide0;
   late final Animation<Offset> _slide1;
   late final Animation<Offset> _slide2;
-  bool _uploadingAvatar = false;
+  // uploading state lives on AppState (avatarUploading)
 
   @override
   void initState() {
@@ -76,32 +77,55 @@ class _MenuPanelState extends State<MenuPanel>
     super.dispose();
   }
 
-  Future<void> _pickAndUploadAvatar(AppState state) async {
-    if (!state.isAuthenticated || _uploadingAvatar) return;
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1024,
-    );
-    if (file == null || !mounted) return;
-    setState(() => _uploadingAvatar = true);
+  Future<void> _editAvatar(AppState state) async {
+    if (!state.isAuthenticated || state.avatarUploading) return;
     try {
-      final bytes = await file.readAsBytes();
-      await state.uploadAvatar(bytes: bytes, filename: file.name);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo updated')),
-        );
+      final result = await GtAvatarEditFlow.pickAndCrop(
+        context,
+        hasExistingPhoto: state.hasAvatar,
+      );
+      if (!mounted) return;
+      switch (result) {
+        case GtAvatarEditCancelled():
+          return;
+        case GtAvatarEditRemoved():
+          await state.removeAvatar();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Profile photo removed')),
+            );
+          }
+        case GtAvatarEditPicked(:final bytes):
+          try {
+            await state.uploadAvatar(bytes);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Profile photo updated')),
+              );
+            }
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Upload failed: $e'),
+                action: SnackBarAction(
+                  label: 'Retry',
+                  onPressed: () => state.uploadAvatar(bytes),
+                ),
+              ),
+            );
+          }
       }
+    } on GtAvatarEditException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _uploadingAvatar = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update photo: $e')),
+      );
     }
   }
 
@@ -147,10 +171,10 @@ class _MenuPanelState extends State<MenuPanel>
                       ? '$rides rides · $unitWord'
                       : 'Sign in to manage trips',
                   initials: _initials(name, state.isAuthenticated),
-                  avatarUrl: state.isAuthenticated ? state.avatarUrl : null,
-                  uploading: _uploadingAvatar,
+                  avatarBytes: state.isAuthenticated ? state.avatarBytes : null,
+                  loading: state.avatarLoading || state.avatarUploading,
                   onAvatarTap: state.isAuthenticated
-                      ? () => _pickAndUploadAvatar(state)
+                      ? () => _editAvatar(state)
                       : null,
                   onTap: () {
                     if (widget.inDrawer) Navigator.of(context).pop();
@@ -341,18 +365,18 @@ class _ProfileHero extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.initials,
-    this.avatarUrl,
+    this.avatarBytes,
     this.onAvatarTap,
-    this.uploading = false,
+    this.loading = false,
   });
 
   final String name;
   final String subtitle;
   final String? initials;
-  final String? avatarUrl;
+  final Uint8List? avatarBytes;
   final VoidCallback onTap;
   final VoidCallback? onAvatarTap;
-  final bool uploading;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -378,85 +402,13 @@ class _ProfileHero extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
             child: Row(
               children: [
-                GestureDetector(
+                GtProfileAvatar(
+                  size: 52,
+                  bytes: avatarBytes,
+                  initials: initials,
+                  loading: loading,
                   onTap: onAvatarTap,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: GtColors.soft,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: GtColors.brand.withValues(alpha: 0.2),
-                          ),
-                          image: avatarUrl != null && avatarUrl!.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(avatarUrl!),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: avatarUrl != null && avatarUrl!.isNotEmpty
-                            ? null
-                            : (initials != null
-                                ? Text(
-                                    initials!,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      color: GtColors.brand,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.person_outline,
-                                    size: 28,
-                                    color: GtColors.brand,
-                                  )),
-                      ),
-                      if (uploading)
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          ),
-                        )
-                      else if (onAvatarTap != null)
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              color: GtColors.brand,
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: Colors.white, width: 1.5),
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 10,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  showEditBadge: onAvatarTap != null,
                 ),
                 const SizedBox(width: 14),
                 Expanded(

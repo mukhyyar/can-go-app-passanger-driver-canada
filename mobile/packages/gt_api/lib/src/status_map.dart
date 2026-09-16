@@ -675,7 +675,9 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
         ? '$pickupWait min'
         : (flight != null && flight.isNotEmpty ? '60 min' : null),
     hasOffer: myOffer != null && myOffer.isActive,
-    offerPrice: myOffer?.bidAmount,
+    offerPrice: myOffer?.bidAmount ?? asDouble(snapMap?['bidAmount']),
+    driverEarning:
+        myOffer?.driverEarning ?? asDouble(snapMap?['driverEarning']),
     fromLat: asDouble(json['fromLat']),
     fromLng: asDouble(json['fromLng']),
     toLat: asDouble(json['toLat']),

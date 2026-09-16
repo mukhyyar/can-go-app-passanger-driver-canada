@@ -4,9 +4,11 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   Post,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -142,6 +144,19 @@ export class AuthController {
     return this.auth.me(user.id, user);
   }
 
+  @Get('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'private, max-age=300')
+  async getAvatar(
+    @CurrentUser() user: AuthUser,
+  ): Promise<StreamableFile> {
+    const file = await this.auth.getAvatarContent(user.id);
+    return new StreamableFile(file.body, {
+      type: file.contentType,
+      disposition: 'inline; filename="avatar"',
+    });
+  }
+
   @Post('me/avatar')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
@@ -155,13 +170,22 @@ export class AuthController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file?.buffer?.length) {
-      throw new BadRequestException('file required');
+      throw new BadRequestException({
+        code: 'INVALID_IMAGE',
+        message: 'file required',
+      });
     }
     return this.auth.uploadAvatar(user.id, {
       buffer: file.buffer,
       mimetype: file.mimetype,
       originalname: file.originalname,
     });
+  }
+
+  @Delete('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  deleteAvatar(@CurrentUser() user: AuthUser) {
+    return this.auth.deleteAvatar(user.id);
   }
 
   @Post('impersonation/consume')

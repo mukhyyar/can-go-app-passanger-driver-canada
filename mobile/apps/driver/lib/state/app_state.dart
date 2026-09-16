@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../offer/offer_helpers.dart';
@@ -328,17 +329,17 @@ class AppState extends ChangeNotifier {
         repo.driver.fullName = name;
         defaultDriverName = name;
       }
-      final url = driver['avatarUrl']?.toString();
-      avatarUrl = (url != null && url.isNotEmpty) ? rewriteMediaUrl(url) : null;
       await _syncOnboardedFromServer(hasDocuments: false);
       if (isActivated) {
         unawaited(startMarketplaceRealtime());
       } else {
         stopMarketplaceRealtime();
       }
+    }
+    if (me != null) {
+      _applyAvatarMetaFromMe(me!);
     } else {
-      final top = me?['avatarUrl']?.toString();
-      avatarUrl = (top != null && top.isNotEmpty) ? rewriteMediaUrl(top) : null;
+      clearAvatarState();
     }
     unawaited(refreshUnreadNotificationCount());
   }
@@ -349,42 +350,191 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Legacy signed URL from `/auth/me` — not used for rendering.
   String? avatarUrl;
+  Uint8List? avatarBytes;
+  String? avatarStorageKey;
+  String? avatarVersion;
+  bool avatarLoading = false;
+  bool avatarUploading = false;
+  int _avatarLoadGen = 0;
+  String? _avatarOwnerUserId;
   int unreadNotificationCount = 0;
 
-  void setAvatarUrl(String? url) {
-    avatarUrl = rewriteMediaUrl(url);
-    if (me != null && url != null) {
-      final driver = me!['driver'];
-      if (driver is Map) {
-        me = {
-          ...me!,
-          'driver': {...Map<String, dynamic>.from(driver), 'avatarUrl': url},
-        };
-      } else {
-        me = {...me!, 'avatarUrl': url};
-      }
-    }
-    notifyListeners();
+  bool get hasAvatar =>
+      (avatarStorageKey != null && avatarStorageKey!.isNotEmpty) ||
+      (avatarBytes != null && avatarBytes!.isNotEmpty);
+
+  void clearAvatarState() {
+    _avatarLoadGen++;
+    avatarBytes = null;
+    avatarStorageKey = null;
+    avatarVersion = null;
+    avatarLoading = false;
+    avatarUploading = false;
+    avatarUrl = null;
+    _avatarOwnerUserId = null;
   }
 
-  Future<String?> uploadAvatar({
-    required List<int> bytes,
-    required String filename,
-  }) async {
-    if (!isAuthenticated) return null;
-    final res = await api.auth.uploadAvatar(
-      bytes: Uint8List.fromList(bytes),
-      filename: filename,
-    );
-    final url = res['avatarUrl']?.toString();
-    if (url != null && url.isNotEmpty) {
-      setAvatarUrl(url);
-    } else {
-      await refreshMe();
+  void _applyAvatarMetaFromMe(Map<String, dynamic> m) {
+    final userId = m['id']?.toString() ?? m['user']?['id']?.toString();
+    if (_avatarOwnerUserId != null &&
+        userId != null &&
+        userId != _avatarOwnerUserId) {
+      clearAvatarState();
+    }
+    _avatarOwnerUserId = userId;
+
+    final key = _extractAvatarStorageKey(m);
+    final version = _extractAvatarVersion(m) ?? key;
+    final url = _extractAvatarUrl(m);
+    avatarUrl = url;
+
+    final keyChanged = key != avatarStorageKey || version != avatarVersion;
+    avatarStorageKey = key;
+    avatarVersion = version;
+
+    if (key == null || key.isEmpty) {
+      avatarBytes = null;
+      avatarLoading = false;
+      return;
+    }
+    if (keyChanged || avatarBytes == null) {
+      unawaited(loadAvatar());
+    }
+  }
+
+  static String? _extractAvatarUrl(Map<String, dynamic> m) {
+    final driver = m['driver'];
+    if (driver is Map) {
+      final url = driver['avatarUrl']?.toString();
+      if (url != null && url.isNotEmpty) return rewriteMediaUrl(url);
+    }
+    final top = m['avatarUrl']?.toString();
+    if (top != null && top.isNotEmpty) return rewriteMediaUrl(top);
+    return null;
+  }
+
+  static String? _extractAvatarStorageKey(Map<String, dynamic> m) {
+    final top = m['avatarStorageKey']?.toString();
+    if (top != null && top.isNotEmpty) return top;
+    final driver = m['driver'];
+    if (driver is Map) {
+      final k = driver['avatarStorageKey']?.toString();
+      if (k != null && k.isNotEmpty) return k;
+    }
+    final passenger = m['passenger'];
+    if (passenger is Map) {
+      final k = passenger['avatarStorageKey']?.toString();
+      if (k != null && k.isNotEmpty) return k;
+    }
+    return null;
+  }
+
+  static String? _extractAvatarVersion(Map<String, dynamic> m) {
+    final top = m['avatarVersion']?.toString();
+    if (top != null && top.isNotEmpty) return top;
+    return _extractAvatarStorageKey(m);
+  }
+
+  Future<void> loadAvatar({bool force = false}) async {
+    if (!isAuthenticated) return;
+    final key = avatarStorageKey;
+    final version = avatarVersion ?? key;
+    if (key == null || key.isEmpty) {
+      avatarBytes = null;
+      avatarLoading = false;
+      notifyListeners();
+      return;
+    }
+    if (!force && avatarBytes != null && avatarVersion == version) {
+      return;
+    }
+
+    final gen = ++_avatarLoadGen;
+    avatarLoading = true;
+    notifyListeners();
+    try {
+      final bytes = await api.auth.getAvatarBytes();
+      if (gen != _avatarLoadGen) return;
+      if (avatarUploading) return;
+      avatarBytes = bytes;
+      avatarLoading = false;
+      notifyListeners();
+    } catch (_) {
+      if (gen != _avatarLoadGen) return;
+      avatarLoading = false;
       notifyListeners();
     }
-    return avatarUrl;
+  }
+
+  Future<void> uploadAvatar(Uint8List bytes, {String filename = 'avatar.jpg'}) async {
+    if (!isAuthenticated) {
+      throw StateError('Not authenticated');
+    }
+    final prevBytes = avatarBytes;
+    final prevKey = avatarStorageKey;
+    final prevVersion = avatarVersion;
+    final prevUrl = avatarUrl;
+
+    _avatarLoadGen++;
+    avatarUploading = true;
+    avatarBytes = bytes;
+    notifyListeners();
+
+    try {
+      final res = await api.auth.uploadAvatar(bytes: bytes, filename: filename);
+      final key = res['avatarStorageKey']?.toString() ??
+          res['avatarVersion']?.toString();
+      final version = res['avatarVersion']?.toString() ?? key;
+      final url = res['avatarUrl']?.toString();
+      avatarStorageKey = (key != null && key.isNotEmpty) ? key : avatarStorageKey;
+      avatarVersion =
+          (version != null && version.isNotEmpty) ? version : avatarStorageKey;
+      if (url != null && url.isNotEmpty) {
+        avatarUrl = rewriteMediaUrl(url);
+      }
+      avatarUploading = false;
+      notifyListeners();
+    } catch (e) {
+      avatarBytes = prevBytes;
+      avatarStorageKey = prevKey;
+      avatarVersion = prevVersion;
+      avatarUrl = prevUrl;
+      avatarUploading = false;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> removeAvatar() async {
+    if (!isAuthenticated) return;
+    final prevBytes = avatarBytes;
+    final prevKey = avatarStorageKey;
+    final prevVersion = avatarVersion;
+    final prevUrl = avatarUrl;
+
+    _avatarLoadGen++;
+    avatarUploading = true;
+    avatarBytes = null;
+    avatarStorageKey = null;
+    avatarVersion = null;
+    avatarUrl = null;
+    notifyListeners();
+
+    try {
+      await api.auth.deleteAvatar();
+      avatarUploading = false;
+      notifyListeners();
+    } catch (e) {
+      avatarBytes = prevBytes;
+      avatarStorageKey = prevKey;
+      avatarVersion = prevVersion;
+      avatarUrl = prevUrl;
+      avatarUploading = false;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> listNotifications({int limit = 50}) async {
@@ -448,6 +598,7 @@ class AppState extends ChangeNotifier {
         loadOperatingZones(),
         loadDriverVehicles(),
         loadPaymentDetails(),
+        loadWallet().catchError((_) => <String, dynamic>{}),
       ]);
       if (accountStatus != null) {
         final label = accountStatus!['label']?.toString();
@@ -577,6 +728,47 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Map<String, dynamic>? walletSummary;
+  String walletSummaryLabel = '';
+
+  Future<Map<String, dynamic>> loadWallet() async {
+    if (!isAuthenticated) {
+      throw StateError('Not authenticated');
+    }
+    final data = await api.driver.wallet();
+    walletSummary = data;
+    final cur = data['currency']?.toString() ?? 'CAD';
+    final avail = data['available']?.toString() ?? '0.00';
+    walletSummaryLabel = '$cur $avail available';
+    notifyListeners();
+    return data;
+  }
+
+  Future<List<Map<String, dynamic>>> loadWalletEntries({String? cursor}) async {
+    if (!isAuthenticated) return [];
+    final data = await api.driver.walletEntries(cursor: cursor, limit: 40);
+    final items = data['items'];
+    if (items is! List) return [];
+    return items
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> withdrawWallet({
+    required String amount,
+    required String idempotencyKey,
+    String? currency,
+  }) async {
+    final result = await api.driver.withdrawWallet(
+      amount: amount,
+      currency: currency,
+      idempotencyKey: idempotencyKey,
+    );
+    await loadWallet();
+    return result;
+  }
+
   Future<void> savePaymentDetails() async {
     if (!isAuthenticated) return;
     await api.driver.updatePaymentDetails({
@@ -672,14 +864,85 @@ class AppState extends ChangeNotifier {
   bool isDocumentLocked(Map<String, dynamic> doc) =>
       (doc['status']?.toString().toUpperCase() ?? '') == 'APPROVED';
 
+  /// In-memory document thumbnails (survive screen pop/push within session).
+  final Map<String, Uint8List> documentPreviewCache = {};
+
   Future<String?> fetchDocumentPreviewUrl(String documentId) async {
     if (!isAuthenticated) return null;
     final data = await api.driver.getDocument(documentId);
     return rewriteMediaUrl(data['url']?.toString());
   }
 
+  Uint8List? cachedDocumentPreview(String documentId) =>
+      documentPreviewCache[documentId];
+
+  void rememberDocumentPreview(String documentId, Uint8List bytes) {
+    if (documentId.isEmpty || bytes.isEmpty) return;
+    documentPreviewCache[documentId] = bytes;
+  }
+
+  void forgetDocumentPreview(String documentId) {
+    documentPreviewCache.remove(documentId);
+  }
+
+  Future<Uint8List?> _downloadSignedDocument(String documentId) async {
+    final data = await api.driver.getDocument(documentId);
+    final raw = data['url']?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    final candidates = <String>{raw};
+    final rewritten = rewriteMediaUrl(raw);
+    if (rewritten != null &&
+        rewritten.isNotEmpty &&
+        rewritten != raw) {
+      candidates.add(rewritten);
+    }
+    for (final url in candidates) {
+      try {
+        final res = await http.get(Uri.parse(url));
+        if (res.statusCode >= 200 &&
+            res.statusCode < 300 &&
+            res.bodyBytes.isNotEmpty) {
+          return res.bodyBytes;
+        }
+      } catch (e) {
+        debugPrint('signed document download failed: $e');
+      }
+    }
+    return null;
+  }
+
+  /// Load preview bytes: memory → API /content → signed URL.
+  Future<Uint8List?> fetchDocumentPreviewBytes(String documentId) async {
+    if (!isAuthenticated || documentId.isEmpty) return null;
+
+    final mem = documentPreviewCache[documentId];
+    if (mem != null && mem.isNotEmpty) return mem;
+
+    try {
+      final bytes = await api.driver.getDocumentContent(documentId);
+      if (bytes.isNotEmpty) {
+        rememberDocumentPreview(documentId, bytes);
+        return bytes;
+      }
+    } catch (e) {
+      debugPrint('fetchDocumentPreviewBytes content: $e');
+    }
+
+    try {
+      final bytes = await _downloadSignedDocument(documentId);
+      if (bytes != null && bytes.isNotEmpty) {
+        rememberDocumentPreview(documentId, bytes);
+        return bytes;
+      }
+    } catch (e) {
+      debugPrint('fetchDocumentPreviewBytes signed: $e');
+    }
+    return null;
+  }
+
   Future<void> deleteDocument(String documentId) async {
     await api.driver.deleteDocument(documentId);
+    forgetDocumentPreview(documentId);
     await syncDocumentsStatus();
     notifyListeners();
   }
@@ -703,6 +966,19 @@ class AppState extends ChangeNotifier {
       vehiclePhotoCount = (vehiclePhotoCount + 1).clamp(0, 6);
     }
     await syncDocumentsStatus();
+    // Cache against the synced document id so reopen shows the image.
+    if (docType == 'vehicle_photo') {
+      for (final doc in vehiclePhotoDocuments) {
+        final id = doc['id']?.toString();
+        if (id != null && !documentPreviewCache.containsKey(id)) {
+          rememberDocumentPreview(id, bytes);
+          break;
+        }
+      }
+    } else {
+      final id = documentForType(docType)?['id']?.toString();
+      if (id != null) rememberDocumentPreview(id, bytes);
+    }
     notifyListeners();
   }
 
@@ -1195,7 +1471,7 @@ class AppState extends ChangeNotifier {
     accountStatus = null;
     paymentDetails = null;
     authUserId = null;
-    avatarUrl = null;
+    clearAvatarState();
     unreadNotificationCount = 0;
     documents = [];
     vehicles = [];

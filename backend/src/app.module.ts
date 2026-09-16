@@ -22,6 +22,7 @@ import { CmsModule } from './cms/cms.module';
 import { ExpansionModule } from './expansion/expansion.module';
 import { MapsModule } from './maps/maps.module';
 import { AdminModule } from './admin/admin.module';
+import { WalletModule } from './wallet/wallet.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { AdminModule } from './admin/admin.module';
     CmsModule,
     ExpansionModule,
     AdminModule,
+    WalletModule,
   ],
   providers: [
     {

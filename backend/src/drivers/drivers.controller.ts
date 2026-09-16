@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -90,6 +91,18 @@ export class DriversController {
   @Get('documents')
   listDocuments(@CurrentUser() user: AuthUser) {
     return this.drivers.listMyDocuments(user.id);
+  }
+
+  @Get('documents/:id/content')
+  async getDocumentContent(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ): Promise<StreamableFile> {
+    const file = await this.drivers.getDocumentContent(user.id, id);
+    return new StreamableFile(file.body, {
+      type: file.contentType,
+      disposition: `inline; filename="${file.filename.replace(/"/g, '')}"`,
+    });
   }
 
   @Get('documents/:id')

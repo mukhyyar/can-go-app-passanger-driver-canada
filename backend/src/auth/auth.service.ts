@@ -33,6 +33,11 @@ import {
 } from './dto/auth.dto';
 import { OAuthVerifyService, type OAuthIdentity } from './oauth-verify.service';
 import { JwtService } from '@nestjs/jwt';
+import {
+  AVATAR_MAX_BYTES,
+  collectAvatarKeys,
+  validateAvatarBuffer,
+} from './avatar.logic';
 
 @Injectable()
 export class AuthService {
@@ -386,24 +391,59 @@ export class AuthService {
         avatarUrl = null;
       }
     }
+    const avatarVersion = avatarKey;
     if (base.passenger) {
       (base.passenger as Record<string, unknown>).avatarUrl = avatarUrl;
       (base.passenger as Record<string, unknown>).avatarStorageKey =
+        user.passengerProfile?.avatarStorageKey ?? null;
+      (base.passenger as Record<string, unknown>).avatarVersion =
         user.passengerProfile?.avatarStorageKey ?? null;
     }
     if (base.driver) {
       (base.driver as Record<string, unknown>).avatarUrl = avatarUrl;
       (base.driver as Record<string, unknown>).avatarStorageKey =
         user.driverProfile?.avatarStorageKey ?? null;
+      (base.driver as Record<string, unknown>).avatarVersion =
+        user.driverProfile?.avatarStorageKey ?? null;
     }
     return {
       ...base,
       avatarUrl,
+      avatarStorageKey: avatarKey,
+      avatarVersion,
       permissions,
       adminRole: user.adminRole
         ? { slug: user.adminRole.slug, name: user.adminRole.name }
         : null,
       impersonation: actor?.impersonation,
+    };
+  }
+
+  /** Authenticated avatar bytes for mobile MemoryImage (no MinIO redirect). */
+  async getAvatarContent(userId: string): Promise<{
+    body: Buffer;
+    contentType: string;
+    avatarVersion: string;
+  }> {
+    await this.requireDb();
+    if (!this.storage.isReady()) {
+      throw new ServiceUnavailableException('Object storage is not available');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+    if (!user) throw new NotFoundException();
+    const key =
+      user.passengerProfile?.avatarStorageKey ??
+      user.driverProfile?.avatarStorageKey ??
+      null;
+    if (!key) throw new NotFoundException('No avatar');
+    const object = await this.storage.getObjectBytes(key);
+    return {
+      body: object.body,
+      contentType: object.contentType,
+      avatarVersion: key,
     };
   }
 
@@ -415,13 +455,12 @@ export class AuthService {
     if (!this.storage.isReady()) {
       throw new ServiceUnavailableException('Object storage is not available');
     }
-    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
-    const normalizeMime = (m?: string | null) => {
-      if (!m) return undefined;
-      const lower = m.toLowerCase().trim();
-      if (lower === 'image/jpg') return 'image/jpeg';
-      return lower;
-    };
+    if (file.buffer.length > AVATAR_MAX_BYTES) {
+      throw new BadRequestException({
+        code: 'IMAGE_TOO_LARGE',
+        message: 'Avatar max size is 5MB',
+      });
+    }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const FileType = require('file-type') as {
       fromBuffer: (
@@ -429,45 +468,127 @@ export class AuthService {
       ) => Promise<{ ext: string; mime: string } | undefined>;
     };
     const detected = await FileType.fromBuffer(file.buffer);
-    const mime =
-      normalizeMime(detected?.mime) ?? normalizeMime(file.mimetype);
-    if (!mime || !allowed.has(mime)) {
-      throw new BadRequestException('Avatar must be jpeg, png, or webp');
+    const validated = validateAvatarBuffer({
+      buffer: file.buffer,
+      clientMime: file.mimetype,
+      detectedMime: detected?.mime,
+    });
+    if (!validated.ok) {
+      throw new BadRequestException({
+        code: validated.code,
+        message: validated.message,
+      });
     }
-    if (file.buffer.length > 5 * 1024 * 1024) {
-      throw new BadRequestException('Avatar max size is 5MB');
-    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { passengerProfile: true, driverProfile: true },
     });
     if (!user) throw new NotFoundException();
-    const ext =
-      mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-    const key = `avatars/${userId}/${Date.now()}-${randomBytes(4).toString('hex')}.${ext}`;
+    if (!user.passengerProfile && !user.driverProfile) {
+      throw new BadRequestException({
+        code: 'INVALID_IMAGE',
+        message: 'No profile to attach avatar',
+      });
+    }
+
+    const previousKeys = collectAvatarKeys({
+      passengerKey: user.passengerProfile?.avatarStorageKey,
+      driverKey: user.driverProfile?.avatarStorageKey,
+    });
+
+    const key = `avatars/${userId}/${Date.now()}-${randomBytes(4).toString('hex')}.${validated.ext}`;
     await this.storage.putObject({
       key,
       body: file.buffer,
-      contentType: mime,
+      contentType: validated.mime,
     });
 
-    if (user.passengerProfile) {
-      await this.prisma.passengerProfile.update({
-        where: { id: user.passengerProfile.id },
-        data: { avatarStorageKey: key },
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        if (user.passengerProfile) {
+          await tx.passengerProfile.update({
+            where: { id: user.passengerProfile!.id },
+            data: { avatarStorageKey: key },
+          });
+        }
+        if (user.driverProfile) {
+          await tx.driverProfile.update({
+            where: { id: user.driverProfile!.id },
+            data: { avatarStorageKey: key },
+          });
+        }
       });
-    } else if (user.driverProfile) {
-      await this.prisma.driverProfile.update({
-        where: { id: user.driverProfile.id },
-        data: { avatarStorageKey: key },
-      });
-    } else {
-      throw new BadRequestException('No profile to attach avatar');
+    } catch (err) {
+      // Roll back orphaned new object if DB update fails.
+      await this.storage.deleteObject(key);
+      throw err;
     }
 
-    const avatarUrl = await this.storage.getSignedGetUrl(key, 3600);
+    // Only after successful DB update: best-effort delete previous objects.
+    for (const oldKey of previousKeys) {
+      if (oldKey !== key) {
+        await this.storage.deleteObject(oldKey);
+      }
+    }
+
+    let avatarUrl: string | null = null;
+    try {
+      avatarUrl = await this.storage.getSignedGetUrl(key, 3600);
+    } catch {
+      avatarUrl = null;
+    }
     await this.audit(userId, 'avatar.upload', 'User', userId);
-    return { avatarUrl, avatarStorageKey: key };
+    return {
+      avatarUrl,
+      avatarStorageKey: key,
+      avatarVersion: key,
+    };
+  }
+
+  async deleteAvatar(userId: string) {
+    await this.requireDb();
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+    if (!user) throw new NotFoundException();
+    if (!user.passengerProfile && !user.driverProfile) {
+      throw new BadRequestException('No profile to clear avatar');
+    }
+
+    const keys = collectAvatarKeys({
+      passengerKey: user.passengerProfile?.avatarStorageKey,
+      driverKey: user.driverProfile?.avatarStorageKey,
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      if (user.passengerProfile) {
+        await tx.passengerProfile.update({
+          where: { id: user.passengerProfile!.id },
+          data: { avatarStorageKey: null },
+        });
+      }
+      if (user.driverProfile) {
+        await tx.driverProfile.update({
+          where: { id: user.driverProfile!.id },
+          data: { avatarStorageKey: null },
+        });
+      }
+    });
+
+    if (this.storage.isReady()) {
+      for (const key of keys) {
+        await this.storage.deleteObject(key);
+      }
+    }
+
+    await this.audit(userId, 'avatar.delete', 'User', userId);
+    return {
+      avatarUrl: null,
+      avatarStorageKey: null,
+      avatarVersion: null,
+    };
   }
 
   async listSessions(userId: string) {

@@ -17,13 +17,13 @@ Follow [localhost-refresh](localhost-refresh.mdc):
 
 ## 2. WiFi debugging → update phone
 
-ADB: `D:\Android\Sdk\platform-tools\adb.exe` (or `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe` if present).
+Wireless debugging is **always on** for this user's phone. ADB: `D:\Android\Sdk\platform-tools\adb.exe` (or `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe` if present).
 
 1. Run `adb devices -l`.
-2. If a device is listed (USB or WiFi `IP:port`), **install** the apps you changed:
-   - Passenger: `adb -s <serial> install -r mobile/apks/can-go-passenger-local.apk` (local testing) **or** `…-release.apk` when verifying live.
-   - Driver: same with `can-go-driver-local.apk` / `can-go-driver-release.apk`.
-3. Default when WiFi debug is up and local backend is the target: install the **local** APKs.
+2. If a device is listed (USB or WiFi `IP:port`), **always install the live release APKs** for the apps you changed:
+   - Passenger: `adb -s <serial> install -r mobile/apks/can-go-passenger-release.apk`
+   - Driver: `adb -s <serial> install -r mobile/apks/can-go-driver-release.apk`
+3. **Default = release (live API).** Do **not** install `*-local.apk` on the phone unless the user explicitly asks for local/LAN testing.
 4. If no device: note that and still produce the 4 APKs.
 
 ## 3. Always build 4 release APKs

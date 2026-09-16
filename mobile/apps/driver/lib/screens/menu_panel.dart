@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
@@ -17,8 +16,6 @@ class DriverMenuPanel extends StatefulWidget {
 }
 
 class _DriverMenuPanelState extends State<DriverMenuPanel> {
-  bool _uploadingAvatar = false;
-
   @override
   void initState() {
     super.initState();
@@ -34,32 +31,55 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
     await context.read<AppState>().refreshDriverSettings(force: true);
   }
 
-  Future<void> _pickAndUploadAvatar(AppState s) async {
-    if (!s.isAuthenticated || _uploadingAvatar) return;
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1024,
-    );
-    if (file == null || !mounted) return;
-    setState(() => _uploadingAvatar = true);
+  Future<void> _editAvatar(AppState s) async {
+    if (!s.isAuthenticated || s.avatarUploading) return;
     try {
-      final bytes = await file.readAsBytes();
-      await s.uploadAvatar(bytes: bytes, filename: file.name);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo updated')),
-        );
+      final result = await GtAvatarEditFlow.pickAndCrop(
+        context,
+        hasExistingPhoto: s.hasAvatar,
+      );
+      if (!mounted) return;
+      switch (result) {
+        case GtAvatarEditCancelled():
+          return;
+        case GtAvatarEditRemoved():
+          await s.removeAvatar();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Profile photo removed')),
+            );
+          }
+        case GtAvatarEditPicked(:final bytes):
+          try {
+            await s.uploadAvatar(bytes);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Profile photo updated')),
+              );
+            }
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Upload failed: $e'),
+                action: SnackBarAction(
+                  label: 'Retry',
+                  onPressed: () => s.uploadAvatar(bytes),
+                ),
+              ),
+            );
+          }
       }
+    } on GtAvatarEditException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _uploadingAvatar = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update photo: $e')),
+      );
     }
   }
 
@@ -146,85 +166,13 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                 const SizedBox(height: 12),
               ],
               Center(
-                child: GestureDetector(
-                  onTap: () => _pickAndUploadAvatar(s),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: GtColors.soft,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: GtColors.brand.withValues(alpha: 0.2),
-                          ),
-                          image: s.avatarUrl != null && s.avatarUrl!.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(s.avatarUrl!),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: s.avatarUrl != null && s.avatarUrl!.isNotEmpty
-                            ? null
-                            : (initials != null
-                                ? Text(
-                                    initials,
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w700,
-                                      color: GtColors.brand,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.person_outline,
-                                    size: 32,
-                                    color: GtColors.brand,
-                                  )),
-                      ),
-                      if (_uploadingAvatar)
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          ),
-                        )
-                      else
-                        Positioned(
-                          right: 2,
-                          bottom: 2,
-                          child: Container(
-                            width: 22,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              color: GtColors.brand,
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: Colors.white, width: 1.5),
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                child: GtProfileAvatar(
+                  size: 72,
+                  bytes: s.avatarBytes,
+                  initials: initials,
+                  loading: s.avatarLoading || s.avatarUploading,
+                  onTap: () => _editAvatar(s),
+                  showEditBadge: true,
                 ),
               ),
               const SizedBox(height: 12),
@@ -303,6 +251,14 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                     ? 'KYC documents'
                     : s.documentsAttentionLabel,
                 onTap: () => _open('/onboarding/documents'),
+              ),
+              _MenuTile(
+                icon: Icons.account_balance_wallet_outlined,
+                label: 'Wallet',
+                subtitle: s.walletSummaryLabel.isEmpty
+                    ? 'Earnings & withdrawals'
+                    : s.walletSummaryLabel,
+                onTap: () => _open('/wallet'),
               ),
               _MenuTile(
                 icon: Icons.payments_outlined,

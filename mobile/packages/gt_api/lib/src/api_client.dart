@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:gt_mock/gt_mock.dart';
@@ -153,6 +154,11 @@ class ApiClient {
     return _send('DELETE', path, auth: auth);
   }
 
+  /// Authenticated binary GET (e.g. document image preview).
+  Future<Uint8List> getBytes(String path, {bool auth = true}) async {
+    return _sendBytes('GET', path, auth: auth);
+  }
+
   Future<Map<String, dynamic>> postMultipart(
     String path, {
     required List<http.MultipartFile> files,
@@ -228,6 +234,45 @@ class ApiClient {
     }
 
     return _decode(res);
+  }
+
+  Future<Uint8List> _sendBytes(
+    String method,
+    String path, {
+    bool auth = true,
+    bool retried = false,
+  }) async {
+    final headers = <String, String>{
+      'Accept': '*/*',
+    };
+    if (auth) {
+      final access = await tokens.readAccess();
+      if (access != null) headers['Authorization'] = 'Bearer $access';
+    }
+
+    late http.Response res;
+    final uri = _uri(path);
+    switch (method) {
+      case 'GET':
+        res = await _http.get(uri, headers: headers);
+        break;
+      default:
+        throw ApiException(0, 'Unsupported method $method');
+    }
+
+    if (res.statusCode == 401 && auth && !retried) {
+      final refreshed = await tryRefresh();
+      if (refreshed) {
+        return _sendBytes(method, path, auth: auth, retried: true);
+      }
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return res.bodyBytes;
+    }
+    // Reuse JSON error parsing when the server returns a problem payload.
+    _decode(res);
+    throw ApiException(res.statusCode, 'Binary request failed');
   }
 
   Future<bool> tryRefresh() async {

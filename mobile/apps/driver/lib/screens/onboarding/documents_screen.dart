@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
@@ -15,7 +17,8 @@ class DocumentsScreen extends StatefulWidget {
 
 class _DocumentsScreenState extends State<DocumentsScreen> {
   bool _busy = false;
-  final Map<String, String?> _previewUrls = {};
+  final Map<String, Uint8List> _previewBytes = {};
+  final Set<String> _previewFailed = {};
 
   @override
   void initState() {
@@ -33,10 +36,26 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       final doc = s.documentForType(slot);
       final id = doc?['id']?.toString();
       if (id == null) continue;
+      final cached = s.cachedDocumentPreview(id);
+      if (cached != null) {
+        if (mounted) setState(() => _previewBytes[id] = cached);
+        continue;
+      }
+      if (_previewBytes.containsKey(id) || _previewFailed.contains(id)) continue;
       try {
-        final url = await s.fetchDocumentPreviewUrl(id);
-        if (mounted) setState(() => _previewUrls[id] = url);
-      } catch (_) {}
+        final bytes = await s.fetchDocumentPreviewBytes(id);
+        if (!mounted) return;
+        setState(() {
+          if (bytes != null) {
+            _previewBytes[id] = bytes;
+            _previewFailed.remove(id);
+          } else {
+            _previewFailed.add(id);
+          }
+        });
+      } catch (_) {
+        if (mounted) setState(() => _previewFailed.add(id));
+      }
     }
   }
 
@@ -59,6 +78,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         bytes: bytes,
         filename: file.name,
       );
+      final id = app.documentForType(docType)?['id']?.toString();
+      if (id != null && mounted) {
+        app.rememberDocumentPreview(id, bytes);
+        setState(() {
+          _previewBytes[id] = bytes;
+          _previewFailed.remove(id);
+        });
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Uploaded $docType')),
@@ -98,7 +125,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     setState(() => _busy = true);
     try {
       await context.read<AppState>().deleteDocument(id);
-      _previewUrls.remove(id);
+      _previewBytes.remove(id);
+      _previewFailed.remove(id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Document removed')),
@@ -115,7 +143,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     }
   }
 
-  void _openPreview(String url, String title) {
+  void _openPreview(Uint8List bytes, String title) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(
@@ -127,7 +155,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           ),
           body: Center(
             child: InteractiveViewer(
-              child: Image.network(url, fit: BoxFit.contain),
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.broken_image_outlined,
+                  size: 64,
+                  color: Colors.white54,
+                ),
+              ),
             ),
           ),
         ),
@@ -181,7 +217,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 _DocSlot(
                   title: 'Selfie with driving license',
                   doc: s.documentForType('selfie'),
-                  previewUrl: _previewUrls[s.documentForType('selfie')?['id']],
+                  previewBytes: _previewBytes[s.documentForType('selfie')?['id']],
+                  previewFailed: _previewFailed
+                      .contains(s.documentForType('selfie')?['id']?.toString()),
                   busy: _busy,
                   onUpload: () => _pickAndUpload('selfie'),
                   onReplace: () => _pickAndUpload('selfie'),
@@ -194,7 +232,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 _DocSlot(
                   title: 'Driving license',
                   doc: s.documentForType('license'),
-                  previewUrl: _previewUrls[s.documentForType('license')?['id']],
+                  previewBytes: _previewBytes[s.documentForType('license')?['id']],
+                  previewFailed: _previewFailed
+                      .contains(s.documentForType('license')?['id']?.toString()),
                   busy: _busy,
                   onUpload: () => _pickAndUpload('license'),
                   onReplace: () => _pickAndUpload('license'),
@@ -207,15 +247,19 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 _DocSlot(
                   title: 'Vehicle registration',
                   doc: s.documentForType('vehicle_registration'),
-                  previewUrl:
-                      _previewUrls[s.documentForType('vehicle_registration')?['id']],
+                  previewBytes: _previewBytes[
+                      s.documentForType('vehicle_registration')?['id']],
+                  previewFailed: _previewFailed.contains(
+                      s.documentForType('vehicle_registration')?['id']
+                          ?.toString()),
                   busy: _busy,
                   onUpload: () => _pickAndUpload('vehicle_registration'),
                   onReplace: () => _pickAndUpload('vehicle_registration'),
                   onDelete: (doc) => _deleteDoc(doc),
                   onPreview: _openPreview,
                   isLocked: s.documentForType('vehicle_registration') != null &&
-                      s.isDocumentLocked(s.documentForType('vehicle_registration')!),
+                      s.isDocumentLocked(
+                          s.documentForType('vehicle_registration')!),
                 ),
               ],
             ),
@@ -245,7 +289,8 @@ class _DocSlot extends StatelessWidget {
   const _DocSlot({
     required this.title,
     required this.doc,
-    required this.previewUrl,
+    required this.previewBytes,
+    required this.previewFailed,
     required this.busy,
     required this.onUpload,
     required this.onReplace,
@@ -256,12 +301,13 @@ class _DocSlot extends StatelessWidget {
 
   final String title;
   final Map<String, dynamic>? doc;
-  final String? previewUrl;
+  final Uint8List? previewBytes;
+  final bool previewFailed;
   final bool busy;
   final VoidCallback onUpload;
   final VoidCallback onReplace;
   final void Function(Map<String, dynamic> doc) onDelete;
-  final void Function(String url, String title) onPreview;
+  final void Function(Uint8List bytes, String title) onPreview;
   final bool isLocked;
 
   @override
@@ -309,8 +355,8 @@ class _DocSlot extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InkWell(
-                onTap: previewUrl != null && !busy
-                    ? () => onPreview(previewUrl!, title)
+                onTap: previewBytes != null && !busy
+                    ? () => onPreview(previewBytes!, title)
                     : (hasDoc ? null : (busy ? null : onUpload)),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
@@ -322,9 +368,9 @@ class _DocSlot extends StatelessWidget {
                     border: Border.all(color: GtColors.border),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: previewUrl != null
-                      ? Image.network(
-                          previewUrl!,
+                  child: previewBytes != null
+                      ? Image.memory(
+                          previewBytes!,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(
                             Icons.broken_image_outlined,
@@ -332,11 +378,27 @@ class _DocSlot extends StatelessWidget {
                             color: GtColors.textMuted,
                           ),
                         )
-                      : Icon(
-                          hasDoc ? Icons.description_outlined : Icons.add,
-                          size: 36,
-                          color: GtColors.textMuted,
-                        ),
+                      : hasDoc
+                          ? (previewFailed
+                              ? const Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 36,
+                                  color: GtColors.textMuted,
+                                )
+                              : const Center(
+                                  child: SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ))
+                          : const Icon(
+                              Icons.add,
+                              size: 36,
+                              color: GtColors.textMuted,
+                            ),
                 ),
               ),
               const SizedBox(width: 12),

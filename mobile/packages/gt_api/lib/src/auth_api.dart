@@ -237,6 +237,9 @@ class AuthApi {
 
   Future<Map<String, dynamic>> me() => client.get('/auth/me');
 
+  /// GET /auth/me/avatar — authenticated binary (MemoryImage).
+  Future<Uint8List> getAvatarBytes() => client.getBytes('/auth/me/avatar');
+
   /// POST /auth/me/avatar — multipart field `file`.
   Future<Map<String, dynamic>> uploadAvatar({
     required Uint8List bytes,
@@ -254,6 +257,10 @@ class AuthApi {
       ],
     );
   }
+
+  /// DELETE /auth/me/avatar
+  Future<Map<String, dynamic>> deleteAvatar() =>
+      client.delete('/auth/me/avatar');
 
   /// Infer image MediaType from filename (Multer uses part Content-Type).
   static MediaType mediaTypeForImageFilename(String filename) {

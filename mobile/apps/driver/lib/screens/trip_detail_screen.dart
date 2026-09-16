@@ -326,6 +326,16 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                         ),
                                       ),
                                     ],
+                                    if (r.driverEarning != null) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Your earning: ${r.currency} ${r.driverEarning!.toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

@@ -326,36 +326,69 @@ class AppState extends ChangeNotifier {
     repo.passenger.phone = m['phoneE164']?.toString() ??
         m['phone']?.toString() ??
         '';
-    _avatarUrl = _extractAvatarUrl(m);
+    _applyAvatarMetaFromMe(m);
   }
 
   void _clearLocalProfile() {
     repo.passenger.fullName = '';
     repo.passenger.email = '';
     repo.passenger.phone = '';
-    _avatarUrl = null;
+    clearAvatarState();
     unreadNotificationCount = 0;
   }
 
+  /// Legacy signed URL from `/auth/me` — not used for rendering.
+  String? get avatarUrl => _avatarUrl;
   String? _avatarUrl;
 
-  /// Profile photo URL from GET /auth/me (`passenger.avatarUrl` or top-level).
-  String? get avatarUrl => _avatarUrl;
+  Uint8List? avatarBytes;
+  String? avatarStorageKey;
+  String? avatarVersion;
+  bool avatarLoading = false;
+  bool avatarUploading = false;
+  int _avatarLoadGen = 0;
+  String? _avatarOwnerUserId;
 
-  void setAvatarUrl(String? url) {
-    _avatarUrl = rewriteMediaUrl(url);
-    if (me != null && url != null) {
-      final passenger = me!['passenger'];
-      if (passenger is Map) {
-        me = {
-          ...me!,
-          'passenger': {...Map<String, dynamic>.from(passenger), 'avatarUrl': url},
-        };
-      } else {
-        me = {...me!, 'avatarUrl': url};
-      }
+  bool get hasAvatar =>
+      (avatarStorageKey != null && avatarStorageKey!.isNotEmpty) ||
+      (avatarBytes != null && avatarBytes!.isNotEmpty);
+
+  void clearAvatarState() {
+    _avatarLoadGen++;
+    avatarBytes = null;
+    avatarStorageKey = null;
+    avatarVersion = null;
+    avatarLoading = false;
+    avatarUploading = false;
+    _avatarUrl = null;
+    _avatarOwnerUserId = null;
+  }
+
+  void _applyAvatarMetaFromMe(Map<String, dynamic> m) {
+    final userId = m['id']?.toString() ?? m['user']?['id']?.toString();
+    if (_avatarOwnerUserId != null &&
+        userId != null &&
+        userId != _avatarOwnerUserId) {
+      clearAvatarState();
     }
-    notifyListeners();
+    _avatarOwnerUserId = userId;
+
+    final key = _extractAvatarStorageKey(m);
+    final version = _extractAvatarVersion(m) ?? key;
+    _avatarUrl = _extractAvatarUrl(m);
+
+    final keyChanged = key != avatarStorageKey || version != avatarVersion;
+    avatarStorageKey = key;
+    avatarVersion = version;
+
+    if (key == null || key.isEmpty) {
+      avatarBytes = null;
+      avatarLoading = false;
+      return;
+    }
+    if (keyChanged || avatarBytes == null) {
+      unawaited(loadAvatar());
+    }
   }
 
   static String? _extractAvatarUrl(Map<String, dynamic> m) {
@@ -369,24 +402,128 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<String?> uploadAvatar({
-    required List<int> bytes,
-    required String filename,
-  }) async {
-    if (!isAuthenticated) return null;
-    final res = await api.auth.uploadAvatar(
-      bytes: Uint8List.fromList(bytes),
-      filename: filename,
-    );
-    final url = res['avatarUrl']?.toString();
-    if (url != null && url.isNotEmpty) {
-      setAvatarUrl(url);
-    } else {
-      me = await api.auth.me();
-      _syncLocalProfileFromMe();
+  static String? _extractAvatarStorageKey(Map<String, dynamic> m) {
+    final top = m['avatarStorageKey']?.toString();
+    if (top != null && top.isNotEmpty) return top;
+    final passenger = m['passenger'];
+    if (passenger is Map) {
+      final k = passenger['avatarStorageKey']?.toString();
+      if (k != null && k.isNotEmpty) return k;
+    }
+    final driver = m['driver'];
+    if (driver is Map) {
+      final k = driver['avatarStorageKey']?.toString();
+      if (k != null && k.isNotEmpty) return k;
+    }
+    return null;
+  }
+
+  static String? _extractAvatarVersion(Map<String, dynamic> m) {
+    final top = m['avatarVersion']?.toString();
+    if (top != null && top.isNotEmpty) return top;
+    return _extractAvatarStorageKey(m);
+  }
+
+  Future<void> loadAvatar({bool force = false}) async {
+    if (!isAuthenticated) return;
+    final key = avatarStorageKey;
+    final version = avatarVersion ?? key;
+    if (key == null || key.isEmpty) {
+      avatarBytes = null;
+      avatarLoading = false;
+      notifyListeners();
+      return;
+    }
+    if (!force && avatarBytes != null && avatarVersion == version) {
+      return;
+    }
+
+    final gen = ++_avatarLoadGen;
+    avatarLoading = true;
+    notifyListeners();
+    try {
+      final bytes = await api.auth.getAvatarBytes();
+      if (gen != _avatarLoadGen) return; // stale
+      if (avatarUploading) return; // don't clobber optimistic upload
+      avatarBytes = bytes;
+      avatarLoading = false;
+      notifyListeners();
+    } catch (_) {
+      if (gen != _avatarLoadGen) return;
+      avatarLoading = false;
+      // Keep existing bytes if any; otherwise stay on initials.
       notifyListeners();
     }
-    return avatarUrl;
+  }
+
+  /// Upload normalized avatar bytes. Optimistic preview with rollback on failure.
+  Future<void> uploadAvatar(Uint8List bytes, {String filename = 'avatar.jpg'}) async {
+    if (!isAuthenticated) {
+      throw StateError('Not authenticated');
+    }
+    final prevBytes = avatarBytes;
+    final prevKey = avatarStorageKey;
+    final prevVersion = avatarVersion;
+    final prevUrl = _avatarUrl;
+
+    _avatarLoadGen++; // invalidate in-flight loads
+    avatarUploading = true;
+    avatarBytes = bytes;
+    notifyListeners();
+
+    try {
+      final res = await api.auth.uploadAvatar(bytes: bytes, filename: filename);
+      final key = res['avatarStorageKey']?.toString() ??
+          res['avatarVersion']?.toString();
+      final version = res['avatarVersion']?.toString() ?? key;
+      final url = res['avatarUrl']?.toString();
+      avatarStorageKey = (key != null && key.isNotEmpty) ? key : avatarStorageKey;
+      avatarVersion = (version != null && version.isNotEmpty) ? version : avatarStorageKey;
+      if (url != null && url.isNotEmpty) {
+        _avatarUrl = rewriteMediaUrl(url);
+      }
+      // Keep optimistic bytes (exact uploaded payload).
+      avatarUploading = false;
+      notifyListeners();
+    } catch (e) {
+      avatarBytes = prevBytes;
+      avatarStorageKey = prevKey;
+      avatarVersion = prevVersion;
+      _avatarUrl = prevUrl;
+      avatarUploading = false;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> removeAvatar() async {
+    if (!isAuthenticated) return;
+    final prevBytes = avatarBytes;
+    final prevKey = avatarStorageKey;
+    final prevVersion = avatarVersion;
+    final prevUrl = _avatarUrl;
+
+    _avatarLoadGen++;
+    avatarUploading = true;
+    avatarBytes = null;
+    avatarStorageKey = null;
+    avatarVersion = null;
+    _avatarUrl = null;
+    notifyListeners();
+
+    try {
+      await api.auth.deleteAvatar();
+      avatarUploading = false;
+      notifyListeners();
+    } catch (e) {
+      avatarBytes = prevBytes;
+      avatarStorageKey = prevKey;
+      avatarVersion = prevVersion;
+      _avatarUrl = prevUrl;
+      avatarUploading = false;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   int unreadNotificationCount = 0;
@@ -1351,7 +1488,7 @@ class AppState extends ChangeNotifier {
     me = null;
     isAuthenticated = false;
     unreadNotificationCount = 0;
-    _avatarUrl = null;
+    clearAvatarState();
     _serverOffers.clear();
     _serverRideStatus.clear();
     repo.rides.clear();

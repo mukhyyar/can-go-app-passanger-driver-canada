@@ -114,6 +114,33 @@ enum SupportCaseType {
   SAFETY
 }
 
+enum WalletEntryType {
+  EARNING
+  PAYOUT
+  ADJUSTMENT
+  REVERSAL
+}
+
+enum WalletDirection {
+  CREDIT
+  DEBIT
+}
+
+enum WalletEntryStatus {
+  PENDING
+  POSTED
+  FAILED
+  REVERSED
+}
+
+enum DriverPayoutStatus {
+  REQUESTED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REVERSED
+}
+
 model AdminRole {
   id          String                @id @default(cuid())
   slug        String                @unique
@@ -276,6 +303,8 @@ model DriverProfile {
   reviewNotes          KycReviewNote[]
   kycFlags             KycFlag[]
   requestDismissals    RequestDismissal[]
+  walletEntries        DriverWalletEntry[]
+  payouts              DriverPayout[]
 
   @@index([approvalStatus, updatedAt])
   @@index([kycAssignedToId])
@@ -455,6 +484,7 @@ model Ride {
   supportCases    SupportCase[]
   dismissals      RequestDismissal[]
   offerHistory    OfferHistory[]
+  walletEntries   DriverWalletEntry[]
 
   @@index([createdAt])
   @@index([status, createdAt])
@@ -1070,6 +1100,73 @@ model WebhookEvent {
   createdAt    DateTime @default(now())
 
   @@unique([provider, eventId])
+}
+
+/// Immutable driver wallet ledger. Never UPDATE/DELETE posted money rows — use compensating entries.
+model DriverWalletEntry {
+  id             String            @id @default(cuid())
+  driverId       String
+  driver         DriverProfile     @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  type           WalletEntryType
+  direction      WalletDirection
+  /// Always positive; financial effect comes from direction.
+  amount         Decimal           @db.Decimal(12, 2)
+  currency       String
+  status         WalletEntryStatus @default(PENDING)
+  rideId         String?
+  ride           Ride?             @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  payoutId       String?
+  payout         DriverPayout?     @relation("EntryToPayout", fields: [payoutId], references: [id], onDelete: Restrict)
+  primaryForPayout DriverPayout?   @relation("PayoutPrimaryEntry")
+  relatedEntryId String?
+  relatedEntry   DriverWalletEntry? @relation("EntryRelated", fields: [relatedEntryId], references: [id], onDelete: Restrict)
+  relatedChildren DriverWalletEntry[] @relation("EntryRelated")
+  /// Null = immediately available (server/DB UTC).
+  availableAt    DateTime?
+  description    String            @default("")
+  reason         String?
+  adminUserId    String?
+  metaJson       Json              @default("{}")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([driverId, rideId, type])
+  @@index([driverId, createdAt])
+  @@index([driverId, status, availableAt])
+  @@index([driverId, currency])
+  @@index([payoutId])
+  @@index([rideId])
+}
+
+model DriverPayout {
+  id               String             @id @default(cuid())
+  driverId         String
+  driver           DriverProfile      @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  amount           Decimal            @db.Decimal(12, 2)
+  currency         String
+  status           DriverPayoutStatus @default(REQUESTED)
+  idempotencyKey   String
+  requestedAt      DateTime           @default(now())
+  processedAt      DateTime?
+  provider         String             @default("")
+  providerBatchId  String?
+  providerPayoutId String?
+  providerStatus   String?
+  failureCode      String?
+  failureReason    String?
+  ledgerEntryId    String?            @unique
+  ledgerEntry      DriverWalletEntry? @relation("PayoutPrimaryEntry", fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+  entries          DriverWalletEntry[] @relation("EntryToPayout")
+  correlationRef   String?
+  metaJson         Json               @default("{}")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([driverId, idempotencyKey])
+  @@index([driverId, createdAt])
+  @@index([driverId, status])
+  @@index([providerPayoutId])
+  @@index([status, createdAt])
 }
 
 /// Phase 3 — driver calendar day-off (blocks matching for that local date).

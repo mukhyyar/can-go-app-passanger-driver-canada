@@ -1204,7 +1204,7 @@ export class AdminOpsService {
     if (passengerId) paymentWhere.push({ ride: { passengerId } });
     if (driverId) paymentWhere.push({ ride: { assignedDriverId: driverId } });
 
-    const [passengerRides, activePassengerRides, driverAssigned, activeDriverRides, payments, refunds, openCases] =
+    const [passengerRides, activePassengerRides, driverAssigned, activeDriverRides, payments, refunds, openCases, walletEntries, walletPayouts] =
       await Promise.all([
         passengerId
           ? this.prisma.ride.count({ where: { passengerId } })
@@ -1237,9 +1237,16 @@ export class AdminOpsService {
             ],
           },
         }),
+        driverId
+          ? this.prisma.driverWalletEntry.count({ where: { driverId } })
+          : Promise.resolve(0),
+        driverId
+          ? this.prisma.driverPayout.count({ where: { driverId } })
+          : Promise.resolve(0),
       ]);
 
-    const hasMarketplaceHistory = passengerRides + driverAssigned + payments + refunds > 0;
+    const hasMarketplaceHistory =
+      passengerRides + driverAssigned + payments + refunds + walletEntries + walletPayouts > 0;
     const hasActiveTrip = activePassengerRides + activeDriverRides > 0;
     const canHardDelete =
       !hasMarketplaceHistory &&
@@ -1268,6 +1275,8 @@ export class AdminOpsService {
         payments,
         refunds,
         openCases,
+        walletEntries,
+        walletPayouts,
       },
       warnings: [
         hasActiveTrip ? 'User has an active trip — resolve or cancel it before destructive actions.' : null,
@@ -2323,9 +2332,43 @@ export class AdminOpsService {
       where: { id: { in: ids } },
       select: { id: true, fullName: true, userId: true },
     });
+    const walletCurrency = (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase();
+    const entries = await this.prisma.driverWalletEntry.findMany({
+      where: { driverId: { in: ids }, currency: walletCurrency },
+      select: {
+        driverId: true,
+        type: true,
+        direction: true,
+        amount: true,
+        status: true,
+        availableAt: true,
+      },
+    });
+    const now = new Date();
+    const walletByDriver = new Map<string, { available: string; pending: string }>();
+    for (const id of ids) {
+      let matured = 0;
+      let pending = 0;
+      let locking = 0;
+      for (const e of entries.filter((x) => x.driverId === id)) {
+        const amt = Number(e.amount.toString());
+        const active = e.status === 'PENDING' || e.status === 'POSTED';
+        if (!active) continue;
+        if (e.type === 'EARNING' && e.direction === 'CREDIT') {
+          if (!e.availableAt || e.availableAt <= now) matured += amt;
+          else pending += amt;
+        }
+        if (e.type === 'PAYOUT' && e.direction === 'DEBIT') locking += amt;
+      }
+      walletByDriver.set(id, {
+        available: (matured - locking).toFixed(2),
+        pending: pending.toFixed(2),
+      });
+    }
     return drivers.map((d) => ({
       ...d,
       ...(byDriver.get(d.id) ?? { earning: 0, commission: 0, n: 0 }),
+      ...(walletByDriver.get(d.id) ?? { available: '0.00', pending: '0.00' }),
     }));
   }
 

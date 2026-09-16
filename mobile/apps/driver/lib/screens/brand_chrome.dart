@@ -66,7 +66,6 @@ class DriverBrandHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final unread = app.unreadNotificationCount;
-    final avatarUrl = app.avatarUrl;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(0, 8, 0, 0),
@@ -213,30 +212,10 @@ class DriverBrandHeader extends StatelessWidget {
                     child: InkWell(
                       onTap: onProfileTap ?? () => openDriverMenu(context),
                       borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: GtColors.soft,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: GtColors.brand.withValues(alpha: 0.18),
-                          ),
-                          image: avatarUrl != null && avatarUrl.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(avatarUrl),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        child: avatarUrl != null && avatarUrl.isNotEmpty
-                            ? null
-                            : const Icon(
-                                Icons.person_outline_rounded,
-                                color: GtColors.brand,
-                                size: 22,
-                              ),
+                      child: GtProfileAvatar(
+                        size: 40,
+                        bytes: app.avatarBytes,
+                        loading: app.avatarLoading || app.avatarUploading,
                       ),
                     ),
                   ),

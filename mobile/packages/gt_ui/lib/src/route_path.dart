@@ -123,7 +123,7 @@ const kCanRideCarAspect =
     kCanRideCarNativeWidth / kCanRideCarNativeHeight;
 
 /// On-map marker height in CSS/logical pixels (width = height × aspect).
-const kCanRideCarMarkerHeight = 48.0;
+const kCanRideCarMarkerHeight = 28.0;
 
 /// Marker width matching [kCanRideCarMarkerHeight] and asset aspect.
 const kCanRideCarMarkerWidth =
