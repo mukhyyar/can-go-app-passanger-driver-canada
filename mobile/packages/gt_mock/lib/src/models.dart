@@ -405,6 +405,7 @@ class DriverVehicle {
     this.luggagePlaces,
     this.autocancelBefore = 10,
     this.autocancelAfter = 10,
+    this.updatedAt,
   });
 
   final String id;
@@ -420,9 +421,15 @@ class DriverVehicle {
   final int? luggagePlaces;
   final int autocancelBefore;
   final int autocancelAfter;
+  final DateTime? updatedAt;
 
   factory DriverVehicle.fromJson(Map<String, dynamic> json) {
     final amenitiesRaw = json['amenities'] ?? json['amenitiesJson'];
+    DateTime? updatedAt;
+    final rawUpdated = json['updatedAt']?.toString();
+    if (rawUpdated != null && rawUpdated.isNotEmpty) {
+      updatedAt = DateTime.tryParse(rawUpdated);
+    }
     return DriverVehicle(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
@@ -447,6 +454,7 @@ class DriverVehicle {
       autocancelAfter: json['autocancelAfter'] is num
           ? (json['autocancelAfter'] as num).toInt()
           : 10,
+      updatedAt: updatedAt,
     );
   }
 }

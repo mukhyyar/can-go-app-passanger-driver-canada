@@ -273,6 +273,11 @@ export class UpdateVehicleDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Optimistic concurrency — ISO timestamp from last vehicle fetch. */
+  @IsOptional()
+  @IsISO8601()
+  expectedUpdatedAt?: string;
 }
 
 export class UpdateDriverProfileDto {

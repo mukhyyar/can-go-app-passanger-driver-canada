@@ -8,6 +8,8 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -15,6 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '@prisma/client';
 import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
@@ -26,6 +29,7 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { KycOpsService, type KycListQuery } from './kyc-ops.service';
 import { KycDocumentsService } from './kyc-documents.service';
+import { sanitizeContentDispositionFilename } from './vehicle-photos.util';
 import {
   AddKycNoteDto,
   ApproveKycDto,
@@ -203,6 +207,32 @@ export class AdminKycController {
     @Param('documentId') documentId: string,
   ) {
     return this.kycDocs.listVersions(user, driverId, documentId);
+  }
+
+  @Get('drivers/:driverId/kyc/documents/:documentId/content')
+  @RequirePermission('kyc.document.view')
+  async getDocumentContent(
+    @CurrentUser() user: AuthUser,
+    @Param('driverId') driverId: string,
+    @Param('documentId') documentId: string,
+    @Req() req: { ip?: string },
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const file = await this.kyc.getDocumentContent(
+      user,
+      driverId,
+      documentId,
+      req.ip,
+    );
+    const safeName = sanitizeContentDispositionFilename(file.filename);
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${safeName}"`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(file.body);
   }
 
   @Get('drivers/:driverId/kyc/documents/:documentId/versions/:versionId')

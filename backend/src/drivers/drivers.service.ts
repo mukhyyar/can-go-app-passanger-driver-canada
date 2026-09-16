@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -30,6 +31,8 @@ import type {
   UpsertZoneDto,
 } from './dto/drivers.dto';
 import { DocumentLifecycleStatus } from '@prisma/client';
+import { sanitizeContentDispositionFilename } from './vehicle-photos.util';
+import { normalizeAccountMask } from './payment-mask.util';
 
 type PayoutSettings = {
   billingPeriod?: string;
@@ -39,6 +42,9 @@ type PayoutSettings = {
   accountHolderName?: string;
   accountMask?: string;
   status?: string;
+  reviewedAt?: string | null;
+  reviewedByAdminId?: string | null;
+  reviewNote?: string | null;
 };
 
 @Injectable()
@@ -106,11 +112,21 @@ export class DriversService {
       where: { id: documentId, driverId: driver.id },
     });
     if (!doc) throw new NotFoundException('Document not found');
-    const object = await this.storage.getObjectBytes(doc.storageKey);
+    if (!doc.storageKey?.trim()) {
+      throw new NotFoundException('Document storage key missing');
+    }
+    let object: { body: Buffer; contentType: string };
+    try {
+      object = await this.storage.getObjectBytes(doc.storageKey);
+    } catch {
+      throw new NotFoundException('Document object no longer available');
+    }
     return {
       body: object.body,
       contentType: doc.mimeType || object.contentType,
-      filename: doc.originalFilename ?? `${doc.docType}`,
+      filename: sanitizeContentDispositionFilename(
+        doc.originalFilename ?? `${doc.docType}`,
+      ),
     };
   }
 
@@ -129,9 +145,20 @@ export class DriversService {
     }
     const docType = meta.docType as DriverDocType;
 
-    if (meta.vehicleId) {
+    let vehicleId = meta.vehicleId;
+    if (docType === 'vehicle_photo') {
+      if (!vehicleId?.trim()) {
+        throw new BadRequestException(
+          'vehicleId is required for vehicle_photo uploads',
+        );
+      }
       const vehicle = await this.prisma.vehicle.findFirst({
-        where: { id: meta.vehicleId, driverId: driver.id },
+        where: { id: vehicleId, driverId: driver.id },
+      });
+      if (!vehicle) throw new BadRequestException('Invalid vehicleId');
+    } else if (vehicleId) {
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: { id: vehicleId, driverId: driver.id },
       });
       if (!vehicle) throw new BadRequestException('Invalid vehicleId');
     }
@@ -158,7 +185,7 @@ export class DriversService {
       driverId: driver.id,
       docType,
       stored,
-      vehicleId: meta.vehicleId,
+      vehicleId,
       uploadSource: 'DRIVER_APP',
       expiresAt: meta.expiresAt ? new Date(meta.expiresAt) : current?.expiresAt ?? null,
       uploadedById: userId,
@@ -436,8 +463,12 @@ export class DriversService {
       payoutMethod: payout.payoutMethod ?? 'bank_transfer',
       accountHolderName: payout.accountHolderName ?? '',
       accountMask: payout.accountMask ?? '',
-      status: payout.status ?? (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
+      status:
+        payout.status ??
+        (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
       commissionPct,
+      reviewedAt: payout.reviewedAt ?? null,
+      reviewNote: payout.reviewNote ?? null,
     };
   }
 
@@ -462,6 +493,28 @@ export class DriversService {
   ) {
     const driver = await this.requireDriverProfile(userId);
     const current = this.parsePayout(driver.payoutSettingsJson);
+
+    let normalizedMask: string | undefined;
+    if (dto.accountMask !== undefined) {
+      const mask = normalizeAccountMask(dto.accountMask);
+      if (!mask) {
+        throw new BadRequestException(
+          'Enter only the last 4 digits — never your full account number',
+        );
+      }
+      normalizedMask = mask;
+    }
+
+    let normalizedHolder: string | undefined;
+    if (dto.accountHolderName !== undefined) {
+      normalizedHolder = dto.accountHolderName.trim().replace(/\s+/g, ' ');
+      if (normalizedHolder.length < 2 || normalizedHolder.length > 80) {
+        throw new BadRequestException('Account holder name is invalid');
+      }
+    }
+
+    // Server-authoritative: always move into review (PENDING), including REJECTED resubmit.
+    // Do not accept client status / reviewNote / reviewedAt / commissionPct / paymentPeriod.
     const next: PayoutSettings = {
       ...current,
       ...(dto.billingPeriod !== undefined
@@ -474,14 +527,12 @@ export class DriversService {
         ? { bankCountry: dto.bankCountry.trim() }
         : {}),
       ...(dto.payoutMethod !== undefined
-        ? { payoutMethod: dto.payoutMethod.trim() }
+        ? { payoutMethod: dto.payoutMethod.trim() || 'bank_transfer' }
         : {}),
-      ...(dto.accountHolderName !== undefined
-        ? { accountHolderName: dto.accountHolderName.trim() }
+      ...(normalizedHolder !== undefined
+        ? { accountHolderName: normalizedHolder }
         : {}),
-      ...(dto.accountMask !== undefined
-        ? { accountMask: dto.accountMask.trim() }
-        : {}),
+      ...(normalizedMask !== undefined ? { accountMask: normalizedMask } : {}),
       status: 'PENDING',
     };
 
@@ -498,9 +549,21 @@ export class DriversService {
       ip,
       {
         source: 'DRIVER_APP',
-        fields: Object.keys(dto),
+        // Field names only — never log accountMask / holder values.
+        fields: Object.keys(dto).filter((k) =>
+          [
+            'billingPeriod',
+            'outpaymentCurrency',
+            'bankCountry',
+            'payoutMethod',
+            'accountHolderName',
+            'accountMask',
+          ].includes(k),
+        ),
         currency: next.outpaymentCurrency,
         bankCountry: next.bankCountry,
+        previousStatus: current.status ?? null,
+        nextStatus: 'PENDING',
       },
     );
 
@@ -583,6 +646,21 @@ export class DriversService {
       where: { id: vehicleId, driverId: driver.id },
     });
     if (!existing) throw new NotFoundException('Vehicle not found');
+
+    if (dto.expectedUpdatedAt) {
+      const exp = new Date(dto.expectedUpdatedAt).getTime();
+      if (Number.isNaN(exp)) {
+        throw new BadRequestException('Invalid expectedUpdatedAt');
+      }
+      if (Math.abs(existing.updatedAt.getTime() - exp) > 2000) {
+        throw new ConflictException({
+          message:
+            'Vehicle information changed. Refresh and review before saving.',
+          code: 'VEHICLE_STALE',
+          currentUpdatedAt: existing.updatedAt.toISOString(),
+        });
+      }
+    }
 
     if (dto.plate !== undefined) {
       await this.assertPlateUnique(
@@ -675,7 +753,27 @@ export class DriversService {
     });
     if (!existing) throw new NotFoundException('Vehicle not found');
 
-    await this.prisma.vehicle.delete({ where: { id: vehicleId } });
+    // Preserve KYC audit history: soft-delete photos, detach FK, then delete vehicle.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.driverDocument.updateMany({
+        where: {
+          driverId: driver.id,
+          vehicleId,
+          docType: 'vehicle_photo',
+          lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        },
+        data: {
+          lifecycleStatus: DocumentLifecycleStatus.SOFT_DELETED,
+          softDeletedAt: new Date(),
+          softDeletedById: userId,
+        },
+      });
+      await tx.driverDocument.updateMany({
+        where: { driverId: driver.id, vehicleId },
+        data: { vehicleId: null },
+      });
+      await tx.vehicle.delete({ where: { id: vehicleId } });
+    });
 
     if (existing.isDefault) {
       const next = await this.prisma.vehicle.findFirst({

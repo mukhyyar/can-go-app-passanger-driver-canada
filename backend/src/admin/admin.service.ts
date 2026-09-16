@@ -2609,8 +2609,7 @@ export class AdminOpsService {
       {
         ip,
         before: { status: currentStatus },
-        after: { status: nextStatus, note: next.reviewNote },
-        meta: { userId },
+        after: { status: nextStatus, note: next.reviewNote, userId },
       },
     );
 

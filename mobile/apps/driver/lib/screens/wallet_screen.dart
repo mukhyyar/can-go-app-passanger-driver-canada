@@ -6,6 +6,7 @@ import 'package:gt_api/gt_api.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
+import '../payment/wallet_transaction_detail.dart';
 import '../state/app_state.dart';
 
 String _newIdempotencyKey() {
@@ -29,7 +30,6 @@ class _WalletScreenState extends State<WalletScreen> {
   String? _error;
   Map<String, dynamic>? _wallet;
   List<Map<String, dynamic>> _entries = [];
-  Map<String, dynamic>? _selected;
 
   @override
   void initState() {
@@ -82,10 +82,8 @@ class _WalletScreenState extends State<WalletScreen> {
       );
       return;
     }
-    final mask = context.read<AppState>().paymentDetails?['accountMask']?.toString();
-    final dest = (mask != null && mask.isNotEmpty)
-        ? 'Bank account $mask'
-        : 'Configured bank account';
+    final mask = context.read<AppState>().accountMask;
+    final dest = mask.isNotEmpty ? 'Bank account $mask' : 'Configured bank account';
 
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -356,47 +354,11 @@ class _WalletScreenState extends State<WalletScreen> {
                               color: dir == 'DEBIT' ? Colors.red[700] : GtColors.brand,
                             ),
                           ),
-                          onTap: () => setState(() => _selected = e),
+                          onTap: () => showWalletTransactionSheet(context, e),
                         ),
                       ),
                     );
                   }),
-                  if (_selected != null) ...[
-                    const SizedBox(height: 8),
-                    GtCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Transaction details',
-                                  style: TextStyle(fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed: () => setState(() => _selected = null),
-                              ),
-                            ],
-                          ),
-                          Text('Type: ${_selected!['type']}'),
-                          Text('Status: ${_selected!['status']}'),
-                          Text('Amount: ${_selected!['currency']} ${_money(_selected!['amount'])}'),
-                          if (_selected!['rideId'] != null)
-                            Text('Ride: ${_selected!['rideId']}'),
-                          if (_selected!['payoutId'] != null)
-                            Text('Payout: ${_selected!['payoutId']}'),
-                          if (_selected!['availableAt'] != null)
-                            Text('Available at: ${_selected!['availableAt']}'),
-                          Text('Created: ${_selected!['createdAt']}'),
-                          if ((_selected!['description'] ?? '').toString().isNotEmpty)
-                            Text('${_selected!['description']}'),
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

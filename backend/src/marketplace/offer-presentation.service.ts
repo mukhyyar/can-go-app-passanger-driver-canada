@@ -12,6 +12,7 @@ import {
   computePaymentQuote as computeQuoteUtil,
   parseVehicleName as parseVehicleNameUtil,
 } from './payment-quote.util';
+import { VEHICLE_PHOTO_PRIMARY_ORDER } from '../drivers/vehicle-photos.util';
 
 const OPTION_LABELS: Record<string, string> = {
   wifi: 'Free Wi-Fi',
@@ -184,7 +185,7 @@ export class OfferPresentationService {
         status: DocumentReviewStatus.APPROVED,
         lifecycleStatus: DocumentLifecycleStatus.CURRENT,
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: VEHICLE_PHOTO_PRIMARY_ORDER,
       take: 12,
       select: { id: true, storageKey: true },
     });

@@ -216,20 +216,42 @@ export class KycDocumentsService {
           );
         }
       } else if (docType === 'vehicle_photo') {
+        if (!vehicleId) {
+          throw new BadRequestException(
+            'vehicleId is required for vehicle_photo uploads',
+          );
+        }
+        // Lock the vehicle row so concurrent uploads cannot both pass the count check.
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "Vehicle"
+          WHERE id = ${vehicleId} AND "driverId" = ${driverId}
+          FOR UPDATE
+        `;
+        if (!locked.length) {
+          throw new BadRequestException('Invalid vehicleId');
+        }
         const count = await tx.driverDocument.count({
           where: {
             driverId,
+            vehicleId,
             docType: 'vehicle_photo',
             lifecycleStatus: DocumentLifecycleStatus.CURRENT,
             status: {
-              in: [DocumentReviewStatus.PENDING, DocumentReviewStatus.APPROVED],
+              in: [
+                DocumentReviewStatus.PENDING,
+                DocumentReviewStatus.APPROVED,
+                DocumentReviewStatus.NEEDS_RESUBMISSION,
+              ],
             },
+            softDeletedAt: null,
           },
         });
         if (count >= MAX_VEHICLE_PHOTOS && !replaceDocumentId) {
-          throw new BadRequestException(
-            `Maximum ${MAX_VEHICLE_PHOTOS} vehicle photos allowed`,
-          );
+          throw new ConflictException({
+            message: `Maximum ${MAX_VEHICLE_PHOTOS} vehicle photos allowed for this vehicle`,
+            code: 'VEHICLE_PHOTO_LIMIT',
+            max: MAX_VEHICLE_PHOTOS,
+          });
         }
       }
 
@@ -321,6 +343,12 @@ export class KycDocumentsService {
 
     const driver = await this.requireDriver(driverId);
     this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
+
+    if (dto.docType === 'vehicle_photo' && !dto.vehicleId?.trim()) {
+      throw new BadRequestException(
+        'vehicleId is required for vehicle_photo uploads',
+      );
+    }
 
     if (dto.vehicleId) {
       const vehicle = await this.prisma.vehicle.findFirst({

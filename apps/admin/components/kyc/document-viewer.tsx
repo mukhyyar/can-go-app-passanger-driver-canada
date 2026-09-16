@@ -12,6 +12,7 @@ import {
   type KycDocument,
   type VerificationCheck,
 } from '../../lib/kyc';
+import { useKycDocumentContent } from '../../hooks/use-kyc-document-content';
 import { KycStatusBadge } from './status';
 
 export type DocViewerActions = {
@@ -30,6 +31,7 @@ export type DocViewerActions = {
 };
 
 export function DocumentViewer({
+  driverId,
   doc,
   versions,
   checks,
@@ -44,6 +46,7 @@ export function DocumentViewer({
   readOnly,
   onAction,
 }: {
+  driverId: string;
   doc: KycDocument | null;
   versions: DocVersionSummary[];
   checks: VerificationCheck[];
@@ -63,8 +66,10 @@ export function DocumentViewer({
   const [menuOpen, setMenuOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(true);
   const stageRef = useRef<HTMLDivElement>(null);
-  const isImage = Boolean(doc?.mimeType?.startsWith('image/'));
-  const isPdf = doc?.mimeType === 'application/pdf';
+  const content = useKycDocumentContent(driverId, doc?.id);
+  const mime = content.mimeType || doc?.mimeType || '';
+  const isImage = Boolean(mime.startsWith('image/'));
+  const isPdf = mime === 'application/pdf';
 
   useEffect(() => {
     setZoom(1);
@@ -78,6 +83,10 @@ export function DocumentViewer({
     if (document.fullscreenElement) void document.exitFullscreen();
     else void el.requestFullscreen();
   }, []);
+
+  const handleDownload = useCallback(() => {
+    void content.download().catch(() => undefined);
+  }, [content]);
 
   const versionIndex = useMemo(() => {
     if (!doc) return -1;
@@ -119,6 +128,7 @@ export function DocumentViewer({
   }
 
   const decideEnabled = canDecide && !readOnly && doc.isCurrent;
+  const previewUrl = content.blobUrl;
 
   return (
     <section className="kyc-viewer" aria-label="Document inspection">
@@ -166,7 +176,8 @@ export function DocumentViewer({
             onFit={fit}
             onRotate={(d) => setRot((r) => r + d)}
             onFullscreen={fullscreen}
-            url={doc.url}
+            onDownload={handleDownload}
+            hasPreview={Boolean(previewUrl) || content.status === 'success'}
           />
           <div className="kyc-menu-wrap">
             <button className="btn ghost sm" type="button" onClick={() => setMenuOpen((o) => !o)} aria-label="Document actions">
@@ -179,7 +190,7 @@ export function DocumentViewer({
                     View history
                   </button>
                 )}
-                <button type="button" className="menu-item" onClick={() => { onAction.onDownload(); setMenuOpen(false); }}>
+                <button type="button" className="menu-item" onClick={() => { handleDownload(); setMenuOpen(false); }}>
                   Download
                 </button>
                 <button type="button" className="menu-item" onClick={() => { onAction.onCopyId(); setMenuOpen(false); }}>
@@ -236,27 +247,38 @@ export function DocumentViewer({
 
       <div className="kyc-viewer-body">
         <div className="kyc-viewer-stage" ref={stageRef}>
-          {!doc.url ? (
+          {content.status === 'loading' || content.status === 'idle' ? (
+            <div className="kyc-viewer-missing" aria-busy="true">
+              <p className="muted">Loading preview…</p>
+            </div>
+          ) : content.status === 'error' ? (
             <div className="kyc-viewer-missing">
               <p>Document preview unavailable.</p>
+              <p className="muted">{content.error}</p>
+              <button className="btn sm" type="button" onClick={() => void content.retry()}>
+                Retry
+              </button>
             </div>
-          ) : isImage ? (
+          ) : isImage && previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={doc.url}
+              src={previewUrl}
               alt={doc.label}
-              style={{ transform: `scale(${zoom}) rotate(${rot}deg)` }}
+              style={{
+                transform: `scale(${zoom}) rotate(${rot}deg)`,
+                objectFit: 'contain',
+                maxWidth: '100%',
+                maxHeight: '100%',
+              }}
             />
-          ) : isPdf ? (
-            <iframe title={doc.label} src={doc.url} className="kyc-pdf" />
+          ) : isPdf && previewUrl ? (
+            <iframe title={doc.label} src={previewUrl} className="kyc-pdf" />
           ) : (
             <div className="kyc-viewer-missing">
               <p>Preview not available for this file type.</p>
-              {doc.url && (
-                <a className="btn sm" href={doc.url} target="_blank" rel="noreferrer">
-                  Open original
-                </a>
-              )}
+              <button className="btn sm" type="button" onClick={handleDownload}>
+                Download
+              </button>
             </div>
           )}
         </div>
@@ -351,14 +373,16 @@ export function DocumentToolbar({
   onFit,
   onRotate,
   onFullscreen,
-  url,
+  onDownload,
+  hasPreview,
 }: {
   zoom: number;
   onZoom: (n: number) => void;
   onFit: () => void;
   onRotate: (deg: number) => void;
   onFullscreen: () => void;
-  url?: string;
+  onDownload?: () => void;
+  hasPreview?: boolean;
 }) {
   return (
     <div className="kyc-toolbar" role="toolbar" aria-label="Document viewer">
@@ -383,26 +407,30 @@ export function DocumentToolbar({
       <button className="btn ghost sm" type="button" onClick={onFullscreen}>
         Fullscreen
       </button>
-      {url ? (
-        <a className="btn ghost sm" href={url} target="_blank" rel="noreferrer">
-          Open original
-        </a>
+      {hasPreview && onDownload ? (
+        <button className="btn ghost sm" type="button" onClick={onDownload}>
+          Download
+        </button>
       ) : null}
     </div>
   );
 }
 
 export function CompareIdentity({
+  driverId,
   selfie,
   license,
   onClose,
 }: {
+  driverId: string;
   selfie: KycDocument;
   license: KycDocument;
   onClose: () => void;
 }) {
   const [z1, setZ1] = useState(1);
   const [z2, setZ2] = useState(1);
+  const selfieContent = useKycDocumentContent(driverId, selfie.id);
+  const licenseContent = useKycDocumentContent(driverId, license.id);
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide kyc-compare" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
@@ -425,11 +453,13 @@ export function CompareIdentity({
               </button>
             </div>
             <div className="kyc-compare-pane">
-              {selfie.url && selfie.mimeType.startsWith('image/') ? (
+              {selfieContent.blobUrl && (selfieContent.mimeType || selfie.mimeType).startsWith('image/') ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={selfie.url} alt="Selfie" style={{ transform: `scale(${z1})` }} />
+                <img src={selfieContent.blobUrl} alt="Selfie" style={{ transform: `scale(${z1})` }} />
               ) : (
-                <p className="muted">No image</p>
+                <p className="muted">
+                  {selfieContent.status === 'loading' ? 'Loading…' : 'No image'}
+                </p>
               )}
             </div>
           </div>
@@ -444,11 +474,13 @@ export function CompareIdentity({
               </button>
             </div>
             <div className="kyc-compare-pane">
-              {license.url && license.mimeType.startsWith('image/') ? (
+              {licenseContent.blobUrl && (licenseContent.mimeType || license.mimeType).startsWith('image/') ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={license.url} alt="Driving licence" style={{ transform: `scale(${z2})` }} />
+                <img src={licenseContent.blobUrl} alt="Driving licence" style={{ transform: `scale(${z2})` }} />
               ) : (
-                <p className="muted">No image</p>
+                <p className="muted">
+                  {licenseContent.status === 'loading' ? 'Loading…' : 'No image'}
+                </p>
               )}
             </div>
           </div>

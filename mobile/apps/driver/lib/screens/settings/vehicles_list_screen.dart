@@ -5,6 +5,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import 'vehicle_form_widgets.dart';
 
 class VehiclesListScreen extends StatefulWidget {
   const VehiclesListScreen({super.key});
@@ -165,7 +166,11 @@ class _VehicleCard extends StatelessWidget {
               color: GtColors.soft,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.directions_car, color: GtColors.brand),
+            child: VehiclePrimaryThumb(
+              vehicleId: vehicle.id,
+              vehicleClass: vehicle.vehicleClass,
+              size: 64,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

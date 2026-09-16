@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -1913,6 +1914,45 @@ export class KycOpsService {
     return this.kycDocs.serializeDoc(doc);
   }
 
+  /**
+   * Authenticated binary stream for admin KYC viewer.
+   * Never returns MinIO keys, signed URLs, or redirects.
+   */
+  async getDocumentContent(
+    actor: AuthUser,
+    driverId: string,
+    documentId: string,
+    ip?: string,
+  ) {
+    this.assertPerm(actor, 'kyc.document.view', 'kyc.view');
+    const doc = await this.prisma.driverDocument.findFirst({
+      where: { id: documentId, driverId },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+    if (!doc.storageKey?.trim()) {
+      throw new GoneException('Document storage key missing');
+    }
+    let object: { body: Buffer; contentType: string };
+    try {
+      object = await this.storage.getObjectBytes(doc.storageKey);
+    } catch {
+      throw new GoneException('Document object no longer available');
+    }
+    await this.audit(
+      actor.id,
+      'admin.kyc.document.content',
+      'DriverDocument',
+      documentId,
+      ip,
+      { driverId, documentId, action: 'content_view' },
+    );
+    return {
+      body: object.body,
+      contentType: doc.mimeType || object.contentType || 'application/octet-stream',
+      filename: doc.originalFilename ?? `${doc.docType}`,
+    };
+  }
+
   private assertFresh(updatedAt: Date, expected?: string) {
     if (!expected) return;
     const exp = new Date(expected).getTime();
@@ -1932,6 +1972,11 @@ export class KycOpsService {
     if (user.role === UserRole.SUPER_ADMIN) return true;
     const perms = user.permissions ?? [];
     return perms.includes('*') || perms.includes(perm);
+  }
+
+  private assertPerm(user: AuthUser, ...need: string[]) {
+    if (need.some((p) => this.hasPerm(user, p))) return;
+    throw new ForbiddenException(`Missing permission (${need.join(' or ')})`);
   }
 
   private assertCanReview(user: AuthUser) {

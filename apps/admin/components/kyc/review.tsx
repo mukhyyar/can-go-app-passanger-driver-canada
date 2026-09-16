@@ -432,6 +432,7 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
           }}
         />
         <DocumentViewer
+          driverId={data.id}
           doc={selectedDoc}
           versions={versions}
           checks={data.verificationChecks}
@@ -457,9 +458,7 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
             onCopyId: () => {
               if (selectedDoc) void copyText('Document ID', selectedDoc.id);
             },
-            onDownload: () => {
-              if (selectedDoc?.url) window.open(selectedDoc.url, '_blank', 'noopener');
-            },
+            onDownload: () => undefined,
             onSelectVersion: (id) => void selectVersion(id),
           }}
         />
@@ -531,7 +530,12 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
       </div>
 
       {compare && selfie && license && (
-        <CompareIdentity selfie={selfie} license={license} onClose={() => setCompare(false)} />
+        <CompareIdentity
+          driverId={data.id}
+          selfie={selfie}
+          license={license}
+          onClose={() => setCompare(false)}
+        />
       )}
 
       {dialog?.kind === 'approve-doc' && selectedDoc && (

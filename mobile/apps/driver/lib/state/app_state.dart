@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../offer/offer_helpers.dart';
+import '../payment/payment_details_rules.dart';
 import '../services/marketplace_realtime.dart';
 import 'driver_settings_mappers.dart';
 
@@ -94,6 +95,17 @@ class AppState extends ChangeNotifier {
   String outpaymentCurrency = 'CAD';
   String bankCountry = 'Canada';
   String paymentStatus = 'NOT_CONFIGURED';
+  String payoutMethod = 'bank_transfer';
+  String accountHolderName = '';
+  String accountMask = '';
+  String? paymentPeriod;
+  num? commissionPct;
+  String? paymentReviewNote;
+  String? paymentReviewedAt;
+
+  /// Bumped on each successful hydrate so screens can ignore stale GETs while editing.
+  int paymentDetailsGeneration = 0;
+  bool paymentDetailsLoaded = false;
 
   bool selfieUploaded = false;
   bool licenseUploaded = false;
@@ -675,7 +687,7 @@ class AppState extends ChangeNotifier {
         syncDocumentsStatus(),
         loadOperatingZones(),
         loadDriverVehicles(),
-        loadPaymentDetails(),
+        loadPaymentDetails().catchError((_) => null),
         loadWallet().catchError((_) => <String, dynamic>{}),
       ]);
       if (accountStatus != null) {
@@ -788,22 +800,64 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> loadPaymentDetails() async {
-    if (!isAuthenticated) return;
+  Future<Map<String, dynamic>?> loadPaymentDetails({
+    bool force = false,
+  }) async {
+    if (!isAuthenticated) return null;
     try {
       final data = await api.driver.paymentDetails();
-      paymentDetails = data;
-      billingPeriod = data['billingPeriod'] as String? ?? billingPeriod;
-      outpaymentCurrency =
-          data['outpaymentCurrency'] as String? ?? outpaymentCurrency;
-      bankCountry = data['bankCountry'] as String? ?? bankCountry;
-      paymentStatus = data['status'] as String? ?? paymentStatus;
-      paymentSummaryLabel =
-          '$outpaymentCurrency · ${paymentStatus == 'NOT_CONFIGURED' ? 'Not configured' : paymentStatus.toLowerCase().replaceAll('_', ' ')}';
-      notifyListeners();
+      applyPaymentDetailsFromServer(data);
+      return data;
     } catch (e) {
-      debugPrint('loadPaymentDetails: $e');
+      debugPrint('loadPaymentDetails failed');
+      rethrow;
     }
+  }
+
+  /// Apply server payment-details into AppState. Never forges status locally.
+  void applyPaymentDetailsFromServer(Map<String, dynamic> data) {
+    final parsed = parsePaymentDetailsResponse(data);
+    paymentDetails = Map<String, dynamic>.from(data);
+    billingPeriod = parsed['billingPeriod'] as String;
+    outpaymentCurrency = parsed['outpaymentCurrency'] as String;
+    bankCountry = parsed['bankCountry'] as String;
+    payoutMethod = parsed['payoutMethod'] as String;
+    accountHolderName = parsed['accountHolderName'] as String;
+    accountMask = parsed['accountMask'] as String;
+    paymentPeriod = parsed['paymentPeriod'] as String?;
+    paymentStatus = parsed['status'] as String;
+    commissionPct = parsed['commissionPct'] is num
+        ? parsed['commissionPct'] as num
+        : num.tryParse('${parsed['commissionPct'] ?? ''}');
+    paymentReviewNote = parsed['reviewNote'] as String?;
+    paymentReviewedAt = parsed['reviewedAt'] as String?;
+    paymentDetailsLoaded = true;
+    paymentDetailsGeneration++;
+    paymentSummaryLabel =
+        '$outpaymentCurrency · ${paymentStatus == 'NOT_CONFIGURED' ? 'Not configured' : paymentStatus.toLowerCase().replaceAll('_', ' ')}';
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> savePaymentDetails({
+    required Map<String, dynamic> editablePatch,
+  }) async {
+    if (!isAuthenticated) {
+      throw StateError('Not authenticated');
+    }
+    // Strip any accidental server-controlled keys before PATCH.
+    final body = <String, dynamic>{};
+    for (final key in kEditablePaymentPatchKeys) {
+      if (editablePatch.containsKey(key)) {
+        body[key] = editablePatch[key];
+      }
+    }
+    for (final forbidden in kServerControlledPaymentKeys) {
+      body.remove(forbidden);
+    }
+    final result = await api.driver.updatePaymentDetails(body);
+    applyPaymentDetailsFromServer(Map<String, dynamic>.from(result));
+    await loadDriverProfile();
+    return result;
   }
 
   Map<String, dynamic>? walletSummary;
@@ -847,17 +901,8 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
-  Future<void> savePaymentDetails() async {
-    if (!isAuthenticated) return;
-    await api.driver.updatePaymentDetails({
-      'billingPeriod': billingPeriod,
-      'outpaymentCurrency': outpaymentCurrency,
-      'bankCountry': bankCountry,
-      'payoutMethod': 'bank_transfer',
-    });
-    await loadPaymentDetails();
-    await loadDriverProfile();
-  }
+  // Prefer [savePaymentDetails] with an editable PATCH from the Payment screen.
+  // completeOnboarding no longer auto-PATCHes payment (avoids empty/forged payloads).
 
   /// Existing drivers must not re-enter onboarding after logout/login.
   Future<void> _syncOnboardedFromServer({required bool hasDocuments}) async {
@@ -937,6 +982,28 @@ class AppState extends ChangeNotifier {
     return documents
         .where((d) => d['docType']?.toString() == 'vehicle_photo')
         .toList();
+  }
+
+  /// Active vehicle photos for [vehicleId], ordered createdAt ASC then id ASC.
+  List<Map<String, dynamic>> vehiclePhotosForVehicle(String? vehicleId) {
+    final list = vehiclePhotoDocuments.where((d) {
+      if (vehicleId == null || vehicleId.isEmpty) return true;
+      return d['vehicleId']?.toString() == vehicleId;
+    }).toList();
+    list.sort((a, b) {
+      final aCreated = a['createdAt']?.toString() ?? '';
+      final bCreated = b['createdAt']?.toString() ?? '';
+      final byCreated = aCreated.compareTo(bCreated);
+      if (byCreated != 0) return byCreated;
+      return (a['id']?.toString() ?? '').compareTo(b['id']?.toString() ?? '');
+    });
+    return list;
+  }
+
+  /// Cover/primary photo — first by stable ordering (createdAt ASC, id ASC).
+  Map<String, dynamic>? primaryVehiclePhoto(String? vehicleId) {
+    final list = vehiclePhotosForVehicle(vehicleId);
+    return list.isEmpty ? null : list.first;
   }
 
   bool isDocumentLocked(Map<String, dynamic> doc) =>
@@ -1031,11 +1098,16 @@ class AppState extends ChangeNotifier {
     required String filename,
     String? vehicleId,
   }) async {
+    final resolvedVehicleId = vehicleId ?? primaryVehicleId;
+    if (docType == 'vehicle_photo' &&
+        (resolvedVehicleId == null || resolvedVehicleId.isEmpty)) {
+      throw Exception('vehicleId is required for vehicle photos');
+    }
     await api.driver.uploadDocument(
       docType: docType,
       bytes: bytes,
       filename: filename,
-      vehicleId: vehicleId ?? primaryVehicleId,
+      vehicleId: resolvedVehicleId,
     );
     if (docType == 'selfie') selfieUploaded = true;
     if (docType == 'license') licenseUploaded = true;
@@ -1046,7 +1118,7 @@ class AppState extends ChangeNotifier {
     await syncDocumentsStatus();
     // Cache against the synced document id so reopen shows the image.
     if (docType == 'vehicle_photo') {
-      for (final doc in vehiclePhotoDocuments) {
+      for (final doc in vehiclePhotosForVehicle(resolvedVehicleId)) {
         final id = doc['id']?.toString();
         if (id != null && !documentPreviewCache.containsKey(id)) {
           rememberDocumentPreview(id, bytes);
@@ -1493,13 +1565,37 @@ class AppState extends ChangeNotifier {
     String? billingPeriod,
     String? outpaymentCurrency,
     String? bankCountry,
+    String? payoutMethod,
+    String? accountHolderName,
+    String? accountMask,
   }) {
     if (billingPeriod != null) this.billingPeriod = billingPeriod;
     if (outpaymentCurrency != null) {
       this.outpaymentCurrency = outpaymentCurrency;
     }
     if (bankCountry != null) this.bankCountry = bankCountry;
+    if (payoutMethod != null) this.payoutMethod = payoutMethod;
+    if (accountHolderName != null) this.accountHolderName = accountHolderName;
+    if (accountMask != null) this.accountMask = accountMask;
     notifyListeners();
+  }
+
+  void _resetPaymentState() {
+    paymentDetails = null;
+    billingPeriod = '3 days';
+    outpaymentCurrency = 'CAD';
+    bankCountry = 'Canada';
+    paymentStatus = 'NOT_CONFIGURED';
+    payoutMethod = 'bank_transfer';
+    accountHolderName = '';
+    accountMask = '';
+    paymentPeriod = null;
+    commissionPct = null;
+    paymentReviewNote = null;
+    paymentReviewedAt = null;
+    paymentDetailsLoaded = false;
+    paymentDetailsGeneration = 0;
+    paymentSummaryLabel = '';
   }
 
   void markVehiclePhotoAdded() {
@@ -1526,11 +1622,7 @@ class AppState extends ChangeNotifier {
       } catch (e) {
         debugPrint('completeOnboarding profile: $e');
       }
-      try {
-        await savePaymentDetails();
-      } catch (e) {
-        debugPrint('completeOnboarding payment: $e');
-      }
+      // Payment details are saved explicitly from PaymentScreen before this runs.
     }
     await setOnboarded(true);
   }
@@ -1548,6 +1640,7 @@ class AppState extends ChangeNotifier {
     driverProfile = null;
     accountStatus = null;
     paymentDetails = null;
+    _resetPaymentState();
     authUserId = null;
     clearAvatarState();
     unreadNotificationCount = 0;
@@ -1700,12 +1793,15 @@ class AppState extends ChangeNotifier {
   Future<void> updateDriverVehicle(
     String id, {
     Map<String, dynamic>? patch,
+    DateTime? expectedUpdatedAt,
   }) async {
     final body = <String, dynamic>{
       ...?patch,
       'amenities': Map<String, dynamic>.from(amenities),
       'autocancelBefore': autocancelBefore,
       'autocancelAfter': autocancelAfter,
+      if (expectedUpdatedAt != null)
+        'expectedUpdatedAt': expectedUpdatedAt.toUtc().toIso8601String(),
     };
     await api.driver.updateVehicle(id, body);
     await loadDriverVehicles();
