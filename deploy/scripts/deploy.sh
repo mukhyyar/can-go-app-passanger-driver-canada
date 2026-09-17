@@ -32,6 +32,9 @@ done
 
 echo "==> Backend"
 cd "$APP_ROOT/backend"
+if [[ -f .env ]]; then
+  sed -i 's|^GOOGLE_OAUTH_CLIENT_ID=.*|GOOGLE_OAUTH_CLIENT_ID=400688849973-d3h2obnaoghc3ags7gsuo5j4a81drhr1.apps.googleusercontent.com|' .env || true
+fi
 if [[ -d node_modules ]]; then
   chmod -R u+w node_modules || true
   rm -rf node_modules || mv node_modules "node_modules.trash.$$"

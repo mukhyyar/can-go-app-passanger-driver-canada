@@ -15,14 +15,23 @@ export default () => ({
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
   },
   oauth: {
-    googleClientIds: (
-      process.env.GOOGLE_OAUTH_CLIENT_IDS ??
-      process.env.GOOGLE_OAUTH_CLIENT_ID ??
-      ''
-    )
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
+    googleClientIds: Array.from(
+      new Set([
+        '400688849973-d3h2obnaoghc3ags7gsuo5j4a81drhr1.apps.googleusercontent.com',
+        '400688849973-ba7bgucq57b9pd4uoq0fcinqu9j4bpqh.apps.googleusercontent.com',
+        '400688849973-kmbvas6jpqfvn1o07psss2o9e9cdbqrs.apps.googleusercontent.com',
+        '400688849973-fbha0s94bbh83cu7e1808nrgidfhgk0q.apps.googleusercontent.com',
+        '400688849973-d326nvm7tpaf68ic61te5ngbtqoaraf0.apps.googleusercontent.com',
+        ...(
+          process.env.GOOGLE_OAUTH_CLIENT_IDS ??
+          process.env.GOOGLE_OAUTH_CLIENT_ID ??
+          ''
+        )
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ]),
+    ),
     appleClientIds: (
       process.env.APPLE_CLIENT_IDS ??
       process.env.APPLE_CLIENT_ID ??
