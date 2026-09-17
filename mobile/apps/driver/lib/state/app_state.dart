@@ -351,13 +351,39 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> getRideContact(String rideId) =>
       api.marketplace.getRideContact(rideId);
 
+  Future<Map<String, dynamic>> rateRide(
+    String rideId, {
+    required int stars,
+    String? comment,
+  }) =>
+      api.marketplace.rateRide(rideId, stars: stars, comment: comment);
+
+  Future<List<Map<String, dynamic>>> listRideRatings(String rideId) async {
+    final raw = await api.marketplace.listRideRatings(rideId);
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> myRideRating(String rideId) async {
+    final uid = me?['id']?.toString() ?? authUserId;
+    if (uid == null || uid.isEmpty) return null;
+    try {
+      final list = await listRideRatings(rideId);
+      for (final r in list) {
+        if (r['fromUserId']?.toString() == uid) return r;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static const chatAllowedStatuses = {
     'BOOKED',
     'DRIVER_EN_ROUTE',
     'DRIVER_ARRIVED',
     'TRIP_STARTED',
     'IN_PROGRESS',
-    'COMPLETED',
   };
 
   List<DriverRequest> get chatableRides {

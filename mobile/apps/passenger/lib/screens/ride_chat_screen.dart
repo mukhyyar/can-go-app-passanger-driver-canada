@@ -86,7 +86,7 @@ class _RideChatScreenState extends State<RideChatScreen> {
         if (showSpinner || _messages.isEmpty) {
           final s = e.toString().toLowerCase();
           if (s.contains('unavailable') || s.contains('status')) {
-            _error = 'Chat unavailable for this ride status';
+            _error = 'Chat locked — ride completed';
           } else if (s.contains('forbidden') || s.contains('participant')) {
             _error = 'You are not a participant on this ride';
           } else {
@@ -209,51 +209,70 @@ class _RideChatScreenState extends State<RideChatScreen> {
           ),
           SafeArea(
             top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: GtColors.border)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      decoration: InputDecoration(
-                        hintText: 'Message',
-                        filled: true,
-                        fillColor: GtColors.bgGrey,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
+            child: _error != null &&
+                    _error!.toLowerCase().contains('locked')
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(top: BorderSide(color: GtColors.border)),
+                    ),
+                    child: const Text(
+                      'Chat locked — ride completed',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: GtColors.textSecondary,
                       ),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
+                    ),
+                  )
+                : Container(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(top: BorderSide(color: GtColors.border)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            enabled: _error == null || _messages.isNotEmpty,
+                            decoration: InputDecoration(
+                              hintText: 'Message',
+                              filled: true,
+                              fillColor: GtColors.bgGrey,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                            ),
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _send(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: _sending ? null : _send,
+                          icon: _sending
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: GtColors.brand,
+                                  ),
+                                )
+                              : const Icon(Icons.send, color: GtColors.brand),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: _sending ? null : _send,
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: GtColors.brand,
-                            ),
-                          )
-                        : const Icon(Icons.send, color: GtColors.brand),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

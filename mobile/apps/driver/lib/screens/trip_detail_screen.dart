@@ -24,6 +24,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   String? _error;
   AppState? _app;
   Map<String, dynamic>? _contact;
+  bool _ratingPromptShown = false;
+  bool _alreadyRated = false;
+  int? _myRatingStars;
 
   @override
   void didChangeDependencies() {
@@ -52,10 +55,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     try {
       final detail = await s.loadTripDetail(widget.rideId);
       Map<String, dynamic>? contact;
+      Map<String, dynamic>? myRating;
       try {
         final st = (detail.status ?? '').toUpperCase();
         if (AppState.chatAllowedStatuses.contains(st)) {
           contact = await s.getRideContact(widget.rideId);
+        }
+        if (st == 'COMPLETED') {
+          myRating = await s.myRideRating(widget.rideId);
         }
       } catch (_) {}
       if (!mounted) return;
@@ -63,14 +70,116 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         _ride = detail;
         _contact = contact;
         _loading = false;
+        if (myRating != null) {
+          _alreadyRated = true;
+          final stars = myRating['stars'];
+          _myRatingStars = stars is int ? stars : int.tryParse('$stars');
+        }
       });
       _syncLocationTracking(detail.status);
+      _maybeShowRating();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = e.toString();
       });
+    }
+  }
+
+  void _maybeShowRating() {
+    if (_ratingPromptShown || _alreadyRated || !mounted) return;
+    if ((_ride?.status ?? '').toUpperCase() != 'COMPLETED') return;
+    _ratingPromptShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_alreadyRated) _showRatingDialog();
+    });
+  }
+
+  Future<void> _showRatingDialog() async {
+    if (_alreadyRated) return;
+    var stars = 5;
+    final commentCtrl = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Rate your passenger'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (i) {
+                  final filled = i < stars;
+                  return IconButton(
+                    icon: Icon(
+                      filled ? Icons.star : Icons.star_border,
+                      color: GtColors.warn,
+                      size: 32,
+                    ),
+                    onPressed: () => setLocal(() => stars = i + 1),
+                  );
+                }),
+              ),
+              TextField(
+                controller: commentCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Optional comment',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Later'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final commentText = commentCtrl.text.trim();
+    commentCtrl.dispose();
+    if (submitted != true || !mounted) return;
+    try {
+      await context.read<AppState>().rateRide(
+            widget.rideId,
+            stars: stars,
+            comment: commentText.isEmpty ? null : commentText,
+          );
+      if (mounted) {
+        setState(() {
+          _alreadyRated = true;
+          _myRatingStars = stars;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Thanks for your feedback')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('already rated')) {
+        setState(() {
+          _alreadyRated = true;
+          _myRatingStars ??= stars;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You already rated this passenger')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not submit rating')),
+        );
+      }
     }
   }
 
@@ -572,13 +681,35 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                               12 + MediaQuery.paddingOf(context).bottom,
                             ),
                             color: Colors.white,
-                            child: const Text(
-                              'Trip completed',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: GtColors.brand,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text(
+                                  'Trip completed',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: GtColors.brand,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                if (_alreadyRated)
+                                  Text(
+                                    _myRatingStars != null
+                                        ? 'You rated passenger ★$_myRatingStars'
+                                        : 'You already rated this passenger',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: GtColors.textSecondary,
+                                    ),
+                                  )
+                                else
+                                  GtGreenButton(
+                                    label: 'Rate passenger',
+                                    onPressed: _showRatingDialog,
+                                  ),
+                              ],
                             ),
                           ),
                       ],

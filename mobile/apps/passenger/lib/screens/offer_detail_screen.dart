@@ -216,7 +216,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
             else
               ...reviews.map(
                 (r) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -230,6 +230,16 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                               color: GtColors.star,
                             ),
                           ),
+                          if (r.createdAt != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '${r.createdAt!.day}/${r.createdAt!.month}/${r.createdAt!.year}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: GtColors.textMuted,
+                              ),
+                            ),
+                          ],
                           if (r.fromLanguage != null) ...[
                             const SizedBox(width: 8),
                             Text(
@@ -242,8 +252,29 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           ],
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(r.text),
+                      if (r.communicationStars != null ||
+                          r.driverStars != null ||
+                          r.vehicleStars != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          [
+                            if (r.communicationStars != null)
+                              'Comm ★${r.communicationStars}',
+                            if (r.driverStars != null)
+                              'Driver ★${r.driverStars}',
+                            if (r.vehicleStars != null)
+                              'Vehicle ★${r.vehicleStars}',
+                          ].join(' · '),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: GtColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                      if (r.text.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(r.text),
+                      ],
                     ],
                   ),
                 ),

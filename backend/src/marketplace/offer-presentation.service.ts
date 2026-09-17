@@ -224,26 +224,43 @@ export class OfferPresentationService {
       take: 100,
       select: {
         stars: true,
+        communicationStars: true,
+        driverStars: true,
+        vehicleStars: true,
         comment: true,
         createdAt: true,
         fromUserId: true,
       },
     });
     const count = ratings.length;
-    const avg =
-      count === 0
+    const avg = (vals: number[]) =>
+      vals.length === 0
         ? 0
-        : round2(ratings.reduce((s, r) => s + r.stars, 0) / count);
-    // Category scores are not stored separately yet — mirror overall.
+        : round2(vals.reduce((s, v) => s + v, 0) / vals.length);
+    const overall = avg(ratings.map((r) => r.stars));
+    const communication = avg(
+      ratings
+        .map((r) => r.communicationStars)
+        .filter((v): v is number => v != null),
+    );
+    const driver = avg(
+      ratings.map((r) => r.driverStars).filter((v): v is number => v != null),
+    );
+    const vehicle = avg(
+      ratings.map((r) => r.vehicleStars).filter((v): v is number => v != null),
+    );
     return {
-      overall: avg,
+      overall,
       count,
-      communication: avg,
-      driver: avg,
-      vehicle: avg,
+      communication: communication > 0 ? communication : overall,
+      driver: driver > 0 ? driver : overall,
+      vehicle: vehicle > 0 ? vehicle : overall,
       completedRides: count,
       reviews: ratings.slice(0, 20).map((r) => ({
         stars: r.stars,
+        communicationStars: r.communicationStars,
+        driverStars: r.driverStars,
+        vehicleStars: r.vehicleStars,
         text: r.comment ?? '',
         createdAt: r.createdAt,
         translatedFrom: null as string | null,

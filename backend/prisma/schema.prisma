@@ -635,20 +635,24 @@ model Payment {
 }
 
 model Rating {
-  id               String                 @id @default(cuid())
-  rideId           String
-  ride             Ride                   @relation(fields: [rideId], references: [id], onDelete: Cascade)
-  fromUserId       String
-  fromUser         User                   @relation("RatingsGiven", fields: [fromUserId], references: [id])
-  toUserId         String
-  toUser           User                   @relation("RatingsReceived", fields: [toUserId], references: [id])
-  stars            Int
-  comment          String?
-  moderationStatus RatingModerationStatus @default(VISIBLE)
-  moderatedAt      DateTime?
-  moderatedById    String?
-  moderationNote   String?
-  createdAt        DateTime               @default(now())
+  id                  String                 @id @default(cuid())
+  rideId              String
+  ride                Ride                   @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  fromUserId          String
+  fromUser            User                   @relation("RatingsGiven", fields: [fromUserId], references: [id])
+  toUserId            String
+  toUser              User                   @relation("RatingsReceived", fields: [toUserId], references: [id])
+  stars               Int
+  /// Passenger→driver category scores (null for driver→passenger overall-only ratings).
+  communicationStars  Int?
+  driverStars         Int?
+  vehicleStars        Int?
+  comment             String?
+  moderationStatus    RatingModerationStatus @default(VISIBLE)
+  moderatedAt         DateTime?
+  moderatedById       String?
+  moderationNote      String?
+  createdAt           DateTime               @default(now())
 
   @@unique([rideId, fromUserId])
   @@index([moderationStatus, createdAt])

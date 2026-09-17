@@ -1006,16 +1006,43 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> rateRide(
     String rideId, {
     required int stars,
+    int? communicationStars,
+    int? driverStars,
+    int? vehicleStars,
     String? comment,
   }) async {
     final res = await api.marketplace.rateRide(
       rideId,
       stars: stars,
+      communicationStars: communicationStars,
+      driverStars: driverStars,
+      vehicleStars: vehicleStars,
       comment: comment,
     );
     await refreshRide(rideId);
     notifyListeners();
     return res;
+  }
+
+  Future<List<Map<String, dynamic>>> listRideRatings(String rideId) async {
+    final raw = await api.marketplace.listRideRatings(rideId);
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  /// Returns the current user's rating for [rideId], or null if not rated yet.
+  Future<Map<String, dynamic>?> myRideRating(String rideId) async {
+    final uid = me?['id']?.toString();
+    if (uid == null || uid.isEmpty) return null;
+    try {
+      final list = await listRideRatings(rideId);
+      for (final r in list) {
+        if (r['fromUserId']?.toString() == uid) return r;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<Map<String, dynamic>> getChat(String rideId) =>
