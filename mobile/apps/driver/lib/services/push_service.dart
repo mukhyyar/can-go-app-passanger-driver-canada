@@ -31,7 +31,7 @@ class PushService with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _ensureAuthListener();
 
-    if (kIsWeb) return;
+    if (kIsWeb || Firebase.apps.isEmpty) return;
 
     try {
       final messaging = FirebaseMessaging.instance;
@@ -76,7 +76,7 @@ class PushService with WidgetsBindingObserver {
   }
 
   Future<void> syncToken() async {
-    if (kIsWeb || !app.isAuthenticated) return;
+    if (kIsWeb || Firebase.apps.isEmpty || !app.isAuthenticated) return;
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.length >= 10) {
