@@ -337,9 +337,13 @@ class _AuthScreenState extends State<AuthScreen> {
       }
 
       final clientId = cfg.clientId?.trim();
-      if (clientId == null || clientId.isEmpty) {
-        throw Exception('Google sign-in is not configured on the server.');
-      }
+      const defaultServerClientId =
+          '400688849973-d3h2obnaoghc3ags7gsuo5j4a81drhr1.apps.googleusercontent.com';
+      final serverClientId = (clientId != null &&
+              clientId.isNotEmpty &&
+              !clientId.startsWith('235484342401'))
+          ? clientId
+          : defaultServerClientId;
 
       final app = context.read<AppState>();
       final signIn = GoogleSignIn.instance;
@@ -347,7 +351,7 @@ class _AuthScreenState extends State<AuthScreen> {
           '400688849973-kmbvas6jpqfvn1o07psss2o9e9cdbqrs.apps.googleusercontent.com';
       await signIn.initialize(
         clientId: defaultTargetPlatform == TargetPlatform.iOS ? iosClientId : null,
-        serverClientId: clientId,
+        serverClientId: serverClientId,
       );
       if (!signIn.supportsAuthenticate()) {
         throw Exception('Google sign-in is not supported on this device.');
