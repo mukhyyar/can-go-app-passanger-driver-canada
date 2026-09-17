@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -306,10 +307,20 @@ class _AuthScreenState extends State<AuthScreen> {
       if (_oauthConfigLoading) {
         throw Exception('Still loading sign-in options — try again in a moment.');
       }
-      if (_oauthConfigError != null) {
-        throw Exception(
-          'Could not reach the server for Google sign-in. Check your connection and try again.',
-        );
+      if (_oauthConfigError != null || _oauthConfig == null) {
+        try {
+          final cfg = await context.read<AppState>().loadOAuthConfig();
+          if (mounted) {
+            setState(() {
+              _oauthConfig = cfg;
+              _oauthConfigError = null;
+            });
+          }
+        } catch (_) {
+          throw Exception(
+            'Could not reach the server for Google sign-in. Check your connection and try again.',
+          );
+        }
       }
       final cfg = _oauthConfig?.google;
       if (cfg == null || !cfg.enabled) {
@@ -332,7 +343,10 @@ class _AuthScreenState extends State<AuthScreen> {
 
       final app = context.read<AppState>();
       final signIn = GoogleSignIn.instance;
-      await signIn.initialize(serverClientId: clientId);
+      await signIn.initialize(
+        clientId: defaultTargetPlatform == TargetPlatform.iOS ? clientId : null,
+        serverClientId: clientId,
+      );
       if (!signIn.supportsAuthenticate()) {
         throw Exception('Google sign-in is not supported on this device.');
       }
