@@ -343,8 +343,10 @@ class _AuthScreenState extends State<AuthScreen> {
 
       final app = context.read<AppState>();
       final signIn = GoogleSignIn.instance;
+      const iosClientId =
+          '400688849973-kmbvas6jpqfvn1o07psss2o9e9cdbqrs.apps.googleusercontent.com';
       await signIn.initialize(
-        clientId: defaultTargetPlatform == TargetPlatform.iOS ? clientId : null,
+        clientId: defaultTargetPlatform == TargetPlatform.iOS ? iosClientId : null,
         serverClientId: clientId,
       );
       if (!signIn.supportsAuthenticate()) {
