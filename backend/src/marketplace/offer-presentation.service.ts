@@ -176,7 +176,14 @@ export class OfferPresentationService {
     }));
   }
 
-  async loadVehicleImages(vehicleId: string | null | undefined) {
+  /**
+   * Passenger-facing image URLs prefer same-origin API paths so phones do not
+   * need to reach MinIO. Falls back to signed URLs when ride/offer ids missing.
+   */
+  async loadVehicleImages(
+    vehicleId: string | null | undefined,
+    opts?: { rideId?: string; offerId?: string },
+  ) {
     if (!vehicleId) return [] as Array<{ id: string; url: string }>;
     const docs = await this.prisma.driverDocument.findMany({
       where: {
@@ -189,8 +196,18 @@ export class OfferPresentationService {
       take: 12,
       select: { id: true, storageKey: true },
     });
+    const rideId = opts?.rideId?.trim();
+    const offerId = opts?.offerId?.trim();
+    const useProxy = !!rideId && !!offerId;
     const out: Array<{ id: string; url: string }> = [];
     for (const d of docs) {
+      if (useProxy) {
+        out.push({
+          id: d.id,
+          url: `/rides/${rideId}/offers/${offerId}/photos/${d.id}/content`,
+        });
+        continue;
+      }
       const url = await this.safeSignedUrl(d.storageKey);
       if (url) out.push({ id: d.id, url });
     }
@@ -300,7 +317,12 @@ export class OfferPresentationService {
     const model =
       typeof amenities.model === 'string' ? amenities.model : parsed.model;
 
-    const images = await this.loadVehicleImages(vehicleRow?.id);
+    const offerId = String(offer.id ?? '');
+    const rideId = String(offer.rideId ?? '');
+    const images = await this.loadVehicleImages(vehicleRow?.id, {
+      rideId: rideId || undefined,
+      offerId: offerId || undefined,
+    });
     const languages = normalizeLanguages(
       driver?.languagesJson ?? amenities.languages,
     );

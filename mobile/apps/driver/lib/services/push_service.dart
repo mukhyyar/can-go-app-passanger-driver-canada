@@ -100,10 +100,12 @@ class PushService with WidgetsBindingObserver {
     final rideId = data['rideId']?.toString();
     if (rideId == null || rideId.isEmpty) return;
     final type = data['type']?.toString();
+    final status = data['status']?.toString();
     app.applyPushAlert(
       rideId: rideId,
       title: message.notification?.title,
       type: type,
+      status: status,
     );
   }
 

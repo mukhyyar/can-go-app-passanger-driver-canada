@@ -65,6 +65,8 @@ class _RequestsScreenState extends State<RequestsScreen>
     if (alert == null || alert.isEmpty || alert == _shownAlert) return;
     _shownAlert = alert;
     final rideId = app.pendingRequestRideId;
+    final alertType = app.pendingAlertType;
+    final alertStatus = app.pendingAlertStatus;
     app.clearPendingRequestAlert();
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
@@ -80,7 +82,13 @@ class _RequestsScreenState extends State<RequestsScreen>
                 textColor: Colors.white,
                 onPressed: () {
                   if (!mounted) return;
-                  context.push('/request/$rideId');
+                  context.push(
+                    AppState.rideDeepLinkPath(
+                      rideId: rideId,
+                      type: alertType,
+                      status: alertStatus,
+                    ),
+                  );
                 },
               ),
         duration: const Duration(seconds: 6),
@@ -171,7 +179,29 @@ class _RequestsScreenState extends State<RequestsScreen>
                   DriverStatChip(
                     icon: Icons.verified_outlined,
                     label: 'Status',
-                    value: s.isActivated ? 'On' : 'Off',
+                    value: s.drivingEnabled ? 'On' : 'Off',
+                    valueColor: s.drivingEnabled
+                        ? GtColors.green
+                        : GtColors.textMuted,
+                    onTap: !s.isActivated
+                        ? null
+                        : () async {
+                            try {
+                              await s.setDrivingMode(!s.drivingEnabled);
+                            } catch (e) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceFirst(
+                                          'ApiException: ',
+                                          '',
+                                        ),
+                                  ),
+                                ),
+                              );
+                            }
+                          },
                   ),
                 ],
               ),

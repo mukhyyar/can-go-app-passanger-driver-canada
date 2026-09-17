@@ -91,8 +91,19 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final phone = _contact?['phoneE164']?.toString();
     if (phone == null || phone.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+    try {
+      final ok = await launchUrl(uri);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer')),
+        );
+      }
     }
   }
 
@@ -100,9 +111,24 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final phone = _contact?['phoneE164']?.toString() ?? '';
     final digits = phone.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 8) return;
-    final uri = Uri.parse('https://wa.me/$digits');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final httpsUri = Uri.parse('https://wa.me/$digits');
+    final appUri = Uri.parse('whatsapp://send?phone=$digits');
+    try {
+      var ok = await launchUrl(httpsUri, mode: LaunchMode.externalApplication);
+      if (!ok) {
+        ok = await launchUrl(appUri, mode: LaunchMode.externalApplication);
+      }
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open WhatsApp')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open WhatsApp')),
+        );
+      }
     }
   }
 

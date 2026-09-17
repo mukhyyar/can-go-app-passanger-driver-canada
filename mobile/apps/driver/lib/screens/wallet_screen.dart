@@ -60,8 +60,11 @@ class _WalletScreenState extends State<WalletScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      final msg = e is ApiException && e.statusCode == 401
+          ? 'Session expired. Please sign in again.'
+          : e.toString();
       setState(() {
-        _error = e.toString();
+        _error = msg;
         _loading = false;
       });
     }

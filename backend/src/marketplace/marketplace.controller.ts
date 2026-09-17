@@ -8,10 +8,13 @@ import {
   Post,
   Query,
   Req,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -152,6 +155,32 @@ export class MarketplaceController {
     @Param('offerId') offerId: string,
   ) {
     return this.marketplace.getOfferDetail(user.id, id, offerId);
+  }
+
+  @Get('rides/:id/offers/:offerId/photos/:documentId/content')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  async getOfferVehiclePhoto(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('offerId') offerId: string,
+    @Param('documentId') documentId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const file = await this.marketplace.getOfferVehiclePhotoContent(
+      user.id,
+      id,
+      offerId,
+      documentId,
+    );
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${file.filename.replace(/"/g, '')}"`,
+    );
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(file.body);
   }
 
   @Get('rides/:id/payment-status')

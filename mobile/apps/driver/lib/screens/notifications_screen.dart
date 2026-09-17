@@ -85,12 +85,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (data is! Map) return;
     final rideId = data['rideId']?.toString();
     final type = data['type']?.toString();
+    final status = data['status']?.toString();
     if (rideId == null || rideId.isEmpty) return;
-    if (type == 'chat') {
-      context.push('/chat/$rideId');
-    } else {
-      context.push('/request/$rideId');
-    }
+    context.push(
+      AppState.rideDeepLinkPath(
+        rideId: rideId,
+        type: type,
+        status: status,
+      ),
+    );
   }
 
   String? _imageUrl(Map<String, dynamic> item) {
@@ -108,7 +111,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final rideId = data['rideId']?.toString();
     if (rideId == null || rideId.isEmpty) return null;
     final type = data['type']?.toString();
+    final status = data['status']?.toString();
     if (type == 'chat') return 'Open chat';
+    if (AppState.rideDeepLinkPath(
+          rideId: rideId,
+          type: type,
+          status: status,
+        ).startsWith('/trip/')) {
+      return 'Open trip';
+    }
     return 'Open request';
   }
 

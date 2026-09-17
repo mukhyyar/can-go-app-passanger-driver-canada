@@ -33,6 +33,42 @@ export class ReviewPayoutDetailsDto {
   note?: string;
 }
 
+export class WalletReleaseDto {
+  @IsString()
+  @MinLength(3)
+  reason!: string;
+}
+
+export class WalletBulkReleaseDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  entryIds!: string[];
+
+  @IsString()
+  @MinLength(3)
+  reason!: string;
+}
+
+export class WalletAdjustDto {
+  /** Decimal string, e.g. "25.00" */
+  @IsString()
+  amount!: string;
+
+  @IsString()
+  @IsIn(['CREDIT', 'DEBIT'])
+  direction!: 'CREDIT' | 'DEBIT';
+
+  @IsString()
+  @MinLength(3)
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  currency?: string;
+}
+
 export class SuspendDto {
   @IsBoolean()
   isSuspended!: boolean;

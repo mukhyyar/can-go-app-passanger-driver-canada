@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
@@ -329,8 +330,8 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                             if (images.isEmpty) {
                               return _imagePlaceholder(asset);
                             }
-                            return Image.network(
-                              images[i],
+                            return AuthNetworkImage(
+                              url: images[i],
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) =>
                                   _imagePlaceholder(asset),
