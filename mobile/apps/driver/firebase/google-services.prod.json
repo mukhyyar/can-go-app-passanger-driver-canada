@@ -7,6 +7,44 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:440385851908:android:87e8812c04edf4df381b51",
+        "android_client_info": {
+          "package_name": "com.canride.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApFzBmjIqDCcGm0eFp3_UFL_1IqQc0CF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:440385851908:android:a1ddebf78cf03e13381b51",
+        "android_client_info": {
+          "package_name": "com.canride.passenger"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApFzBmjIqDCcGm0eFp3_UFL_1IqQc0CF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:440385851908:android:a8bacf93a3d027ea381b51",
         "android_client_info": {
           "package_name": "com.gettransfer.driver"
