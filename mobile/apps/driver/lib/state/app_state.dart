@@ -914,8 +914,14 @@ class AppState extends ChangeNotifier {
       final data = await api.driver.wallet();
       walletSummary = data;
       final cur = data['currency']?.toString() ?? 'CAD';
+      final balance = data['balance']?.toString();
       final avail = data['available']?.toString() ?? '0.00';
-      walletSummaryLabel = '$cur $avail available';
+      final pending = data['pending']?.toString() ?? '0.00';
+      // Prefer server balance (available + pending); fall back to sum.
+      final total = (balance != null && balance.isNotEmpty)
+          ? balance
+          : _sumMoneyStrings(avail, pending);
+      walletSummaryLabel = '$cur $total';
       notifyListeners();
       return data;
     } on ApiException catch (e) {
@@ -928,6 +934,12 @@ class AppState extends ChangeNotifier {
       }
       rethrow;
     }
+  }
+
+  static String _sumMoneyStrings(String a, String b) {
+    final x = double.tryParse(a) ?? 0;
+    final y = double.tryParse(b) ?? 0;
+    return (x + y).toStringAsFixed(2);
   }
 
   Future<List<Map<String, dynamic>>> loadWalletEntries({String? cursor}) async {

@@ -1097,7 +1097,7 @@ function WalletTab({
         `/admin/wallet/drivers/${driverId}/release-pending`,
         { method: 'POST', body: JSON.stringify({ reason: r }) },
       );
-      toast.push(`Released ${res.released}`, 'success');
+      toast.push(`Released ${res.released}`, 'ok');
       setReason('');
       await loadWallet();
     } catch (e) {

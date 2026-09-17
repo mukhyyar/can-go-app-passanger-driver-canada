@@ -72,7 +72,7 @@ export default function DriverWalletDetailPage() {
   async function releaseOne(entryId: string) {
     const r = reason.trim();
     if (r.length < 3) {
-      toast.push('Enter a release reason', 'error');
+      toast.push('Enter a release reason', 'bad');
       return;
     }
     setBusy(true);
@@ -81,10 +81,10 @@ export default function DriverWalletDetailPage() {
         method: 'POST',
         body: JSON.stringify({ reason: r }),
       });
-      toast.push('Released', 'success');
+      toast.push('Released', 'ok');
       load();
     } catch (e) {
-      toast.push(e instanceof Error ? e.message : String(e), 'error');
+      toast.push(e instanceof Error ? e.message : String(e), 'bad');
     } finally {
       setBusy(false);
     }
@@ -93,7 +93,7 @@ export default function DriverWalletDetailPage() {
   async function releaseAllPending() {
     const r = reason.trim();
     if (r.length < 3) {
-      toast.push('Enter a release reason', 'error');
+      toast.push('Enter a release reason', 'bad');
       return;
     }
     setBusy(true);
@@ -105,11 +105,11 @@ export default function DriverWalletDetailPage() {
           body: JSON.stringify({ reason: r }),
         },
       );
-      toast.push(`Released ${res.released} entries`, 'success');
+      toast.push(`Released ${res.released} entries`, 'ok');
       setReason('');
       load();
     } catch (e) {
-      toast.push(e instanceof Error ? e.message : String(e), 'error');
+      toast.push(e instanceof Error ? e.message : String(e), 'bad');
     } finally {
       setBusy(false);
     }
@@ -118,11 +118,11 @@ export default function DriverWalletDetailPage() {
   async function adjust() {
     const r = adjReason.trim();
     if (r.length < 3) {
-      toast.push('Adjustment reason required', 'error');
+      toast.push('Adjustment reason required', 'bad');
       return;
     }
     if (!adjAmount.trim()) {
-      toast.push('Amount required', 'error');
+      toast.push('Amount required', 'bad');
       return;
     }
     setBusy(true);
@@ -135,12 +135,12 @@ export default function DriverWalletDetailPage() {
           reason: r,
         }),
       });
-      toast.push('Adjustment saved', 'success');
+      toast.push('Adjustment saved', 'ok');
       setAdjAmount('');
       setAdjReason('');
       load();
     } catch (e) {
-      toast.push(e instanceof Error ? e.message : String(e), 'error');
+      toast.push(e instanceof Error ? e.message : String(e), 'bad');
     } finally {
       setBusy(false);
     }
