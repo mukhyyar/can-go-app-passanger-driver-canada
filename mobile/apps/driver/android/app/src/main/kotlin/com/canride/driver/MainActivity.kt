@@ -1,4 +1,4 @@
-package com.gettransfer.passenger
+package com.canride.driver
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

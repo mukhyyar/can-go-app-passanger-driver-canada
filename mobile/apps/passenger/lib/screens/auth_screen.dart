@@ -276,7 +276,7 @@ class _AuthScreenState extends State<AuthScreen> {
         _error = e.description?.isNotEmpty == true
             ? e.description
             : 'Google sign-in failed. Check that an Android OAuth client is '
-                'registered for com.gettransfer.passenger with this app’s SHA-1.';
+                'registered for com.canride.passenger with this app’s SHA-1.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -356,7 +356,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (idToken == null || idToken.isEmpty) {
         throw Exception(
           'Google did not return an ID token. Register an Android OAuth client '
-          'for com.gettransfer.passenger with this app’s SHA-1.',
+          'for com.canride.passenger with this app’s SHA-1.',
         );
       }
 

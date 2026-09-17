@@ -17,12 +17,12 @@
 
 | App | Platform | ID / package |
 |-----|----------|----------------|
-| CAN-GO Passenger | Android | `com.gettransfer.passenger` |
-| CAN-GO Driver | Android | `com.gettransfer.driver` |
-| CAN-GO Passenger Prototype | Android | `com.gettransfer.passenger.prototype` |
-| CAN-GO Driver Prototype | Android | `com.gettransfer.driver.prototype` |
-| CAN-GO Passenger iOS | iOS | `com.gettransfer.passenger` |
-| CAN-GO Driver iOS | iOS | `com.gettransfer.driver` |
+| CAN-GO Passenger | Android | `com.canride.passenger` |
+| CAN-GO Driver | Android | `com.canride.driver` |
+| CAN-GO Passenger Prototype | Android | `com.canride.passenger.prototype` |
+| CAN-GO Driver Prototype | Android | `com.canride.driver.prototype` |
+| CAN-GO Passenger iOS | iOS | `com.canride.passenger` |
+| CAN-GO Driver iOS | iOS | `com.canride.driver` |
 | CAN-GO Passenger Web | Web | web app |
 
 Console: https://console.firebase.google.com/project/can-go-platform/overview

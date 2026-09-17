@@ -53,8 +53,8 @@ Android OAuth clients (same **can-ride** project) must exist for:
 
 | App | Package |
 |-----|---------|
-| Passenger | `com.gettransfer.passenger` |
-| Driver | `com.gettransfer.driver` |
+| Passenger | `com.canride.passenger` |
+| Driver | `com.canride.driver` |
 
 OAuth consent Audience must be **In production** (Testing blocks all non–test-user Google accounts).
 
