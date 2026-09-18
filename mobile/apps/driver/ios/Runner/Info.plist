@@ -80,7 +80,7 @@
 		</dict>
 	</array>
 	<key>GoogleMapsApiKey</key>
-	<string>AIzaSyDAzpmYEK9hUBmNghCyGMN5YlvNtx08Fcs</string>
+	<string>AIzaSyB7DSFU5Y360jRuiqNmVsii_ZU2oESncmg</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>CAN-RIDE Driver needs your location to display navigation routes, find available rides, and update ride progress.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
