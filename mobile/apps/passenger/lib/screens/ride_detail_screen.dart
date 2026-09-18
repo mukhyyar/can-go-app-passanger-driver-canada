@@ -6,7 +6,6 @@ import 'package:gt_api/gt_api.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class RideDetailScreen extends StatefulWidget {
   const RideDetailScreen({super.key, required this.rideId});
@@ -24,7 +23,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
   bool _alreadyRated = false;
   int? _myRatingStars;
   bool _actionBusy = false;
-  Map<String, dynamic>? _contact;
   Map<String, dynamic>? _tracking;
   Timer? _trackingPoll;
 
@@ -70,17 +68,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final app = context.read<AppState>();
     await app.refreshRide(widget.rideId);
     Map<String, dynamic>? payment;
-    Map<String, dynamic>? contact;
     Map<String, dynamic>? myRating;
     try {
       payment = await app.getPaymentStatus(widget.rideId);
-    } catch (_) {}
-    try {
-      if (_canChatStatus(
-        (app.rideById(widget.rideId)?.serverStatus ?? '').toUpperCase(),
-      )) {
-        contact = await app.getRideContact(widget.rideId);
-      }
     } catch (_) {}
     try {
       final status =
@@ -92,7 +82,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     if (!mounted) return;
     setState(() {
       _paymentStatus = payment;
-      _contact = contact;
       _loading = false;
       if (myRating != null) {
         _alreadyRated = true;
@@ -104,61 +93,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     _maybeShowRating();
   }
 
-  bool _canChatStatus(String status) {
-    const allowed = {
-      'BOOKED',
-      'DRIVER_EN_ROUTE',
-      'DRIVER_ARRIVED',
-      'TRIP_STARTED',
-      'IN_PROGRESS',
-    };
-    return allowed.contains(status);
-  }
-
-  Future<void> _callPhone() async {
-    final phone = _contact?['phoneE164']?.toString();
-    if (phone == null || phone.isEmpty) return;
-    final uri = Uri(scheme: 'tel', path: phone);
-    try {
-      final ok = await launchUrl(uri);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open phone dialer')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open phone dialer')),
-        );
-      }
-    }
-  }
-
-  Future<void> _openWhatsApp() async {
-    final phone = _contact?['phoneE164']?.toString() ?? '';
-    final digits = phone.replaceAll(RegExp(r'\D'), '');
-    if (digits.length < 8) return;
-    final httpsUri = Uri.parse('https://wa.me/$digits');
-    final appUri = Uri.parse('whatsapp://send?phone=$digits');
-    try {
-      var ok = await launchUrl(httpsUri, mode: LaunchMode.externalApplication);
-      if (!ok) {
-        ok = await launchUrl(appUri, mode: LaunchMode.externalApplication);
-      }
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open WhatsApp')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open WhatsApp')),
-        );
-      }
-    }
-  }
 
   void _maybeShowRating() {
     if (_ratingPromptShown || _alreadyRated || !mounted) return;
@@ -1054,34 +988,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                   '/ride/${widget.rideId}/chat',
                                 ),
                       ),
-                      if (_contact?['canCall'] == true ||
-                          _contact?['canWhatsApp'] == true) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            if (_contact?['canCall'] == true)
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _actionBusy ? null : _callPhone,
-                                  icon: const Icon(Icons.phone_outlined),
-                                  label: const Text('Call'),
-                                ),
-                              ),
-                            if (_contact?['canCall'] == true &&
-                                _contact?['canWhatsApp'] == true)
-                              const SizedBox(width: 8),
-                            if (_contact?['canWhatsApp'] == true)
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed:
-                                      _actionBusy ? null : _openWhatsApp,
-                                  icon: const Icon(Icons.chat),
-                                  label: const Text('WhatsApp'),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
                     ],
                     if (_canEdit) ...[
                       const SizedBox(height: 10),

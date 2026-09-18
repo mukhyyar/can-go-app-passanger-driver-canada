@@ -23,7 +23,6 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   bool _acting = false;
   String? _error;
   AppState? _app;
-  Map<String, dynamic>? _contact;
   bool _ratingPromptShown = false;
   bool _alreadyRated = false;
   int? _myRatingStars;
@@ -54,13 +53,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     });
     try {
       final detail = await s.loadTripDetail(widget.rideId);
-      Map<String, dynamic>? contact;
       Map<String, dynamic>? myRating;
       try {
         final st = (detail.status ?? '').toUpperCase();
-        if (AppState.chatAllowedStatuses.contains(st)) {
-          contact = await s.getRideContact(widget.rideId);
-        }
         if (st == 'COMPLETED') {
           myRating = await s.myRideRating(widget.rideId);
         }
@@ -68,7 +63,6 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       if (!mounted) return;
       setState(() {
         _ride = detail;
-        _contact = contact;
         _loading = false;
         if (myRating != null) {
           _alreadyRated = true;
@@ -193,51 +187,6 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       s.startTripLocationTracking(widget.rideId);
     } else {
       s.stopTripLocationTracking();
-    }
-  }
-
-  Future<void> _callPassenger() async {
-    final phone = _contact?['phoneE164']?.toString();
-    if (phone == null || phone.isEmpty) return;
-    final uri = Uri(scheme: 'tel', path: phone);
-    try {
-      final ok = await launchUrl(uri);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open phone dialer')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open phone dialer')),
-        );
-      }
-    }
-  }
-
-  Future<void> _whatsAppPassenger() async {
-    final phone = _contact?['phoneE164']?.toString() ?? '';
-    final digits = phone.replaceAll(RegExp(r'\D'), '');
-    if (digits.length < 8) return;
-    final httpsUri = Uri.parse('https://wa.me/$digits');
-    final appUri = Uri.parse('whatsapp://send?phone=$digits');
-    try {
-      var ok = await launchUrl(httpsUri, mode: LaunchMode.externalApplication);
-      if (!ok) {
-        ok = await launchUrl(appUri, mode: LaunchMode.externalApplication);
-      }
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open WhatsApp')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open WhatsApp')),
-        );
-      }
     }
   }
 
@@ -636,33 +585,6 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     ),
                                   ],
                                 ),
-                                if (_contact?['canCall'] == true ||
-                                    _contact?['canWhatsApp'] == true) ...[
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      if (_contact?['canCall'] == true)
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: _callPassenger,
-                                            icon: const Icon(Icons.phone_outlined),
-                                            label: const Text('Call'),
-                                          ),
-                                        ),
-                                      if (_contact?['canCall'] == true &&
-                                          _contact?['canWhatsApp'] == true)
-                                        const SizedBox(width: 8),
-                                      if (_contact?['canWhatsApp'] == true)
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: _whatsAppPassenger,
-                                            icon: const Icon(Icons.chat),
-                                            label: const Text('WhatsApp'),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
                                 const SizedBox(height: 10),
                                 GtGreenButton(
                                   label: _acting ? 'Updating…' : _primaryLabel!,

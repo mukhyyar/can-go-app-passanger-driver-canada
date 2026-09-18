@@ -116,12 +116,11 @@ export class ChatService {
       },
     });
 
-    const digits = phoneE164?.replace(/\D/g, '') ?? '';
     return {
       otherParty,
-      phoneE164,
-      canCall: !!phoneE164,
-      canWhatsApp: digits.length >= 8,
+      phoneE164: null,
+      canCall: false,
+      canWhatsApp: false,
     };
   }
 
