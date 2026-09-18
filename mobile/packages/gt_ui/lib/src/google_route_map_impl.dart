@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -11,6 +13,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'google_route_map.dart';
 import 'route_path.dart';
 import 'theme.dart';
+
+
 
 const _apiBaseFromEnv = String.fromEnvironment('CANGO_API_BASE');
 const _prodApiBase = 'https://www.can-rides.ca/api';
@@ -45,8 +49,14 @@ Widget buildGoogleMapEmbed({
   ValueChanged<List<GtRouteOption>>? onRoutesLoaded,
   bool enableRouteSelection = true,
   int initialRouteIndex = 0,
+  bool interactive = true,
+  bool isExpanded = false,
+  GtRouteMapController? controller,
+  VoidCallback? onTap,
+  Key? key,
 }) {
   return _NativeRouteMap(
+    key: key,
     fromLat: fromLat,
     fromLng: fromLng,
     toLat: toLat,
@@ -55,11 +65,16 @@ Widget buildGoogleMapEmbed({
     onRoutesLoaded: onRoutesLoaded,
     enableRouteSelection: enableRouteSelection,
     initialRouteIndex: initialRouteIndex,
+    interactive: interactive,
+    isExpanded: isExpanded,
+    controller: controller,
+    onTap: onTap,
   );
 }
 
 class _NativeRouteMap extends StatefulWidget {
   const _NativeRouteMap({
+    super.key,
     required this.fromLat,
     required this.fromLng,
     this.toLat,
@@ -68,6 +83,10 @@ class _NativeRouteMap extends StatefulWidget {
     this.onRoutesLoaded,
     this.enableRouteSelection = true,
     this.initialRouteIndex = 0,
+    this.interactive = true,
+    this.isExpanded = false,
+    this.controller,
+    this.onTap,
   });
 
   final double fromLat;
@@ -78,6 +97,10 @@ class _NativeRouteMap extends StatefulWidget {
   final ValueChanged<List<GtRouteOption>>? onRoutesLoaded;
   final bool enableRouteSelection;
   final int initialRouteIndex;
+  final bool interactive;
+  final bool isExpanded;
+  final GtRouteMapController? controller;
+  final VoidCallback? onTap;
 
   @override
   State<_NativeRouteMap> createState() => _NativeRouteMapState();
@@ -109,6 +132,9 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   void initState() {
     super.initState();
     _selectedRouteIndex = widget.initialRouteIndex;
+    widget.controller?.attachRecenter(
+      () => _fitBounds(extra: _routePoints, force: true),
+    );
     _carCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -229,6 +255,19 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   @override
   void didUpdateWidget(covariant _NativeRouteMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.controller != oldWidget.controller) {
+      oldWidget.controller?.attachRecenter(null);
+      widget.controller?.attachRecenter(
+        () => _fitBounds(extra: _routePoints, force: true),
+      );
+    }
+    if (widget.isExpanded != oldWidget.isExpanded) {
+      Future.delayed(const Duration(milliseconds: 320), () {
+        if (mounted) {
+          _fitBounds(extra: _routePoints, force: true);
+        }
+      });
+    }
     if (oldWidget.fromLat != widget.fromLat ||
         oldWidget.fromLng != widget.fromLng ||
         oldWidget.toLat != widget.toLat ||
@@ -254,6 +293,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
 
   @override
   void dispose() {
+    widget.controller?.attachRecenter(null);
     _carCtrl.removeListener(_onCarTick);
     _carCtrl.dispose();
     // Do not dispose GoogleMapController — the GoogleMap widget owns it.
@@ -575,8 +615,11 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     return coords;
   }
 
-  Future<void> _fitBounds({List<LatLng> extra = const []}) async {
-    if (_fitted) return;
+  Future<void> _fitBounds({
+    List<LatLng> extra = const [],
+    bool force = false,
+  }) async {
+    if (_fitted && !force) return;
     final map = _map;
     if (map == null) return;
     final pts = <LatLng>[_from, if (_to != null) _to!, ...extra];
@@ -706,17 +749,33 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
           myLocationButtonEnabled: false,
           zoomControlsEnabled: false,
           mapToolbarEnabled: false,
-          compassEnabled: false,
+          compassEnabled: widget.interactive,
+          scrollGesturesEnabled: widget.interactive,
+          zoomGesturesEnabled: widget.interactive,
+          rotateGesturesEnabled: widget.interactive,
+          tiltGesturesEnabled: widget.interactive,
+          gestureRecognizers: widget.interactive
+              ? <Factory<OneSequenceGestureRecognizer>>{
+                  Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer(),
+                  ),
+                }
+              : const <Factory<OneSequenceGestureRecognizer>>{},
+          onTap: (latLng) {
+            widget.onTap?.call();
+          },
           onMapCreated: (c) {
             _map = c;
             if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
           },
         ),
-        if (widget.enableRouteSelection && _routes.length > 1)
+        if (widget.isExpanded &&
+            widget.enableRouteSelection &&
+            _routes.length > 1)
           Positioned(
             left: 10,
             right: 10,
-            bottom: 48,
+            bottom: 16,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(

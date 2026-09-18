@@ -56,26 +56,25 @@ class _MapBody extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: GtGoogleRouteMap(
-            fromLat: from.lat,
-            fromLng: from.lng,
-            fromLabel: from.label,
-            toLat: showTo ? to.lat : null,
-            toLng: showTo ? to.lng : null,
-            toLabel: showTo ? to.label : null,
-            distanceLabel: distanceLabel,
-            height: 220,
-            initialRouteIndex: state.selectedRouteIndex,
-            enableRouteSelection: true,
-            onRoutesLoaded: (routes) {
-              state.setAvailableRoutes(routes);
-            },
-            onRouteSelected: (route) {
-              state.selectRoute(route);
-            },
-          ),
+        GtGoogleRouteMap(
+          fromLat: from.lat,
+          fromLng: from.lng,
+          fromLabel: from.label,
+          toLat: showTo ? to.lat : null,
+          toLng: showTo ? to.lng : null,
+          toLabel: showTo ? to.label : null,
+          distanceLabel: distanceLabel,
+          height: 220,
+          expandedHeight: 390,
+          canExpand: showTo,
+          initialRouteIndex: state.selectedRouteIndex,
+          enableRouteSelection: true,
+          onRoutesLoaded: (routes) {
+            state.setAvailableRoutes(routes);
+          },
+          onRouteSelected: (route) {
+            state.selectRoute(route);
+          },
         ),
         if (showTo) _RouteSelectorCards(state: state),
       ],

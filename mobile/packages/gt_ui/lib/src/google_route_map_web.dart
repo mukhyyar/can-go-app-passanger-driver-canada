@@ -53,6 +53,11 @@ Widget buildGoogleMapEmbed({
   dynamic onRoutesLoaded,
   bool enableRouteSelection = true,
   int initialRouteIndex = 0,
+  bool interactive = true,
+  bool isExpanded = false,
+  dynamic controller,
+  VoidCallback? onTap,
+  Key? key,
 }) {
   final hasRoute = toLat != null && toLng != null;
   final viewType =
