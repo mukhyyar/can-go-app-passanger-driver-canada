@@ -61,7 +61,7 @@ export class DriversService {
       where: { id: userId },
       include: { driverProfile: true },
     });
-    if (!user || user.role !== UserRole.DRIVER || !user.driverProfile) {
+    if (!user || !user.driverProfile) {
       throw new ForbiddenException('Driver profile required');
     }
     if (user.isSuspended) {

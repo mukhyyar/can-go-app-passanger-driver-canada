@@ -64,7 +64,7 @@ export class TokensService {
       },
     );
 
-    const familyId = randomUUID();
+    const familyId = `${params.role}:${randomUUID()}`;
     const refreshToken = randomBytes(48).toString('base64url');
     const expiresAt = new Date(Date.now() + this.refreshTtlMs());
 
@@ -185,11 +185,22 @@ export class TokensService {
       },
     });
 
+    let sessionRole: UserRole = existing.user.role;
+    if (existing.familyId.startsWith('DRIVER:')) {
+      sessionRole = UserRole.DRIVER;
+    } else if (existing.familyId.startsWith('PASSENGER:')) {
+      sessionRole = UserRole.PASSENGER;
+    } else if (existing.familyId.startsWith('ADMIN:')) {
+      sessionRole = UserRole.ADMIN;
+    } else if (existing.familyId.startsWith('SUPER_ADMIN:')) {
+      sessionRole = UserRole.SUPER_ADMIN;
+    }
+
     const accessTtl = this.config.get<string>('jwt.accessTtl') ?? '15m';
     const accessToken = await this.jwt.signAsync(
       {
         sub: existing.userId,
-        role: existing.user.role,
+        role: sessionRole,
         sid: session.id,
       } satisfies AccessPayload,
       {

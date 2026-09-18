@@ -44,7 +44,7 @@ export class TrackingService {
       where: { id: userId },
       include: { driverProfile: true },
     });
-    if (!user?.driverProfile || user.role !== UserRole.DRIVER) {
+    if (!user?.driverProfile) {
       throw new ForbiddenException('Driver required');
     }
     const driver = user.driverProfile;

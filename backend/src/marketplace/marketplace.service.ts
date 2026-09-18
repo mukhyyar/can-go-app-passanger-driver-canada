@@ -2347,7 +2347,7 @@ export class MarketplaceService {
       where: { id: userId },
       include: { passengerProfile: true },
     });
-    if (!user || user.role !== UserRole.PASSENGER || !user.passengerProfile) {
+    if (!user || !user.passengerProfile) {
       throw new ForbiddenException('Passenger account required');
     }
     if (user.isSuspended) throw new ForbiddenException('Account suspended');
@@ -2362,7 +2362,7 @@ export class MarketplaceService {
       where: { id: userId },
       include: { driverProfile: true },
     });
-    if (!user || user.role !== UserRole.DRIVER || !user.driverProfile) {
+    if (!user || !user.driverProfile) {
       throw new ForbiddenException('Driver account required');
     }
     if (user.isSuspended) throw new ForbiddenException('Account suspended');

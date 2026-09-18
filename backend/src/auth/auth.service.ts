@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UserRole } from '@prisma/client';
+import { DriverApprovalStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from './password.service';
 import { TokensService } from './tokens.service';
@@ -73,19 +73,50 @@ export class AuthService {
     if (!requestedRole || userRole === requestedRole) {
       return;
     }
-    if (userRole === UserRole.PASSENGER) {
-      throw new ForbiddenException(
-        'This account is registered as a passenger. Use the passenger app.',
-      );
-    }
-    if (userRole === UserRole.DRIVER) {
-      throw new ForbiddenException(
-        'This account is registered as a driver. Use the driver app.',
-      );
+    // Allow any mobile account (PASSENGER or DRIVER) to access both passenger and driver apps
+    if (
+      (userRole === UserRole.PASSENGER || userRole === UserRole.DRIVER) &&
+      (requestedRole === UserRole.PASSENGER || requestedRole === UserRole.DRIVER)
+    ) {
+      return;
     }
     throw new ForbiddenException(
       'This account cannot sign in to this app.',
     );
+  }
+
+  private async ensureProfileForRole<
+    T extends { id: string; passengerProfile?: any; driverProfile?: any },
+  >(
+    user: T,
+    requestedRole?: UserRole,
+    fallbackFullName?: string | null,
+  ): Promise<T> {
+    if (!requestedRole) return user;
+    if (requestedRole === UserRole.PASSENGER && !user.passengerProfile) {
+      const defaultName =
+        fallbackFullName?.trim() || user.driverProfile?.fullName || '';
+      const profile = await this.prisma.passengerProfile.create({
+        data: {
+          userId: user.id,
+          fullName: defaultName,
+        },
+      });
+      user.passengerProfile = profile;
+    } else if (requestedRole === UserRole.DRIVER && !user.driverProfile) {
+      const defaultName =
+        fallbackFullName?.trim() || user.passengerProfile?.fullName || '';
+      const profile = await this.prisma.driverProfile.create({
+        data: {
+          userId: user.id,
+          fullName: defaultName,
+          approvalStatus: DriverApprovalStatus.PENDING_KYC,
+          isActivated: false,
+        },
+      });
+      user.driverProfile = profile;
+    }
+    return user;
   }
 
   async register(
@@ -100,9 +131,72 @@ export class AuthService {
 
     const existing = await this.prisma.user.findFirst({
       where: { OR: [{ email }, { phoneE164 }] },
+      include: { passengerProfile: true, driverProfile: true },
     });
     if (existing) {
-      throw new ConflictException('Email or phone already registered');
+      if (
+        existing.email &&
+        existing.email !== email &&
+        existing.phoneE164 &&
+        existing.phoneE164 !== phoneE164
+      ) {
+        throw new ConflictException('Email or phone already registered');
+      }
+
+      if (dto.role === UserRole.PASSENGER && existing.passengerProfile) {
+        throw new ConflictException(
+          'Passenger account already registered for this email/phone. Please log in.',
+        );
+      }
+      if (dto.role === UserRole.DRIVER && existing.driverProfile) {
+        throw new ConflictException(
+          'Driver account already registered for this email/phone. Please log in.',
+        );
+      }
+
+      if (existing.passwordHash) {
+        const ok = await this.passwords.verify(
+          existing.passwordHash,
+          dto.password,
+        );
+        if (!ok) {
+          throw new ConflictException(
+            'An account with this email/phone already exists. Please log in with your existing password.',
+          );
+        }
+      } else {
+        const passwordHash = await this.passwords.hash(dto.password);
+        await this.prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            passwordHash,
+            email: existing.email ?? email,
+            phoneE164: existing.phoneE164 ?? phoneE164,
+          },
+        });
+      }
+
+      await this.ensureProfileForRole(existing, dto.role, dto.fullName);
+
+      const challenge = await this.otp.issue(phoneE164, 'verify_phone');
+      await this.audit(
+        existing.id,
+        'auth.register_role_profile',
+        'User',
+        existing.id,
+        meta?.ip,
+      );
+
+      return {
+        userId: existing.id,
+        role: dto.role,
+        requiresPhoneVerification: true,
+        challengeId: challenge.challengeId,
+        expiresAt: challenge.expiresAt,
+        ...(challenge.debugCode ? { debugCode: challenge.debugCode } : {}),
+        message:
+          'Verify phone OTP to complete registration and receive tokens',
+      };
     }
 
     const passwordHash = await this.passwords.hash(dto.password);
@@ -203,6 +297,10 @@ export class AuthService {
 
     this.assertMobileAppRole(user.role, dto.role);
 
+    if (dto.role) {
+      user = await this.ensureProfileForRole(user, dto.role);
+    }
+
     if (
       result.purpose === 'verify_phone' ||
       result.purpose === 'register' ||
@@ -213,13 +311,14 @@ export class AuthService {
           where: { id: user.id },
           data: { phoneVerifiedAt: new Date() },
         });
-        user = { ...user, phoneVerifiedAt: new Date() };
+        user.phoneVerifiedAt = new Date();
       }
     }
 
+    const sessionRole = dto.role ?? user.role;
     const tokens = await this.tokens.issueSession({
       userId: user.id,
-      role: user.role,
+      role: sessionRole,
       deviceId: dto.deviceId,
       userAgent: meta?.userAgent,
       ip: meta?.ip,
@@ -228,7 +327,7 @@ export class AuthService {
     await this.audit(user.id, 'auth.otp_verify', 'User', user.id, meta?.ip);
 
     return {
-      user: this.publicUser(user),
+      user: this.publicUser(user, sessionRole),
       ...tokens,
     };
   }
@@ -282,6 +381,10 @@ export class AuthService {
 
     this.assertMobileAppRole(user.role, dto.role);
 
+    if (dto.role) {
+      await this.ensureProfileForRole(user, dto.role);
+    }
+
     if (
       (user.role === UserRole.PASSENGER || user.role === UserRole.DRIVER) &&
       !user.phoneVerifiedAt
@@ -326,16 +429,17 @@ export class AuthService {
       }
     }
 
+    const sessionRole = dto.role ?? user.role;
     const tokens = await this.tokens.issueSession({
       userId: user.id,
-      role: user.role,
+      role: sessionRole,
       deviceId: dto.deviceId,
       userAgent: meta?.userAgent,
       ip: meta?.ip,
     });
 
     await this.audit(user.id, 'auth.login', 'User', user.id, meta?.ip);
-    return { user: this.publicUser(user), ...tokens };
+    return { user: this.publicUser(user, sessionRole), ...tokens };
   }
 
   async refresh(refreshToken: string, meta?: { userAgent?: string; ip?: string }) {
@@ -378,7 +482,8 @@ export class AuthService {
         : (user.adminRole?.permissions.map((p) => p.permission) ??
           actor?.permissions ??
           []);
-    const base = this.publicUser(user);
+    const sessionRole = (actor?.role as UserRole) ?? user.role;
+    const base = this.publicUser(user, sessionRole);
     const avatarKey =
       user.passengerProfile?.avatarStorageKey ??
       user.driverProfile?.avatarStorageKey ??
@@ -966,6 +1071,9 @@ export class AuthService {
 
     if (user) {
       this.assertMobileAppRole(user.role, role);
+      if (role) {
+        user = await this.ensureProfileForRole(user, role, identity.fullName);
+      }
     }
 
     if (!user) {
@@ -1016,6 +1124,8 @@ export class AuthService {
       throw new ForbiddenException('Account suspended');
     }
 
+    const sessionRole = role ?? user.role;
+
     if (
       (user.role === UserRole.PASSENGER || user.role === UserRole.DRIVER) &&
       !user.phoneVerifiedAt
@@ -1024,14 +1134,14 @@ export class AuthService {
       return {
         requiresPhoneLink: true as const,
         linkToken,
-        user: this.publicUser(user),
+        user: this.publicUser(user, sessionRole),
         message: 'Add and verify a phone number to finish signing in',
       };
     }
 
     const tokens = await this.tokens.issueSession({
       userId: user.id,
-      role: user.role,
+      role: sessionRole,
       deviceId,
       userAgent: meta?.userAgent,
       ip: meta?.ip,
@@ -1039,7 +1149,7 @@ export class AuthService {
 
     return {
       requiresPhoneLink: false as const,
-      user: this.publicUser(user),
+      user: this.publicUser(user, sessionRole),
       ...tokens,
     };
   }
@@ -1066,34 +1176,37 @@ export class AuthService {
     }
   }
 
-  private publicUser(user: {
-    id: string;
-    email: string | null;
-    phoneE164: string | null;
-    phoneVerifiedAt: Date | null;
-    role: UserRole;
-    isSuspended: boolean;
-    adminTotpEnabled: boolean;
-    passengerProfile?: {
+  private publicUser(
+    user: {
       id: string;
-      fullName: string;
-      isVip?: boolean;
-      referralCode?: string | null;
-    } | null;
-    driverProfile?: {
-      id: string;
-      fullName: string;
-      approvalStatus: string;
-      isActivated: boolean;
-      drivingEnabled?: boolean;
-    } | null;
-  }) {
+      email: string | null;
+      phoneE164: string | null;
+      phoneVerifiedAt: Date | null;
+      role: UserRole;
+      isSuspended: boolean;
+      adminTotpEnabled: boolean;
+      passengerProfile?: {
+        id: string;
+        fullName: string;
+        isVip?: boolean;
+        referralCode?: string | null;
+      } | null;
+      driverProfile?: {
+        id: string;
+        fullName: string;
+        approvalStatus: string;
+        isActivated: boolean;
+        drivingEnabled?: boolean;
+      } | null;
+    },
+    activeRole?: UserRole,
+  ) {
     return {
       id: user.id,
       email: user.email,
       phoneE164: user.phoneE164,
       phoneVerifiedAt: user.phoneVerifiedAt,
-      role: user.role,
+      role: activeRole ?? user.role,
       isSuspended: user.isSuspended,
       adminTotpEnabled: user.adminTotpEnabled,
       passenger: user.passengerProfile
