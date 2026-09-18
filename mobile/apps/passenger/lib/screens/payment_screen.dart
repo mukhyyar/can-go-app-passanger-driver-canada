@@ -121,7 +121,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   double _num(dynamic v) => (v is num) ? v.toDouble() : 0;
 
-  String _currency(Map<String, dynamic> q, String key, [String fallback = 'USD']) {
+  String _currency(Map<String, dynamic> q, String key, [String fallback = 'CAD']) {
     return q[key]?.toString() ??
         q['totalCurrency']?.toString() ??
         q['currency']?.toString() ??
@@ -270,8 +270,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final cashAmount = quote != null ? _num(quote['cashAmount']) : 0.0;
     final totalAmount = quote != null ? _num(quote['totalAmount']) : (offer?.price ?? 0);
     final currency = quote != null
-        ? _currency(quote, 'onlineCurrency', offer?.currency ?? 'USD')
-        : (offer?.currency ?? 'USD');
+        ? _currency(quote, 'onlineCurrency', offer?.currency ?? 'CAD')
+        : (offer?.currency ?? 'CAD');
     final methods = quote != null ? _methodsFromQuote(quote) : const ['CARD'];
     final policy = quote?['cancellationPolicy'];
     final policyBody = policy is Map

@@ -102,7 +102,7 @@ class OfferPriceBreakdown {
     this.discount = 0,
     this.promotion = 0,
     this.total = 0,
-    this.currency = 'USD',
+    this.currency = 'CAD',
     this.includesNote,
     this.ridePriceNote,
     this.marketplaceFeeNote,
@@ -141,7 +141,7 @@ class OfferPriceBreakdown {
       discount: n(json['discount']),
       promotion: n(json['promotion']),
       total: n(json['total']),
-      currency: json['currency']?.toString() ?? 'USD',
+      currency: json['currency']?.toString() ?? 'CAD',
       includesNote: json['includesNote']?.toString(),
       ridePriceNote: json['ridePriceNote']?.toString(),
       marketplaceFeeNote: json['marketplaceFeeNote']?.toString(),
@@ -288,21 +288,8 @@ class Offer {
     final letters = upper.replaceAll(RegExp(r'[^A-Z]'), '');
     switch (letters) {
       case 'CAD':
-        return 'CA\$';
-      case 'USD':
-      case 'US':
-        return 'US\$';
-      case 'EUR':
-        return '€';
-      case 'GBP':
-        return '£';
-      case 'AED':
-        return 'AED ';
       default:
-        if (code.contains('\$') || code.contains('€') || code.contains('£')) {
-          return code;
-        }
-        return letters.length == 3 ? '$letters ' : code;
+        return 'CA\$';
     }
   }
 
@@ -362,7 +349,7 @@ class RideRequest {
     this.shortId,
     this.createdAtLabel,
     this.viewCount,
-    this.currency,
+    this.currency = 'CAD',
   });
 
   final String id;
@@ -575,7 +562,7 @@ class DriverOfferSummary {
       id: id,
       status: json['status']?.toString() ?? 'ACTIVE',
       bidAmount: asDouble(json['bidAmount']) ?? 0,
-      currency: json['currency']?.toString() ?? 'USD',
+      currency: json['currency']?.toString() ?? 'CAD',
       outboundPrice: asDouble(json['outboundPrice']),
       returnPrice: asDouble(json['returnPrice']),
       expiresAt: expires,
@@ -614,7 +601,7 @@ class DriverRequest {
     this.fromLng,
     this.toLat,
     this.toLng,
-    this.currency = 'USD',
+    this.currency = 'CAD',
     this.isRoundTrip = false,
     this.returnDatetimeLabel,
     this.pickupWaitMin,

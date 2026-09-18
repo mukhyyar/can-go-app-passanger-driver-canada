@@ -2,29 +2,18 @@ import 'package:flutter/services.dart';
 
 /// Currency display helpers — never hardcodes offer amounts.
 class MoneyFormat {
-  static String symbolFor(String currency) {
-    switch (currency.toUpperCase()) {
-      case 'USD':
-        return 'US\$';
-      case 'CAD':
-        return 'CA\$';
-      case 'EUR':
-        return '€';
-      case 'GBP':
-        return '£';
-      default:
-        return currency.toUpperCase();
-    }
+  static String symbolFor([String? currency]) {
+    return 'CA\$';
   }
 
-  static String format(num amount, String currency, {int decimals = 0}) {
+  static String format(num amount, [String currency = 'CAD', int decimals = 0]) {
     final sym = symbolFor(currency);
     return '$sym${amount.toStringAsFixed(decimals)}';
   }
 
-  static String formatFlexible(num amount, String currency) {
+  static String formatFlexible(num amount, [String currency = 'CAD']) {
     final hasCents = (amount * 100).round() % 100 != 0;
-    return format(amount, currency, decimals: hasCents ? 2 : 0);
+    return format(amount, currency, hasCents ? 2 : 0);
   }
 }
 

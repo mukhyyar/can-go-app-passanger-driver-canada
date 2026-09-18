@@ -703,7 +703,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         _paymentStatus?['totalCurrency']?.toString() ??
         offer?.currency ??
         ride?.currency ??
-        'USD';
+        'CAD';
     final total = _num(
       _paymentStatus?['totalAmount'] ?? offer?.price,
     );

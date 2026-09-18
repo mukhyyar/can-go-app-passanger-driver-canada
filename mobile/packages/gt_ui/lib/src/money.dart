@@ -11,30 +11,16 @@ String formatMoney(num amount, String currencyCode) {
   return signed;
 }
 
-/// Display prefix for a currency code or symbol.
+/// Display prefix for a currency code or symbol (CAD only).
 String currencyDisplayPrefix(String currencyCode) {
   final raw = currencyCode.trim();
-  if (raw.isEmpty) return 'US\$';
+  if (raw.isEmpty) return 'CA\$';
   final upper = raw.toUpperCase();
   final letters = upper.replaceAll(RegExp(r'[^A-Z]'), '');
   switch (letters) {
     case 'CAD':
-      return 'CA\$';
-    case 'USD':
-    case 'US':
-      return 'US\$';
-    case 'EUR':
-      return '€';
-    case 'GBP':
-      return '£';
-    case 'AED':
-      return 'AED ';
     default:
-      if (raw.contains('\$') || raw.contains('€') || raw.contains('£')) {
-        return raw.endsWith(' ') ? raw : raw;
-      }
-      if (letters.length == 3) return '$letters ';
-      return raw;
+      return 'CA\$';
   }
 }
 

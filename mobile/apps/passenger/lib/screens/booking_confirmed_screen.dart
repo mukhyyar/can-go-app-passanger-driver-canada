@@ -54,7 +54,7 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
     final currency = quote?['onlineCurrency']?.toString() ??
         quote?['totalCurrency']?.toString() ??
         offer?.currency ??
-        'USD';
+        'CAD';
     final total = _num(quote?['totalAmount'] ?? result?['totalAmount'] ?? offer?.price);
     final online = _num(quote?['onlineAmount'] ?? result?['onlineAmount']);
     final cash = _num(quote?['cashAmount'] ?? result?['cashAmount']);

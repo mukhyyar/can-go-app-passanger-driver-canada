@@ -400,16 +400,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       label: 'Outpayment currency',
                       value: _currency,
                       options: currencyOpts,
-                      onChanged: (v) {
-                        setState(() {
-                          _currency = v;
-                          _editingStarted = true;
-                        });
-                      },
+                      onChanged: currencyOpts.length <= 1
+                          ? null
+                          : (v) {
+                              setState(() {
+                                _currency = v;
+                                _editingStarted = true;
+                              });
+                            },
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Choosing a currency different from your bank account currency can imply conversion expenses.',
+                      'All payouts and earnings are processed in Canadian Dollars (CAD).',
                       style: TextStyle(color: GtColors.textSecondary, fontSize: 12),
                     ),
                     const SizedBox(height: 12),

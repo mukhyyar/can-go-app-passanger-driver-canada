@@ -76,27 +76,12 @@ class AppState extends ChangeNotifier {
   String locationField = 'from'; // from | to
 
   String language = 'English';
-  String currency = 'US\$';
+  String currency = 'CAD';
   String distanceUnit = 'km';
   bool notificationsEnabled = true;
 
-  /// Short code for menu rows (e.g. USD instead of US$).
-  String get currencyCode {
-    switch (currency) {
-      case 'US\$':
-        return 'USD';
-      case 'CAD\$':
-        return 'CAD';
-      case 'EUR€':
-        return 'EUR';
-      case 'GBP£':
-        return 'GBP';
-      case 'AED':
-        return 'AED';
-      default:
-        return currency.replaceAll(RegExp(r'[^\w]'), '');
-    }
-  }
+  /// Short code for menu rows (CAD only).
+  String get currencyCode => 'CAD';
 
   int get completedRideCount =>
       repo.rides.where((r) => r.status == RideStatus.past).length;
@@ -755,7 +740,7 @@ class AppState extends ChangeNotifier {
           shortId: raw['shortId']?.toString() ?? existing?.shortId,
           createdAtLabel: existing?.createdAtLabel,
           viewCount: (raw['viewCount'] as num?)?.toInt() ?? existing?.viewCount,
-          currency: raw['currency']?.toString() ?? existing?.currency,
+          currency: raw['currency']?.toString() ?? existing?.currency ?? 'CAD',
         );
       }
 
@@ -1611,7 +1596,7 @@ class AppState extends ChangeNotifier {
   }
 
   void setCurrency(String value) {
-    currency = value;
+    currency = 'CAD';
     notifyListeners();
   }
 
@@ -1746,6 +1731,7 @@ class AppState extends ChangeNotifier {
       toLat: needsDropoff ? dropoff.lat : null,
       toLng: needsDropoff ? dropoff.lng : null,
       vehicleClass: vehicleClassIds.first,
+      currency: 'CAD',
       hours: hours,
     );
 
@@ -1764,6 +1750,7 @@ class AppState extends ChangeNotifier {
       fromLng: pickup.lng,
       toLat: needsDropoff ? dropoff.lat : null,
       toLng: needsDropoff ? dropoff.lng : null,
+      currency: 'CAD',
       pickupAt: pickupAt,
       vehicleClassIds: vehicleClassIds.toList(),
       adults: adults,

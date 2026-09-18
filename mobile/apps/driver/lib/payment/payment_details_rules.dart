@@ -20,9 +20,6 @@ const kBillingPeriodOptions = <PaymentOption>[
 
 const kCurrencyOptions = <PaymentOption>[
   PaymentOption(value: 'CAD', label: 'CAD — Canadian dollar'),
-  PaymentOption(value: 'USD', label: 'USD — US dollar'),
-  PaymentOption(value: 'EUR', label: 'EUR — Euro'),
-  PaymentOption(value: 'GBP', label: 'GBP — British pound'),
 ];
 
 const kBankCountryOptions = <PaymentOption>[

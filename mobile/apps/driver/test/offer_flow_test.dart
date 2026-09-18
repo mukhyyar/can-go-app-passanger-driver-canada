@@ -6,8 +6,8 @@ import 'package:driver/offer/offer_helpers.dart';
 
 void main() {
   group('MoneyFormat', () {
-    test('formats USD without hardcoding amounts', () {
-      expect(MoneyFormat.format(95, 'USD'), 'US\$95');
+    test('formats CAD without hardcoding amounts', () {
+      expect(MoneyFormat.format(95, 'CAD'), 'CA\$95');
       expect(MoneyFormat.formatFlexible(12.5, 'CAD'), 'CA\$12.50');
     });
   });
@@ -46,7 +46,7 @@ void main() {
         'returnAt': '2026-10-02T11:00:00.000Z',
         'isRoundTrip': true,
         'adults': 2,
-        'currency': 'USD',
+        'currency': 'CAD',
         'vehicleClassIds': ['Economy'],
         'signage': 'John',
         'requiredOptions': ['name_sign'],
@@ -84,7 +84,7 @@ void main() {
         'pickupAt': '2026-09-28T20:30:00.000Z',
         'isRoundTrip': false,
         'adults': 1,
-        'currency': 'USD',
+        'currency': 'CAD',
         'vehicleClassIds': ['Van'],
         'priceSnapshot': {
           'distanceKm': 36,
@@ -107,7 +107,7 @@ void main() {
         'pickupAt': '2026-09-28T20:30:00.000Z',
         'isRoundTrip': false,
         'adults': 2,
-        'currency': 'USD',
+        'currency': 'CAD',
         'vehicleClassIds': ['Economy'],
         'myOffers': [
           {
@@ -115,7 +115,7 @@ void main() {
             'status': 'ACTIVE',
             'bidAmount': '50',
             'outboundPrice': '50',
-            'currency': 'USD',
+            'currency': 'CAD',
             'validForSeconds': '1800',
           },
         ],

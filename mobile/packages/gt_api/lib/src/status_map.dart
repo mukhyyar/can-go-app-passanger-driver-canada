@@ -176,7 +176,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
   final currencyRaw = breakdownMap?['currency'] ??
       json['currency'] ??
       snapMap?['currency'] ??
-      'USD';
+      'CAD';
   final currency = currencyRaw.toString().toUpperCase();
 
   double price = _asDouble(pres['passengerTotal']);
@@ -404,7 +404,7 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
                   : null)
               ?.toString() ??
           json['currency']?.toString() ??
-          'USD',
+          'CAD',
       rating: 0,
       ratingCount: 0,
       rides: 0,
@@ -689,7 +689,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     fromLng: asDouble(json['fromLng']),
     toLat: asDouble(json['toLat']),
     toLng: asDouble(json['toLng']),
-    currency: json['currency']?.toString() ?? 'USD',
+    currency: json['currency']?.toString() ?? 'CAD',
     isRoundTrip: isRoundTrip,
     pickupWaitMin: pickupWait,
     returnWaitMin: returnWait,

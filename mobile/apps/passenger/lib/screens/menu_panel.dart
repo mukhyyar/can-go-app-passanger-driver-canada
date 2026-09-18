@@ -273,22 +273,18 @@ class _MenuPanelState extends State<MenuPanel>
   }
 
   Future<void> _pickCurrency(BuildContext context, AppState state) async {
-    const currencies = ['US\$', 'CAD\$', 'EUR€', 'GBP£', 'AED'];
     final selected = await showGtSheet<String>(
       context: context,
       child: ListView(
         shrinkWrap: true,
-        children: currencies
-            .map(
-              (c) => ListTile(
-                title: Text(c),
-                trailing: state.currency == c
-                    ? const Icon(Icons.check, color: GtColors.brand)
-                    : null,
-                onTap: () => Navigator.pop(context, c),
-              ),
-            )
-            .toList(),
+        children: [
+          ListTile(
+            title: const Text('CAD — Canadian Dollar (C\$)'),
+            subtitle: const Text('All rides and fares are processed in CAD'),
+            trailing: const Icon(Icons.check, color: GtColors.brand),
+            onTap: () => Navigator.pop(context, 'CAD'),
+          ),
+        ],
       ),
     );
     if (selected != null) state.setCurrency(selected);

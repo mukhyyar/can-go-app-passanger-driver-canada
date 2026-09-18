@@ -6,6 +6,7 @@ import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
+import '../offer/offer_helpers.dart';
 import '../state/app_state.dart';
 import 'brand_chrome.dart';
 
@@ -477,7 +478,7 @@ class _RequestCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  'Your offer: US\$${request.offerPrice!.toStringAsFixed(0)}',
+                  'Your offer: ${MoneyFormat.formatFlexible(request.offerPrice!, request.currency)}',
                   style: const TextStyle(
                     color: GtColors.brand,
                     fontWeight: FontWeight.w800,

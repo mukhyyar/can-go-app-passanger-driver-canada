@@ -555,7 +555,7 @@ class _PageAvailability extends StatelessWidget {
                         Expanded(
                           child: _OfferTile(
                             name: 'Mercedes-Benz S-Class',
-                            price: 'US\$51',
+                            price: 'CA\$51',
                             rating: '4.5',
                             reviews: '10k+',
                             accent: true,
@@ -565,7 +565,7 @@ class _PageAvailability extends StatelessWidget {
                         Expanded(
                           child: _OfferTile(
                             name: 'BMW 7 Series',
-                            price: 'US\$68',
+                            price: 'CA\$68',
                             rating: '4.7',
                             reviews: '8.2k',
                           ),
@@ -574,7 +574,7 @@ class _PageAvailability extends StatelessWidget {
                         Expanded(
                           child: _OfferTile(
                             name: 'Audi A8 L',
-                            price: 'US\$59',
+                            price: 'CA\$59',
                             rating: '4.6',
                             reviews: '6.1k',
                           ),

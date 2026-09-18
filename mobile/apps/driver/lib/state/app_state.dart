@@ -986,7 +986,7 @@ class AppState extends ChangeNotifier {
   }) async {
     final result = await api.driver.withdrawWallet(
       amount: amount,
-      currency: currency,
+      currency: currency ?? 'CAD',
       idempotencyKey: idempotencyKey,
     );
     await loadWallet();
@@ -2012,7 +2012,7 @@ class AppState extends ChangeNotifier {
             vehicleId: draft.vehicleId ?? primaryVehicleId,
             validForSeconds: draft.validForSeconds ?? 30 * 60,
             selectedOptions: draft.selectedOptions.toList(),
-            currency: currency,
+            currency: currency ?? 'CAD',
             idempotencyKey: idem,
           );
         }
