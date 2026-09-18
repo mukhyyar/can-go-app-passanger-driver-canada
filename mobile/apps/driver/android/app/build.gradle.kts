@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.gettransfer.driver"
+    namespace = "com.canride.driver"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
@@ -24,17 +24,17 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.gettransfer.driver"
+        applicationId = "com.canride.driver"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         // Maps SDK for Android — set GOOGLE_MAPS_API_KEY in android/maps.properties
         // (gitignored; Flutter overwrites local.properties) or the environment.
         // Enable "Maps SDK for Android" on the key; restrict by package
-        // com.gettransfer.driver + SHA-1. Server/IP or browser/referrer-only
+        // com.canride.driver + SHA-1. Server/IP or browser/referrer-only
         // keys will not paint map tiles.
         fun loadProps(fileName: String): Properties {
             val props = Properties()

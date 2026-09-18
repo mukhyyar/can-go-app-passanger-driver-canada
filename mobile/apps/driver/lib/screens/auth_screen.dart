@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -266,7 +267,7 @@ class _AuthScreenState extends State<AuthScreen> {
         _error = e.description?.isNotEmpty == true
             ? e.description
             : 'Google sign-in failed. Check that an Android OAuth client is '
-                'registered for com.gettransfer.driver with this app’s SHA-1.';
+                'registered for com.canride.driver with this app’s SHA-1.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -298,10 +299,20 @@ class _AuthScreenState extends State<AuthScreen> {
       if (_oauthConfigLoading) {
         throw Exception('Still loading sign-in options — try again in a moment.');
       }
-      if (_oauthConfigError != null) {
-        throw Exception(
-          'Could not reach the server for Google sign-in. Check your connection and try again.',
-        );
+      if (_oauthConfigError != null || _oauthConfig == null) {
+        try {
+          final cfg = await context.read<AppState>().loadOAuthConfig();
+          if (mounted) {
+            setState(() {
+              _oauthConfig = cfg;
+              _oauthConfigError = null;
+            });
+          }
+        } catch (_) {
+          throw Exception(
+            'Could not reach the server for Google sign-in. Check your connection and try again.',
+          );
+        }
       }
       final cfg = _oauthConfig?.google;
       if (cfg == null || !cfg.enabled) {
@@ -315,13 +326,22 @@ class _AuthScreenState extends State<AuthScreen> {
       }
 
       final clientId = cfg.clientId?.trim();
-      if (clientId == null || clientId.isEmpty) {
-        throw Exception('Google sign-in is not configured on the server.');
-      }
+      const defaultServerClientId =
+          '400688849973-d3h2obnaoghc3ags7gsuo5j4a81drhr1.apps.googleusercontent.com';
+      final serverClientId = (clientId != null &&
+              clientId.isNotEmpty &&
+              !clientId.startsWith('235484342401'))
+          ? clientId
+          : defaultServerClientId;
 
       final app = context.read<AppState>();
       final signIn = GoogleSignIn.instance;
-      await signIn.initialize(serverClientId: clientId);
+      const iosClientId =
+          '400688849973-ba7bgucq57b9pd4uoq0fcinqu9j4bpqh.apps.googleusercontent.com';
+      await signIn.initialize(
+        clientId: defaultTargetPlatform == TargetPlatform.iOS ? iosClientId : null,
+        serverClientId: serverClientId,
+      );
       if (!signIn.supportsAuthenticate()) {
         throw Exception('Google sign-in is not supported on this device.');
       }
@@ -331,7 +351,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (idToken == null || idToken.isEmpty) {
         throw Exception(
           'Google did not return an ID token. Register an Android OAuth client '
-          'for com.gettransfer.driver with this app’s SHA-1.',
+          'for com.canride.driver with this app’s SHA-1.',
         );
       }
 

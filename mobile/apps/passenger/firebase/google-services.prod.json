@@ -7,6 +7,62 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:440385851908:android:87e8812c04edf4df381b51",
+        "android_client_info": {
+          "package_name": "com.canride.driver"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "400688849973-fbha0s94bbh83cu7e1808nrgidfhgk0q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.canride.driver",
+            "certificate_hash": "1d4518420b2fb887adcba6595b5e63a5bc2a0765"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApFzBmjIqDCcGm0eFp3_UFL_1IqQc0CF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:440385851908:android:a1ddebf78cf03e13381b51",
+        "android_client_info": {
+          "package_name": "com.canride.passenger"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "400688849973-d326nvm7tpaf68ic61te5ngbtqoaraf0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.canride.passenger",
+            "certificate_hash": "1d4518420b2fb887adcba6595b5e63a5bc2a0765"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApFzBmjIqDCcGm0eFp3_UFL_1IqQc0CF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:440385851908:android:a8bacf93a3d027ea381b51",
         "android_client_info": {
           "package_name": "com.gettransfer.driver"

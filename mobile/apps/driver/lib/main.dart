@@ -14,8 +14,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (!kIsWeb) {
-    await Firebase.initializeApp();
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    try {
+      await Firebase.initializeApp();
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    } catch (e) {
+      debugPrint('Firebase initialization skipped / failed: $e');
+    }
   }
 
   runApp(const DriverApp());

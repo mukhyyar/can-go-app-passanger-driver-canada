@@ -8,12 +8,10 @@ const kProdApiBaseUrl = 'https://www.can-rides.ca/api';
 
 /// Nest API base for Flutter clients.
 ///
-/// Precedence: non-empty [kApiBaseFromEnv] → production in release/profile →
-/// localhost for debug.
+/// Precedence: non-empty [kApiBaseFromEnv] → production default (override with CANGO_API_BASE).
 String resolveApiBaseUrl() {
   if (kApiBaseFromEnv.isNotEmpty) return kApiBaseFromEnv;
-  if (kReleaseMode) return kProdApiBaseUrl;
-  return kLocalApiBaseUrl;
+  return kProdApiBaseUrl;
 }
 
 /// Same as [resolveApiBaseUrl] without a trailing slash.

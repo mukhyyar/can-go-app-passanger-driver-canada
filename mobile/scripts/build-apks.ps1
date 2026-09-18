@@ -99,5 +99,5 @@ if ($InstallLive) {
     Write-Host "Installing live APKs on $dev ..."
     & $adb -s $dev install -r (Join-Path $OutDir "can-go-passenger-live.apk")
     & $adb -s $dev install -r (Join-Path $OutDir "can-go-driver-live.apk")
-    & $adb -s $dev shell monkey -p com.gettransfer.passenger -c android.intent.category.LAUNCHER 1
+    & $adb -s $dev shell monkey -p com.canride.passenger -c android.intent.category.LAUNCHER 1
 }
