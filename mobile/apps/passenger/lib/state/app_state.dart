@@ -55,7 +55,9 @@ class AppState extends ChangeNotifier {
   Place? from;
   Place? to;
   /// Multi-select vehicle classes on Book (ride).
-  Set<String> vehicleClassIds = {MockData.vehicleClasses.first.id};
+  /// All classes checked to maximize driver offers.
+  Set<String> vehicleClassIds =
+      MockData.vehicleClasses.map((v) => v.id).toSet();
   int adults = 1;
   ChildSeats childSeats = const ChildSeats();
   String flight = '';
@@ -1423,17 +1425,14 @@ class AppState extends ChangeNotifier {
   }
 
   void setVehicleClass(String id) {
-    vehicleClassIds = {id};
+    // All vehicle classes remain selected so drivers of any class can offer.
+    vehicleClassIds = MockData.vehicleClasses.map((v) => v.id).toSet();
     notifyListeners();
   }
 
   void toggleVehicleClass(String id) {
-    if (vehicleClassIds.contains(id)) {
-      if (vehicleClassIds.length <= 1) return; // keep at least one
-      vehicleClassIds = {...vehicleClassIds}..remove(id);
-    } else {
-      vehicleClassIds = {...vehicleClassIds, id};
-    }
+    // All vehicle classes remain selected so drivers of any class can offer.
+    vehicleClassIds = MockData.vehicleClasses.map((v) => v.id).toSet();
     notifyListeners();
   }
 

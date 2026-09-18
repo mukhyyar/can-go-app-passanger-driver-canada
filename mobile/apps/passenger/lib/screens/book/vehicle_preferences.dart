@@ -31,7 +31,7 @@ class VehiclePreferences extends StatelessWidget {
                 )
               : null;
           return InkWell(
-            onTap: () => state.toggleVehicleClass(vc.id),
+            onTap: null,
             borderRadius: BorderRadius.circular(12),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),

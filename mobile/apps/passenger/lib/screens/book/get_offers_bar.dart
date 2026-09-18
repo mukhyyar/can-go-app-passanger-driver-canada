@@ -33,8 +33,12 @@ class GetOffersBar extends StatelessWidget {
           .map((v) => v.name)
           .toList();
       if (names.isNotEmpty) {
-        final shown = names.take(2).join(', ');
-        parts.add(names.length > 2 ? '$shown…' : shown);
+        if (names.length == MockData.vehicleClasses.length) {
+          parts.add('All classes');
+        } else {
+          final shown = names.take(2).join(', ');
+          parts.add(names.length > 2 ? '$shown…' : shown);
+        }
       }
     }
     return parts.join(' · ');
