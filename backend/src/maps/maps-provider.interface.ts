@@ -29,11 +29,23 @@ export type RouteGeometry = {
   coordinates: [number, number][];
 };
 
+export type RouteOption = {
+  id: string;
+  summary: string;
+  distanceKm: number;
+  durationMin: number;
+  geometry: RouteGeometry;
+  overviewPolyline?: string;
+  isFastest?: boolean;
+};
+
 export type RouteResult = {
   distanceKm: number;
   durationMin: number;
   provider: string;
   geometry?: RouteGeometry;
+  overviewPolyline?: string;
+  routes?: RouteOption[];
 };
 
 export interface MapsProvider {

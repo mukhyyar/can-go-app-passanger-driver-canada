@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
+import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/services/ride_realtime.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1381,13 +1381,50 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<GtRouteOption> availableRoutes = const [];
+  int selectedRouteIndex = 0;
+
+  GtRouteOption? get selectedRoute =>
+      availableRoutes.isNotEmpty && selectedRouteIndex < availableRoutes.length
+          ? availableRoutes[selectedRouteIndex]
+          : null;
+
+  void setAvailableRoutes(List<GtRouteOption> routes) {
+    availableRoutes = routes;
+    if (selectedRouteIndex >= routes.length) {
+      selectedRouteIndex = 0;
+    }
+    notifyListeners();
+  }
+
+  void selectRoute(GtRouteOption route) {
+    final idx = availableRoutes.indexWhere((r) => r.id == route.id);
+    if (idx >= 0 && idx != selectedRouteIndex) {
+      selectedRouteIndex = idx;
+      notifyListeners();
+    }
+  }
+
+  void selectRouteIndex(int index) {
+    if (index >= 0 &&
+        index < availableRoutes.length &&
+        index != selectedRouteIndex) {
+      selectedRouteIndex = index;
+      notifyListeners();
+    }
+  }
+
   void setFrom(Place? place) {
     from = place;
+    availableRoutes = const [];
+    selectedRouteIndex = 0;
     notifyListeners();
   }
 
   void setTo(Place? place) {
     to = place;
+    availableRoutes = const [];
+    selectedRouteIndex = 0;
     notifyListeners();
   }
 
@@ -1395,6 +1432,8 @@ class AppState extends ChangeNotifier {
     final tmp = from;
     from = to;
     to = tmp;
+    availableRoutes = const [];
+    selectedRouteIndex = 0;
     notifyListeners();
   }
 

@@ -49,6 +49,10 @@ Widget buildGoogleMapEmbed({
   required double fromLng,
   double? toLat,
   double? toLng,
+  dynamic onRouteSelected,
+  dynamic onRoutesLoaded,
+  bool enableRouteSelection = true,
+  int initialRouteIndex = 0,
 }) {
   final hasRoute = toLat != null && toLng != null;
   final viewType =

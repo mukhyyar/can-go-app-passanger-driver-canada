@@ -4,16 +4,15 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import 'google_route_map.dart';
 import 'route_path.dart';
 import 'theme.dart';
 
 const _apiBaseFromEnv = String.fromEnvironment('CANGO_API_BASE');
-const _localApiBase = 'http://127.0.0.1:4000/api';
 const _prodApiBase = 'https://www.can-rides.ca/api';
 
 /// Logical size of A/B circle pin bitmaps.
@@ -32,9 +31,7 @@ Duration _carAnimDurationFor(double totalMeters) {
 }
 
 String get _normalizedApiBase {
-  final raw = _apiBaseFromEnv.isNotEmpty
-      ? _apiBaseFromEnv
-      : (kReleaseMode ? _prodApiBase : _localApiBase);
+  final raw = _apiBaseFromEnv.isNotEmpty ? _apiBaseFromEnv : _prodApiBase;
   return raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
 }
 
@@ -44,12 +41,20 @@ Widget buildGoogleMapEmbed({
   required double fromLng,
   double? toLat,
   double? toLng,
+  ValueChanged<GtRouteOption>? onRouteSelected,
+  ValueChanged<List<GtRouteOption>>? onRoutesLoaded,
+  bool enableRouteSelection = true,
+  int initialRouteIndex = 0,
 }) {
   return _NativeRouteMap(
     fromLat: fromLat,
     fromLng: fromLng,
     toLat: toLat,
     toLng: toLng,
+    onRouteSelected: onRouteSelected,
+    onRoutesLoaded: onRoutesLoaded,
+    enableRouteSelection: enableRouteSelection,
+    initialRouteIndex: initialRouteIndex,
   );
 }
 
@@ -59,12 +64,20 @@ class _NativeRouteMap extends StatefulWidget {
     required this.fromLng,
     this.toLat,
     this.toLng,
+    this.onRouteSelected,
+    this.onRoutesLoaded,
+    this.enableRouteSelection = true,
+    this.initialRouteIndex = 0,
   });
 
   final double fromLat;
   final double fromLng;
   final double? toLat;
   final double? toLng;
+  final ValueChanged<GtRouteOption>? onRouteSelected;
+  final ValueChanged<List<GtRouteOption>>? onRoutesLoaded;
+  final bool enableRouteSelection;
+  final int initialRouteIndex;
 
   @override
   State<_NativeRouteMap> createState() => _NativeRouteMapState();
@@ -89,9 +102,13 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   LatLng? get _to =>
       _hasRoute ? LatLng(widget.toLat!, widget.toLng!) : null;
 
+  List<GtRouteOption> _routes = const [];
+  int _selectedRouteIndex = 0;
+
   @override
   void initState() {
     super.initState();
+    _selectedRouteIndex = widget.initialRouteIndex;
     _carCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -122,11 +139,10 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     final dpr = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
     final displayW = kCanRideCarMarkerWidth * dpr;
     final displayH = kCanRideCarMarkerHeight * dpr;
-    final canvasLogical =
-        math.sqrt(
-          kCanRideCarMarkerWidth * kCanRideCarMarkerWidth +
-              kCanRideCarMarkerHeight * kCanRideCarMarkerHeight,
-        );
+    final canvasLogical = math.sqrt(
+      kCanRideCarMarkerWidth * kCanRideCarMarkerWidth +
+          kCanRideCarMarkerHeight * kCanRideCarMarkerHeight,
+    );
     final canvasSize = (canvasLogical * dpr).ceilToDouble();
 
     final data = await rootBundle.load(
@@ -218,6 +234,8 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
         oldWidget.toLat != widget.toLat ||
         oldWidget.toLng != widget.toLng) {
       _fitted = false;
+      _routes = const [];
+      _selectedRouteIndex = widget.initialRouteIndex;
       _routePoints = const [];
       _stopCar();
       if (_hasRoute) {
@@ -226,6 +244,11 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
         setState(() {});
         _fitBounds();
       }
+    } else if (oldWidget.initialRouteIndex != widget.initialRouteIndex &&
+        widget.initialRouteIndex >= 0 &&
+        widget.initialRouteIndex < _routes.length &&
+        widget.initialRouteIndex != _selectedRouteIndex) {
+      _selectRoute(widget.initialRouteIndex);
     }
   }
 
@@ -285,12 +308,30 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       ..repeat();
   }
 
+  void _selectRoute(int index) {
+    if (index < 0 || index >= _routes.length || index == _selectedRouteIndex) {
+      return;
+    }
+    final selected = _routes[index];
+    final pts = selected.points.cast<LatLng>();
+    setState(() {
+      _selectedRouteIndex = index;
+      _routePoints = pts;
+    });
+    _startCar(pts);
+    widget.onRouteSelected?.call(selected);
+  }
+
   Future<void> _loadRoute() async {
     final to = _to;
     if (to == null) return;
+    List<GtRouteOption> loadedRoutes = const [];
+
+    // 1. Primary: Try backend route endpoint
     try {
       final uri = Uri.parse('$_normalizedApiBase/maps/route');
       final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 4);
       final req = await client.postUrl(uri);
       req.headers.contentType = ContentType.json;
       req.write(
@@ -301,27 +342,185 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
           'toLng': widget.toLng,
         }),
       );
-      final res = await req.close();
+      final res = await req.close().timeout(const Duration(seconds: 5));
       final body = await res.transform(utf8.decoder).join();
       client.close(force: true);
 
-      var points = _parseRoutePoints(body);
-      if (points.isEmpty) {
-        points = [_from, to];
-      }
-      if (!mounted) return;
-      setState(() => _routePoints = points);
-      _startCar(points);
-      _fitBounds(extra: points);
+      loadedRoutes = _parseRoutesFromBody(body);
     } catch (_) {
-      if (!mounted) return;
-      final fallback = [_from, if (_to != null) _to!];
-      if (fallback.length >= 2) {
-        setState(() => _routePoints = fallback);
-        _startCar(fallback);
-      }
-      _fitBounds();
+      // Backend failed or unreachable
     }
+
+    // 2. Resilient fallback: Direct OSRM driving engine
+    if (loadedRoutes.isEmpty) {
+      try {
+        loadedRoutes = await _fetchOsrmRoute(
+          widget.fromLat,
+          widget.fromLng,
+          widget.toLat!,
+          widget.toLng!,
+        );
+      } catch (_) {
+        // Fallback below
+      }
+    }
+
+    // 3. Fallback: Straight-line between from and to if everything failed
+    if (loadedRoutes.isEmpty) {
+      final pts = [_from, to];
+      loadedRoutes = [
+        GtRouteOption(
+          id: 'fallback_0',
+          summary: 'Direct route',
+          distanceKm: 0,
+          durationMin: 0,
+          points: pts,
+          isFastest: true,
+        ),
+      ];
+    }
+
+    if (!mounted) return;
+    final selectedIdx = widget.initialRouteIndex
+        .clamp(0, math.max(0, loadedRoutes.length - 1))
+        .toInt();
+    final activePoints = loadedRoutes[selectedIdx].points.cast<LatLng>();
+
+    setState(() {
+      _routes = loadedRoutes;
+      _selectedRouteIndex = selectedIdx;
+      _routePoints = activePoints;
+    });
+
+    widget.onRoutesLoaded?.call(loadedRoutes);
+    widget.onRouteSelected?.call(loadedRoutes[selectedIdx]);
+
+    _startCar(activePoints);
+    _fitBounds(extra: activePoints);
+  }
+
+  Future<List<GtRouteOption>> _fetchOsrmRoute(
+    double fromLat,
+    double fromLng,
+    double toLat,
+    double toLng,
+  ) async {
+    final uri = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/$fromLng,$fromLat;$toLng,$toLat?overview=full&geometries=geojson&alternatives=true',
+    );
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 4);
+    final req = await client.getUrl(uri);
+    final res = await req.close().timeout(const Duration(seconds: 5));
+    final body = await res.transform(utf8.decoder).join();
+    client.close(force: true);
+
+    final data = jsonDecode(body);
+    if (data is! Map || data['code'] != 'Ok' || data['routes'] is! List) {
+      return const [];
+    }
+
+    final out = <GtRouteOption>[];
+    final list = data['routes'] as List;
+    for (var i = 0; i < list.length; i++) {
+      final r = list[i];
+      if (r is! Map) continue;
+      final geom = r['geometry'];
+      if (geom is! Map || geom['coordinates'] is! List) continue;
+      final coords = <LatLng>[];
+      for (final c in geom['coordinates'] as List) {
+        if (c is List && c.length >= 2) {
+          coords.add(LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()));
+        }
+      }
+      if (coords.length < 2) continue;
+      final distMeters = (r['distance'] as num?)?.toDouble() ?? 0;
+      final durSec = (r['duration'] as num?)?.toDouble() ?? 0;
+      final distKm = (distMeters / 1000 * 10).round() / 10;
+      final durMin = (durSec / 60).round().clamp(1, 999);
+      final legs = r['legs'] as List?;
+      final legSummary = (legs != null && legs.isNotEmpty && legs[0] is Map)
+          ? legs[0]['summary']?.toString().trim()
+          : null;
+      final summary = (legSummary != null && legSummary.isNotEmpty)
+          ? (i == 0 ? 'Via $legSummary (Fastest)' : 'Via $legSummary')
+          : (i == 0 ? 'Fastest route' : 'Alternative ${i + 1}');
+
+      out.add(
+        GtRouteOption(
+          id: 'osrm_$i',
+          summary: summary,
+          distanceKm: distKm,
+          durationMin: durMin,
+          points: coords,
+          isFastest: i == 0,
+        ),
+      );
+    }
+    return out;
+  }
+
+  List<GtRouteOption> _parseRoutesFromBody(String body) {
+    try {
+      final data = jsonDecode(body);
+      if (data is! Map) return const [];
+
+      // Check if backend returned multiple routes
+      if (data['routes'] is List && (data['routes'] as List).isNotEmpty) {
+        final out = <GtRouteOption>[];
+        final list = data['routes'] as List;
+        for (var i = 0; i < list.length; i++) {
+          final r = list[i];
+          if (r is! Map) continue;
+          List<LatLng> coords = const [];
+          final geom = r['geometry'];
+          if (geom is Map && geom['coordinates'] is List) {
+            final pts = <LatLng>[];
+            for (final c in geom['coordinates'] as List) {
+              if (c is List && c.length >= 2) {
+                pts.add(
+                  LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()),
+                );
+              }
+            }
+            coords = pts;
+          }
+          if (coords.isEmpty && r['overviewPolyline'] is String) {
+            coords = _decodePolyline(r['overviewPolyline'] as String);
+          }
+          if (coords.length < 2) continue;
+          out.add(
+            GtRouteOption(
+              id: r['id']?.toString() ?? 'route_$i',
+              summary:
+                  r['summary']?.toString() ??
+                  (i == 0 ? 'Fastest route' : 'Alternative ${i + 1}'),
+              distanceKm: (r['distanceKm'] as num?)?.toDouble() ?? 0,
+              durationMin: (r['durationMin'] as num?)?.toInt() ?? 0,
+              points: coords,
+              isFastest: r['isFastest'] == true || i == 0,
+            ),
+          );
+        }
+        if (out.isNotEmpty) return out;
+      }
+
+      // Legacy single route format
+      final pts = _parseRoutePoints(body);
+      if (pts.length >= 2) {
+        return [
+          GtRouteOption(
+            id: 'route_0',
+            summary: 'Primary route',
+            distanceKm: (data['distanceKm'] as num?)?.toDouble() ?? 0,
+            durationMin: (data['durationMin'] as num?)?.toInt() ?? 0,
+            points: pts,
+            isFastest: true,
+          ),
+        ];
+      }
+    } catch (_) {}
+    return const [];
   }
 
   List<LatLng> _parseRoutePoints(String body) {
@@ -451,31 +650,145 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   }
 
   Set<Polyline> get _polylines {
-    if (_routePoints.length < 2) return {};
-    return {
+    if (_routes.isEmpty) {
+      if (_routePoints.length < 2) return {};
+      return {
+        Polyline(
+          polylineId: const PolylineId('route_primary'),
+          points: _routePoints,
+          color: GtColors.brand,
+          width: 5,
+        ),
+      };
+    }
+    final polylines = <Polyline>{};
+    // Draw unselected alternative routes first so the selected route renders on top
+    for (var i = 0; i < _routes.length; i++) {
+      if (i == _selectedRouteIndex) continue;
+      final route = _routes[i];
+      final pts = route.points.cast<LatLng>();
+      polylines.add(
+        Polyline(
+          polylineId: PolylineId('route_alt_$i'),
+          points: pts,
+          color: const Color(0xFF8E8E93).withValues(alpha: 0.85),
+          width: 4,
+          zIndex: 1,
+          consumeTapEvents: widget.enableRouteSelection,
+          onTap: widget.enableRouteSelection ? () => _selectRoute(i) : null,
+        ),
+      );
+    }
+    // Draw selected active route
+    final selected = _routes[_selectedRouteIndex];
+    polylines.add(
       Polyline(
-        polylineId: const PolylineId('route'),
-        points: _routePoints,
+        polylineId: PolylineId('route_selected_$_selectedRouteIndex'),
+        points: selected.points.cast<LatLng>(),
         color: GtColors.brand,
         width: 5,
+        zIndex: 3,
+        consumeTapEvents: true,
       ),
-    };
+    );
+    return polylines;
   }
 
   @override
   Widget build(BuildContext context) {
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(target: _from, zoom: 13),
-      markers: _markers,
-      polylines: _polylines,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: false,
-      onMapCreated: (c) {
-        _map = c;
-        if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
-      },
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GoogleMap(
+          initialCameraPosition: CameraPosition(target: _from, zoom: 13),
+          markers: _markers,
+          polylines: _polylines,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+          compassEnabled: false,
+          onMapCreated: (c) {
+            _map = c;
+            if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
+          },
+        ),
+        if (widget.enableRouteSelection && _routes.length > 1)
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 48,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: List.generate(_routes.length, (i) {
+                  final r = _routes[i];
+                  final isSelected = i == _selectedRouteIndex;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _selectRoute(i),
+                        borderRadius: BorderRadius.circular(16),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? GtColors.brand
+                                : Colors.white.withValues(alpha: 0.95),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected
+                                  ? GtColors.brand
+                                  : const Color(0xFFD1D1D6),
+                              width: 1.5,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x22000000),
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isSelected ? Icons.check_circle : Icons.alt_route,
+                                size: 14,
+                                color: isSelected
+                                    ? Colors.white
+                                    : GtColors.textSecondary,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                '${r.summary} • ${r.durationMin} min (${r.distanceKm} km)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : GtColors.text,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

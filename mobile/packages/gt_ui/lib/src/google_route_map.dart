@@ -3,6 +3,25 @@ import 'theme.dart';
 import 'google_route_map_impl.dart'
     if (dart.library.html) 'google_route_map_web.dart' as map_impl;
 
+/// Structured route option representing a driving directions alternative.
+class GtRouteOption {
+  const GtRouteOption({
+    required this.id,
+    required this.summary,
+    required this.distanceKm,
+    required this.durationMin,
+    this.points = const [],
+    this.isFastest = false,
+  });
+
+  final String id;
+  final String summary;
+  final double distanceKm;
+  final int durationMin;
+  final List<dynamic> points;
+  final bool isFastest;
+}
+
 /// Google Maps directions preview (A → B) with optional distance badge.
 class GtGoogleRouteMap extends StatelessWidget {
   const GtGoogleRouteMap({
@@ -15,6 +34,10 @@ class GtGoogleRouteMap extends StatelessWidget {
     this.toLabel,
     this.distanceLabel,
     this.height = 220,
+    this.onRouteSelected,
+    this.onRoutesLoaded,
+    this.enableRouteSelection = true,
+    this.initialRouteIndex = 0,
   });
 
   final double fromLat;
@@ -25,6 +48,10 @@ class GtGoogleRouteMap extends StatelessWidget {
   final String? toLabel;
   final String? distanceLabel;
   final double height;
+  final ValueChanged<GtRouteOption>? onRouteSelected;
+  final ValueChanged<List<GtRouteOption>>? onRoutesLoaded;
+  final bool enableRouteSelection;
+  final int initialRouteIndex;
 
   bool get _hasRoute =>
       toLat != null && toLng != null && toLabel != null && toLabel!.isNotEmpty;
@@ -43,6 +70,10 @@ class GtGoogleRouteMap extends StatelessWidget {
             fromLng: fromLng,
             toLat: _hasRoute ? toLat : null,
             toLng: _hasRoute ? toLng : null,
+            onRouteSelected: onRouteSelected,
+            onRoutesLoaded: onRoutesLoaded,
+            enableRouteSelection: enableRouteSelection,
+            initialRouteIndex: initialRouteIndex,
           ),
           Positioned(
             left: 10,

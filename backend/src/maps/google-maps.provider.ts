@@ -8,6 +8,7 @@ import type {
   MapsProvider,
   PlaceSuggestion,
   PlacesSearchOpts,
+  RouteOption,
   RouteResult,
 } from './maps-provider.interface';
 import { decodeGooglePolyline } from './polyline';
@@ -384,35 +385,144 @@ export class GoogleMapsProvider implements MapsProvider {
     from: { lat: number; lng: number },
     to: { lat: number; lng: number },
   ): Promise<RouteResult> {
-    this.assertKey();
-    const uri = new URL(
-      'https://maps.googleapis.com/maps/api/directions/json',
-    );
-    uri.searchParams.set('origin', `${from.lat},${from.lng}`);
-    uri.searchParams.set('destination', `${to.lat},${to.lng}`);
-    uri.searchParams.set('mode', 'driving');
-    uri.searchParams.set('key', this.key!);
-    const res = await fetch(uri);
-    const data = (await res.json()) as {
-      routes?: Array<{
-        overview_polyline?: { points?: string };
-        legs?: Array<{
-          distance?: { value: number };
-          duration?: { value: number };
+    if (this.key) {
+      try {
+        const uri = new URL(
+          'https://maps.googleapis.com/maps/api/directions/json',
+        );
+        uri.searchParams.set('origin', `${from.lat},${from.lng}`);
+        uri.searchParams.set('destination', `${to.lat},${to.lng}`);
+        uri.searchParams.set('mode', 'driving');
+        uri.searchParams.set('alternatives', 'true');
+        uri.searchParams.set('key', this.key);
+        const res = await fetch(uri);
+        const data = (await res.json()) as {
+          status?: string;
+          routes?: Array<{
+            summary?: string;
+            overview_polyline?: { points?: string };
+            legs?: Array<{
+              distance?: { value: number };
+              duration?: { value: number };
+            }>;
+          }>;
+        };
+        if (data.routes && data.routes.length > 0) {
+          const parsedRoutes: RouteOption[] = [];
+          for (let i = 0; i < data.routes.length; i++) {
+            const r = data.routes[i];
+            const leg = r.legs?.[0];
+            const encoded = r.overview_polyline?.points;
+            const coords = encoded ? decodeGooglePolyline(encoded) : [];
+            if (coords.length > 0) {
+              parsedRoutes.push({
+                id: `route-${i}`,
+                summary:
+                  r.summary?.trim() ||
+                  (i === 0 ? 'Fastest route' : `Alternative ${i + 1}`),
+                distanceKm: leg?.distance
+                  ? Math.round((leg.distance.value / 1000) * 10) / 10
+                  : 0,
+                durationMin: leg?.duration
+                  ? Math.max(1, Math.round(leg.duration.value / 60))
+                  : 0,
+                geometry: { type: 'LineString', coordinates: coords },
+                overviewPolyline: encoded,
+                isFastest: i === 0,
+              });
+            }
+          }
+          if (parsedRoutes.length > 0) {
+            const primary = parsedRoutes[0];
+            return {
+              distanceKm: primary.distanceKm,
+              durationMin: primary.durationMin,
+              provider: 'google',
+              geometry: primary.geometry,
+              overviewPolyline: primary.overviewPolyline,
+              routes: parsedRoutes,
+            };
+          }
+        }
+      } catch (_) {
+        // Fall back to OSRM on any Google error or rejection
+      }
+    }
+
+    // Resilient fallback: OSRM driving engine
+    return this.fallbackOsrmRoute(from, to);
+  }
+
+  private async fallbackOsrmRoute(
+    from: { lat: number; lng: number },
+    to: { lat: number; lng: number },
+  ): Promise<RouteResult> {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&alternatives=true`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const data = (await res.json()) as {
+        code?: string;
+        routes?: Array<{
+          distance: number;
+          duration: number;
+          geometry?: { coordinates: [number, number][] };
+          legs?: Array<{ summary?: string }>;
         }>;
-      }>;
-    };
-    const route = data.routes?.[0];
-    const leg = route?.legs?.[0];
-    const encoded = route?.overview_polyline?.points;
-    const coordinates = encoded ? decodeGooglePolyline(encoded) : undefined;
+      };
+
+      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        const parsedRoutes: RouteOption[] = data.routes
+          .filter(
+            (r) =>
+              r.geometry?.coordinates && r.geometry.coordinates.length > 0,
+          )
+          .map((r, i) => {
+            const leg = r.legs?.[0];
+            const distKm = Math.round((r.distance / 1000) * 10) / 10;
+            const durMin = Math.max(1, Math.round(r.duration / 60));
+            const name =
+              leg?.summary?.trim() ||
+              (i === 0 ? 'Fastest route' : `Alternative ${i + 1}`);
+            return {
+              id: `osrm-${i}`,
+              summary: name,
+              distanceKm: distKm,
+              durationMin: durMin,
+              geometry: {
+                type: 'LineString' as const,
+                coordinates: r.geometry!.coordinates,
+              },
+              isFastest: i === 0,
+            };
+          });
+
+        if (parsedRoutes.length > 0) {
+          const primary = parsedRoutes[0];
+          return {
+            distanceKm: primary.distanceKm,
+            durationMin: primary.durationMin,
+            provider: 'osrm',
+            geometry: primary.geometry,
+            routes: parsedRoutes,
+          };
+        }
+      }
+    } catch (_) {
+      // Fallback below
+    }
+
+    // Straight-line fallback
     return {
-      distanceKm: leg?.distance ? leg.distance.value / 1000 : 0,
-      durationMin: leg?.duration ? leg.duration.value / 60 : 0,
-      provider: this.name,
-      geometry: coordinates?.length
-        ? { type: 'LineString', coordinates }
-        : undefined,
+      distanceKm: 0,
+      durationMin: 0,
+      provider: 'fallback',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [from.lng, from.lat],
+          [to.lng, to.lat],
+        ],
+      },
     };
   }
 }
