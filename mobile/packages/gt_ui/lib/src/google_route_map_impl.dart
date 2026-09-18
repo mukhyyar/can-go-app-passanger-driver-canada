@@ -53,6 +53,7 @@ Widget buildGoogleMapEmbed({
   bool isExpanded = false,
   GtRouteMapController? controller,
   VoidCallback? onTap,
+  String? bundleId,
   Key? key,
 }) {
   return _NativeRouteMap(
@@ -69,6 +70,7 @@ Widget buildGoogleMapEmbed({
     isExpanded: isExpanded,
     controller: controller,
     onTap: onTap,
+    bundleId: bundleId,
   );
 }
 
@@ -87,6 +89,7 @@ class _NativeRouteMap extends StatefulWidget {
     this.isExpanded = false,
     this.controller,
     this.onTap,
+    this.bundleId,
   });
 
   final double fromLat;
@@ -101,6 +104,7 @@ class _NativeRouteMap extends StatefulWidget {
   final bool isExpanded;
   final GtRouteMapController? controller;
   final VoidCallback? onTap;
+  final String? bundleId;
 
   @override
   State<_NativeRouteMap> createState() => _NativeRouteMapState();
@@ -490,17 +494,40 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
         '&alternatives=true'
         '&key=$key',
       );
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 4);
-      final req = await client.getUrl(uri);
-      req.headers.set('X-Ios-Bundle-Identifier', 'com.canride.passenger');
-      req.headers.set('X-Android-Package', 'com.canride.passenger');
-      final res = await req.close().timeout(const Duration(seconds: 5));
-      final body = await res.transform(utf8.decoder).join();
-      client.close(force: true);
+      final resolvedBundle = widget.bundleId ??
+          (Platform.resolvedExecutable.toLowerCase().contains('driver')
+              ? 'com.canride.driver'
+              : 'com.canride.passenger');
 
-      final data = jsonDecode(body);
-      if (data is! Map || data['status'] != 'OK' || data['routes'] is! List) {
+      Future<Map<String, dynamic>?> queryGoogleDirections(String bundle) async {
+        try {
+          final client = HttpClient();
+          client.connectionTimeout = const Duration(seconds: 4);
+          final req = await client.getUrl(uri);
+          req.headers.set('X-Ios-Bundle-Identifier', bundle);
+          req.headers.set('X-Android-Package', bundle);
+          final res = await req.close().timeout(const Duration(seconds: 5));
+          final body = await res.transform(utf8.decoder).join();
+          client.close(force: true);
+          final decoded = jsonDecode(body);
+          if (decoded is Map<String, dynamic>) return decoded;
+          if (decoded is Map) return decoded.cast<String, dynamic>();
+        } catch (_) {}
+        return null;
+      }
+
+      var data = await queryGoogleDirections(resolvedBundle);
+      if (data == null || data['status'] == 'REQUEST_DENIED') {
+        final altBundle = resolvedBundle == 'com.canride.driver'
+            ? 'com.canride.passenger'
+            : 'com.canride.driver';
+        final altData = await queryGoogleDirections(altBundle);
+        if (altData != null && altData['status'] == 'OK') {
+          data = altData;
+        }
+      }
+
+      if (data == null || data['status'] != 'OK' || data['routes'] is! List) {
         return const [];
       }
       final out = <GtRouteOption>[];

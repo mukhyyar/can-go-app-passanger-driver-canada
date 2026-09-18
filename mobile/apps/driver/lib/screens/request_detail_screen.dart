@@ -325,31 +325,21 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
     if (_mapFullscreen && req.fromLat != null && req.fromLng != null) {
       return Scaffold(
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: GtGoogleRouteMap(
-                fromLat: req.fromLat!,
-                fromLng: req.fromLng!,
-                fromLabel: req.from,
-                toLat: req.toLat,
-                toLng: req.toLng,
-                toLabel: req.to,
-                distanceLabel: req.distance,
-                height: MediaQuery.of(context).size.height,
-              ),
-            ),
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topRight,
-                child: IconButton.filled(
-                  style: IconButton.styleFrom(backgroundColor: Colors.white),
-                  onPressed: () => setState(() => _mapFullscreen = false),
-                  icon: const Icon(Icons.close, color: GtColors.text),
-                ),
-              ),
-            ),
-          ],
+        body: SafeArea(
+          child: GtGoogleRouteMap(
+            fromLat: req.fromLat!,
+            fromLng: req.fromLng!,
+            fromLabel: req.from,
+            toLat: req.toLat,
+            toLng: req.toLng,
+            toLabel: req.to,
+            distanceLabel: '${req.distance} · ${req.duration}',
+            height: MediaQuery.of(context).size.height,
+            canExpand: false,
+            interactive: true,
+            bundleId: 'com.canride.driver',
+            onBack: () => setState(() => _mapFullscreen = false),
+          ),
         ),
       );
     }
@@ -517,33 +507,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   ),
                   const SizedBox(height: 16),
                   if (req.fromLat != null && req.fromLng != null)
-                    Stack(
-                      children: [
-                        GtGoogleRouteMap(
-                          fromLat: req.fromLat!,
-                          fromLng: req.fromLng!,
-                          fromLabel: req.from,
-                          toLat: req.toLat,
-                          toLng: req.toLng,
-                          toLabel: req.to,
-                          distanceLabel: '${req.distance} · ${req.duration}',
-                          height: 220,
-                        ),
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: Material(
-                            color: Colors.white,
-                            shape: const CircleBorder(),
-                            elevation: 1,
-                            child: IconButton(
-                              onPressed: () =>
-                                  setState(() => _mapFullscreen = true),
-                              icon: const Icon(Icons.fullscreen, size: 20),
-                            ),
-                          ),
-                        ),
-                      ],
+                    GtGoogleRouteMap(
+                      fromLat: req.fromLat!,
+                      fromLng: req.fromLng!,
+                      fromLabel: req.from,
+                      toLat: req.toLat,
+                      toLng: req.toLng,
+                      toLabel: req.to,
+                      distanceLabel: '${req.distance} · ${req.duration}',
+                      height: 220,
+                      expandedHeight: 390,
+                      bundleId: 'com.canride.driver',
+                      onFullscreen: () =>
+                          setState(() => _mapFullscreen = true),
                     )
                   else
                     Container(

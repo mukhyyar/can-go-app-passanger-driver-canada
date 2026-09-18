@@ -52,6 +52,9 @@ class GtGoogleRouteMap extends StatefulWidget {
     this.onTap,
     this.interactive,
     this.showAddressFooter = false,
+    this.bundleId,
+    this.onFullscreen,
+    this.onBack,
   });
 
   final double fromLat;
@@ -73,6 +76,9 @@ class GtGoogleRouteMap extends StatefulWidget {
   final VoidCallback? onTap;
   final bool? interactive;
   final bool showAddressFooter;
+  final String? bundleId;
+  final VoidCallback? onFullscreen;
+  final VoidCallback? onBack;
 
   @override
   State<GtGoogleRouteMap> createState() => _GtGoogleRouteMapState();
@@ -152,6 +158,7 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
               interactive: isInteractive,
               isExpanded: isExpanded,
               controller: _mapController,
+              bundleId: widget.bundleId,
               onTap: () {
                 if (canExpand && !isExpanded) {
                   _setExpanded(true);
@@ -167,6 +174,14 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (widget.onBack != null) ...[
+                    _MapIconButton(
+                      icon: Icons.arrow_back_rounded,
+                      tooltip: 'Back',
+                      onTap: widget.onBack!,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   _Chip(
                     icon: Icons.place,
                     label: _hasRoute ? 'A → B route' : 'A · Pickup',
@@ -183,7 +198,7 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
               ),
             ),
 
-            // 3. Top-Right: Distance Badge, Recenter, Expand/Collapse Toggle
+            // 3. Top-Right: Distance Badge, Recenter, Fullscreen, Expand/Collapse Toggle
             Positioned(
               right: 10,
               top: 10,
@@ -202,6 +217,14 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
                       icon: Icons.center_focus_strong_rounded,
                       tooltip: 'Recenter route',
                       onTap: () => _mapController.recenter(),
+                    ),
+                  ],
+                  if (widget.onFullscreen != null) ...[
+                    const SizedBox(width: 6),
+                    _MapIconButton(
+                      icon: Icons.fullscreen_rounded,
+                      tooltip: 'Full screen',
+                      onTap: widget.onFullscreen!,
                     ),
                   ],
                   if (canExpand) ...[

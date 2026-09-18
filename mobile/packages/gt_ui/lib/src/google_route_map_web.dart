@@ -57,6 +57,7 @@ Widget buildGoogleMapEmbed({
   bool isExpanded = false,
   dynamic controller,
   VoidCallback? onTap,
+  String? bundleId,
   Key? key,
 }) {
   final hasRoute = toLat != null && toLng != null;
