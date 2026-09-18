@@ -79,5 +79,17 @@
 			</array>
 		</dict>
 	</array>
+	<key>GoogleMapsApiKey</key>
+	<string>AIzaSyDAzpmYEK9hUBmNghCyGMN5YlvNtx08Fcs</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>CAN-RIDE Driver needs your location to display navigation routes, find available rides, and update ride progress.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>CAN-RIDE Driver needs background location access to update passengers on your arrival and track active trip progress.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>CAN-RIDE Driver needs background location access to track trips and update passengers in real time.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CAN-RIDE Driver needs camera access to capture your profile photo and upload required vehicle and driver documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CAN-RIDE Driver needs photo library access to upload your profile photo and vehicle documents.</string>
 </dict>
 </plist>
