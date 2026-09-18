@@ -24,6 +24,10 @@ class AppState extends ChangeNotifier {
   /// Latest inbound request alert for in-app banner (cleared by UI).
   String? pendingRequestAlert;
   String? pendingRequestRideId;
+  /// Push/alert type e.g. `ride.status`, `ride_request`, `chat`.
+  String? pendingAlertType;
+  /// Ride status when [pendingAlertType] is `ride.status`.
+  String? pendingAlertStatus;
 
   /// Pending chat deep-link from push (`/chat/:rideId`).
   String? pendingChatRideId;
@@ -280,16 +284,55 @@ class AppState extends ChangeNotifier {
     required String rideId,
     String? title,
     String? type,
+    String? status,
   }) {
     if (type == 'chat') {
       pendingChatRideId = rideId;
       pendingRequestAlert = title ?? 'New message';
+      pendingAlertType = 'chat';
+      pendingAlertStatus = null;
       notifyListeners();
       return;
     }
     pendingRequestRideId = rideId;
-    pendingRequestAlert = title ?? 'New ride request';
+    pendingAlertType = type;
+    pendingAlertStatus = status;
+    if (type == 'ride.status') {
+      pendingRequestAlert = title ?? 'Trip updated';
+    } else {
+      pendingRequestAlert = title ?? 'New ride request';
+    }
     notifyListeners();
+  }
+
+  /// Deep-link path for a ride alert (trip vs open request vs chat).
+  static String rideDeepLinkPath({
+    required String rideId,
+    String? type,
+    String? status,
+  }) {
+    if (type == 'chat') return '/chat/$rideId';
+    if (_isTripLifecycleType(type, status)) return '/trip/$rideId';
+    return '/request/$rideId';
+  }
+
+  static bool _isTripLifecycleType(String? type, String? status) {
+    final t = (type ?? '').toLowerCase();
+    if (t == 'ride.status' || t == 'ride_status') return true;
+    const tripStatuses = {
+      'BOOKED',
+      'DRIVER_EN_ROUTE',
+      'DRIVER_ARRIVED',
+      'TRIP_STARTED',
+      'IN_PROGRESS',
+      'COMPLETED',
+      'NO_SHOW',
+      'PASSENGER_CANCELLED',
+      'DRIVER_CANCELLED',
+      'ADMIN_CANCELLED',
+    };
+    final st = (status ?? '').toUpperCase();
+    return tripStatuses.contains(st);
   }
 
   String? consumeChatDeepLinkPath() {
@@ -308,13 +351,39 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> getRideContact(String rideId) =>
       api.marketplace.getRideContact(rideId);
 
+  Future<Map<String, dynamic>> rateRide(
+    String rideId, {
+    required int stars,
+    String? comment,
+  }) =>
+      api.marketplace.rateRide(rideId, stars: stars, comment: comment);
+
+  Future<List<Map<String, dynamic>>> listRideRatings(String rideId) async {
+    final raw = await api.marketplace.listRideRatings(rideId);
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>?> myRideRating(String rideId) async {
+    final uid = me?['id']?.toString() ?? authUserId;
+    if (uid == null || uid.isEmpty) return null;
+    try {
+      final list = await listRideRatings(rideId);
+      for (final r in list) {
+        if (r['fromUserId']?.toString() == uid) return r;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static const chatAllowedStatuses = {
     'BOOKED',
     'DRIVER_EN_ROUTE',
     'DRIVER_ARRIVED',
     'TRIP_STARTED',
     'IN_PROGRESS',
-    'COMPLETED',
   };
 
   List<DriverRequest> get chatableRides {
@@ -867,13 +936,36 @@ class AppState extends ChangeNotifier {
     if (!isAuthenticated) {
       throw StateError('Not authenticated');
     }
-    final data = await api.driver.wallet();
-    walletSummary = data;
-    final cur = data['currency']?.toString() ?? 'CAD';
-    final avail = data['available']?.toString() ?? '0.00';
-    walletSummaryLabel = '$cur $avail available';
-    notifyListeners();
-    return data;
+    try {
+      final data = await api.driver.wallet();
+      walletSummary = data;
+      final cur = data['currency']?.toString() ?? 'CAD';
+      final balance = data['balance']?.toString();
+      final avail = data['available']?.toString() ?? '0.00';
+      final pending = data['pending']?.toString() ?? '0.00';
+      // Prefer server balance (available + pending); fall back to sum.
+      final total = (balance != null && balance.isNotEmpty)
+          ? balance
+          : _sumMoneyStrings(avail, pending);
+      walletSummaryLabel = '$cur $total';
+      notifyListeners();
+      return data;
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        final stillAuthed = await api.isAuthenticated();
+        if (!stillAuthed) {
+          isAuthenticated = false;
+          notifyListeners();
+        }
+      }
+      rethrow;
+    }
+  }
+
+  static String _sumMoneyStrings(String a, String b) {
+    final x = double.tryParse(a) ?? 0;
+    final y = double.tryParse(b) ?? 0;
+    return (x + y).toStringAsFixed(2);
   }
 
   Future<List<Map<String, dynamic>>> loadWalletEntries({String? cursor}) async {
@@ -1180,6 +1272,8 @@ class AppState extends ChangeNotifier {
           pendingRequestRideId = newest.id;
           pendingRequestAlert =
               'New request: ${newest.from} → ${newest.to}';
+          pendingAlertType = 'ride_request';
+          pendingAlertStatus = null;
         }
       }
       notifyListeners();
@@ -1249,6 +1343,8 @@ class AppState extends ChangeNotifier {
             to.isNotEmpty) {
           pendingRequestRideId = rideId;
           pendingRequestAlert = 'New request: $from → $to';
+          pendingAlertType = 'ride_request';
+          pendingAlertStatus = null;
           notifyListeners();
         }
         unawaited(refreshOpenRequests(fromPush: true));
@@ -1263,9 +1359,16 @@ class AppState extends ChangeNotifier {
   }
 
   void clearPendingRequestAlert() {
-    if (pendingRequestAlert == null && pendingRequestRideId == null) return;
+    if (pendingRequestAlert == null &&
+        pendingRequestRideId == null &&
+        pendingAlertType == null &&
+        pendingAlertStatus == null) {
+      return;
+    }
     pendingRequestAlert = null;
     pendingRequestRideId = null;
+    pendingAlertType = null;
+    pendingAlertStatus = null;
     notifyListeners();
   }
 
@@ -1652,6 +1755,8 @@ class AppState extends ChangeNotifier {
     acceptedTerms = false;
     pendingRequestAlert = null;
     pendingRequestRideId = null;
+    pendingAlertType = null;
+    pendingAlertStatus = null;
     selectedLanguages.clear();
     notifyListeners();
   }

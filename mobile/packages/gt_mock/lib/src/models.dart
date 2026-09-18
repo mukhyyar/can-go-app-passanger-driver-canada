@@ -323,11 +323,17 @@ class Review {
     required this.text,
     this.fromLanguage,
     this.createdAt,
+    this.communicationStars,
+    this.driverStars,
+    this.vehicleStars,
   });
   final int stars;
   final String text;
   final String? fromLanguage;
   final DateTime? createdAt;
+  final int? communicationStars;
+  final int? driverStars;
+  final int? vehicleStars;
 }
 
 enum RideStatus {

@@ -15,7 +15,6 @@ const ALLOWED_STATUSES: RideStatus[] = [
   RideStatus.DRIVER_ARRIVED,
   RideStatus.TRIP_STARTED,
   RideStatus.IN_PROGRESS,
-  RideStatus.COMPLETED,
 ];
 
 @Injectable()

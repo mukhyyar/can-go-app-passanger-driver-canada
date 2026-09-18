@@ -27,6 +27,7 @@ type TabId =
   | 'rides'
   | 'payments'
   | 'payout'
+  | 'wallet'
   | 'kyc'
   | 'vehicles'
   | 'devices'
@@ -97,6 +98,7 @@ export function User360Workspace() {
         'rides',
         'payments',
         'payout',
+        'wallet',
         'kyc',
         'vehicles',
         'devices',
@@ -148,6 +150,7 @@ export function User360Workspace() {
       { id: 'rides', label: 'Rides', show: true },
       { id: 'payments', label: 'Payments', show: true },
       { id: 'payout', label: 'Payout', show: isDriver },
+      { id: 'wallet', label: 'Wallet', show: isDriver },
       { id: 'kyc', label: 'KYC', show: isDriver },
       { id: 'vehicles', label: 'Vehicles', show: isDriver },
       { id: 'devices', label: 'Devices', show: true },
@@ -169,6 +172,8 @@ export function User360Workspace() {
   const canAnonymize = hasPermission(me?.permissions, 'users.anonymize');
   const canDelete = hasPermission(me?.permissions, 'users.delete');
   const canPayoutReview = hasPermission(me?.permissions, 'finance.payout_review');
+  const canWalletView = hasPermission(me?.permissions, 'finance.view');
+  const canWalletManage = hasPermission(me?.permissions, 'finance.wallet_manage');
   const tags = asArr(data?.tags).map((t) => asObj(asObj(t).tag));
   const isArchived = Boolean(user.archivedAt);
   const isAnonymized = Boolean(user.anonymizedAt);
@@ -483,6 +488,14 @@ export function User360Workspace() {
             drv={drv}
             canReview={canPayoutReview}
             onChanged={() => void load()}
+          />
+        )}
+        {tab === 'wallet' && (
+          <WalletTab
+            driverId={String(drv.id || '')}
+            userId={String(id)}
+            canView={canWalletView}
+            canManage={canWalletManage}
           />
         )}
         {tab === 'kyc' && <KycTab drv={drv} documents={documents} driverId={String(drv.id || '')} />}
@@ -1015,6 +1028,166 @@ function PayoutTab({
           You need finance.payout_review to approve or reject.
         </p>
       )}
+    </div>
+  );
+}
+
+function WalletTab({
+  driverId,
+  userId,
+  canView,
+  canManage,
+}: {
+  driverId: string;
+  userId: string;
+  canView: boolean;
+  canManage: boolean;
+}) {
+  const toast = useToast();
+  const [summary, setSummary] = useState<{
+    currency: string;
+    available: string;
+    pending: string;
+    balance: string;
+    lifetimeEarned: string;
+    nextAvailableAt: string | null;
+    entries: Array<{
+      id: string;
+      type: string;
+      amount: string;
+      currency: string;
+      status: string;
+      onHold?: boolean;
+      description: string;
+      availableAt: string | null;
+      createdAt: string;
+    }>;
+  } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [reason, setReason] = useState('');
+
+  async function loadWallet() {
+    if (!driverId || !canView) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      setSummary(await api(`/admin/wallet/drivers/${driverId}`));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadWallet();
+  }, [driverId, canView]);
+
+  async function releaseAll() {
+    const r = reason.trim();
+    if (r.length < 3) {
+      toast.push('Reason required', 'bad');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await api<{ released: number }>(
+        `/admin/wallet/drivers/${driverId}/release-pending`,
+        { method: 'POST', body: JSON.stringify({ reason: r }) },
+      );
+      toast.push(`Released ${res.released}`, 'ok');
+      setReason('');
+      await loadWallet();
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!canView) {
+    return (
+      <div className="panel">
+        <p className="muted">You need finance.view to see wallet.</p>
+      </div>
+    );
+  }
+  if (!driverId) {
+    return (
+      <div className="panel">
+        <EmptyState title="No driver profile" description="Wallet requires a driver profile." />
+      </div>
+    );
+  }
+
+  const held = summary?.entries.filter((e) => e.onHold) ?? [];
+
+  return (
+    <div className="panel">
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h3 style={{ marginTop: 0 }}>Wallet</h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Pending hold + available balance for withdrawals.
+          </p>
+        </div>
+        <Link className="btn sm" href={`/wallet/${driverId}`}>
+          Open full wallet
+        </Link>
+      </div>
+      {loading && !summary && <p className="muted">Loading…</p>}
+      {err && <p style={{ color: 'crimson' }}>{err}</p>}
+      {summary && (
+        <>
+          <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+            <Row label="Balance" value={`${summary.currency} ${summary.balance}`} />
+            <Row label="Available" value={`${summary.currency} ${summary.available}`} />
+            <Row label="On hold" value={`${summary.currency} ${summary.pending}`} />
+            <Row label="Lifetime earned" value={`${summary.currency} ${summary.lifetimeEarned}`} />
+            {summary.nextAvailableAt && (
+              <Row label="Next available" value={when(summary.nextAvailableAt)} />
+            )}
+          </div>
+          {canManage && (
+            <div style={{ marginBottom: 16 }}>
+              <input
+                className="input"
+                placeholder="Release reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                style={{ maxWidth: 360, marginRight: 8 }}
+              />
+              <button
+                type="button"
+                className="btn sm"
+                disabled={busy || held.length === 0}
+                onClick={() => void releaseAll()}
+              >
+                Release all pending ({held.length})
+              </button>
+            </div>
+          )}
+          <h4>Recent entries</h4>
+          {summary.entries.length === 0 ? (
+            <EmptyState title="No wallet activity" description="Completed rides credit earnings here." />
+          ) : (
+            <ul>
+              {summary.entries.slice(0, 12).map((e) => (
+                <li key={e.id}>
+                  {e.currency} {e.amount} · {e.type} ·{' '}
+                  {e.onHold ? 'ON HOLD' : e.status} · {when(e.createdAt)}
+                  {e.description ? ` · ${e.description}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      <p className="muted" style={{ marginTop: 12, fontSize: 12 }}>
+        User {userId.slice(0, 8)}…
+      </p>
     </div>
   );
 }

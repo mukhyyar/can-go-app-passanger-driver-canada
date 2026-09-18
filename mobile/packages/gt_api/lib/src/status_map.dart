@@ -240,6 +240,13 @@ Offer offerFromServer(Map<String, dynamic> json) {
           text: r['text']?.toString() ?? '',
           fromLanguage: r['translatedFrom']?.toString(),
           createdAt: created,
+          communicationStars: r['communicationStars'] == null
+              ? null
+              : _asInt(r['communicationStars']),
+          driverStars:
+              r['driverStars'] == null ? null : _asInt(r['driverStars']),
+          vehicleStars:
+              r['vehicleStars'] == null ? null : _asInt(r['vehicleStars']),
         ),
       );
     }

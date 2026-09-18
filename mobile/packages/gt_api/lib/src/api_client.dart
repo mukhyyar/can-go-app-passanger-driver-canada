@@ -37,7 +37,10 @@ class ApiException implements Exception {
 
 class TokenStore {
   TokenStore({FlutterSecureStorage? secure})
-      : _secure = secure ?? const FlutterSecureStorage();
+      : _secure = secure ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            );
 
   final FlutterSecureStorage _secure;
   static const _accessKey = 'cango_access_token';
@@ -99,6 +102,11 @@ class ApiClient {
   final String baseUrl;
   final TokenStore tokens;
   final http.Client _http;
+
+  /// Process-wide single-flight refresh. Token storage is global; concurrent
+  /// clients must not rotate the same refresh token (server revokes all
+  /// sessions on reuse).
+  static Future<bool>? _refreshInFlight;
 
   Uri _uri(String path) {
     final normalized = path.startsWith('/') ? path : '/$path';
@@ -275,9 +283,22 @@ class ApiClient {
     throw ApiException(res.statusCode, 'Binary request failed');
   }
 
-  Future<bool> tryRefresh() async {
+  Future<bool> tryRefresh() {
+    final existing = _refreshInFlight;
+    if (existing != null) return existing;
+    final future = _refreshTokens();
+    _refreshInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_refreshInFlight, future)) {
+        _refreshInFlight = null;
+      }
+    });
+  }
+
+  Future<bool> _refreshTokens() async {
     final refresh = await tokens.readRefresh();
     if (refresh == null) return false;
+    final accessBefore = await tokens.readAccess();
     try {
       final res = await _http.post(
         _uri('/auth/refresh'),
@@ -295,6 +316,14 @@ class ApiClient {
           await tokens.saveTokens(access: access, refresh: nextRefresh);
           return true;
         }
+      }
+      // Another in-process refresh may have rotated tokens already.
+      final accessAfter = await tokens.readAccess();
+      final refreshAfter = await tokens.readRefresh();
+      if (accessAfter != null &&
+          refreshAfter != null &&
+          (accessAfter != accessBefore || refreshAfter != refresh)) {
+        return true;
       }
     } catch (_) {}
     await tokens.clear();

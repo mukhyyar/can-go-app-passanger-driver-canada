@@ -176,7 +176,14 @@ export class OfferPresentationService {
     }));
   }
 
-  async loadVehicleImages(vehicleId: string | null | undefined) {
+  /**
+   * Passenger-facing image URLs prefer same-origin API paths so phones do not
+   * need to reach MinIO. Falls back to signed URLs when ride/offer ids missing.
+   */
+  async loadVehicleImages(
+    vehicleId: string | null | undefined,
+    opts?: { rideId?: string; offerId?: string },
+  ) {
     if (!vehicleId) return [] as Array<{ id: string; url: string }>;
     const docs = await this.prisma.driverDocument.findMany({
       where: {
@@ -189,8 +196,18 @@ export class OfferPresentationService {
       take: 12,
       select: { id: true, storageKey: true },
     });
+    const rideId = opts?.rideId?.trim();
+    const offerId = opts?.offerId?.trim();
+    const useProxy = !!rideId && !!offerId;
     const out: Array<{ id: string; url: string }> = [];
     for (const d of docs) {
+      if (useProxy) {
+        out.push({
+          id: d.id,
+          url: `/rides/${rideId}/offers/${offerId}/photos/${d.id}/content`,
+        });
+        continue;
+      }
       const url = await this.safeSignedUrl(d.storageKey);
       if (url) out.push({ id: d.id, url });
     }
@@ -207,26 +224,43 @@ export class OfferPresentationService {
       take: 100,
       select: {
         stars: true,
+        communicationStars: true,
+        driverStars: true,
+        vehicleStars: true,
         comment: true,
         createdAt: true,
         fromUserId: true,
       },
     });
     const count = ratings.length;
-    const avg =
-      count === 0
+    const avg = (vals: number[]) =>
+      vals.length === 0
         ? 0
-        : round2(ratings.reduce((s, r) => s + r.stars, 0) / count);
-    // Category scores are not stored separately yet — mirror overall.
+        : round2(vals.reduce((s, v) => s + v, 0) / vals.length);
+    const overall = avg(ratings.map((r) => r.stars));
+    const communication = avg(
+      ratings
+        .map((r) => r.communicationStars)
+        .filter((v): v is number => v != null),
+    );
+    const driver = avg(
+      ratings.map((r) => r.driverStars).filter((v): v is number => v != null),
+    );
+    const vehicle = avg(
+      ratings.map((r) => r.vehicleStars).filter((v): v is number => v != null),
+    );
     return {
-      overall: avg,
+      overall,
       count,
-      communication: avg,
-      driver: avg,
-      vehicle: avg,
+      communication: communication > 0 ? communication : overall,
+      driver: driver > 0 ? driver : overall,
+      vehicle: vehicle > 0 ? vehicle : overall,
       completedRides: count,
       reviews: ratings.slice(0, 20).map((r) => ({
         stars: r.stars,
+        communicationStars: r.communicationStars,
+        driverStars: r.driverStars,
+        vehicleStars: r.vehicleStars,
         text: r.comment ?? '',
         createdAt: r.createdAt,
         translatedFrom: null as string | null,
@@ -300,7 +334,12 @@ export class OfferPresentationService {
     const model =
       typeof amenities.model === 'string' ? amenities.model : parsed.model;
 
-    const images = await this.loadVehicleImages(vehicleRow?.id);
+    const offerId = String(offer.id ?? '');
+    const rideId = String(offer.rideId ?? '');
+    const images = await this.loadVehicleImages(vehicleRow?.id, {
+      rideId: rideId || undefined,
+      offerId: offerId || undefined,
+    });
     const languages = normalizeLanguages(
       driver?.languagesJson ?? amenities.languages,
     );

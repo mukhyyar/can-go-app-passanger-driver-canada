@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Rating" ADD COLUMN IF NOT EXISTS "communicationStars" INTEGER;
+ALTER TABLE "Rating" ADD COLUMN IF NOT EXISTS "driverStars" INTEGER;
+ALTER TABLE "Rating" ADD COLUMN IF NOT EXISTS "vehicleStars" INTEGER;

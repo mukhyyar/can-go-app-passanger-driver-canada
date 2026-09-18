@@ -127,54 +127,6 @@ class DriverBrandHeader extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Tooltip(
-                    message: app.drivingEnabled
-                        ? 'Driving mode on'
-                        : 'Driving mode off',
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          app.drivingEnabled ? 'On' : 'Off',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: app.drivingEnabled
-                                ? GtColors.green
-                                : GtColors.textMuted,
-                          ),
-                        ),
-                        SizedBox(
-                          height: 32,
-                          child: Switch.adaptive(
-                            value: app.drivingEnabled,
-                            onChanged: app.isActivated
-                                ? (v) async {
-                                    try {
-                                      await app.setDrivingMode(v);
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              e.toString().replaceFirst(
-                                                    'ApiException: ',
-                                                    '',
-                                                  ),
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  }
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 4),
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
@@ -276,65 +228,79 @@ class DriverStatChip extends StatelessWidget {
     required this.label,
     required this.value,
     this.icon,
+    this.onTap,
+    this.valueColor,
   });
 
   final String label;
   final String value;
   final IconData? icon;
+  final VoidCallback? onTap;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: GtColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: GtColors.brand.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 16, color: GtColors.brand),
-                  const SizedBox(width: 6),
-                ],
-                Expanded(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: GtColors.textSecondary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+    final child = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: GtColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: GtColors.brand.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: GtColors.brand),
+                const SizedBox(width: 6),
               ],
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: GtColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: valueColor ?? GtColors.text,
+              height: 1,
             ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: GtColors.text,
-                height: 1,
+          ),
+        ],
+      ),
+    );
+    return Expanded(
+      child: onTap == null
+          ? child
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(12),
+                child: child,
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }

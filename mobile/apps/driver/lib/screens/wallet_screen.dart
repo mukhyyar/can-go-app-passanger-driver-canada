@@ -60,14 +60,23 @@ class _WalletScreenState extends State<WalletScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      final msg = e is ApiException && e.statusCode == 401
+          ? 'Session expired. Please sign in again.'
+          : e.toString();
       setState(() {
-        _error = e.toString();
+        _error = msg;
         _loading = false;
       });
     }
   }
 
   String _money(dynamic v) => (v ?? '0.00').toString();
+
+  String _balanceFallback(Map<String, dynamic>? wallet) {
+    final a = double.tryParse(_money(wallet?['available'])) ?? 0;
+    final p = double.tryParse(_money(wallet?['pending'])) ?? 0;
+    return (a + p).toStringAsFixed(2);
+  }
 
   Future<void> _confirmWithdraw() async {
     final wallet = _wallet;
@@ -235,11 +244,11 @@ class _WalletScreenState extends State<WalletScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Available',
+                        const Text('Balance',
                             style: TextStyle(color: Colors.black54)),
                         const SizedBox(height: 4),
                         Text(
-                          '$currency ${_money(wallet?['available'])}',
+                          '$currency ${_money(wallet?['balance'] ?? _balanceFallback(wallet))}',
                           style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
@@ -251,17 +260,22 @@ class _WalletScreenState extends State<WalletScreen> {
                           children: [
                             Expanded(
                               child: _miniStat(
-                                'Pending',
-                                '$currency ${_money(wallet?['pending'])}',
+                                'Available to withdraw',
+                                '$currency ${_money(wallet?['available'])}',
                               ),
                             ),
                             Expanded(
                               child: _miniStat(
-                                'Lifetime earned',
-                                '$currency ${_money(wallet?['lifetimeEarned'])}',
+                                'On hold',
+                                '$currency ${_money(wallet?['pending'])}',
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 8),
+                        _miniStat(
+                          'Lifetime earned',
+                          '$currency ${_money(wallet?['lifetimeEarned'])}',
                         ),
                         if (wallet?['nextAvailableAt'] != null) ...[
                           const SizedBox(height: 8),

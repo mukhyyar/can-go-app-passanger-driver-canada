@@ -8,6 +8,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
+  DocumentLifecycleStatus,
+  DocumentReviewStatus,
   DriverApprovalStatus,
   OfferStatus,
   Prisma,
@@ -49,6 +51,8 @@ import {
   isMaterialRideEdit,
   isPassengerEditableStatus,
 } from './ride-update.logic';
+import { StorageService } from '../storage/storage.service';
+import { sanitizeContentDispositionFilename } from '../drivers/vehicle-photos.util';
 
 const DEFAULT_OFFER_VALIDITY_SECONDS = 30 * 60;
 
@@ -65,6 +69,7 @@ export class MarketplaceService {
     private readonly promos: PromoService,
     private readonly lifecycle: RideLifecycleService,
     private readonly presentation: OfferPresentationService,
+    private readonly storage: StorageService,
     @Optional() private readonly tracking?: TrackingGateway,
   ) {
     this.payTtlMs = loadRideLifecycleConfig().paymentTtlMs;
@@ -1688,6 +1693,64 @@ export class MarketplaceService {
       ...base,
       ...enriched,
       reviews: enriched.presentation.reviews,
+    };
+  }
+
+  /** Authenticated binary stream for approved vehicle photos on an offer. */
+  async getOfferVehiclePhotoContent(
+    userId: string,
+    rideId: string,
+    offerId: string,
+    documentId: string,
+  ) {
+    const passenger = await this.requirePassenger(userId);
+    const ride = await this.prisma.ride.findFirst({
+      where: { id: rideId, passengerId: passenger.id },
+      select: { id: true },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const offer = await this.prisma.offer.findFirst({
+      where: { id: offerId, rideId },
+      select: { id: true, vehicleId: true },
+    });
+    if (!offer?.vehicleId) throw new NotFoundException('Offer not found');
+
+    const doc = await this.prisma.driverDocument.findFirst({
+      where: {
+        id: documentId,
+        vehicleId: offer.vehicleId,
+        docType: 'vehicle_photo',
+        status: DocumentReviewStatus.APPROVED,
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+      },
+      select: {
+        id: true,
+        storageKey: true,
+        mimeType: true,
+        originalFilename: true,
+        docType: true,
+      },
+    });
+    if (!doc) throw new NotFoundException('Photo not found');
+    if (!doc.storageKey?.trim()) {
+      throw new NotFoundException('Photo storage key missing');
+    }
+    if (!this.storage.isReady()) {
+      throw new NotFoundException('Photo storage unavailable');
+    }
+    let object: { body: Buffer; contentType: string };
+    try {
+      object = await this.storage.getObjectBytes(doc.storageKey);
+    } catch {
+      throw new NotFoundException('Photo object no longer available');
+    }
+    return {
+      body: object.body,
+      contentType: doc.mimeType || object.contentType,
+      filename: sanitizeContentDispositionFilename(
+        doc.originalFilename ?? `${doc.docType}`,
+      ),
     };
   }
 

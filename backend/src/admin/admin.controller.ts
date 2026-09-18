@@ -22,6 +22,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
 import { AdminOpsService } from './admin.service';
 import { AdminRbacService } from './rbac.service';
+import { DriverWalletService } from '../wallet/driver-wallet.service';
 import {
   BroadcastDto,
   BulkSuspendDto,
@@ -38,6 +39,9 @@ import {
   UserDeleteDto,
   UserNoteDto,
   UserTagDto,
+  WalletAdjustDto,
+  WalletBulkReleaseDto,
+  WalletReleaseDto,
 } from './admin.dto';
 
 @Controller('admin')
@@ -47,6 +51,7 @@ export class AdminOpsController {
   constructor(
     private readonly ops: AdminOpsService,
     private readonly rbac: AdminRbacService,
+    private readonly wallet: DriverWalletService,
   ) {}
 
   @Get('dashboard/kpis')
@@ -414,6 +419,80 @@ export class AdminOpsController {
     @Req() req: { ip?: string },
   ) {
     return this.ops.reviewPayoutDetails(user.id, id, dto, req.ip);
+  }
+
+  @Get('wallet/entries')
+  @RequirePermission('finance.view')
+  walletEntries(
+    @Query('status') status?: string,
+    @Query('type') type?: string,
+    @Query('driverId') driverId?: string,
+    @Query('holdOnly') holdOnly?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.wallet.adminListEntries({
+      status,
+      type,
+      driverId,
+      holdOnly: holdOnly === '1' || holdOnly === 'true',
+      cursor,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  @Get('wallet/drivers/:driverId')
+  @RequirePermission('finance.view')
+  walletDriver(@Param('driverId') driverId: string) {
+    return this.wallet.adminGetDriverWallet(driverId);
+  }
+
+  @Post('wallet/entries/:id/release')
+  @RequirePermission('finance.wallet_manage')
+  releaseWalletEntry(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: WalletReleaseDto,
+  ) {
+    return this.wallet.adminReleaseEntry(id, user.id, dto.reason);
+  }
+
+  @Post('wallet/entries/release-bulk')
+  @RequirePermission('finance.wallet_manage')
+  releaseWalletEntriesBulk(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: WalletBulkReleaseDto,
+  ) {
+    return this.wallet.adminReleaseEntries(dto.entryIds, user.id, dto.reason);
+  }
+
+  @Post('wallet/drivers/:driverId/release-pending')
+  @RequirePermission('finance.wallet_manage')
+  releaseDriverPending(
+    @CurrentUser() user: AuthUser,
+    @Param('driverId') driverId: string,
+    @Body() dto: WalletReleaseDto,
+  ) {
+    return this.wallet.adminReleaseAllPendingForDriver(
+      driverId,
+      user.id,
+      dto.reason,
+    );
+  }
+
+  @Post('wallet/drivers/:driverId/adjust')
+  @RequirePermission('finance.wallet_manage')
+  adjustWallet(
+    @CurrentUser() user: AuthUser,
+    @Param('driverId') driverId: string,
+    @Body() dto: WalletAdjustDto,
+  ) {
+    return this.wallet.adminAdjustBalance(driverId, user.id, {
+      amount: dto.amount,
+      direction: dto.direction,
+      reason: dto.reason,
+      currency: dto.currency,
+    });
   }
 
   @Get('fare-rules')

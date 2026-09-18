@@ -428,6 +428,10 @@ export class DriverWalletService {
       currency,
       available: moneyToString(balances.available, currency),
       pending: moneyToString(balances.pending, currency),
+      balance: moneyToString(
+        balances.available.plus(balances.pending),
+        currency,
+      ),
       processingPayouts: moneyToString(balances.processingPayouts, currency),
       lifetimeEarned: moneyToString(balances.lifetimeEarned, currency),
       lifetimePaidOut: moneyToString(balances.lifetimePaidOut, currency),
@@ -1175,6 +1179,394 @@ export class DriverWalletService {
     }
 
     return { credited, matured: matured.length, anomalies };
+  }
+
+  /** Admin: list wallet ledger entries with filters. */
+  async adminListEntries(query: {
+    status?: string;
+    type?: string;
+    driverId?: string;
+    holdOnly?: boolean;
+    cursor?: string;
+    limit?: number;
+  }) {
+    const currency = this.walletCurrency();
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 100);
+    const now = await this.dbNow();
+    const where: Prisma.DriverWalletEntryWhereInput = { currency };
+
+    if (query.driverId) where.driverId = query.driverId;
+    if (
+      query.type &&
+      Object.values(WalletEntryType).includes(query.type as WalletEntryType)
+    ) {
+      where.type = query.type as WalletEntryType;
+    }
+    if (
+      query.status &&
+      Object.values(WalletEntryStatus).includes(query.status as WalletEntryStatus)
+    ) {
+      where.status = query.status as WalletEntryStatus;
+    }
+    if (query.holdOnly) {
+      where.type = WalletEntryType.EARNING;
+      where.direction = WalletDirection.CREDIT;
+      where.status = {
+        in: [WalletEntryStatus.PENDING, WalletEntryStatus.POSTED],
+      };
+      where.availableAt = { gt: now };
+    }
+    if (query.cursor) {
+      where.id = { lt: query.cursor };
+    }
+
+    const rows = await this.prisma.driverWalletEntry.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: {
+        driver: {
+          select: {
+            id: true,
+            fullName: true,
+            userId: true,
+            user: { select: { email: true, phoneE164: true } },
+          },
+        },
+        ride: {
+          select: {
+            id: true,
+            fromLabel: true,
+            toLabel: true,
+            updatedAt: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    return {
+      items: page.map((e) => ({
+        ...this.serializeEntry(e),
+        reason: e.reason,
+        adminUserId: e.adminUserId,
+        driver: {
+          id: e.driver.id,
+          userId: e.driver.userId,
+          fullName: e.driver.fullName,
+          email: e.driver.user.email,
+          phoneE164: e.driver.user.phoneE164,
+        },
+        onHold:
+          e.type === WalletEntryType.EARNING &&
+          e.direction === WalletDirection.CREDIT &&
+          (e.status === WalletEntryStatus.PENDING ||
+            e.status === WalletEntryStatus.POSTED) &&
+          !!e.availableAt &&
+          e.availableAt > now,
+      })),
+      nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
+    };
+  }
+
+  /** Admin: wallet summary + recent entries for a driver profile id. */
+  async adminGetDriverWallet(driverId: string) {
+    const driver = await this.prisma.driverProfile.findUnique({
+      where: { id: driverId },
+      include: {
+        user: { select: { id: true, email: true, phoneE164: true } },
+      },
+    });
+    if (!driver) throw new NotFoundException('Driver not found');
+
+    const currency = this.walletCurrency();
+    const balances = await this.computeBalances(driver.id, currency);
+    const entries = await this.adminListEntries({
+      driverId: driver.id,
+      limit: 50,
+    });
+
+    return {
+      driver: {
+        id: driver.id,
+        userId: driver.userId,
+        fullName: driver.fullName,
+        email: driver.user.email,
+        phoneE164: driver.user.phoneE164,
+        approvalStatus: driver.approvalStatus,
+        isActivated: driver.isActivated,
+      },
+      currency,
+      available: moneyToString(balances.available, currency),
+      pending: moneyToString(balances.pending, currency),
+      balance: moneyToString(
+        balances.available.plus(balances.pending),
+        currency,
+      ),
+      processingPayouts: moneyToString(balances.processingPayouts, currency),
+      lifetimeEarned: moneyToString(balances.lifetimeEarned, currency),
+      lifetimePaidOut: moneyToString(balances.lifetimePaidOut, currency),
+      nextAvailableAt: balances.nextAvailableAt?.toISOString() ?? null,
+      entries: entries.items,
+      nextCursor: entries.nextCursor,
+    };
+  }
+
+  /**
+   * Admin Release Now: make a held earning immediately available.
+   * Idempotent if already matured.
+   */
+  async adminReleaseEntry(
+    entryId: string,
+    adminUserId: string,
+    reason: string,
+  ) {
+    const reasonTrim = reason.trim();
+    if (reasonTrim.length < 3) {
+      throw new BadRequestException('Reason is required');
+    }
+
+    const entry = await this.prisma.driverWalletEntry.findUnique({
+      where: { id: entryId },
+      include: { driver: true },
+    });
+    if (!entry) throw new NotFoundException('Wallet entry not found');
+
+    if (
+      entry.type !== WalletEntryType.EARNING ||
+      entry.direction !== WalletDirection.CREDIT
+    ) {
+      throw new BadRequestException('Only earning credits can be released');
+    }
+    if (
+      entry.status === WalletEntryStatus.FAILED ||
+      entry.status === WalletEntryStatus.REVERSED
+    ) {
+      throw new BadRequestException('Cannot release a failed or reversed entry');
+    }
+
+    const now = await this.dbNow();
+    const alreadyAvailable =
+      !entry.availableAt || entry.availableAt <= now;
+
+    if (alreadyAvailable && entry.status === WalletEntryStatus.POSTED) {
+      return {
+        ok: true,
+        released: false,
+        entry: this.serializeEntry(entry),
+        message: 'Already available',
+      };
+    }
+
+    const previousAvailableAt = entry.availableAt;
+    const updated = await this.prisma.driverWalletEntry.update({
+      where: { id: entry.id },
+      data: {
+        availableAt: now,
+        status: WalletEntryStatus.POSTED,
+        reason: reasonTrim,
+        adminUserId,
+        metaJson: {
+          ...(entry.metaJson && typeof entry.metaJson === 'object'
+            ? (entry.metaJson as Record<string, unknown>)
+            : {}),
+          holdReleasedAt: now.toISOString(),
+          holdReleasedBy: adminUserId,
+          previousAvailableAt: previousAvailableAt?.toISOString() ?? null,
+          releaseReason: reasonTrim,
+        } as Prisma.InputJsonValue,
+      },
+      include: {
+        ride: {
+          select: {
+            id: true,
+            fromLabel: true,
+            toLabel: true,
+            updatedAt: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    await this.audit(adminUserId, 'WALLET_HOLD_RELEASED', 'DriverWalletEntry', entry.id, {
+      driverId: entry.driverId,
+      amount: moneyToString(d(entry.amount), entry.currency),
+      currency: entry.currency,
+      previousAvailableAt: previousAvailableAt?.toISOString() ?? null,
+      reason: reasonTrim,
+    });
+
+    void this.notifications.sendToUser({
+      userId: entry.driver.userId,
+      title: 'Earnings available',
+      body: `${moneyToString(d(entry.amount), entry.currency)} ${entry.currency} is now available to withdraw`,
+      templateKey: 'wallet.earning_available',
+      eventId: `wallet.earning.admin_release.${entry.id}.${now.getTime()}`,
+      data: {
+        type: 'wallet.earning',
+        entryId: entry.id,
+        deepLink: '/wallet',
+      },
+    });
+
+    return {
+      ok: true,
+      released: true,
+      entry: this.serializeEntry(updated),
+    };
+  }
+
+  async adminReleaseEntries(
+    entryIds: string[],
+    adminUserId: string,
+    reason: string,
+  ) {
+    const results: Array<{ entryId: string; ok: boolean; released?: boolean; error?: string }> =
+      [];
+    for (const id of entryIds) {
+      try {
+        const r = await this.adminReleaseEntry(id, adminUserId, reason);
+        results.push({ entryId: id, ok: true, released: r.released });
+      } catch (err) {
+        results.push({
+          entryId: id,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return {
+      released: results.filter((r) => r.ok && r.released).length,
+      skipped: results.filter((r) => r.ok && !r.released).length,
+      failed: results.filter((r) => !r.ok).length,
+      results,
+    };
+  }
+
+  async adminReleaseAllPendingForDriver(
+    driverId: string,
+    adminUserId: string,
+    reason: string,
+  ) {
+    const now = await this.dbNow();
+    const held = await this.prisma.driverWalletEntry.findMany({
+      where: {
+        driverId,
+        type: WalletEntryType.EARNING,
+        direction: WalletDirection.CREDIT,
+        status: {
+          in: [WalletEntryStatus.PENDING, WalletEntryStatus.POSTED],
+        },
+        availableAt: { gt: now },
+      },
+      select: { id: true },
+      take: 200,
+    });
+    return this.adminReleaseEntries(
+      held.map((e) => e.id),
+      adminUserId,
+      reason,
+    );
+  }
+
+  /** Admin manual credit/debit adjustment. */
+  async adminAdjustBalance(
+    driverId: string,
+    adminUserId: string,
+    body: { amount: string; direction: 'CREDIT' | 'DEBIT'; reason: string; currency?: string },
+  ) {
+    const reasonTrim = body.reason.trim();
+    if (reasonTrim.length < 3) {
+      throw new BadRequestException('Reason is required');
+    }
+
+    const driver = await this.prisma.driverProfile.findUnique({
+      where: { id: driverId },
+    });
+    if (!driver) throw new NotFoundException('Driver not found');
+
+    const currency = (body.currency ?? this.walletCurrency()).toUpperCase();
+    if (currency !== this.walletCurrency()) {
+      throw new BadRequestException('Currency mismatch');
+    }
+
+    let amount: Decimal;
+    try {
+      amount = normalizeMoney(body.amount, currency);
+    } catch {
+      throw new BadRequestException('Invalid amount');
+    }
+    if (moneyLt(amount, normalizeMoney('0.01', currency))) {
+      throw new BadRequestException('Amount must be at least 0.01');
+    }
+
+    const direction =
+      body.direction === 'DEBIT'
+        ? WalletDirection.DEBIT
+        : WalletDirection.CREDIT;
+
+    if (direction === WalletDirection.DEBIT) {
+      const balances = await this.computeBalances(driver.id, currency);
+      if (moneyLt(balances.available, amount)) {
+        throw new BadRequestException({
+          code: 'INSUFFICIENT_FUNDS',
+          message: 'Insufficient available balance for debit adjustment',
+        });
+      }
+    }
+
+    const entry = await this.prisma.driverWalletEntry.create({
+      data: {
+        driverId: driver.id,
+        type: WalletEntryType.ADJUSTMENT,
+        direction,
+        amount,
+        currency,
+        status: WalletEntryStatus.POSTED,
+        availableAt: null,
+        description: `Admin adjustment · ${reasonTrim}`,
+        reason: reasonTrim,
+        adminUserId,
+        metaJson: {
+          adjustedBy: adminUserId,
+          adjustedAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.audit(adminUserId, 'WALLET_ADJUSTMENT', 'DriverWalletEntry', entry.id, {
+      driverId: driver.id,
+      direction,
+      amount: moneyToString(amount, currency),
+      currency,
+      reason: reasonTrim,
+    });
+
+    void this.notifications.sendToUser({
+      userId: driver.userId,
+      title: 'Wallet updated',
+      body:
+        direction === WalletDirection.CREDIT
+          ? `${moneyToString(amount, currency)} ${currency} credited to your wallet`
+          : `${moneyToString(amount, currency)} ${currency} deducted from your wallet`,
+      templateKey: 'wallet.adjustment',
+      eventId: `wallet.adjustment.${entry.id}`,
+      data: {
+        type: 'wallet.adjustment',
+        entryId: entry.id,
+        deepLink: '/wallet',
+      },
+    });
+
+    const summary = await this.adminGetDriverWallet(driver.id);
+    return {
+      ok: true,
+      entry: this.serializeEntry(entry),
+      wallet: summary,
+    };
   }
 
   async assertWalletIntegrity(driverId: string) {

@@ -274,15 +274,29 @@ class MarketplaceApi {
   Future<Map<String, dynamic>> rateRide(
     String rideId, {
     required int stars,
+    int? communicationStars,
+    int? driverStars,
+    int? vehicleStars,
     String? comment,
   }) =>
       client.post(
         '/rides/$rideId/ratings',
         body: {
           'stars': stars,
+          if (communicationStars != null)
+            'communicationStars': communicationStars,
+          if (driverStars != null) 'driverStars': driverStars,
+          if (vehicleStars != null) 'vehicleStars': vehicleStars,
           if (comment != null) 'comment': comment,
         },
       );
+
+  Future<List<dynamic>> listRideRatings(String rideId) async {
+    final data = await client.get('/rides/$rideId/ratings');
+    final list = data['_list'] ?? data['ratings'] ?? data['items'];
+    if (list is List) return list;
+    return const [];
+  }
 
   Future<List<dynamic>> catalog({String? serviceType}) async {
     final q = serviceType != null ? '?serviceType=$serviceType' : '';

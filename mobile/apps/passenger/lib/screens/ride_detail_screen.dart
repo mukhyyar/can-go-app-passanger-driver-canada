@@ -21,6 +21,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
   bool _loading = true;
   Map<String, dynamic>? _paymentStatus;
   bool _ratingPromptShown = false;
+  bool _alreadyRated = false;
+  int? _myRatingStars;
   bool _actionBusy = false;
   Map<String, dynamic>? _contact;
   Map<String, dynamic>? _tracking;
@@ -69,6 +71,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     await app.refreshRide(widget.rideId);
     Map<String, dynamic>? payment;
     Map<String, dynamic>? contact;
+    Map<String, dynamic>? myRating;
     try {
       payment = await app.getPaymentStatus(widget.rideId);
     } catch (_) {}
@@ -79,11 +82,23 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         contact = await app.getRideContact(widget.rideId);
       }
     } catch (_) {}
+    try {
+      final status =
+          (app.rideById(widget.rideId)?.serverStatus ?? '').toUpperCase();
+      if (status == 'COMPLETED') {
+        myRating = await app.myRideRating(widget.rideId);
+      }
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _paymentStatus = payment;
       _contact = contact;
       _loading = false;
+      if (myRating != null) {
+        _alreadyRated = true;
+        final s = myRating['stars'];
+        _myRatingStars = s is int ? s : int.tryParse('$s');
+      }
     });
     _ensureTrackingPoll();
     _maybeShowRating();
@@ -96,7 +111,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       'DRIVER_ARRIVED',
       'TRIP_STARTED',
       'IN_PROGRESS',
-      'COMPLETED',
     };
     return allowed.contains(status);
   }
@@ -105,8 +119,19 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final phone = _contact?['phoneE164']?.toString();
     if (phone == null || phone.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+    try {
+      final ok = await launchUrl(uri);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open phone dialer')),
+        );
+      }
     }
   }
 
@@ -114,19 +139,34 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final phone = _contact?['phoneE164']?.toString() ?? '';
     final digits = phone.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 8) return;
-    final uri = Uri.parse('https://wa.me/$digits');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final httpsUri = Uri.parse('https://wa.me/$digits');
+    final appUri = Uri.parse('whatsapp://send?phone=$digits');
+    try {
+      var ok = await launchUrl(httpsUri, mode: LaunchMode.externalApplication);
+      if (!ok) {
+        ok = await launchUrl(appUri, mode: LaunchMode.externalApplication);
+      }
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open WhatsApp')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open WhatsApp')),
+        );
+      }
     }
   }
 
   void _maybeShowRating() {
-    if (_ratingPromptShown || !mounted) return;
+    if (_ratingPromptShown || _alreadyRated || !mounted) return;
     final ride = context.read<AppState>().rideById(widget.rideId);
     if ((ride?.serverStatus ?? '').toUpperCase() != 'COMPLETED') return;
     _ratingPromptShown = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _showRatingDialog();
+      if (mounted && !_alreadyRated) _showRatingSheet();
     });
   }
 
@@ -142,7 +182,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       'DRIVER_ARRIVED',
       'TRIP_STARTED',
       'IN_PROGRESS',
-      'COMPLETED',
     };
     return allowed.contains(_serverStatus);
   }
@@ -215,52 +254,155 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     }
   }
 
-  Future<void> _showRatingDialog() async {
-    var stars = 5;
+  Future<void> _showRatingSheet() async {
+    if (_alreadyRated) return;
+    var overall = 5;
+    var communication = 5;
+    var driver = 5;
+    var vehicle = 5;
     final commentCtrl = TextEditingController();
-    final submitted = await showDialog<bool>(
+    final submitted = await showGtSheet<bool>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Rate your ride'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (i) {
-                  final filled = i < stars;
-                  return IconButton(
-                    icon: Icon(
-                      filled ? Icons.star : Icons.star_border,
-                      color: GtColors.warn,
-                      size: 32,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          12,
+          20,
+          20 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setLocal) {
+            Widget starRow({
+              required String label,
+              required int value,
+              required ValueChanged<int> onChanged,
+              double iconSize = 28,
+            }) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
                     ),
-                    onPressed: () => setLocal(() => stars = i + 1),
-                  );
-                }),
-              ),
-              TextField(
-                controller: commentCtrl,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Optional comment',
-                  border: OutlineInputBorder(),
+                    ...List.generate(5, (i) {
+                      final filled = i < value;
+                      return IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 36,
+                        ),
+                        icon: Icon(
+                          filled ? Icons.star : Icons.star_border,
+                          color: GtColors.warn,
+                          size: iconSize,
+                        ),
+                        onPressed: () => onChanged(i + 1),
+                      );
+                    }),
+                  ],
                 ),
+              );
+            }
+
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: GtColors.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Rate your trip',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Help others by rating communication, driver, and vehicle.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: GtColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Overall',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (i) {
+                      final filled = i < overall;
+                      return IconButton(
+                        icon: Icon(
+                          filled ? Icons.star : Icons.star_border,
+                          color: GtColors.warn,
+                          size: 36,
+                        ),
+                        onPressed: () => setLocal(() => overall = i + 1),
+                      );
+                    }),
+                  ),
+                  const Divider(height: 24),
+                  starRow(
+                    label: 'Communication',
+                    value: communication,
+                    onChanged: (v) => setLocal(() => communication = v),
+                  ),
+                  starRow(
+                    label: 'Driver',
+                    value: driver,
+                    onChanged: (v) => setLocal(() => driver = v),
+                  ),
+                  starRow(
+                    label: 'Vehicle',
+                    value: vehicle,
+                    onChanged: (v) => setLocal(() => vehicle = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: commentCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'How was your experience? (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  GtGreenButton(
+                    label: 'Submit rating',
+                    onPressed: () => Navigator.pop(ctx, true),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Later'),
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Later'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Submit'),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -270,16 +412,37 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     try {
       await context.read<AppState>().rateRide(
             widget.rideId,
-            stars: stars,
+            stars: overall,
+            communicationStars: communication,
+            driverStars: driver,
+            vehicleStars: vehicle,
             comment: commentText.isEmpty ? null : commentText,
           );
       if (mounted) {
+        setState(() {
+          _alreadyRated = true;
+          _myRatingStars = overall;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Thanks for your feedback')),
         );
       }
-    } catch (_) {
-      // Already rated or network error — non-blocking.
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('already rated')) {
+        setState(() {
+          _alreadyRated = true;
+          _myRatingStars ??= overall;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You already rated this ride')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not submit rating')),
+        );
+      }
     }
   }
 
@@ -703,8 +866,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                 if (offer.imageUrl != null)
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(
-                                      offer.imageUrl!,
+                                    child: AuthNetworkImage(
+                                      url: offer.imageUrl!,
                                       width: 72,
                                       height: 72,
                                       fit: BoxFit.cover,
@@ -986,10 +1149,25 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                         child: const Text('Request refund'),
                       ),
                       const SizedBox(height: 10),
-                      TextButton(
-                        onPressed: _showRatingDialog,
-                        child: const Text('Rate this ride'),
-                      ),
+                      if (_alreadyRated)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            _myRatingStars != null
+                                ? 'You rated ★$_myRatingStars'
+                                : 'You already rated this ride',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: GtColors.brand,
+                            ),
+                          ),
+                        )
+                      else
+                        TextButton(
+                          onPressed: _showRatingSheet,
+                          child: const Text('Rate this ride'),
+                        ),
                     ],
                     if (status == 'BOOKED' ||
                         status == 'DRIVER_EN_ROUTE' ||

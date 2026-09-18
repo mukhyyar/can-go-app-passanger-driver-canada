@@ -36,6 +36,18 @@ export class RatingsService {
       throw new ForbiddenException('Only ride participants can rate');
     }
 
+    if (isPassenger) {
+      if (
+        dto.communicationStars == null ||
+        dto.driverStars == null ||
+        dto.vehicleStars == null
+      ) {
+        throw new BadRequestException(
+          'Passenger ratings require communication, driver, and vehicle scores',
+        );
+      }
+    }
+
     const toUserId = isPassenger
       ? ride.selectedOffer!.driver.userId
       : ride.passenger.userId;
@@ -52,6 +64,9 @@ export class RatingsService {
           fromUserId: userId,
           toUserId,
           stars: dto.stars,
+          communicationStars: isPassenger ? dto.communicationStars! : null,
+          driverStars: isPassenger ? dto.driverStars! : null,
+          vehicleStars: isPassenger ? dto.vehicleStars! : null,
           comment: dto.comment,
           moderationStatus,
         },
@@ -65,6 +80,9 @@ export class RatingsService {
           meta: {
             rideId,
             stars: dto.stars,
+            communicationStars: rating.communicationStars,
+            driverStars: rating.driverStars,
+            vehicleStars: rating.vehicleStars,
             moderationStatus,
           } as Prisma.InputJsonValue,
         },
