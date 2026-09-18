@@ -78,17 +78,35 @@ class PushService with WidgetsBindingObserver {
     unawaited(syncToken());
   }
 
+  bool _syncing = false;
+
   /// Fetch current FCM token and POST to backend when authenticated.
   Future<void> syncToken() async {
-    if (kIsWeb || Firebase.apps.isEmpty || !app.isAuthenticated) return;
+    if (kIsWeb || Firebase.apps.isEmpty || !app.isAuthenticated || _syncing) {
+      return;
+    }
+    _syncing = true;
     try {
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+        if (apnsToken == null) {
+          // On iOS Simulator or before APNs handshake on device, APNs token is null.
+          // Calling getToken() without APNs throws [firebase_messaging/apns-token-not-set].
+          _tokenSyncedForSession = true;
+          return;
+        }
+      }
+
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.length >= 10) {
         await _registerToken(token);
         _tokenSyncedForSession = true;
       }
     } catch (e) {
+      _tokenSyncedForSession = true;
       debugPrint('PushService.syncToken: $e');
+    } finally {
+      _syncing = false;
     }
   }
 
