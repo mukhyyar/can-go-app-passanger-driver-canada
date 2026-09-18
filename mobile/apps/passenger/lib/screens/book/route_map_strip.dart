@@ -89,7 +89,9 @@ class _RouteSelectorCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final routes = state.availableRoutes;
-    if (routes.length <= 1) return const SizedBox.shrink();
+    if (routes.isEmpty) return const SizedBox.shrink();
+
+    final hasMultiple = routes.length > 1;
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -104,23 +106,26 @@ class _RouteSelectorCards extends StatelessWidget {
                 color: GtColors.brand,
               ),
               const SizedBox(width: 6),
-              const Text(
-                'Available Routes',
-                style: TextStyle(
+              Text(
+                hasMultiple
+                    ? 'Available Routes (${routes.length})'
+                    : 'Selected Route',
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: GtColors.text,
                 ),
               ),
               const Spacer(),
-              Text(
-                'Tap route to select',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: GtColors.textSecondary,
+              if (hasMultiple)
+                Text(
+                  'Tap route to switch',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: GtColors.textSecondary,
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
