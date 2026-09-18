@@ -55,7 +55,34 @@ class BookScreen extends StatelessWidget {
                   TripEssentials(state: state),
                   if (showVehicles) ...[
                     const SizedBox(height: 14),
-                    const _SectionLabel('Prefer for offers'),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _SectionLabel('Prefer for offers'),
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(0, 0, 2, 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.lock_outline,
+                                size: 12,
+                                color: GtColors.textMuted,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'All classes included',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: GtColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                     VehiclePreferences(
                       state: state,
                       showFromPrice: showFromPrice,
