@@ -38,9 +38,7 @@ GoRouter createRouter(AppState state) {
           loc.startsWith('/edit-ride/');
       if (!state.isAuthenticated && needsAuth) return '/auth';
 
-      if (state.isAuthenticated &&
-          !state.onboarded &&
-          loc != '/onboarding') {
+      if (!state.onboarded && loc != '/onboarding') {
         return '/onboarding';
       }
       if (state.onboarded && loc == '/onboarding') return '/';
