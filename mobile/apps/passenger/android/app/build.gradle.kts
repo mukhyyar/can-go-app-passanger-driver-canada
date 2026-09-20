@@ -42,7 +42,7 @@ android {
         }
         val mapsProps = loadProps("maps.properties")
         val localProps = loadProps("local.properties")
-        val defaultMapsKey = "AIzaSyB7DSFU5Y360jRuiqNmVsii_ZU2oESncmg"
+        val defaultMapsKey = "AIzaSyA5c2U6QUncB6IHt4Qmuem8fLdN4AgfYBE"
         val resolvedMapsKey =
             mapsProps.getProperty("GOOGLE_MAPS_API_KEY_ANDROID")
                 ?: mapsProps.getProperty("GOOGLE_MAPS_API_KEY")
