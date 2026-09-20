@@ -58,10 +58,6 @@ class _InlineOfferFormState extends State<InlineOfferForm> {
 
   String get _currency => widget.request.currency;
 
-  double get _commissionPct =>
-      widget.request.pricing?.platformCommissionPct ??
-      widget.existingOffer?.platformCommissionPct ??
-      0;
 
   Future<void> _pickValidity() async {
     final selected = await showModalBottomSheet<int>(
@@ -285,61 +281,11 @@ class _InlineOfferFormState extends State<InlineOfferForm> {
               onChanged: (_) => widget.onChanged(),
             ),
           ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: GtColors.bgGrey,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _commissionPct > 0
-                        ? '${_commissionPct.toStringAsFixed(_commissionPct % 1 == 0 ? 0 : 1)}% Commission'
-                        : 'Commission from fare rules',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 56,
-                height: 56,
-                child: Material(
-                  color:
-                      widget.submitting ? GtColors.textMuted : GtColors.green,
-                  borderRadius: BorderRadius.circular(14),
-                  child: InkWell(
-                    onTap: widget.submitting ? null : () => widget.onSubmit(),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Center(
-                      child: widget.submitting
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.send_rounded,
-                              color: Colors.white,
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          const SizedBox(height: 16),
+          GtGreenButton(
+            label:
+                isEdit ? 'Review updated offer' : 'Continue to offer customer',
+            onPressed: widget.submitting ? null : () => widget.onSubmit(),
           ),
           if (widget.error != null) ...[
             const SizedBox(height: 12),

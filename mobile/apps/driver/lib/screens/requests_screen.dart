@@ -477,12 +477,25 @@ class _RequestCard extends StatelessWidget {
                     color: GtColors.brand.withValues(alpha: 0.16),
                   ),
                 ),
-                child: Text(
-                  'Your offer: ${MoneyFormat.formatFlexible(request.offerPrice!, request.currency)}',
-                  style: const TextStyle(
-                    color: GtColors.brand,
-                    fontWeight: FontWeight.w800,
-                  ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Your offer: ${MoneyFormat.formatFlexible(request.offerPrice!, request.currency)}',
+                      style: const TextStyle(
+                        color: GtColors.brand,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'Customer: ${MoneyFormat.formatFlexible(request.offerPrice! * 1.2, request.currency)}',
+                      style: const TextStyle(
+                        color: GtColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               )
             else

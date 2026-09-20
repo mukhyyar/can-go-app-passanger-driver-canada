@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../offer/inline_offer_form.dart';
 import '../offer/offer_helpers.dart';
 import '../state/app_state.dart';
+import 'offer_review_screen.dart';
 
 class RequestDetailScreen extends StatefulWidget {
   const RequestDetailScreen({super.key, required this.requestId});
@@ -200,24 +201,25 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       return;
     }
     setState(() {
-      _submitting = true;
       _offerError = null;
+      _submitting = true;
     });
     try {
-      await context.read<AppState>().submitOfferDraft(req.id, _draft);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offer submitted')),
+      final vehicle =
+          _vehicles.where((v) => v.id == _draft.vehicleId).firstOrNull ??
+              (_vehicles.isNotEmpty ? _vehicles.first : null);
+      final submitted = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => OfferReviewScreen(
+            request: req,
+            draft: _draft,
+            vehicle: vehicle,
+          ),
+        ),
       );
-      await _load();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _offerError = e
-            .toString()
-            .replaceFirst('ApiException(', '')
-            .replaceAll(RegExp(r'\)$'), '');
-      });
+      if (submitted == true) {
+        await _load();
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -537,34 +539,85 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     ),
                   if (hasActiveOffer) ...[
                     const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEAF7EE),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Offer submitted',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          Text(
-                            'Your offer: ${MoneyFormat.formatFlexible(req.myOffer!.bidAmount, currency)} · ${req.myOffer!.status}',
-                          ),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton(
-                              onPressed: _withdraw,
-                              child: const Text(
-                                'Withdraw offer',
-                                style: TextStyle(color: GtColors.brand),
-                              ),
+                    Builder(
+                      builder: (_) {
+                        final myOffer = req.myOffer!;
+                        final offered = myOffer.bidAmount;
+                        final fee = ((offered * 0.20) * 100).roundToDouble() / 100.0;
+                        final totalCust = ((offered + fee) * 100).roundToDouble() / 100.0;
+
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFFC8E6C9),
+                              width: 1.5,
                             ),
                           ),
-                        ],
-                      ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEAF7EE),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text(
+                                      'OFFER ACTIVE',
+                                      style: TextStyle(
+                                        color: GtColors.green,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    myOffer.status,
+                                    style: const TextStyle(
+                                      color: GtColors.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              _offerCostRow('Your offered fare', offered, currency),
+                              const SizedBox(height: 4),
+                              _offerCostRow('Platform fee', fee, currency),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 6),
+                                child: Divider(height: 1),
+                              ),
+                              _offerCostRow('Total for customer', totalCust, currency, isTotal: true),
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton.icon(
+                                  onPressed: _withdraw,
+                                  icon: const Icon(Icons.delete_outline, size: 16, color: GtColors.brand),
+                                  label: const Text(
+                                    'Withdraw offer',
+                                    style: TextStyle(
+                                      color: GtColors.brand,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -605,6 +658,35 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
     if (booster > 0) out.add(_Chip(label: 'Booster seat × $booster'));
     return out;
+  }
+
+  Widget _offerCostRow(
+    String label,
+    double amount,
+    String currency, {
+    bool isTotal = false,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: isTotal ? 15 : 13,
+            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
+            color: isTotal ? GtColors.text : GtColors.textSecondary,
+          ),
+        ),
+        Text(
+          MoneyFormat.formatFlexible(amount, currency),
+          style: TextStyle(
+            fontSize: isTotal ? 16 : 13,
+            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w700,
+            color: isTotal ? GtColors.brand : GtColors.text,
+          ),
+        ),
+      ],
+    );
   }
 }
 

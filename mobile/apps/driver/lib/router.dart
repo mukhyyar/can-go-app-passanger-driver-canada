@@ -1,10 +1,14 @@
 import 'package:go_router/go_router.dart';
+import 'package:gt_mock/gt_mock.dart';
+import 'package:provider/provider.dart';
 
+import 'offer/offer_helpers.dart';
 import 'screens/auth_screen.dart';
 import 'screens/chat_detail_screen.dart';
 import 'screens/chats_screen.dart';
 import 'screens/instructions_screen.dart';
 import 'screens/notifications_screen.dart';
+import 'screens/offer_review_screen.dart';
 import 'screens/onboarding/documents_screen.dart';
 import 'screens/onboarding/edit_vehicle_screen.dart';
 import 'screens/onboarding/location_screen.dart';
@@ -138,6 +142,29 @@ GoRouter createRouter(AppState appState) {
         builder: (_, state) => RequestDetailScreen(
           requestId: state.pathParameters['id']!,
         ),
+      ),
+      GoRoute(
+        path: '/request/:id/offer',
+        builder: (context, state) {
+          final reqId = state.pathParameters['id']!;
+          final extra = state.extra as Map<String, dynamic>?;
+          final app = context.read<AppState>();
+          final req = extra?['request'] as DriverRequest? ??
+              app.openRequests.firstWhere(
+                (r) => r.id == reqId,
+                orElse: () =>
+                    app.repo.newRequests.firstWhere((r) => r.id == reqId),
+              );
+          final draft = extra?['draft'] as OfferDraft? ??
+              app.offerDraftFor(reqId) ??
+              OfferDraft();
+          final vehicle = extra?['vehicle'] as DriverVehicle?;
+          return OfferReviewScreen(
+            request: req,
+            draft: draft,
+            vehicle: vehicle,
+          );
+        },
       ),
       GoRoute(
         path: '/trip/:rideId',

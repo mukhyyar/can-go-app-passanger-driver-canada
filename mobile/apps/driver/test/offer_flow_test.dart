@@ -30,6 +30,23 @@ void main() {
       c.selectedOptions.add('water');
       expect(d.selectedOptions.contains('water'), isFalse);
     });
+
+    test('computes totalPrice, 20% platformFee, and customerTotal correctly', () {
+      final oneWay = OfferDraft(outboundPrice: 100);
+      expect(oneWay.totalPrice, 100.0);
+      expect(oneWay.platformFee, 20.0);
+      expect(oneWay.customerTotal, 120.0);
+
+      final roundTrip = OfferDraft(outboundPrice: 150, returnPrice: 150);
+      expect(roundTrip.totalPrice, 300.0);
+      expect(roundTrip.platformFee, 60.0);
+      expect(roundTrip.customerTotal, 360.0);
+
+      final withDecimals = OfferDraft(outboundPrice: 55.50);
+      expect(withDecimals.totalPrice, 55.50);
+      expect(withDecimals.platformFee, 11.10);
+      expect(withDecimals.customerTotal, 66.60);
+    });
   });
 
   group('driverRequestFromServer', () {
