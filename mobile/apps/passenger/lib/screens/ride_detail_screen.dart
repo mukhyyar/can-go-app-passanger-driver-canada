@@ -195,6 +195,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     var driver = 5;
     var vehicle = 5;
     final commentCtrl = TextEditingController();
+    final selectedSuggestions = <String>{};
     final submitted = await showGtSheet<bool>(
       context: context,
       child: Padding(
@@ -295,7 +296,14 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           color: GtColors.warn,
                           size: 36,
                         ),
-                        onPressed: () => setLocal(() => overall = i + 1),
+                        onPressed: () => setLocal(() {
+                          final newOverall = i + 1;
+                          if (overall != newOverall) {
+                            overall = newOverall;
+                            selectedSuggestions.clear();
+                            commentCtrl.clear();
+                          }
+                        }),
                       );
                     }),
                   ),
@@ -316,6 +324,20 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     onChanged: (v) => setLocal(() => vehicle = v),
                   ),
                   const SizedBox(height: 12),
+                  GtReviewSuggestions(
+                    target: ReviewTarget.driver,
+                    stars: overall,
+                    selectedSuggestions: selectedSuggestions,
+                    onToggle: (s) => setLocal(() {
+                      if (selectedSuggestions.contains(s)) {
+                        selectedSuggestions.remove(s);
+                      } else {
+                        selectedSuggestions.add(s);
+                      }
+                      commentCtrl.text = selectedSuggestions.join(', ');
+                    }),
+                  ),
+                  const SizedBox(height: 14),
                   TextField(
                     controller: commentCtrl,
                     maxLines: 3,
@@ -340,7 +362,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         ),
       ),
     );
-    final commentText = commentCtrl.text.trim();
+    final rawText = commentCtrl.text.trim();
+    final commentText = rawText.isNotEmpty
+        ? rawText
+        : (selectedSuggestions.isNotEmpty
+            ? selectedSuggestions.join(', ')
+            : null);
     commentCtrl.dispose();
     if (submitted != true || !mounted) return;
     try {
@@ -350,8 +377,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             communicationStars: communication,
             driverStars: driver,
             vehicleStars: vehicle,
-            comment: commentText.isEmpty ? null : commentText,
+            comment: commentText,
           );
+
       if (mounted) {
         setState(() {
           _alreadyRated = true;

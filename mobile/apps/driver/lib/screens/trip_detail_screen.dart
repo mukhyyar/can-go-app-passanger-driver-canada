@@ -94,38 +94,64 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     if (_alreadyRated) return;
     var stars = 5;
     final commentCtrl = TextEditingController();
+    final selectedSuggestions = <String>{};
     final submitted = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           title: const Text('Rate your passenger'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (i) {
-                  final filled = i < stars;
-                  return IconButton(
-                    icon: Icon(
-                      filled ? Icons.star : Icons.star_border,
-                      color: GtColors.warn,
-                      size: 32,
-                    ),
-                    onPressed: () => setLocal(() => stars = i + 1),
-                  );
-                }),
-              ),
-              TextField(
-                controller: commentCtrl,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Optional comment',
-                  border: OutlineInputBorder(),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (i) {
+                    final filled = i < stars;
+                    return IconButton(
+                      icon: Icon(
+                        filled ? Icons.star : Icons.star_border,
+                        color: GtColors.warn,
+                        size: 32,
+                      ),
+                      onPressed: () => setLocal(() {
+                        final newStars = i + 1;
+                        if (stars != newStars) {
+                          stars = newStars;
+                          selectedSuggestions.clear();
+                          commentCtrl.clear();
+                        }
+                      }),
+                    );
+                  }),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                GtReviewSuggestions(
+                  target: ReviewTarget.passenger,
+                  stars: stars,
+                  selectedSuggestions: selectedSuggestions,
+                  onToggle: (s) => setLocal(() {
+                    if (selectedSuggestions.contains(s)) {
+                      selectedSuggestions.remove(s);
+                    } else {
+                      selectedSuggestions.add(s);
+                    }
+                    commentCtrl.text = selectedSuggestions.join(', ');
+                  }),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: commentCtrl,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'Optional comment',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -140,15 +166,21 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         ),
       ),
     );
-    final commentText = commentCtrl.text.trim();
+    final rawText = commentCtrl.text.trim();
+    final commentText = rawText.isNotEmpty
+        ? rawText
+        : (selectedSuggestions.isNotEmpty
+            ? selectedSuggestions.join(', ')
+            : null);
     commentCtrl.dispose();
     if (submitted != true || !mounted) return;
     try {
       await context.read<AppState>().rateRide(
             widget.rideId,
             stars: stars,
-            comment: commentText.isEmpty ? null : commentText,
+            comment: commentText,
           );
+
       if (mounted) {
         setState(() {
           _alreadyRated = true;
