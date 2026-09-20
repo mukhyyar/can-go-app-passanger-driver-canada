@@ -614,24 +614,41 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           ),
                         ],
                       ),
-                      if (_breakdownOpen && breakdown != null) ...[
+                      if (_breakdownOpen) ...[
                         const SizedBox(height: 8),
                         _breakRow(
-                            'Ride price', breakdown.ridePrice, offer.currency),
-                        _breakRow(
-                          'Marketplace fee',
-                          breakdown.marketplaceFee,
+                          'Ride fare',
+                          (breakdown != null && breakdown.ridePrice > 0)
+                              ? breakdown.ridePrice
+                              : (offer.price / 1.2),
                           offer.currency,
                         ),
-                        _breakRow('Taxes', breakdown.taxes, offer.currency),
+                        _breakRow(
+                          'Platform fee',
+                          (breakdown != null && breakdown.platformFee > 0)
+                              ? breakdown.platformFee
+                              : (((((breakdown != null && breakdown.ridePrice > 0)
+                                              ? breakdown.ridePrice
+                                              : (offer.price / 1.2)) *
+                                          0.2) *
+                                      100)
+                                  .roundToDouble() /
+                              100.0),
+                          offer.currency,
+                        ),
+                        if (breakdown != null && breakdown.taxes > 0)
+                          _breakRow('Taxes', breakdown.taxes, offer.currency),
                         const Divider(height: 16),
                         _breakRow(
                           'Total',
-                          breakdown.total,
+                          (breakdown != null && breakdown.total > 0)
+                              ? breakdown.total
+                              : offer.price,
                           offer.currency,
                           bold: true,
                         ),
                       ],
+
                     ],
                   ),
                 ),

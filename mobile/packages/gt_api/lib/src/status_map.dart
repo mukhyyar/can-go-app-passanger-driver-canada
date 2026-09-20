@@ -179,10 +179,22 @@ Offer offerFromServer(Map<String, dynamic> json) {
       'CAD';
   final currency = currencyRaw.toString().toUpperCase();
 
-  double price = _asDouble(pres['passengerTotal']);
-  if (price <= 0) price = _asDouble(json['bidAmount']);
+  double rawBid = _asDouble(json['bidAmount']);
+  if (rawBid <= 0) rawBid = _asDouble(json['outboundPrice']);
+
+  final priceBreakdown = breakdownMap != null
+      ? OfferPriceBreakdown.fromJson(breakdownMap)
+      : (rawBid > 0
+          ? OfferPriceBreakdown.fromBasePrice(rawBid, currency: currency)
+          : null);
+
+  double price = priceBreakdown?.total ?? _asDouble(pres['passengerTotal']);
   if (price <= 0) price = _asDouble(snapMap?['passengerTotal']);
-  if (price <= 0) price = _asDouble(json['outboundPrice']);
+  if (price <= 0 && rawBid > 0) {
+    price = ((rawBid * 1.20) * 100).roundToDouble() / 100.0;
+  }
+  if (price <= 0) price = rawBid;
+
 
   final ratingRaw = pres['rating'];
   final ratingMap = ratingRaw is Map ? asStringKeyedMap(ratingRaw) : null;
@@ -280,10 +292,6 @@ Offer offerFromServer(Map<String, dynamic> json) {
       snapMap?['vehicleClass']?.toString() ??
       'sedan';
 
-  final priceBreakdown = breakdownMap != null
-      ? OfferPriceBreakdown.fromJson(breakdownMap)
-      : null;
-
   final id = json['id']?.toString();
   if (id == null || id.isEmpty) {
     throw FormatException('Offer missing id');
@@ -374,20 +382,43 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
     final vehicle = coerceStringKeyedMap(json['vehicle']);
     final driver = coerceStringKeyedMap(json['driver']);
     final pres = coerceStringKeyedMap(json['presentation']);
+    final breakdownRaw = pres['priceBreakdown'];
+    final breakdownMap =
+        breakdownRaw is Map ? coerceStringKeyedMap(breakdownRaw) : null;
+    final currency = (breakdownMap != null && breakdownMap['currency'] != null)
+        ? breakdownMap['currency'].toString()
+        : (json['currency']?.toString() ?? 'CAD');
+    final breakdown = breakdownMap != null
+        ? OfferPriceBreakdown.fromJson(breakdownMap)
+        : null;
+
     double pickPrice() {
+      if (breakdown != null && breakdown.total > 0) return breakdown.total;
       for (final v in [
         pres['passengerTotal'],
-        json['bidAmount'],
         snap['passengerTotal'],
-        json['outboundPrice'],
       ]) {
         final d = _asDouble(v);
         if (d > 0) return d;
+      }
+      for (final v in [
+        json['bidAmount'],
+        json['outboundPrice'],
+      ]) {
+        final d = _asDouble(v);
+        if (d > 0) return ((d * 1.20) * 100).roundToDouble() / 100.0;
       }
       return 0;
     }
 
     final price = pickPrice();
+    final effectiveBreakdown = breakdown ??
+        (price > 0
+            ? OfferPriceBreakdown.fromBasePrice(
+                price / 1.20,
+                currency: currency,
+              )
+            : null);
     final driverName = driver['fullName']?.toString().trim();
     return Offer(
       id: id,
@@ -399,12 +430,8 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
           vehicle['vehicleClass']?.toString() ??
           'sedan',
       price: price,
-      currency: (pres['priceBreakdown'] is Map
-                  ? (pres['priceBreakdown'] as Map)['currency']
-                  : null)
-              ?.toString() ??
-          json['currency']?.toString() ??
-          'CAD',
+      currency: currency,
+      priceBreakdown: effectiveBreakdown,
       rating: 0,
       ratingCount: 0,
       rides: 0,

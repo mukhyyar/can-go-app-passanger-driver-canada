@@ -62,6 +62,19 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
         result?['paymentStatus']?.toString() ??
         'PAID';
 
+    final breakdown = offer?.priceBreakdown;
+    final breakdownQuote = quote?['priceBreakdown'] ?? result?['priceBreakdown'];
+    final rideFare = breakdown != null && breakdown.ridePrice > 0
+        ? breakdown.ridePrice
+        : (breakdownQuote is Map && _num(breakdownQuote['ridePrice']) > 0
+            ? _num(breakdownQuote['ridePrice'])
+            : (total > 0 ? (((total / 1.2) * 100).roundToDouble() / 100.0) : 0.0));
+    final platformFee = breakdown != null && breakdown.platformFee > 0
+        ? breakdown.platformFee
+        : (breakdownQuote is Map && _num(breakdownQuote['platformFee']) > 0
+            ? _num(breakdownQuote['platformFee'])
+            : (((rideFare * 0.2) * 100).roundToDouble() / 100.0));
+
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
       appBar: AppBar(
@@ -141,6 +154,10 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
                       ],
                       const Divider(height: 24),
                       _row('Payment', payStatus),
+                      if (rideFare > 0 && platformFee > 0) ...[
+                        _row('Ride fare', formatMoney(rideFare, currency)),
+                        _row('Platform fee', formatMoney(platformFee, currency)),
+                      ],
                       _row('Total', formatMoney(total, currency)),
                       if (online > 0)
                         _row('Paid online', formatMoney(online, currency)),

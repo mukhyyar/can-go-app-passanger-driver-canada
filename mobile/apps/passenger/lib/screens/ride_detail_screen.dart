@@ -669,6 +669,18 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final total = _num(
       _paymentStatus?['totalAmount'] ?? offer?.price,
     );
+    final breakdown = offer?.priceBreakdown;
+    final breakdownPayment = _paymentStatus?['priceBreakdown'];
+    final rideFare = breakdown != null && breakdown.ridePrice > 0
+        ? breakdown.ridePrice
+        : (breakdownPayment is Map && _num(breakdownPayment['ridePrice']) > 0
+            ? _num(breakdownPayment['ridePrice'])
+            : (total > 0 ? (((total / 1.2) * 100).roundToDouble() / 100.0) : 0.0));
+    final platformFee = breakdown != null && breakdown.platformFee > 0
+        ? breakdown.platformFee
+        : (breakdownPayment is Map && _num(breakdownPayment['platformFee']) > 0
+            ? _num(breakdownPayment['platformFee'])
+            : (((rideFare * 0.2) * 100).roundToDouble() / 100.0));
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
@@ -1000,6 +1012,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               style: TextStyle(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 8),
+                            if (rideFare > 0 && platformFee > 0) ...[
+                              _row('Ride fare', formatMoney(rideFare, currency)),
+                              _row('Platform fee', formatMoney(platformFee, currency)),
+                            ],
                             _row('Total paid', formatMoney(total, currency)),
                           ],
                         ),

@@ -266,9 +266,50 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final offer =
         context.watch<AppState>().offerByIds(widget.rideId, widget.offerId);
     final quote = _quote;
-    final onlineAmount = quote != null ? _num(quote['onlineAmount']) : 0.0;
-    final cashAmount = quote != null ? _num(quote['cashAmount']) : 0.0;
-    final totalAmount = quote != null ? _num(quote['totalAmount']) : (offer?.price ?? 0);
+
+    final breakdown = offer?.priceBreakdown;
+    final double rideFare;
+    final double platformFee;
+    final double taxes;
+    final double displayTotal;
+
+    if (breakdown != null && breakdown.ridePrice > 0) {
+      rideFare = breakdown.ridePrice;
+      platformFee = breakdown.platformFee > 0
+          ? breakdown.platformFee
+          : (((rideFare * 0.2) * 100).roundToDouble() / 100.0);
+      taxes = breakdown.taxes;
+      displayTotal = breakdown.total > 0
+          ? breakdown.total
+          : (((rideFare + platformFee + taxes) * 100).roundToDouble() / 100.0);
+    } else {
+      final base = (offer != null && offer.price > 0)
+          ? offer.price
+          : (quote != null ? _num(quote['totalAmount']) : 0.0);
+      rideFare = ((base * 100).roundToDouble()) / 100.0;
+      platformFee = (((rideFare * 0.2) * 100).roundToDouble()) / 100.0;
+      taxes = 0.0;
+      displayTotal =
+          (((rideFare + platformFee) * 100).roundToDouble()) / 100.0;
+    }
+
+    final quoteTotal = quote != null ? _num(quote['totalAmount']) : 0.0;
+    final effectiveTotal =
+        (quoteTotal > 0 && (quoteTotal - displayTotal).abs() < 0.05)
+            ? quoteTotal
+            : displayTotal;
+
+    final onlineAmount = quote != null && _num(quote['onlineAmount']) > 0
+        ? _num(quote['onlineAmount'])
+        : (_paymentMode == 'PARTIAL'
+            ? (((effectiveTotal * 0.2) * 100).roundToDouble() / 100.0)
+            : effectiveTotal);
+    final cashAmount = quote != null && _num(quote['cashAmount']) > 0
+        ? _num(quote['cashAmount'])
+        : (_paymentMode == 'PARTIAL'
+            ? (((effectiveTotal - onlineAmount) * 100).roundToDouble() / 100.0)
+            : 0.0);
+
     final currency = quote != null
         ? _currency(quote, 'onlineCurrency', offer?.currency ?? 'CAD')
         : (offer?.currency ?? 'CAD');
@@ -278,6 +319,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ? (policy['body']?.toString() ?? '')
         : (quote?['cancellationPolicy']?.toString() ??
             'The ride is not refundable in case of cancellation.');
+
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
@@ -412,7 +454,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ),
                     const SizedBox(height: 16),
                     Text(
-                      formatMoney(totalAmount, currency),
+                      formatMoney(effectiveTotal, currency),
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w900,
@@ -423,6 +465,53 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       style: TextStyle(color: GtColors.textSecondary),
                     ),
                     const SizedBox(height: 16),
+
+                    // Cost breakdown Card
+                    GtCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(
+                                Icons.receipt_long_rounded,
+                                size: 20,
+                                color: GtColors.brand,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Cost breakdown',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          _costRow('Ride fare', rideFare, currency),
+                          const SizedBox(height: 8),
+                          _costRow('Platform fee', platformFee, currency),
+                          if (taxes > 0) ...[
+                            const SizedBox(height: 8),
+                            _costRow('Taxes', taxes, currency),
+                          ],
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 10),
+                            child: Divider(height: 1),
+                          ),
+                          _costRow(
+                            'Total',
+                            effectiveTotal,
+                            currency,
+                            isTotal: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
                     const Text(
                       'How would you like to pay?',
                       style: TextStyle(fontWeight: FontWeight.w700),
@@ -430,7 +519,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     const SizedBox(height: 8),
                     _modeTile(
                       title: 'Pay in full',
-                      subtitle: formatMoney(totalAmount, currency),
+                      subtitle: formatMoney(effectiveTotal, currency),
                       selected: _paymentMode == 'FULL',
                       onTap: () => _setMode('FULL'),
                     ),
@@ -442,6 +531,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         selected: _paymentMode == 'PARTIAL',
                         onTap: () => _setMode('PARTIAL'),
                       ),
+
                     if (_paymentMode == 'PARTIAL' && cashAmount > 0) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -546,11 +636,37 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     else
                       GtGreenButton(
                         label:
-                            'Pay ${formatMoney(onlineAmount > 0 ? onlineAmount : totalAmount, currency)}',
+                            'Pay ${formatMoney(onlineAmount > 0 ? onlineAmount : effectiveTotal, currency)}',
                         onPressed: _termsAccepted ? _pay : null,
                       ),
                   ],
                 ),
+    );
+  }
+
+  Widget _costRow(
+    String label,
+    num amount,
+    String currency, {
+    bool isTotal = false,
+  }) {
+    final style = TextStyle(
+      fontSize: isTotal ? 16 : 14,
+      fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
+      color: isTotal ? GtColors.text : GtColors.textSecondary,
+    );
+    final valueStyle = TextStyle(
+      fontSize: isTotal ? 16 : 14,
+      fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
+      color: isTotal ? GtColors.brand : GtColors.text,
+    );
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: style),
+        Text(formatMoney(amount, currency), style: valueStyle),
+      ],
     );
   }
 

@@ -1646,10 +1646,13 @@ export class MarketplaceService {
     }
 
     const snap = offer.priceSnapshot as PriceSnapshot;
+    const breakdown = this.presentation.priceBreakdown(snap);
     const total =
-      snap?.passengerTotal != null
-        ? Number(snap.passengerTotal)
-        : Number(offer.bidAmount);
+      breakdown?.total != null
+        ? breakdown.total
+        : (snap?.passengerTotal != null
+            ? Number(snap.passengerTotal)
+            : round2(Number(offer.bidAmount) * 1.2));
     const paymentQuote = this.presentation.computePaymentQuote({
       totalAmount: total,
       currency: offer.currency,
@@ -1658,10 +1661,12 @@ export class MarketplaceService {
 
     return {
       paymentQuote,
+      priceBreakdown: breakdown,
       partialEnabled: paymentQuote.partialEnabled,
       cancellationPolicy: this.presentation.cancellationPolicy({
         paymentMode: mode,
       }),
+
       paymentMethods: this.presentation.paymentMethodsAvailable(dto.platform),
       terms: {
         termsOfServiceUrl: '/legal/terms',
@@ -1823,11 +1828,36 @@ export class MarketplaceService {
       orderBy: { createdAt: 'desc' },
     });
 
+    let priceBreakdown: any = null;
+    if (ride.selectedOfferId) {
+      const offer = await this.prisma.offer.findUnique({
+        where: { id: ride.selectedOfferId },
+      });
+      if (offer) {
+        priceBreakdown = this.presentation.priceBreakdown(
+          offer.priceSnapshot as any,
+        );
+      }
+    }
+    if (!priceBreakdown && payment?.amount) {
+      const amt = Number(payment.amount);
+      const ridePrice = Math.round((amt / 1.2) * 100) / 100;
+      const platformFee = Math.round(ridePrice * 0.2 * 100) / 100;
+      priceBreakdown = {
+        ridePrice,
+        platformFee,
+        taxes: 0,
+        total: amt,
+        currency: payment.currency,
+      };
+    }
+
     return {
       rideId: ride.id,
       rideStatus: ride.status,
       paymentExpiresAt: ride.paymentExpiresAt,
       selectedOfferId: ride.selectedOfferId,
+      priceBreakdown,
       payment: payment
         ? {
             id: payment.id,

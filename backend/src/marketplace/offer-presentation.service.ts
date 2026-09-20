@@ -125,14 +125,13 @@ export class OfferPresentationService {
     const ridePrice = round2(
       (snap.subtotal ?? snap.bidAmount ?? snap.guidanceAmount ?? 0) as number,
     );
-    const marketplaceFee = round2(snap.platformFee ?? 0);
+    const platformFee = round2(ridePrice * 0.2);
     const taxes = round2(snap.taxAmount ?? 0);
-    const total = round2(
-      snap.passengerTotal ?? ridePrice + taxes,
-    );
+    const total = round2(ridePrice + platformFee + taxes);
     return {
       ridePrice,
-      marketplaceFee,
+      platformFee,
+      marketplaceFee: platformFee,
       taxes,
       tolls: 0,
       waitingTime: 0,
@@ -142,9 +141,10 @@ export class OfferPresentationService {
       currency: snap.currency,
       includesNote: 'Includes all taxes and fees',
       ridePriceNote: 'Includes waiting time, toll roads (if any) and taxes.',
-      marketplaceFeeNote: 'Can be negative for some promoted rides.',
+      marketplaceFeeNote: 'Platform fee for booking and support.',
     };
   }
+
 
   parseVehicleName(name: string) {
     return parseVehicleNameUtil(name);
@@ -378,10 +378,12 @@ export class OfferPresentationService {
     }
 
     const snap = offer.priceSnapshot as PriceSnapshot | undefined;
-    const passengerTotal =
-      snap?.passengerTotal != null
-        ? Number(snap.passengerTotal)
-        : Number(offer.bidAmount ?? 0);
+    const breakdown = this.priceBreakdown(snap);
+    const passengerTotal = breakdown
+      ? breakdown.total
+      : (snap?.passengerTotal != null
+          ? Number(snap.passengerTotal)
+          : round2(Number(offer.bidAmount ?? 0) * 1.2));
 
     return {
       presentation: {
@@ -411,11 +413,12 @@ export class OfferPresentationService {
           yearsWithPlatform: ratingBlock.yearsWithPlatform,
         },
         reviews: ratingBlock.reviews,
-        priceBreakdown: this.priceBreakdown(snap),
+        priceBreakdown: breakdown,
         passengerTotal,
         waitingTime: this.waitingTimePolicy(),
       },
     };
+
   }
 
   private async safeSignedUrl(storageKey: string): Promise<string | null> {

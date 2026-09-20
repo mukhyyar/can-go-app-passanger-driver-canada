@@ -95,6 +95,7 @@ class OfferImage {
 class OfferPriceBreakdown {
   const OfferPriceBreakdown({
     this.ridePrice = 0,
+    this.platformFee = 0,
     this.marketplaceFee = 0,
     this.taxes = 0,
     this.tolls = 0,
@@ -109,6 +110,7 @@ class OfferPriceBreakdown {
   });
 
   final double ridePrice;
+  final double platformFee;
   final double marketplaceFee;
   final double taxes;
   final double tolls;
@@ -121,6 +123,26 @@ class OfferPriceBreakdown {
   final String? ridePriceNote;
   final String? marketplaceFeeNote;
 
+  factory OfferPriceBreakdown.fromBasePrice(
+    double basePrice, {
+    String currency = 'CAD',
+    double taxes = 0,
+  }) {
+    final fee = ((basePrice * 0.20) * 100).roundToDouble() / 100.0;
+    final total = ((basePrice + fee + taxes) * 100).roundToDouble() / 100.0;
+    return OfferPriceBreakdown(
+      ridePrice: basePrice,
+      platformFee: fee,
+      marketplaceFee: fee,
+      taxes: taxes,
+      total: total,
+      currency: currency,
+      includesNote: 'Includes all taxes and fees',
+      ridePriceNote: 'Includes waiting time, toll roads (if any) and taxes.',
+      marketplaceFeeNote: 'Platform fee for booking and support.',
+    );
+  }
+
   factory OfferPriceBreakdown.fromJson(Map<String, dynamic>? json) {
     if (json == null) {
       return const OfferPriceBreakdown();
@@ -132,15 +154,31 @@ class OfferPriceBreakdown {
       return 0;
     }
 
+    final rawRidePrice = n(json['ridePrice']);
+    var rawPlatformFee = n(json['platformFee'] ?? json['marketplaceFee']);
+    final rawTaxes = n(json['taxes']);
+    var rawTotal = n(json['total']);
+
+    if (rawPlatformFee == 0 && rawRidePrice > 0) {
+      rawPlatformFee = ((rawRidePrice * 0.20) * 100).roundToDouble() / 100.0;
+    }
+    if (rawTotal <= 0 ||
+        (rawRidePrice > 0 && (rawTotal - rawRidePrice).abs() < 0.01)) {
+      rawTotal = ((rawRidePrice + rawPlatformFee + rawTaxes) * 100)
+              .roundToDouble() /
+          100.0;
+    }
+
     return OfferPriceBreakdown(
-      ridePrice: n(json['ridePrice']),
-      marketplaceFee: n(json['marketplaceFee']),
-      taxes: n(json['taxes']),
+      ridePrice: rawRidePrice,
+      platformFee: rawPlatformFee,
+      marketplaceFee: rawPlatformFee,
+      taxes: rawTaxes,
       tolls: n(json['tolls']),
       waitingTime: n(json['waitingTime']),
       discount: n(json['discount']),
       promotion: n(json['promotion']),
-      total: n(json['total']),
+      total: rawTotal,
       currency: json['currency']?.toString() ?? 'CAD',
       includesNote: json['includesNote']?.toString(),
       ridePriceNote: json['ridePriceNote']?.toString(),
@@ -148,6 +186,7 @@ class OfferPriceBreakdown {
     );
   }
 }
+
 
 class OfferRatingBreakdown {
   const OfferRatingBreakdown({
