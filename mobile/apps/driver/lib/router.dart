@@ -26,6 +26,7 @@ import 'screens/settings/vehicles_list_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/shell.dart';
 import 'screens/wallet_screen.dart';
+import 'screens/welcome_screen.dart';
 import 'state/app_state.dart';
 
 GoRouter createRouter(AppState appState) {
@@ -35,6 +36,17 @@ GoRouter createRouter(AppState appState) {
     redirect: (context, state) {
       if (!appState.loaded) return null;
       final loc = state.matchedLocation;
+      final isWelcome = loc == '/welcome';
+
+      if (!appState.hasSeenWelcome) {
+        return isWelcome ? null : '/welcome';
+      }
+      if (isWelcome) {
+        return appState.isAuthenticated
+            ? (appState.onboardedComplete ? '/' : '/onboarding/profile')
+            : '/auth';
+      }
+
       final onboarding = loc.startsWith('/onboarding');
       final isAuth = loc == '/auth';
       if (!appState.isAuthenticated && !isAuth) {
@@ -51,6 +63,10 @@ GoRouter createRouter(AppState appState) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/welcome',
+        builder: (_, __) => const DriverWelcomeScreen(),
+      ),
       GoRoute(
         path: '/auth',
         builder: (_, __) => const AuthScreen(),

@@ -42,13 +42,15 @@ android {
         }
         val mapsProps = loadProps("maps.properties")
         val localProps = loadProps("local.properties")
-        val mapsKey =
+        val defaultMapsKey = "AIzaSyB7DSFU5Y360jRuiqNmVsii_ZU2oESncmg"
+        val resolvedMapsKey =
             mapsProps.getProperty("GOOGLE_MAPS_API_KEY")
                 ?: localProps.getProperty("GOOGLE_MAPS_API_KEY")
                 ?: (project.findProperty("GOOGLE_MAPS_API_KEY") as String?)
                 ?: System.getenv("GOOGLE_MAPS_API_KEY")
-                ?: ""
-        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = mapsKey
+                ?: defaultMapsKey
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] =
+            if (resolvedMapsKey.trim().isNotEmpty()) resolvedMapsKey.trim() else defaultMapsKey
     }
 
     buildTypes {

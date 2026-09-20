@@ -33,6 +33,7 @@ class AppState extends ChangeNotifier {
   String? pendingChatRideId;
 
   static const _kOnboarded = 'driver_onboarded';
+  static const _kHasSeenWelcome = 'driver_has_seen_welcome';
   static const _kOperatingZones = 'driver_operating_zones';
   static const _kBaseLat = 'driver_base_lat';
   static const _kBaseLng = 'driver_base_lng';
@@ -40,6 +41,7 @@ class AppState extends ChangeNotifier {
   static const _kZonesMigrated = 'driver_zones_migrated';
 
   bool loaded = false;
+  bool hasSeenWelcome = false;
   bool onboardedComplete = false;
   bool isAuthenticated = false;
 
@@ -130,6 +132,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
+    hasSeenWelcome = prefs.getBool(_kHasSeenWelcome) ?? false;
     onboardedComplete = prefs.getBool(_kOnboarded) ?? false;
     baseLocation =
         prefs.getString(_kBaseLocation) ?? repo.driver.baseLocation;
@@ -1392,6 +1395,13 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       return [];
     }
+  }
+
+  Future<void> setHasSeenWelcome(bool value) async {
+    hasSeenWelcome = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kHasSeenWelcome, value);
+    notifyListeners();
   }
 
   Future<void> setOnboarded(bool value) async {
