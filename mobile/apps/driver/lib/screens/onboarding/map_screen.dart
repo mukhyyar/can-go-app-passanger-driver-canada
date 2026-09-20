@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:go_router/go_router.dart';
@@ -92,6 +94,11 @@ class _MapScreenState extends State<MapScreen> {
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
                   compassEnabled: false,
+                  gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                    Factory<OneSequenceGestureRecognizer>(
+                      () => EagerGestureRecognizer(),
+                    ),
+                  },
                   markers: {
                     Marker(
                       markerId: const MarkerId('base'),

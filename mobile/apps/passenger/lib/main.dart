@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initGoogleMapsAndroid();
   // So /offers/:id and other deep links work on Flutter web (not only /#/...).
   usePathUrlStrategy();
 

@@ -499,13 +499,20 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
               ? 'com.canride.driver'
               : 'com.canride.passenger');
 
-      Future<Map<String, dynamic>?> queryGoogleDirections(String bundle) async {
+      Future<Map<String, dynamic>?> queryGoogleDirections({
+        String? iosBundle,
+        String? androidPkg,
+      }) async {
         try {
           final client = HttpClient();
           client.connectionTimeout = const Duration(seconds: 4);
           final req = await client.getUrl(uri);
-          req.headers.set('X-Ios-Bundle-Identifier', bundle);
-          req.headers.set('X-Android-Package', bundle);
+          if (iosBundle != null && iosBundle.isNotEmpty) {
+            req.headers.set('X-Ios-Bundle-Identifier', iosBundle);
+          }
+          if (androidPkg != null && androidPkg.isNotEmpty) {
+            req.headers.set('X-Android-Package', androidPkg);
+          }
           final res = await req.close().timeout(const Duration(seconds: 5));
           final body = await res.transform(utf8.decoder).join();
           client.close(force: true);
@@ -516,14 +523,37 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
         return null;
       }
 
-      var data = await queryGoogleDirections(resolvedBundle);
+      final altBundle = resolvedBundle == 'com.canride.driver'
+          ? 'com.canride.passenger'
+          : 'com.canride.driver';
+
+      // 1. Try with both iOS and Android headers for primary bundle
+      var data = await queryGoogleDirections(
+        iosBundle: resolvedBundle,
+        androidPkg: resolvedBundle,
+      );
+
+      // 2. If rejected, try iOS header only (handles keys restricted to iOS apps in GCP)
       if (data == null || data['status'] == 'REQUEST_DENIED') {
-        final altBundle = resolvedBundle == 'com.canride.driver'
-            ? 'com.canride.passenger'
-            : 'com.canride.driver';
-        final altData = await queryGoogleDirections(altBundle);
+        final iosOnly = await queryGoogleDirections(iosBundle: resolvedBundle);
+        if (iosOnly != null && iosOnly['status'] == 'OK') {
+          data = iosOnly;
+        }
+      }
+
+      // 3. If still rejected, try alternate bundle (driver <-> passenger)
+      if (data == null || data['status'] == 'REQUEST_DENIED') {
+        final altData = await queryGoogleDirections(iosBundle: altBundle);
         if (altData != null && altData['status'] == 'OK') {
           data = altData;
+        }
+      }
+
+      // 4. If still rejected, try without restriction headers
+      if (data == null || data['status'] == 'REQUEST_DENIED') {
+        final noHeaders = await queryGoogleDirections();
+        if (noHeaders != null && noHeaders['status'] == 'OK') {
+          data = noHeaders;
         }
       }
 

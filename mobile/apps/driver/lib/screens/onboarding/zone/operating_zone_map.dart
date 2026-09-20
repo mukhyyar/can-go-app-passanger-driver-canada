@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:gt_mock/gt_mock.dart';
@@ -388,6 +390,13 @@ class _OperatingZoneMapState extends State<OperatingZoneMap> {
                   zoomGesturesEnabled: !_isDraw,
                   tiltGesturesEnabled: false,
                   rotateGesturesEnabled: false,
+                  gestureRecognizers: !_isDraw
+                      ? <Factory<OneSequenceGestureRecognizer>>{
+                          Factory<OneSequenceGestureRecognizer>(
+                            () => EagerGestureRecognizer(),
+                          ),
+                        }
+                      : const <Factory<OneSequenceGestureRecognizer>>{},
                   polygons: {
                     ..._zonePolygons(),
                     if (_isDraw) ..._draftPolys(),

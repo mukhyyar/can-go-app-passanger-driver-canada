@@ -12,6 +12,7 @@ import 'state/app_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initGoogleMapsAndroid();
 
   if (!kIsWeb) {
     try {
