@@ -63,6 +63,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _error = null;
     });
     final app = context.read<AppState>();
+    final currentRide = await app.refreshRide(widget.rideId);
+    if (!mounted) return;
+    if (currentRide != null && currentRide.isBooked) {
+      context.go('/ride/${widget.rideId}');
+      return;
+    }
     try {
       try {
         await app.validateBook(widget.rideId, widget.offerId);
@@ -183,6 +189,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      final refreshed = await app.refreshRide(widget.rideId);
+      if (!mounted) return;
+      if (refreshed != null && refreshed.isBooked) {
+        context.go('/booking-confirmed/${widget.rideId}');
+        return;
+      }
       setState(() {
         _paying = false;
         _error =
@@ -258,6 +270,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final ride = app.rideById(widget.rideId);
+    if (ride != null && ride.isBooked && !_paying) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/ride/${widget.rideId}');
+      });
+    }
     final status =
         (app.rideById(widget.rideId)?.serverStatus ?? '').toUpperCase();
     final canCancel = status == 'PAYMENT_PENDING' ||

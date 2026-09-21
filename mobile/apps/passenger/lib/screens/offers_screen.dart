@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
@@ -36,11 +38,29 @@ class _OffersScreenState extends State<OffersScreen> {
   bool _loading = true;
   String? _loadError;
   List<Offer> _offers = const [];
+  Timer? _poll;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
+    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _pollRideStatus());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _pollRideStatus() async {
+    if (!mounted) return;
+    final app = context.read<AppState>();
+    final ride = await app.refreshRide(widget.rideId);
+    if (!mounted) return;
+    if (ride != null && ride.isBooked) {
+      context.go('/ride/${widget.rideId}');
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -80,8 +100,13 @@ class _OffersScreenState extends State<OffersScreen> {
 
       final raw = await app.api.marketplace.getRide(widget.rideId);
       final parsed = parseOffersList(raw['offers']);
-      await app.refreshRide(widget.rideId);
+      final refreshed = await app.refreshRide(widget.rideId);
       if (!mounted) return;
+
+      if (refreshed != null && refreshed.isBooked) {
+        context.go('/ride/${widget.rideId}');
+        return;
+      }
 
       final fromState = app.offersFor(widget.rideId);
       final offers = parsed.isNotEmpty ? parsed : fromState;
@@ -146,6 +171,12 @@ class _OffersScreenState extends State<OffersScreen> {
       context.push('/payment/${widget.rideId}/${offer.id}');
     } catch (e) {
       if (!mounted) return;
+      final refreshed = await app.refreshRide(widget.rideId);
+      if (!mounted) return;
+      if (refreshed != null && refreshed.isBooked) {
+        context.go('/ride/${widget.rideId}');
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Cannot book: $e')),
       );
@@ -191,6 +222,12 @@ class _OffersScreenState extends State<OffersScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final ride = state.rideById(widget.rideId);
+
+    if (ride != null && ride.isBooked) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/ride/${widget.rideId}');
+      });
+    }
     final live = state.offersFor(widget.rideId);
     final source = _offers.isNotEmpty ? _offers : live;
     final offers = _sorted(source);

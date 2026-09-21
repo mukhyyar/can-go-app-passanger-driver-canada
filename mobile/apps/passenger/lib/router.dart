@@ -52,6 +52,20 @@ GoRouter createRouter(AppState state) {
         if (path != null) return path;
       }
 
+      // If a ride is already booked, redirect away from booking/waiting/payment screens to the ride screen.
+      if (loc.startsWith('/waiting/') ||
+          loc.startsWith('/offers/') ||
+          loc.startsWith('/offer/') ||
+          loc.startsWith('/payment/')) {
+        final segments = loc.split('/');
+        if (segments.length >= 3) {
+          final rideId = segments[2];
+          if (state.isRideBooked(rideId)) {
+            return '/ride/$rideId';
+          }
+        }
+      }
+
       return null;
     },
     routes: [

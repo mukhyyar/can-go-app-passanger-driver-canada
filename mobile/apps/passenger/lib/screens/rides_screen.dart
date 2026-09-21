@@ -104,6 +104,10 @@ class _RideList extends StatelessWidget {
   }
 
   void _openRide(BuildContext context, RideRequest r) {
+    if (r.isBooked || r.isCancelled) {
+      context.push('/ride/${r.id}');
+      return;
+    }
     switch (r.status) {
       case RideStatus.waitingOffers:
         if (r.offerCount > 0) {

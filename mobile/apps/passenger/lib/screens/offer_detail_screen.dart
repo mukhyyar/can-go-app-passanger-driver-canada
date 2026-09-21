@@ -51,6 +51,12 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       _error = null;
     });
     final app = context.read<AppState>();
+    final refreshedRide = await app.refreshRide(widget.rideId);
+    if (!mounted) return;
+    if (refreshedRide != null && refreshedRide.isBooked) {
+      context.go('/ride/${widget.rideId}');
+      return;
+    }
     final offer = await app.fetchOffer(widget.rideId, id);
     if (!mounted) return;
     if (offer == null) {
@@ -164,6 +170,12 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       context.push('/payment/${widget.rideId}/${offer.id}');
     } catch (e) {
       if (!mounted) return;
+      final refreshed = await app.refreshRide(widget.rideId);
+      if (!mounted) return;
+      if (refreshed != null && refreshed.isBooked) {
+        context.go('/ride/${widget.rideId}');
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Cannot book: $e')),
       );
@@ -289,6 +301,13 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     _consumeRealtime(app);
+
+    final ride = app.rideById(widget.rideId);
+    if (ride != null && ride.isBooked) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/ride/${widget.rideId}');
+      });
+    }
 
     if (_loading) {
       return Scaffold(

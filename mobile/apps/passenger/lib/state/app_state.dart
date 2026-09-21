@@ -829,6 +829,9 @@ class AppState extends ChangeNotifier {
     if (type == 'chat') {
       return '/ride/$rideId/chat';
     }
+    if (isRideBooked(rideId)) {
+      return '/ride/$rideId';
+    }
     if (offerId != null && offerId.isNotEmpty) {
       return '/offers/$rideId?offerId=$offerId';
     }
@@ -1683,6 +1686,22 @@ class AppState extends ChangeNotifier {
   RideRequest? rideById(String id) {
     try {
       return repo.rides.firstWhere((r) => r.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool isRideBooked(String rideId) {
+    final ride = rideById(rideId);
+    if (ride == null) return false;
+    return ride.isBooked;
+  }
+
+  RideRequest? get activeBookedRide {
+    try {
+      return repo.rides.firstWhere(
+        (r) => r.isBooked && (r.serverStatus ?? '').toUpperCase() != 'COMPLETED',
+      );
     } catch (_) {
       return null;
     }

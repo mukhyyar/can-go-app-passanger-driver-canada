@@ -25,7 +25,9 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
 
   Future<void> _load() async {
     final app = context.read<AppState>();
-    await app.refreshRide(widget.rideId);
+    try {
+      await app.refreshRide(widget.rideId);
+    } catch (_) {}
     Map<String, dynamic>? status;
     try {
       status = await app.getPaymentStatus(widget.rideId);
@@ -173,8 +175,7 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
                 GtGreenButton(
                   label: 'View ride',
                   onPressed: () {
-                    app.setShellTab(1);
-                    context.go('/');
+                    context.go('/ride/${widget.rideId}');
                   },
                 ),
                 const SizedBox(height: 12),

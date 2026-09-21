@@ -423,6 +423,28 @@ class RideRequest {
     }
     return id.substring(0, 8).toUpperCase();
   }
+
+  bool get isBooked {
+    if (status == RideStatus.booked || status == RideStatus.past) return true;
+    final s = (serverStatus ?? '').toUpperCase();
+    const bookedStatuses = {
+      'BOOKED',
+      'EN_ROUTE',
+      'DRIVER_EN_ROUTE',
+      'ARRIVED',
+      'DRIVER_ARRIVED',
+      'TRIP_STARTED',
+      'IN_PROGRESS',
+      'COMPLETED',
+    };
+    return bookedStatuses.contains(s);
+  }
+
+  bool get isCancelled {
+    if (status == RideStatus.cancelled) return true;
+    final s = (serverStatus ?? '').toUpperCase();
+    return s.contains('CANCEL') || s == 'EXPIRED' || s == 'NO_SHOW';
+  }
 }
 
 class DriverVehicle {

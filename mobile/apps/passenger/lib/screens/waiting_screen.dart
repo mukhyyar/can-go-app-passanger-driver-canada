@@ -18,6 +18,7 @@ class WaitingScreen extends StatefulWidget {
 class _WaitingScreenState extends State<WaitingScreen>
     with SingleTickerProviderStateMixin {
   Timer? _poll;
+  Timer? _initialDelay;
   late final AnimationController _pulse;
   bool _refreshed = false;
 
@@ -29,18 +30,24 @@ class _WaitingScreenState extends State<WaitingScreen>
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
     _poll = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
-    Future.delayed(const Duration(milliseconds: 400), _refresh);
+    _initialDelay = Timer(const Duration(milliseconds: 400), _refresh);
   }
 
   Future<void> _refresh() async {
     final app = context.read<AppState>();
-    await Future.wait([
-      app.refreshRidesFromServer(),
-      app.refreshRide(widget.rideId),
-    ]);
+    try {
+      await Future.wait([
+        app.refreshRidesFromServer(),
+        app.refreshRide(widget.rideId),
+      ]);
+    } catch (_) {}
     if (!mounted) return;
     setState(() => _refreshed = true);
     final ride = app.rideById(widget.rideId);
+    if (ride != null && ride.isBooked) {
+      context.go('/ride/${widget.rideId}');
+      return;
+    }
     final offers = app.offersFor(widget.rideId);
     if (ride != null &&
         (ride.status == RideStatus.chooseOffer ||
@@ -54,6 +61,7 @@ class _WaitingScreenState extends State<WaitingScreen>
   @override
   void dispose() {
     _poll?.cancel();
+    _initialDelay?.cancel();
     _pulse.dispose();
     super.dispose();
   }
@@ -95,6 +103,12 @@ class _WaitingScreenState extends State<WaitingScreen>
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final ride = state.rideById(widget.rideId);
+
+    if (ride != null && ride.isBooked) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/ride/${widget.rideId}');
+      });
+    }
     final offers = state.offersFor(widget.rideId);
     final offerCount =
         offers.isNotEmpty ? offers.length : (ride?.offerCount ?? 0);
