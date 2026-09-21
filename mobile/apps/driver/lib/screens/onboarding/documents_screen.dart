@@ -90,23 +90,38 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       if (docType == 'vehicle_registration' || docType == 'insurance') {
         await app.ensureVehicle();
       }
-      await app.uploadKycBytes(
-        docType: docType,
-        bytes: bytes,
-        filename: file.name,
-        expiresAt: expiresAt,
-      );
-      final id = app.documentForType(docType)?['id']?.toString();
+      final existingDoc = app.documentForType(docType);
+      final existingId = existingDoc?['id']?.toString();
+      final isReupload = app.isDocumentReuploadRequested(existingDoc);
+
+      if (isReupload && existingId != null) {
+        await app.reuploadKycBytes(
+          docType: docType,
+          documentId: existingId,
+          bytes: bytes,
+          filename: file.name,
+          expiresAt: expiresAt,
+        );
+      } else {
+        await app.uploadKycBytes(
+          docType: docType,
+          bytes: bytes,
+          filename: file.name,
+          expiresAt: expiresAt,
+        );
+      }
+      final id = app.documentForType(docType)?['id']?.toString() ?? existingId;
       if (id != null && mounted) {
         app.rememberDocumentPreview(id, bytes);
         setState(() {
           _previewBytes[id] = bytes;
           _previewFailed.remove(id);
+          _submitted = false;
         });
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Uploaded $docType')),
+          SnackBar(content: Text(isReupload ? 'Re-uploaded $docType' : 'Uploaded $docType')),
         );
         await _loadPreviews();
       }
@@ -205,7 +220,10 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final isAllUnderReview = s.areDocumentsUnderReview || _submitted;
+    final isAllUnderReview =
+        (s.areDocumentsUnderReview || _submitted) &&
+        !s.hasReuploadRequest &&
+        !s.hasExpiredDocuments;
 
     bool isSlotUnderReview(Map<String, dynamic>? doc) {
       if (doc == null) return false;
@@ -213,6 +231,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       final st = doc['status']?.toString().toUpperCase() ?? '';
       if (st == 'REJECTED' || st == 'NEEDS_RESUBMISSION') return false;
       if (isAllUnderReview) return true;
+      if (st == 'PENDING') return true;
       final appStatus = s.approvalStatus.toUpperCase();
       if (appStatus == 'ACTION_REQUIRED' || appStatus == 'IN_REVIEW') {
         return true;
@@ -241,7 +260,53 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (isAllUnderReview) ...[
+                if (s.hasReuploadRequest) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      border: Border.all(color: Colors.amber.shade300),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.assignment_late_outlined,
+                          color: Colors.amber.shade900,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Re-upload requested',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                s.reuploadRequestedSlotTitles.isNotEmpty
+                                    ? 'Our admin team reviewed your documents and requested a new upload for: ${s.reuploadRequestedSlotTitles.join(', ')}. Please review the feedback and re-upload below.'
+                                    : 'Our admin team reviewed your documents and requested a new upload. Please review the feedback and re-upload below.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else if (isAllUnderReview) ...[
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -324,7 +389,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       Text(
                         isAllUnderReview
                             ? 'Tap a photo to preview full screen. All documents are currently locked under review.'
-                            : 'Tap a photo to preview full screen. Upload all required documents to submit.',
+                            : s.hasReuploadRequest
+                                ? 'Please re-upload the requested document(s) with clear, legible photos.'
+                                : 'Tap a photo to preview full screen. Upload all required documents to submit.',
                         style: const TextStyle(
                           color: GtColors.textSecondary,
                           fontSize: 13,
@@ -348,6 +415,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   isLocked: s.documentForType('selfie') != null &&
                       s.isDocumentLocked(s.documentForType('selfie')!),
                   isUnderReview: isSlotUnderReview(s.documentForType('selfie')),
+                  feedback: s.documentFeedback(s.documentForType('selfie')),
                 ),
                 const SizedBox(height: 12),
                 _DocSlot(
@@ -364,6 +432,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   isLocked: s.documentForType('license') != null &&
                       s.isDocumentLocked(s.documentForType('license')!),
                   isUnderReview: isSlotUnderReview(s.documentForType('license')),
+                  feedback: s.documentFeedback(s.documentForType('license')),
                 ),
                 const SizedBox(height: 12),
                 _DocSlot(
@@ -384,6 +453,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           s.documentForType('vehicle_registration')!),
                   isUnderReview: isSlotUnderReview(
                       s.documentForType('vehicle_registration')),
+                  feedback: s.documentFeedback(s.documentForType('vehicle_registration')),
                 ),
                 const SizedBox(height: 12),
                 _DocSlot(
@@ -401,6 +471,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   isLocked: s.documentForType('insurance') != null &&
                       s.isDocumentLocked(s.documentForType('insurance')!),
                   isUnderReview: isSlotUnderReview(s.documentForType('insurance')),
+                  feedback: s.documentFeedback(s.documentForType('insurance')),
                 ),
               ],
             ),
@@ -412,30 +483,35 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     label: 'Documents under review',
                     onPressed: null,
                   )
-                : GtGreenButton(
-                    label: s.hasAllRequiredDocuments ? 'Submit documents' : 'Save',
-                    onPressed: _busy
-                        ? null
-                        : () async {
-                            if (s.hasAllRequiredDocuments) {
-                              setState(() => _submitted = true);
-                              await s.syncDocumentsStatus();
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Documents submitted for review'),
-                                  ),
-                                );
-                              }
-                            } else {
-                              if (context.canPop()) {
-                                context.pop();
-                              } else {
-                                context.go('/');
-                              }
-                            }
-                          },
-                  ),
+                : s.hasReuploadRequest
+                    ? const GtGreenButton(
+                        label: 'Re-upload requested document(s)',
+                        onPressed: null,
+                      )
+                    : GtGreenButton(
+                        label: s.hasAllRequiredDocuments ? 'Submit documents' : 'Save',
+                        onPressed: _busy
+                            ? null
+                            : () async {
+                                if (s.hasAllRequiredDocuments) {
+                                  setState(() => _submitted = true);
+                                  await s.syncDocumentsStatus();
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Documents submitted for review'),
+                                      ),
+                                    );
+                                  }
+                                } else {
+                                  if (context.canPop()) {
+                                    context.pop();
+                                  } else {
+                                    context.go('/');
+                                  }
+                                }
+                              },
+                      ),
           ),
         ],
       ),
@@ -457,6 +533,7 @@ class _DocSlot extends StatelessWidget {
     required this.onPreview,
     required this.isLocked,
     this.isUnderReview = false,
+    this.feedback,
   });
 
   final String title;
@@ -470,6 +547,7 @@ class _DocSlot extends StatelessWidget {
   final void Function(Uint8List bytes, String title) onPreview;
   final bool isLocked;
   final bool isUnderReview;
+  final String? feedback;
 
   @override
   Widget build(BuildContext context) {
@@ -483,18 +561,21 @@ class _DocSlot extends StatelessWidget {
         : null;
 
     final status = doc?['status']?.toString().toUpperCase() ?? '';
-    final isRejected = status == 'REJECTED' || status == 'NEEDS_RESUBMISSION';
+    final isNeedsResubmission = status == 'NEEDS_RESUBMISSION';
+    final isRejected = status == 'REJECTED' || isNeedsResubmission;
     final slotUnderReview = isUnderReview && !isExpired && !isRejected;
 
     final statusColor = isExpired
         ? Colors.red.shade700
         : status == 'APPROVED'
             ? GtColors.brand
-            : isRejected
-                ? Colors.orange.shade800
-                : slotUnderReview || status == 'PENDING'
-                    ? Colors.amber.shade900
-                    : GtColors.textSecondary;
+            : isNeedsResubmission
+                ? Colors.amber.shade900
+                : isRejected
+                    ? Colors.orange.shade800
+                    : slotUnderReview || status == 'PENDING'
+                        ? Colors.amber.shade900
+                        : GtColors.textSecondary;
 
     return GtCard(
       child: Column(
@@ -528,6 +609,42 @@ class _DocSlot extends StatelessWidget {
                         ),
                       ),
                     ],
+                    if (isRejected &&
+                        feedback != null &&
+                        feedback!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.amber.shade200),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: Colors.amber.shade900,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                feedback!,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: Colors.amber.shade900,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -537,19 +654,36 @@ class _DocSlot extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isExpired
                         ? Colors.red.shade50
-                        : (slotUnderReview || status == 'PENDING'
+                        : (isNeedsResubmission
                             ? Colors.amber.shade50
-                            : (status == 'APPROVED'
-                                ? Colors.green.shade50
-                                : GtColors.soft)),
+                            : (slotUnderReview || status == 'PENDING'
+                                ? Colors.amber.shade50
+                                : (status == 'APPROVED'
+                                    ? Colors.green.shade50
+                                    : (status == 'REJECTED'
+                                        ? Colors.red.shade50
+                                        : GtColors.soft)))),
+                    border: (isNeedsResubmission || status == 'REJECTED')
+                        ? Border.all(
+                            color: isNeedsResubmission
+                                ? Colors.amber.shade300
+                                : Colors.red.shade300,
+                          )
+                        : null,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     isExpired
                         ? 'EXPIRED'
-                        : (slotUnderReview || status == 'PENDING'
-                            ? 'Under review'
-                            : (status.isEmpty ? 'Uploaded' : status.replaceAll('_', ' '))),
+                        : (isNeedsResubmission
+                            ? 'Re-upload requested'
+                            : (slotUnderReview || status == 'PENDING'
+                                ? 'Under review'
+                                : (status.isEmpty
+                                    ? 'Uploaded'
+                                    : (status == 'REJECTED'
+                                        ? 'REJECTED'
+                                        : status.replaceAll('_', ' '))))),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -642,12 +776,27 @@ class _DocSlot extends StatelessWidget {
                     else if (hasDoc) ...[
                       OutlinedButton.icon(
                         onPressed: busy ? null : onReplace,
-                        icon: const Icon(Icons.swap_horiz, size: 18),
-                        label: Text(isExpired ? 'Re-upload' : 'Replace'),
-                        style: isExpired
+                        icon: Icon(
+                          (isNeedsResubmission || isExpired)
+                              ? Icons.refresh_rounded
+                              : Icons.swap_horiz,
+                          size: 18,
+                        ),
+                        label: Text(
+                          (isNeedsResubmission || isExpired)
+                              ? 'Re-upload'
+                              : 'Replace',
+                        ),
+                        style: (isExpired || isNeedsResubmission)
                             ? OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red.shade700,
-                                side: BorderSide(color: Colors.red.shade400),
+                                foregroundColor: isNeedsResubmission
+                                    ? Colors.amber.shade900
+                                    : Colors.red.shade700,
+                                side: BorderSide(
+                                  color: isNeedsResubmission
+                                      ? Colors.amber.shade400
+                                      : Colors.red.shade400,
+                                ),
                               )
                             : null,
                       ),

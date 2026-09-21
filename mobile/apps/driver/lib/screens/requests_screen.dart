@@ -157,7 +157,9 @@ class _RequestsScreenState extends State<RequestsScreen>
               child: DriverBrandHeader(
                 subtitle: s.hasExpiredDocuments
                     ? 'Documents expired — account disabled'
-                    : (s.isActivated ? null : 'Complete activation to offer prices'),
+                    : (s.hasReuploadRequest
+                        ? 'Document re-upload requested'
+                        : (s.isActivated ? null : 'Complete activation to offer prices')),
               ),
             ),
             if (s.hasExpiredDocuments)
@@ -192,6 +194,39 @@ class _RequestsScreenState extends State<RequestsScreen>
                     ),
                   ),
                 ),
+              )
+            else if (s.hasReuploadRequest)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: InkWell(
+                  onTap: () => context.push('/onboarding/documents'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      border: Border.all(color: Colors.amber.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.assignment_late_outlined, color: Colors.amber.shade900, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Document review: Re-upload requested. Tap to view and re-upload.',
+                            style: TextStyle(
+                              color: Colors.amber.shade900,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: Colors.amber.shade900, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             const SizedBox(height: 12),
             Padding(
@@ -215,13 +250,17 @@ class _RequestsScreenState extends State<RequestsScreen>
                     label: 'Status',
                     value: s.hasExpiredDocuments
                         ? 'Disabled'
-                        : (s.drivingEnabled ? 'On' : 'Off'),
+                        : (s.hasReuploadRequest
+                            ? 'Action req.'
+                            : (s.drivingEnabled ? 'On' : 'Off')),
                     valueColor: s.hasExpiredDocuments
                         ? Colors.red.shade700
-                        : (s.drivingEnabled
-                            ? GtColors.green
-                            : GtColors.textMuted),
-                    onTap: (!s.isActivated || s.hasExpiredDocuments)
+                        : (s.hasReuploadRequest
+                            ? Colors.amber.shade900
+                            : (s.drivingEnabled
+                                ? GtColors.green
+                                : GtColors.textMuted)),
+                    onTap: (!s.isActivated || s.hasExpiredDocuments || s.hasReuploadRequest)
                         ? null
                         : () async {
                             try {

@@ -1153,9 +1153,110 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  bool isDocumentReuploadRequested(Map<String, dynamic>? doc) {
+    if (doc == null) return false;
+    final st = doc['status']?.toString().toUpperCase() ?? '';
+    return st == 'NEEDS_RESUBMISSION' || st == 'REJECTED';
+  }
+
+  bool get hasReuploadRequest {
+    for (final slot in const [
+      'selfie',
+      'license',
+      'vehicle_registration',
+      'insurance',
+    ]) {
+      final doc = documentForType(slot);
+      if (isDocumentReuploadRequested(doc)) return true;
+    }
+    for (final doc in documents) {
+      if (isDocumentReuploadRequested(doc)) return true;
+    }
+    return false;
+  }
+
+  List<String> get reuploadRequestedSlotTitles {
+    const titles = {
+      'selfie': 'Selfie with driving license',
+      'license': 'Driving license',
+      'vehicle_registration': 'Vehicle registration',
+      'insurance': 'Vehicle insurance',
+    };
+    final list = <String>[];
+    for (final slot in const [
+      'selfie',
+      'license',
+      'vehicle_registration',
+      'insurance',
+    ]) {
+      final doc = documentForType(slot);
+      if (isDocumentReuploadRequested(doc)) {
+        list.add(titles[slot] ?? slot);
+      }
+    }
+    return list;
+  }
+
+  String? documentFeedback(Map<String, dynamic>? doc) {
+    if (doc == null) return null;
+    final customMsg = doc['customerMessage']?.toString().trim();
+    if (customMsg != null && customMsg.isNotEmpty) return customMsg;
+    final resub = doc['resubmissionReason']?.toString().trim();
+    if (resub != null && resub.isNotEmpty) {
+      return formatResubmissionReason(resub);
+    }
+    final rej = doc['rejectionReason']?.toString().trim();
+    if (rej != null && rej.isNotEmpty) {
+      return formatResubmissionReason(rej);
+    }
+    final note = doc['adminNote']?.toString().trim();
+    if (note != null && note.isNotEmpty) return note;
+    return null;
+  }
+
+  static String formatResubmissionReason(String? rawReason) {
+    if (rawReason == null || rawReason.trim().isEmpty) {
+      return 'Please upload a clearer, updated document.';
+    }
+    final key = rawReason.trim().toLowerCase();
+    switch (key) {
+      case 'image_unclear':
+        return 'Image is unclear or blurry — please provide a clear, readable photo.';
+      case 'document_cropped':
+        return 'Document is cropped — please ensure all four corners and edges are fully visible.';
+      case 'information_unreadable':
+        return 'Information is unreadable — please ensure all text and numbers are clearly legible.';
+      case 'document_expired':
+      case 'expired_document':
+        return 'Document has expired — please upload a valid, current document.';
+      case 'wrong_document':
+      case 'invalid_documents':
+      case 'invalid_licence':
+        return 'Wrong document type — please upload the exact requested document.';
+      case 'details_mismatch':
+      case 'information_mismatch':
+      case 'identity_mismatch':
+        return 'Details mismatch — document information does not match your profile.';
+      case 'fraud_suspicion':
+      case 'fraud_concern':
+        return 'Verification failed — please upload an authentic, official document.';
+      default:
+        if (key.contains('_')) {
+          return key
+              .split('_')
+              .map((w) => w.isNotEmpty
+                  ? '${w[0].toUpperCase()}${w.substring(1)}'
+                  : '')
+              .join(' ');
+        }
+        return rawReason;
+    }
+  }
+
   bool get areDocumentsUnderReview {
     if (!hasAllRequiredDocuments) return false;
     if (hasExpiredDocuments) return false;
+    if (hasReuploadRequest) return false;
     for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
       final doc = documentForType(slot);
       if (!isDocumentUnderReview(doc)) return false;
@@ -1164,8 +1265,8 @@ class AppState extends ChangeNotifier {
   }
 
   bool isDocumentLocked(Map<String, dynamic> doc) {
-    // If expired, unlock so driver can re-upload even if previously approved
-    if (isDocumentExpired(doc)) return false;
+    // If expired or reupload requested, unlock so driver can re-upload even if previously approved
+    if (isDocumentExpired(doc) || isDocumentReuploadRequested(doc)) return false;
     return (doc['status']?.toString().toUpperCase() ?? '') == 'APPROVED';
   }
 
@@ -1292,6 +1393,42 @@ class AppState extends ChangeNotifier {
       final id = documentForType(docType)?['id']?.toString();
       if (id != null) rememberDocumentPreview(id, bytes);
     }
+    notifyListeners();
+  }
+
+  Future<void> reuploadKycBytes({
+    required String docType,
+    required String documentId,
+    required Uint8List bytes,
+    required String filename,
+    String? vehicleId,
+    String? expiresAt,
+  }) async {
+    try {
+      await api.driver.reuploadDocument(
+        documentId: documentId,
+        bytes: bytes,
+        filename: filename,
+        expiresAt: expiresAt,
+      );
+    } catch (e) {
+      debugPrint('reuploadDocument endpoint fallback to uploadDocument: $e');
+      final resolvedVehicleId = vehicleId ?? primaryVehicleId;
+      await api.driver.uploadDocument(
+        docType: docType,
+        bytes: bytes,
+        filename: filename,
+        vehicleId: resolvedVehicleId,
+        expiresAt: expiresAt,
+      );
+    }
+    if (docType == 'selfie') selfieUploaded = true;
+    if (docType == 'license') licenseUploaded = true;
+    if (docType == 'vehicle_registration') vehicleDocUploaded = true;
+    if (docType == 'insurance') insuranceUploaded = true;
+    await syncDocumentsStatus();
+    final id = documentForType(docType)?['id']?.toString() ?? documentId;
+    rememberDocumentPreview(id, bytes);
     notifyListeners();
   }
 

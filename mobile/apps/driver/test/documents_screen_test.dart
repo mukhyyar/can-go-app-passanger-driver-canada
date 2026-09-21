@@ -295,4 +295,77 @@ void main() {
     expect(find.text('Replace'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
   });
+
+  testWidgets(
+      'When document review requests reupload (NEEDS_RESUBMISSION), shows Re-upload requested badge, feedback message, and active Re-upload button',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final appState = AppState();
+    appState.hasSeenWelcome = true;
+    appState.loaded = true;
+    appState.approvalStatus = 'ACTION_REQUIRED';
+    appState.documents = [
+      {'id': 'd1', 'docType': 'selfie', 'status': 'PENDING'},
+      {
+        'id': 'd2',
+        'docType': 'license',
+        'status': 'NEEDS_RESUBMISSION',
+        'resubmissionReason': 'image_unclear',
+        'customerMessage': 'Please provide a clearer, sharper photo of your driving license.',
+      },
+      {'id': 'd3', 'docType': 'vehicle_registration', 'status': 'PENDING'},
+      {'id': 'd4', 'docType': 'insurance', 'status': 'PENDING'},
+    ];
+
+    expect(appState.hasReuploadRequest, isTrue);
+    expect(appState.reuploadRequestedSlotTitles, contains('Driving license'));
+
+    final router = GoRouter(
+      initialLocation: '/onboarding/documents',
+      routes: [
+        GoRoute(
+          path: '/onboarding/documents',
+          builder: (_, __) => const DocumentsScreen(),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: appState,
+        child: MaterialApp.router(
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Top review banner shows Re-upload requested
+    expect(find.text('Re-upload requested'), findsNWidgets(2)); // Top banner header + license slot badge
+    expect(
+      find.text('Our admin team reviewed your documents and requested a new upload for: Driving license. Please review the feedback and re-upload below.'),
+      findsOneWidget,
+    );
+
+    // Feedback message displayed on Driving license slot
+    expect(
+      find.text('Please provide a clearer, sharper photo of your driving license.'),
+      findsOneWidget,
+    );
+
+    // Active Re-upload button on license slot
+    expect(find.text('Re-upload'), findsOneWidget);
+
+    // 3 remaining documents stay locked under review
+    expect(find.text('Documents under review'), findsNWidgets(3));
+
+    // Bottom button indicates re-upload requested document(s)
+    final bottomButton = tester.widget<GtGreenButton>(find.byType(GtGreenButton));
+    expect(bottomButton.onPressed, isNull);
+    expect(bottomButton.label, 'Re-upload requested document(s)');
+  });
 }
