@@ -49,7 +49,15 @@ class _MapScreenState extends State<MapScreen> {
       baseLatitude: _lat,
       baseLongitude: _lng,
     );
-    context.go('/onboarding/zone');
+    context.pushReplacement('/onboarding/zone');
+  }
+
+  void _handleBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/onboarding/location');
+    }
   }
 
   @override
@@ -59,13 +67,19 @@ class _MapScreenState extends State<MapScreen> {
         ? '9580 Jane St, Vaughan, ON L4H 2E8, Canada'
         : s.baseLocation;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Base location'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Base location'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _handleBack,
+          ),
         actions: [
           TextButton(
             onPressed: _done,
@@ -169,6 +183,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

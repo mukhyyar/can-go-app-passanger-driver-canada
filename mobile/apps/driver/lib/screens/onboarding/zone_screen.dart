@@ -303,6 +303,30 @@ class _ZoneScreenState extends State<ZoneScreen> {
     }
   }
 
+  void _handleBack() {
+    if (_mode == ZoneMapMode.creating) {
+      _cancelCreate();
+      return;
+    }
+    if (_selectedId != null) {
+      setState(() {
+        _selectedId = null;
+        _mode = ZoneMapMode.viewing;
+      });
+      return;
+    }
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      final s = context.read<AppState>();
+      if (s.onboardedComplete) {
+        context.go('/');
+      } else {
+        context.go('/onboarding/location');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -316,20 +340,20 @@ class _ZoneScreenState extends State<ZoneScreen> {
       lng: s.baseLongitude,
     );
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Your operating zone'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (creating) {
-              _cancelCreate();
-            } else {
-              context.pop();
-            }
-          },
-        ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('Your operating zone'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _handleBack,
+          ),
         actions: [
           IconButton(
             onPressed: _showIntro,
@@ -418,6 +442,7 @@ class _ZoneScreenState extends State<ZoneScreen> {
             ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

@@ -171,17 +171,36 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
+  void _handleBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      final s = context.read<AppState>();
+      if (s.onboardedComplete) {
+        context.go('/');
+      } else {
+        context.go('/onboarding/zone');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Documents'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Documents'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _handleBack,
+          ),
         ),
-      ),
       body: Column(
         children: [
           if (_busy) const LinearProgressIndicator(),
@@ -281,8 +300,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _DocSlot extends StatelessWidget {

@@ -295,13 +295,14 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _onGoogle() async {
+    final app = context.read<AppState>();
     await _run(() async {
       if (_oauthConfigLoading) {
         throw Exception('Still loading sign-in options — try again in a moment.');
       }
       if (_oauthConfigError != null || _oauthConfig == null) {
         try {
-          final cfg = await context.read<AppState>().loadOAuthConfig();
+          final cfg = await app.loadOAuthConfig();
           if (mounted) {
             setState(() {
               _oauthConfig = cfg;
@@ -334,7 +335,6 @@ class _AuthScreenState extends State<AuthScreen> {
           ? clientId
           : defaultServerClientId;
 
-      final app = context.read<AppState>();
       final signIn = GoogleSignIn.instance;
       const iosClientId =
           '400688849973-ba7bgucq57b9pd4uoq0fcinqu9j4bpqh.apps.googleusercontent.com';

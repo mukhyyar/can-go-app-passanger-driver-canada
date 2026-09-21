@@ -8,6 +8,7 @@ build/
 .flutter-plugins-dependencies
 **/doc/api/
 *.iml
+**/devtools_options.yaml
 
 # Android
 **/android/.gradle/

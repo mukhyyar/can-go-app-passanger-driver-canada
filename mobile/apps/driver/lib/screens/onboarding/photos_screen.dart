@@ -93,36 +93,55 @@ class _PhotosScreenState extends State<PhotosScreen> {
     final s = context.watch<AppState>();
     final vehicleId = s.primaryVehicleId;
 
-    return Scaffold(
-      backgroundColor: GtColors.bgGrey,
-      appBar: AppBar(
-        title: const Text('Vehicle photos'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+    void handleBack() {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        if (s.onboardedComplete) {
+          context.go('/');
+        } else {
+          context.go('/onboarding/documents');
+        }
+      }
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: GtColors.bgGrey,
+        appBar: AppBar(
+          title: const Text('Vehicle photos'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: handleBack,
+          ),
         ),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const VehicleSectionHeader(
-              'Photos',
-              subtitle: 'Up to 6 clear photos of your vehicle',
-            ),
-            VehiclePhotoGrid(vehicleId: vehicleId),
-            const SizedBox(height: 24),
-            GtGreenButton(
-              label: 'Continue',
-              onPressed: () {
-                if (s.onboardedComplete) {
-                  context.pop();
-                } else {
-                  context.push('/onboarding/payment');
-                }
-              },
-            ),
-          ],
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const VehicleSectionHeader(
+                'Photos',
+                subtitle: 'Up to 6 clear photos of your vehicle',
+              ),
+              VehiclePhotoGrid(vehicleId: vehicleId),
+              const SizedBox(height: 24),
+              GtGreenButton(
+                label: 'Continue',
+                onPressed: () {
+                  if (s.onboardedComplete) {
+                    context.pop();
+                  } else {
+                    context.push('/onboarding/payment');
+                  }
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

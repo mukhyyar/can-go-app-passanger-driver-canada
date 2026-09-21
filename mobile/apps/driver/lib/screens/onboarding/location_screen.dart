@@ -130,7 +130,7 @@ class _LocationScreenState extends State<LocationScreen> {
           baseLatitude: place.hasCoords ? place.lat : null,
           baseLongitude: place.hasCoords ? place.lng : null,
         );
-    context.go('/onboarding/zone');
+    context.push('/onboarding/zone');
   }
 
   void _selectLabel(String label, {double? lat, double? lng}) {
@@ -139,38 +139,37 @@ class _LocationScreenState extends State<LocationScreen> {
           baseLatitude: lat,
           baseLongitude: lng,
         );
-    context.go('/onboarding/zone');
+    context.push('/onboarding/zone');
   }
 
-
+  void _handleBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/onboarding/profile');
+    }
+  }
 
   @override
-
   Widget build(BuildContext context) {
-
-    return Scaffold(
-
-      body: SafeArea(
-
-        child: Column(
-
-          children: [
-
-            Padding(
-
-              padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-
-              child: Row(
-
-                children: [
-
-                  IconButton(
-
-                    onPressed: () => context.pop(),
-
-                    icon: const Icon(Icons.arrow_back),
-
-                  ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _handleBack,
+                      icon: const Icon(Icons.arrow_back),
+                    ),
 
                   Expanded(
 
@@ -346,15 +345,9 @@ class _LocationScreenState extends State<LocationScreen> {
             ),
 
           ],
-
         ),
-
       ),
-
-    );
-
+    ),
+  );
   }
-
 }
-
-
