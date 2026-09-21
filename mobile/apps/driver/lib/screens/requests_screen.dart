@@ -490,16 +490,10 @@ class _RequestCard extends StatelessWidget {
               duration: request.duration,
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  request.vehicleNeed,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
-                const Icon(Icons.person_outline, size: 18, color: GtColors.brand),
-                Text(' × ${request.passengers}'),
-              ],
+            GtVehicleChips(
+              types: request.vehicleClassIds,
+              rawNeed: request.vehicleNeed,
+              passengers: request.passengers,
             ),
             const SizedBox(height: 12),
             if (showPrice && request.offerPrice != null)

@@ -839,23 +839,10 @@ class _ScheduledRideCard extends StatelessWidget {
               duration: request.duration,
             ),
             const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    request.vehicleNeed,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.person_outline,
-                  size: 18,
-                  color: GtColors.brand,
-                ),
-                Text(' × ${request.passengers}'),
-              ],
+            GtVehicleChips(
+              types: request.vehicleClassIds,
+              rawNeed: request.vehicleNeed,
+              passengers: request.passengers,
             ),
             if (request.offerPrice != null) ...[
               const SizedBox(height: 10),

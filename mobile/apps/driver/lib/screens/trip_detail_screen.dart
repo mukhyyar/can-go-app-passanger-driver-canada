@@ -564,26 +564,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       duration: r.duration,
                                     ),
                                     const SizedBox(height: 12),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            r.vehicleNeed,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        const Icon(
-                                          Icons.person_outline,
-                                          size: 18,
-                                          color: GtColors.brand,
-                                        ),
-                                        Text(' × ${r.passengers}'),
-                                      ],
+                                    GtVehicleChips(
+                                      types: r.vehicleClassIds,
+                                      rawNeed: r.vehicleNeed,
+                                      passengers: r.passengers,
                                     ),
                                     if (r.offerPrice != null) ...[
                                       const SizedBox(height: 10),

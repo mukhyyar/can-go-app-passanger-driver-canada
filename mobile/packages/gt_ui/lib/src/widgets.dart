@@ -384,3 +384,143 @@ Future<T?> showGtSheet<T>({
     builder: (_) => child,
   );
 }
+
+class GtVehicleChips extends StatelessWidget {
+  const GtVehicleChips({
+    super.key,
+    this.types = const [],
+    this.rawNeed,
+    this.passengers,
+  });
+
+  final List<String> types;
+  final String? rawNeed;
+  final int? passengers;
+
+  static String formatLabel(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return trimmed;
+    final lower = trimmed.toLowerCase();
+    if (lower == 'suv') return 'SUV';
+    if (lower == 'vip') return 'VIP';
+    final words = trimmed.replaceAll('_', ' ').split(' ');
+    return words.map((w) {
+      if (w.isEmpty) return w;
+      if (w.toLowerCase() == 'suv') return 'SUV';
+      if (w.toLowerCase() == 'vip') return 'VIP';
+      return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
+    }).join(' ');
+  }
+
+  static IconData vehicleIcon(String raw) {
+    final lower = raw.toLowerCase().trim();
+    if (lower.contains('van') || lower.contains('minibus') || lower.contains('bus')) {
+      return Icons.airport_shuttle_outlined;
+    }
+    if (lower.contains('suv')) {
+      return Icons.directions_car_filled_outlined;
+    }
+    if (lower.contains('vip') || lower.contains('business') || lower.contains('premium')) {
+      return Icons.airline_seat_recline_extra_outlined;
+    }
+    return Icons.directions_car_outlined;
+  }
+
+  List<String> get _resolvedTypes {
+    if (types.isNotEmpty) {
+      return types
+          .expand((t) => t.split(','))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    if (rawNeed != null && rawNeed!.trim().isNotEmpty) {
+      return rawNeed!
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = _resolvedTypes;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: list.isEmpty
+              ? const SizedBox.shrink()
+              : Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final t in list)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: GtColors.bgGrey,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: GtColors.border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              vehicleIcon(t),
+                              size: 13,
+                              color: GtColors.textSecondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              formatLabel(t),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: GtColors.text,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+        if (passengers != null && passengers! > 0) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: GtColors.soft,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: GtColors.brand.withValues(alpha: 0.16),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.person_outline, size: 14, color: GtColors.brand),
+                const SizedBox(width: 3),
+                Text(
+                  '× $passengers',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: GtColors.brand,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+

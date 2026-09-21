@@ -535,11 +535,15 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
                       for (final c in (req.vehicleClassIds.isEmpty
-                          ? [req.vehicleNeed]
+                          ? req.vehicleNeed.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty)
                           : req.vehicleClassIds))
-                        _Chip(label: c),
+                        _Chip(
+                          label: GtVehicleChips.formatLabel(c),
+                          icon: GtVehicleChips.vehicleIcon(c),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 16),
