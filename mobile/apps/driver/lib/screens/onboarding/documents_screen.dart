@@ -17,6 +17,7 @@ class DocumentsScreen extends StatefulWidget {
 
 class _DocumentsScreenState extends State<DocumentsScreen> {
   bool _busy = false;
+  bool _submitted = false;
   final Map<String, Uint8List> _previewBytes = {};
   final Set<String> _previewFailed = {};
 
@@ -204,6 +205,21 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    final isAllUnderReview = s.areDocumentsUnderReview || _submitted;
+
+    bool isSlotUnderReview(Map<String, dynamic>? doc) {
+      if (doc == null) return false;
+      if (s.isDocumentExpired(doc)) return false;
+      final st = doc['status']?.toString().toUpperCase() ?? '';
+      if (st == 'REJECTED' || st == 'NEEDS_RESUBMISSION') return false;
+      if (isAllUnderReview) return true;
+      final appStatus = s.approvalStatus.toUpperCase();
+      if (appStatus == 'ACTION_REQUIRED' || appStatus == 'IN_REVIEW') {
+        return true;
+      }
+      return false;
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -225,7 +241,46 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (s.hasExpiredDocuments) ...[
+                if (isAllUnderReview) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.hourglass_top_rounded, color: GtColors.brand),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Documents under review',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: GtColors.text,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Your documents have been submitted and are currently under review by our admin team.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: GtColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else if (s.hasExpiredDocuments) ...[
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -258,17 +313,19 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     color: GtColors.bgGrey,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Required documents for activation',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      SizedBox(height: 6),
+                      const SizedBox(height: 6),
                       Text(
-                        'Tap a photo to preview full screen. Replace or delete before admin approval.',
-                        style: TextStyle(
+                        isAllUnderReview
+                            ? 'Tap a photo to preview full screen. All documents are currently locked under review.'
+                            : 'Tap a photo to preview full screen. Upload all required documents to submit.',
+                        style: const TextStyle(
                           color: GtColors.textSecondary,
                           fontSize: 13,
                         ),
@@ -290,6 +347,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   onPreview: _openPreview,
                   isLocked: s.documentForType('selfie') != null &&
                       s.isDocumentLocked(s.documentForType('selfie')!),
+                  isUnderReview: isSlotUnderReview(s.documentForType('selfie')),
                 ),
                 const SizedBox(height: 12),
                 _DocSlot(
@@ -305,6 +363,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   onPreview: _openPreview,
                   isLocked: s.documentForType('license') != null &&
                       s.isDocumentLocked(s.documentForType('license')!),
+                  isUnderReview: isSlotUnderReview(s.documentForType('license')),
                 ),
                 const SizedBox(height: 12),
                 _DocSlot(
@@ -323,6 +382,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   isLocked: s.documentForType('vehicle_registration') != null &&
                       s.isDocumentLocked(
                           s.documentForType('vehicle_registration')!),
+                  isUnderReview: isSlotUnderReview(
+                      s.documentForType('vehicle_registration')),
                 ),
                 const SizedBox(height: 12),
                 _DocSlot(
@@ -339,24 +400,42 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   onPreview: _openPreview,
                   isLocked: s.documentForType('insurance') != null &&
                       s.isDocumentLocked(s.documentForType('insurance')!),
+                  isUnderReview: isSlotUnderReview(s.documentForType('insurance')),
                 ),
               ],
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: GtGreenButton(
-              label: 'Save',
-              onPressed: _busy
-                  ? null
-                  : () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go('/');
-                      }
-                    },
-            ),
+            child: isAllUnderReview
+                ? const GtGreenButton(
+                    label: 'Documents under review',
+                    onPressed: null,
+                  )
+                : GtGreenButton(
+                    label: s.hasAllRequiredDocuments ? 'Submit documents' : 'Save',
+                    onPressed: _busy
+                        ? null
+                        : () async {
+                            if (s.hasAllRequiredDocuments) {
+                              setState(() => _submitted = true);
+                              await s.syncDocumentsStatus();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Documents submitted for review'),
+                                  ),
+                                );
+                              }
+                            } else {
+                              if (context.canPop()) {
+                                context.pop();
+                              } else {
+                                context.go('/');
+                              }
+                            }
+                          },
+                  ),
           ),
         ],
       ),
@@ -377,6 +456,7 @@ class _DocSlot extends StatelessWidget {
     required this.onDelete,
     required this.onPreview,
     required this.isLocked,
+    this.isUnderReview = false,
   });
 
   final String title;
@@ -389,6 +469,7 @@ class _DocSlot extends StatelessWidget {
   final void Function(Map<String, dynamic> doc) onDelete;
   final void Function(Uint8List bytes, String title) onPreview;
   final bool isLocked;
+  final bool isUnderReview;
 
   @override
   Widget build(BuildContext context) {
@@ -402,13 +483,18 @@ class _DocSlot extends StatelessWidget {
         : null;
 
     final status = doc?['status']?.toString().toUpperCase() ?? '';
+    final isRejected = status == 'REJECTED' || status == 'NEEDS_RESUBMISSION';
+    final slotUnderReview = isUnderReview && !isExpired && !isRejected;
+
     final statusColor = isExpired
         ? Colors.red.shade700
         : status == 'APPROVED'
             ? GtColors.brand
-            : status == 'REJECTED' || status == 'NEEDS_RESUBMISSION'
+            : isRejected
                 ? Colors.orange.shade800
-                : GtColors.textSecondary;
+                : slotUnderReview || status == 'PENDING'
+                    ? Colors.amber.shade900
+                    : GtColors.textSecondary;
 
     return GtCard(
       child: Column(
@@ -449,13 +535,21 @@ class _DocSlot extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: isExpired ? Colors.red.shade50 : GtColors.soft,
+                    color: isExpired
+                        ? Colors.red.shade50
+                        : (slotUnderReview || status == 'PENDING'
+                            ? Colors.amber.shade50
+                            : (status == 'APPROVED'
+                                ? Colors.green.shade50
+                                : GtColors.soft)),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     isExpired
                         ? 'EXPIRED'
-                        : (status.isEmpty ? 'Uploaded' : status.replaceAll('_', ' ')),
+                        : (slotUnderReview || status == 'PENDING'
+                            ? 'Under review'
+                            : (status.isEmpty ? 'Uploaded' : status.replaceAll('_', ' '))),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -472,7 +566,7 @@ class _DocSlot extends StatelessWidget {
               InkWell(
                 onTap: previewBytes != null && !busy
                     ? () => onPreview(previewBytes!, title)
-                    : (hasDoc ? null : (busy ? null : onUpload)),
+                    : (hasDoc || slotUnderReview ? null : (busy ? null : onUpload)),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   width: 96,
@@ -527,6 +621,22 @@ class _DocSlot extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           color: GtColors.textSecondary,
+                        ),
+                      )
+                    else if (slotUnderReview)
+                      OutlinedButton.icon(
+                        onPressed: null,
+                        icon: const Icon(Icons.hourglass_top_rounded, size: 16),
+                        label: const Text(
+                          'Documents under review',
+                          style: TextStyle(fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          disabledForegroundColor: GtColors.textSecondary,
+                          side: const BorderSide(color: GtColors.border),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 10),
                         ),
                       )
                     else if (hasDoc) ...[

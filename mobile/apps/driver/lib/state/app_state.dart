@@ -1138,6 +1138,31 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
+  bool get hasAllRequiredDocuments {
+    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
+      if (documentForType(slot) == null) return false;
+    }
+    return true;
+  }
+
+  bool isDocumentUnderReview(Map<String, dynamic>? doc) {
+    if (doc == null) return false;
+    if (isDocumentExpired(doc)) return false;
+    final st = doc['status']?.toString().toUpperCase() ?? '';
+    if (st == 'REJECTED' || st == 'NEEDS_RESUBMISSION') return false;
+    return true;
+  }
+
+  bool get areDocumentsUnderReview {
+    if (!hasAllRequiredDocuments) return false;
+    if (hasExpiredDocuments) return false;
+    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
+      final doc = documentForType(slot);
+      if (!isDocumentUnderReview(doc)) return false;
+    }
+    return true;
+  }
+
   bool isDocumentLocked(Map<String, dynamic> doc) {
     // If expired, unlock so driver can re-upload even if previously approved
     if (isDocumentExpired(doc)) return false;
