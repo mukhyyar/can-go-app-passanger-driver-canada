@@ -419,20 +419,52 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
+  void _onBack() {
+    final r = _ride;
+    final isCompleted = _serverStatus.toUpperCase() == 'COMPLETED' ||
+        (r?.status ?? '').toUpperCase() == 'COMPLETED';
+    final isTerminal = isCompleted ||
+        _serverStatus.contains('CANCEL') ||
+        (r?.status ?? '').toUpperCase().contains('CANCEL') ||
+        _serverStatus == 'NO_SHOW' ||
+        (r?.status ?? '').toUpperCase() == 'NO_SHOW';
+
+    if (isTerminal) {
+      context.read<AppState>().refreshOpenRequests();
+      context.go('/');
+    } else if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = _ride;
     final isCompleted = _serverStatus.toUpperCase() == 'COMPLETED' ||
         (r?.status ?? '').toUpperCase() == 'COMPLETED';
-    return Scaffold(
-      backgroundColor: GtColors.bgGrey,
-      appBar: AppBar(
-        title: Text(r != null ? 'Trip #${r.displayId}' : 'Trip'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+    final isTerminal = isCompleted ||
+        _serverStatus.contains('CANCEL') ||
+        (r?.status ?? '').toUpperCase().contains('CANCEL') ||
+        _serverStatus == 'NO_SHOW' ||
+        (r?.status ?? '').toUpperCase() == 'NO_SHOW';
+
+    return PopScope(
+      canPop: !isTerminal,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _onBack();
+      },
+      child: Scaffold(
+        backgroundColor: GtColors.bgGrey,
+        appBar: AppBar(
+          title: Text(r != null ? 'Trip #${r.displayId}' : 'Trip'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _onBack,
+          ),
         ),
-      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -786,7 +818,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                if (_alreadyRated)
+                                if (_alreadyRated) ...[
                                   Text(
                                     _myRatingStars != null
                                         ? 'You rated passenger ★$_myRatingStars'
@@ -796,17 +828,35 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       fontWeight: FontWeight.w600,
                                       color: GtColors.textSecondary,
                                     ),
-                                  )
-                                else
+                                  ),
+                                  const SizedBox(height: 12),
+                                  GtGreenButton(
+                                    label: 'Back to main screen',
+                                    onPressed: _onBack,
+                                  ),
+                                ] else ...[
                                   GtGreenButton(
                                     label: 'Rate passenger',
                                     onPressed: _showRatingDialog,
                                   ),
+                                  const SizedBox(height: 8),
+                                  TextButton(
+                                    onPressed: _onBack,
+                                    child: const Text(
+                                      'Back to main screen',
+                                      style: TextStyle(
+                                        color: GtColors.textSecondary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
                       ],
                     ),
+      ),
     );
   }
 
