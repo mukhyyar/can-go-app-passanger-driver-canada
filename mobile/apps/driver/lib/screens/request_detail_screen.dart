@@ -25,6 +25,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   bool _loading = true;
   String? _error;
   bool _submitting = false;
+  bool _withdrawing = false;
   String? _offerError;
   bool _mapFullscreen = false;
   int _selectedRouteIndex = 0;
@@ -284,6 +285,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       ),
     );
     if (ok != true || !mounted) return;
+    setState(() => _withdrawing = true);
     try {
       await context.read<AppState>().withdrawOffer(offer.id);
       if (!mounted) return;
@@ -296,6 +298,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$e')),
       );
+    } finally {
+      if (mounted) setState(() => _withdrawing = false);
     }
   }
 
@@ -418,31 +422,34 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       ],
                     ),
                   ),
-                  Material(
-                    color: GtColors.brand,
-                    borderRadius: BorderRadius.circular(10),
-                    child: InkWell(
-                      onTap: _onSkip,
+                  if (req.myOffer == null)
+                    Material(
+                      color: GtColors.brand,
                       borderRadius: BorderRadius.circular(10),
-                      child: const Padding(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(
-                          children: [
-                            Text(
-                              'Skip',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
+                      child: InkWell(
+                        onTap: _onSkip,
+                        borderRadius: BorderRadius.circular(10),
+                        child: const Padding(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Skip',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(Icons.skip_next, color: Colors.white, size: 18),
-                          ],
+                              SizedBox(width: 4),
+                              Icon(Icons.skip_next, color: Colors.white, size: 18),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    )
+                  else
+                    const SizedBox(width: 48),
                 ],
               ),
             ),
@@ -653,21 +660,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                 child: Divider(height: 1),
                               ),
                               _offerCostRow('Total for customer', totalCust, currency, isTotal: true),
-                              const SizedBox(height: 8),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: TextButton.icon(
-                                  onPressed: _withdraw,
-                                  icon: const Icon(Icons.delete_outline, size: 16, color: GtColors.brand),
-                                  label: const Text(
-                                    'Withdraw offer',
-                                    style: TextStyle(
-                                      color: GtColors.brand,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
                         );
@@ -690,6 +682,40 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     },
                     onSubmit: _submitOffer,
                   ),
+                  if (req.myOffer != null) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: (_submitting || _withdrawing) ? null : _withdraw,
+                        icon: _withdrawing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: GtColors.brand,
+                                ),
+                              )
+                            : const Icon(Icons.delete_outline, size: 18),
+                        label: Text(
+                          _withdrawing ? 'Withdrawing…' : 'Withdraw offer',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: GtColors.brand,
+                          side: const BorderSide(color: GtColors.brand, width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
