@@ -705,7 +705,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                               ),
                               const SizedBox(height: 10),
                               GtCard(
-                                child: _TripTimeline(
+                                child: TripTimeline(
                                   currentIndex: _timelineIndex(_serverStatus),
                                 ),
                               ),
@@ -881,8 +881,9 @@ class _TripChip extends StatelessWidget {
   }
 }
 
-class _TripTimeline extends StatelessWidget {
-  const _TripTimeline({required this.currentIndex});
+@visibleForTesting
+class TripTimeline extends StatelessWidget {
+  const TripTimeline({super.key, required this.currentIndex});
 
   final int currentIndex;
 
@@ -924,7 +925,9 @@ class _TripTimeline extends StatelessWidget {
                     child: Icon(
                       icon,
                       size: 18,
-                      color: done ? GtColors.brand : GtColors.textMuted,
+                      color: active
+                          ? Colors.white
+                          : (done ? GtColors.brand : GtColors.textMuted),
                     ),
                   ),
                   if (!isLast)
