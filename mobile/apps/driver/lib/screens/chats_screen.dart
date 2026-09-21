@@ -118,7 +118,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                 const SizedBox(height: 8),
                             itemBuilder: (_, i) {
                               final c = chats[i];
-                              final name = (c.passengerName ?? '').trim();
+                              final isCompleted =
+                                  (c.status ?? '').toUpperCase() == 'COMPLETED';
+                              final name = !isCompleted
+                                  ? (c.passengerName ?? '').trim()
+                                  : '';
                               final title = name.isNotEmpty
                                   ? name
                                   : 'Ride ${c.displayId}';

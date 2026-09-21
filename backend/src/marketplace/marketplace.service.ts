@@ -1116,11 +1116,12 @@ export class MarketplaceService {
         const myOffers = (r.offers ?? []).map((o) =>
           this.serializeOffer(o as unknown as Record<string, unknown>),
         );
+        const isCompleted = r.status === RideStatus.COMPLETED;
         return {
           ...serialized,
           myOffers,
           offers: myOffers,
-          passengerName: r.passenger?.fullName ?? null,
+          passengerName: isCompleted ? null : (r.passenger?.fullName ?? null),
         };
       }),
     );
@@ -1141,8 +1142,16 @@ export class MarketplaceService {
       where: { driverId: driver.id, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
+    const isCompleted = (ride.status as RideStatus) === RideStatus.COMPLETED;
+    const passengerObj = (ride as Record<string, unknown>).passenger as
+      | Record<string, unknown>
+      | null
+      | undefined;
     return {
       ...ride,
+      passengerName: isCompleted
+        ? null
+        : ((passengerObj?.fullName as string | undefined) ?? null),
       eligibleVehicles: vehicles.map((v) => this.serializeVehicle(v)),
       offerValidityOptions: this.offerValidityLabels(),
     };
@@ -2435,6 +2444,8 @@ export class MarketplaceService {
           )
         : this.serializeOffer(ride.selectedOffer as Record<string, unknown>)
       : null;
+    const isCompleted = status === RideStatus.COMPLETED;
+    const offerObj = selectedOffer as Record<string, unknown> | null;
     const id = String(ride.id ?? '');
     const base = {
       id: ride.id,
@@ -2513,9 +2524,32 @@ export class MarketplaceService {
       },
       scheduledPickupAt: ride.pickupAt,
       offers,
-      selectedOffer,
+      selectedOffer: isCompleted && offerObj
+        ? {
+            ...offerObj,
+            driver: offerObj.driver
+              ? {
+                  ...(offerObj.driver as Record<string, unknown>),
+                  fullName: null,
+                }
+              : null,
+            presentation: offerObj.presentation
+              ? {
+                  ...(offerObj.presentation as Record<string, unknown>),
+                  driverName: null,
+                }
+              : offerObj.presentation,
+          }
+        : selectedOffer,
       payments: ride.payments,
-      passenger: ride.passenger,
+      passenger: isCompleted
+        ? (ride.passenger
+            ? {
+                ...(ride.passenger as Record<string, unknown>),
+                fullName: null,
+              }
+            : null)
+        : ride.passenger,
     };
     if (opts?.includeEvents) {
       return { ...base, events: ride.events };

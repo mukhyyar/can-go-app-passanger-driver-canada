@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
+import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
@@ -659,6 +660,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final offer =
         offerId != null ? app.offerByIds(widget.rideId, offerId) : null;
     final status = (ride?.serverStatus ?? '').toUpperCase();
+    final isCompleted =
+        status == 'COMPLETED' || ride?.status == RideStatus.past;
     final statusLabel = friendlyRideStatus(ride?.serverStatus);
 
     final currency = _paymentStatus?['onlineCurrency']?.toString() ??
@@ -874,9 +877,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      if ((offer.driverName ?? '')
-                                          .trim()
-                                          .isNotEmpty)
+                                      if (!isCompleted &&
+                                          (offer.driverName ?? '')
+                                              .trim()
+                                              .isNotEmpty)
                                         Text(
                                           offer.driverName!.trim(),
                                           style: const TextStyle(
@@ -909,9 +913,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                           ),
                                         ],
                                       ),
-                                      if ((offer.driverName ?? '')
-                                          .trim()
-                                          .isNotEmpty) ...[
+                                      if (!isCompleted &&
+                                          (offer.driverName ?? '')
+                                              .trim()
+                                              .isNotEmpty) ...[
                                         const SizedBox(height: 6),
                                         Text(
                                           offer.displayName,

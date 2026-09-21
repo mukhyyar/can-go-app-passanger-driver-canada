@@ -809,7 +809,8 @@ class _ScheduledRideCard extends StatelessWidget {
               'Ride #${request.displayId}',
               style: const TextStyle(color: GtColors.textMuted, fontSize: 12),
             ),
-            if ((request.passengerName ?? '').trim().isNotEmpty) ...[
+            if ((request.status ?? '').toUpperCase() != 'COMPLETED' &&
+                (request.passengerName ?? '').trim().isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
                 request.passengerName!.trim(),

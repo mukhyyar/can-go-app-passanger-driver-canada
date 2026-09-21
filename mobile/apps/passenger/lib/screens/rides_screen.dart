@@ -163,7 +163,9 @@ class _RideList extends StatelessWidget {
               offerId != null ? app.offerByIds(r.id, offerId) : null;
           String? driverSubtitle;
           if (offer != null) {
-            final name = (offer.driverName ?? '').trim();
+            final isCompleted = r.status == RideStatus.past ||
+                (r.serverStatus ?? '').toUpperCase() == 'COMPLETED';
+            final name = !isCompleted ? (offer.driverName ?? '').trim() : '';
             final plate = (offer.plate ?? '').trim();
             if (name.isNotEmpty && plate.isNotEmpty) {
               driverSubtitle = '$name · ${plate.toUpperCase()}';

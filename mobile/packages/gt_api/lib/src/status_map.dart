@@ -276,8 +276,12 @@ Offer offerFromServer(Map<String, dynamic> json) {
   final driver = json['driver'];
   final driverMap = driver is Map ? asStringKeyedMap(driver) : null;
   final driverName = driverMap?['fullName']?.toString().trim();
+  final offerStatus = json['status']?.toString();
+  final isOfferCompleted = (offerStatus ?? '').toUpperCase() == 'COMPLETED';
   final driverNameOrNull =
-      (driverName != null && driverName.isNotEmpty) ? driverName : null;
+      (!isOfferCompleted && driverName != null && driverName.isNotEmpty)
+          ? driverName
+          : null;
 
   final brand = pres['brand']?.toString() ??
       () {
@@ -420,6 +424,8 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
               )
             : null);
     final driverName = driver['fullName']?.toString().trim();
+    final offerStatus = json['status']?.toString();
+    final isOfferCompleted = (offerStatus ?? '').toUpperCase() == 'COMPLETED';
     return Offer(
       id: id,
       vehicleBrand: pres['brand']?.toString() ??
@@ -445,7 +451,7 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
       vehicleDisplayName: pres['vehicleDisplayName']?.toString() ??
           vehicle['name']?.toString(),
       plate: pres['plate']?.toString() ?? vehicle['plate']?.toString(),
-      driverName: (driverName != null && driverName.isNotEmpty)
+      driverName: (!isOfferCompleted && driverName != null && driverName.isNotEmpty)
           ? driverName
           : null,
     );
@@ -690,7 +696,11 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
       passengerName = passenger['fullName']?.toString().trim();
     }
   }
-  if (passengerName != null && passengerName.isEmpty) passengerName = null;
+  final reqStatus = json['status']?.toString();
+  final isReqCompleted = (reqStatus ?? '').toUpperCase() == 'COMPLETED';
+  if (isReqCompleted || (passengerName != null && passengerName.isEmpty)) {
+    passengerName = null;
+  }
 
   return DriverRequest(
     id: id,

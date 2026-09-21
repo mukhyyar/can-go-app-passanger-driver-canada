@@ -132,8 +132,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final ride = app.myRides.cast<dynamic>().where((r) => r.id == _rideId);
+    final isCompleted = ride.isNotEmpty &&
+        (ride.first.status?.toString() ?? '').toUpperCase() == 'COMPLETED';
     final title = ride.isNotEmpty
-        ? (ride.first.passengerName?.toString().isNotEmpty == true
+        ? (!isCompleted && ride.first.passengerName?.toString().isNotEmpty == true
             ? ride.first.passengerName as String
             : 'Ride ${ride.first.displayId}')
         : 'Chat';

@@ -315,6 +315,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final r = _ride;
+    final isCompleted = _serverStatus.toUpperCase() == 'COMPLETED' ||
+        (r?.status ?? '').toUpperCase() == 'COMPLETED';
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
       appBar: AppBar(
@@ -468,9 +470,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 10),
-                                    if ((r.passengerName ?? '')
-                                        .trim()
-                                        .isNotEmpty) ...[
+                                    if (!isCompleted &&
+                                        (r.passengerName ?? '')
+                                            .trim()
+                                            .isNotEmpty) ...[
                                       Text(
                                         r.passengerName!.trim(),
                                         style: const TextStyle(
