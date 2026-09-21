@@ -36,10 +36,10 @@ const List<DriverWelcomeSlide> _kDriverSlides = [
     description:
         'Set your own schedule with complete freedom. Accept local trips or long-distance intercity rides across Canada whenever you are ready.',
     assetPath: 'assets/onboarding/slide1.jpg',
-    packageAssetPath: 'packages/gt_ui/assets/onboarding/slide1.jpg',
+    packageAssetPath: 'packages/gt_ui/assets/onboarding/driver_slide1.jpg',
     highlights: ['Flexible Hours', 'Higher Earnings', 'Local & Long-Distance'],
     fallbackIcon: Icons.drive_eta_rounded,
-    imageAlignment: Alignment.topCenter,
+    imageAlignment: Alignment.center,
   ),
   DriverWelcomeSlide(
     badge: 'BID YOUR PRICE',
@@ -47,7 +47,7 @@ const List<DriverWelcomeSlide> _kDriverSlides = [
     description:
         'Browse incoming passenger requests in real time. Submit your own competitive ride offers and choose the customers you want to drive.',
     assetPath: 'assets/onboarding/slide2.jpg',
-    packageAssetPath: 'packages/gt_ui/assets/onboarding/slide2.jpg',
+    packageAssetPath: 'packages/gt_ui/assets/onboarding/driver_slide2.jpg',
     highlights: ['Live Request Feed', 'Custom Fare Bidding', 'Direct Matching'],
     fallbackIcon: Icons.price_check_rounded,
     imageAlignment: Alignment.center,
@@ -58,10 +58,10 @@ const List<DriverWelcomeSlide> _kDriverSlides = [
     description:
         'Track your daily earnings transparently in Canadian Dollars. Enjoy instant payouts, direct in-app messaging with riders, and 24/7 dedicated support.',
     assetPath: 'assets/onboarding/slide3.jpg',
-    packageAssetPath: 'packages/gt_ui/assets/onboarding/slide3.jpg',
+    packageAssetPath: 'packages/gt_ui/assets/onboarding/driver_slide3.jpg',
     highlights: ['Direct CAD Deposits', 'Transparent Platform Fees', 'In-App Secure Chat'],
     fallbackIcon: Icons.account_balance_wallet_rounded,
-    imageAlignment: Alignment.center,
+    imageAlignment: Alignment.topCenter,
   ),
 ];
 
