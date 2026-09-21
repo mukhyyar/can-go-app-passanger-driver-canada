@@ -216,6 +216,23 @@ class _MenuPanelState extends State<MenuPanel>
               opacity: _fade2,
               child: SlideTransition(
                 position: _slide2,
+                child: _LegalGroup(
+                  onPrivacy: () {
+                    if (widget.inDrawer) Navigator.of(context).pop();
+                    context.push('/legal/privacy');
+                  },
+                  onTerms: () {
+                    if (widget.inDrawer) Navigator.of(context).pop();
+                    context.push('/legal/terms');
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FadeTransition(
+              opacity: _fade2,
+              child: SlideTransition(
+                position: _slide2,
                 child: _DriverPromo(
                   onDownload: () => _toast(context, 'Driver app coming soon'),
                 ),
@@ -687,6 +704,65 @@ class _DriverPromo extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LegalGroup extends StatelessWidget {
+  const _LegalGroup({
+    required this.onPrivacy,
+    required this.onTerms,
+  });
+
+  final VoidCallback onPrivacy;
+  final VoidCallback onTerms;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'Legal & Policies',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: GtColors.textSecondary,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+        GtCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              _PrefRow(
+                icon: Icons.shield_outlined,
+                label: 'Privacy Policy',
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: GtColors.textMuted,
+                  size: 20,
+                ),
+                onTap: onPrivacy,
+              ),
+              const _PrefDivider(),
+              _PrefRow(
+                icon: Icons.gavel_outlined,
+                label: 'Service Agreement',
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: GtColors.textMuted,
+                  size: 20,
+                ),
+                onTap: onTerms,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

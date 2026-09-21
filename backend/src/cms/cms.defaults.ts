@@ -150,57 +150,181 @@ Write to [partner@can-go.ca](mailto:partner@can-go.ca) with company name, cities
     kind: 'legal',
     title: 'Service Agreement',
     sortOrder: 10,
-    bodyMd: `CAN-RIDE is a **marketplace**: passengers request a transfer, nearby drivers send offers, and you choose an offer before paying. CAN-RIDE is not a taxi company and does not employ the drivers who bid.
+    bodyMd: `*Last updated: March 2026*
 
-## Prices
+Welcome to **CAN-RIDE**. This Service Agreement ("Agreement") governs your access to and use of the CAN-RIDE marketplace website, applications, content, and transfer booking services across Canada.
 
-Prices shown in the app and on the web are **server-authoritative**. The fare you accept is the fare you pay, plus taxes shown at checkout. Promotions apply only when the code validates at booking.
+By accessing or using CAN-RIDE as a passenger, carrier, or driver, you agree to be bound by these terms.
 
-## Your contract
+---
 
-When you accept an offer you contract with that driver (or their carrier) for the trip. CAN-RIDE provides the booking, payment, tracking, and support tools.
+### 1. Marketplace Model & Role of CAN-RIDE
 
-## Cancellations and waiting
+CAN-RIDE operates an online marketplace technology platform connecting passengers seeking transportation services with independent transportation carriers and licensed drivers ("Drivers").
 
-Cancellation and included waiting time are shown **before** you confirm an offer. Flight tracking applies when you add a flight number. Extra waiting may be billed as described on the offer.
+- **Independent Provider Status:** CAN-RIDE is a technology provider, not a motor carrier, transportation broker, or taxi dispatcher. CAN-RIDE does not provide transportation services directly and does not employ Drivers.
+- **Direct Transportation Contract:** When a passenger accepts an offer submitted by a Driver, a direct contract for transportation services is created between the passenger and that Driver (or their affiliated fleet carrier).
+- **Platform Role:** CAN-RIDE facilitates matching, fare quoting, bidding, route tracking, payment handling, and customer support.
 
-## Price match
+---
 
-If you find a similar offer on another site at a lower price, you may claim a refund of the difference after the trip, subject to this agreement and the conditions published on the FAQ.
+### 2. User Accounts & Eligibility
 
-## Acceptable use
+- **Age & Eligibility:** You must be at least 18 years of age (or the age of majority in your province) to create an account and book rides.
+- **Accuracy of Information:** You agree to maintain accurate, truthful, and up-to-date account information, including your legal name, verified mobile phone number, and payment details.
+- **Security:** You are responsible for safeguarding your login credentials and one-time verification codes. You must immediately notify CAN-RIDE of any unauthorized account activity.
 
-Do not create fake accounts, manipulate bids, or ask drivers to settle off-platform. We may suspend accounts that break these rules.
+---
 
-## Changes
+### 3. Tender-Based Bidding & Pricing Transparency
 
-We may update this agreement. The version on this page is the one that applies to new bookings. Replace this copy with counsel-approved text before production if your counsel so requires.`,
+- **Tender Marketplace:** Passengers initiate a ride tender by submitting pickup location, drop-off location, schedule, and requested vehicle class. Available Drivers in the zone submit binding offers.
+- **Transparent Selection:** Each offer displays the vehicle class, actual vehicle photo, driver hospitality rating, and total fare. Passengers choose the offer that best meets their preferences.
+- **Server-Authoritative Pricing:** All fares shown in the app and website are server-authoritative. The accepted bid price is the final base price for the trip, plus applicable Canadian taxes (GST/HST/PST) itemized before payment.
+- **No Surge Multipliers:** Fares are set directly by driver competition, not arbitrary surge pricing meters.
+
+---
+
+### 4. Payments, Authorizations & Receipts
+
+- **Payment Processing:** Payment is processed securely through PCI-DSS Level 1 certified payment gateways. By booking an offer, you authorize CAN-RIDE to capture the total fare on your payment method.
+- **When You Pay:** No charge is made while you review bids. Payment authorization or capture occurs when you choose and confirm an offer.
+- **Receipts:** An electronic itemized receipt is generated upon trip completion and emailed to your registered address or stored in your trip history.
+- **Cash Payments Prohibited:** Cash payments outside the platform for app-booked rides are strictly prohibited and violate this Agreement.
+
+---
+
+### 5. Cancellations, Flight Tracking & Waiting Time
+
+- **Free Cancellation Window:** Each offer specifies the applicable free cancellation window prior to pickup time.
+- **Late Cancellation Fees:** Cancellations after the free cancellation window has elapsed, or passenger no-shows, may incur a cancellation fee as displayed at the time of booking.
+- **Airport Arrivals & Flight Tracking:** For airport pickups, providing a valid flight number enables automatic flight tracking. Complimentary waiting time (typically 45–60 minutes after actual landing) is included in the fare.
+- **City Curb Waiting:** City pickups include complimentary waiting time (typically 10–15 minutes). Additional waiting time requested by the passenger may be billed at the standard rate indicated on the offer.
+
+---
+
+### 6. Passenger & Driver Code of Conduct
+
+All users of the CAN-RIDE platform agree to maintain professional courtesy, safety, and mutual respect.
+
+- **Zero Tolerance Policy:** Discrimination, harassment, threatening conduct, violence, carrying unauthorized hazardous materials, or damaging vehicles is strictly forbidden and results in immediate permanent account termination.
+- **Compliance with Laws:** Drivers and passengers must comply with all applicable Canadian federal, provincial, and municipal transportation regulations, including seatbelt usage, child restraint laws, and traffic safety rules.
+- **Ratings & Hospitality Score:** Travelers rate drivers on greeting, vehicle cleanliness, luggage assistance, and driving comfort. Disparaging, fraudulent, or retaliatory reviews are reviewed by ops and removed.
+
+---
+
+### 7. Limitation of Liability
+
+To the maximum extent permitted by applicable law:
+- CAN-RIDE is not liable for indirect, incidental, special, exemplary, punitive, or consequential damages, including lost profits, lost data, personal injury, or property damage related to or arising out of the transportation services provided by Drivers.
+- Total platform liability for any claim arising out of this Agreement or your use of the marketplace is limited to the total amount paid by you for the specific ride giving rise to the claim.
+
+---
+
+### 8. Governing Law & Dispute Resolution
+
+This Agreement is governed by and construed in accordance with the laws of the Province of Ontario and the federal laws of Canada applicable therein.
+
+- **Informal Resolution:** Before initiating formal proceedings, you agree to contact CAN-RIDE Support at support@can-go.ca to attempt informal resolution in good faith.
+- **Arbitration & Courts:** Any dispute that cannot be resolved informally shall be submitted to binding arbitration in Toronto, Ontario, or the competent courts of the Province of Ontario.
+
+---
+
+### 9. Modifications & Contact
+
+CAN-RIDE reserves the right to update this Agreement periodically. Continued use of the platform following notification of modifications constitutes your acceptance of the updated terms.
+
+- **Support & Inquiries:** [support@can-go.ca](mailto:support@can-go.ca)
+- **Legal & Compliance:** [legal@can-go.ca](mailto:legal@can-go.ca)
+- **Partner Inquiries:** [partner@can-go.ca](mailto:partner@can-go.ca)`,
   },
   {
     slug: 'privacy',
     kind: 'legal',
     title: 'Privacy Policy',
     sortOrder: 20,
-    bodyMd: `CAN-RIDE collects account details (name, email, phone), trip locations, and ride history to operate the marketplace. Driver KYC documents are stored privately and reviewed by ops. We do not sell personal data.
+    bodyMd: `*Last updated: March 2026*
 
-## What we use
+At **CAN-RIDE**, we respect your privacy and are committed to protecting your personal information. This Privacy Policy describes how CAN-RIDE collects, uses, discloses, and protects your personal data in compliance with the Canadian *Personal Information Protection and Electronic Documents Act* (PIPEDA) and applicable provincial privacy legislation.
 
-- Identity and contact so you can sign in and receive trip updates
-- Pickup and drop-off coordinates to quote, match bids, and track the ride
-- Payment tokens via the payment provider — we do not store full card numbers
-- Device and session data to keep accounts secure
+---
 
-## Sharing
+### 1. Information We Collect
 
-We share what a driver needs to complete an accepted trip (name, pickup, flight, signage). Payment processors receive what they need to charge or refund. We disclose information when the law requires it.
+We collect only the personal information necessary to deliver marketplace transfer services and keep accounts secure.
 
-## Retention
+#### A. Passenger Information
+- **Account Information:** Full name, email address, mobile phone number, profile photo, and password credentials.
+- **Trip & Location Data:** Pickup address, drop-off destination, flight numbers, scheduled dates/times, and GPS geolocation data when the app is active.
+- **Payment Information:** Payment methods and billing information. Full payment card details are tokenized and processed directly by our PCI-DSS certified payment processors; CAN-RIDE does not store full credit card numbers.
+- **Communications:** In-app chat messages, ratings, feedback, and support inquiries.
 
-We keep ride and payment records as required for tax, dispute, and safety. You may ask support to export or correct your account data.
+#### B. Driver & Carrier Partner Information
+- **Carrier Profile:** Legal name, operating business name, contact details, profile photo, and operating zones.
+- **KYC & Compliance Documents:** Government-issued driver's licence, vehicle registration, commercial or rideshare insurance certificates, vehicle inspection reports, and background verification records.
+- **Vehicle Details:** Make, model, year, colour, vehicle class, license plate, and interior/exterior vehicle photographs.
+- **Financial Details:** Direct deposit/bank account details for payouts and earnings records.
+- **Real-Time Telematics:** Live GPS coordinates and heading during active trips and when in "driving mode" to dispatch and track rides.
 
-## Contact
+---
 
-Privacy questions: [support@can-go.ca](mailto:support@can-go.ca). This page is editable by Content Managers in Admin.`,
+### 2. How We Use Your Information
+
+We use personal information to:
+- Connect passengers with nearby licensed drivers through our competitive tender system.
+- Process ride reservations, authorizations, payments, and receipts.
+- Provide live vehicle tracking, estimated arrival times, and in-trip communication.
+- Verify driver identity, vehicle safety, licensing, and regulatory compliance.
+- Detect, investigate, and prevent fraudulent transactions, unauthorized account access, and safety incidents.
+- Improve our algorithms, marketplace reliability, and user interface.
+- Comply with Canadian legal, tax, accounting, and reporting obligations.
+
+---
+
+### 3. Sharing of Your Information
+
+CAN-RIDE does **not** sell, rent, or trade your personal data. We disclose personal information only in the following limited circumstances:
+
+- **Between Passenger and Driver:** When a ride is booked, we share the passenger's first name, pickup location, drop-off location, flight details, and in-trip chat with the accepted driver. Drivers' verified names, vehicle photos, vehicle details, hospitality scores, and live GPS locations are shared with the passenger.
+- **Service Providers & Processors:** Trusted third-party vendors who assist with SMS verification, push notifications, payment processing (e.g. Stripe), cloud hosting, and mapping APIs under strict confidentiality agreements.
+- **Safety & Legal Disclosures:** When required by Canadian law, subpoena, court order, or in emergency situations to protect the physical safety of passengers, drivers, or the public.
+
+---
+
+### 4. Storage, Retention & Security
+
+- **Data Security:** We implement robust administrative, technical, and physical safeguards—including SSL/TLS encryption in transit and AES encryption at rest—to safeguard your information from loss, theft, or unauthorized access.
+- **KYC Document Privacy:** Driver verification documents are stored securely in restricted-access cloud storage and accessible solely to trained compliance personnel for document verification.
+- **Data Retention:** We retain personal information for as long as your account remains active or as required by applicable tax, commercial, and transport record-keeping regulations.
+
+---
+
+### 5. Your Rights & Choices
+
+Under Canadian privacy laws, you have the right to:
+- Access the personal information CAN-RIDE holds about you.
+- Request correction of inaccurate or incomplete personal records.
+- Request deletion of your account and associated personal data (subject to legal retention requirements).
+- Withdraw consent to marketing communications at any time.
+- Manage location permissions directly within your device settings.
+
+To exercise any of these rights, email **[privacy@can-go.ca](mailto:privacy@can-go.ca)** or submit a request through the CAN-RIDE app.
+
+---
+
+### 6. Updates to this Policy
+
+We may modify this Privacy Policy from time to time to reflect regulatory updates or service enhancements. We will notify you of material changes via app notification or email.
+
+---
+
+### 7. Privacy Office Contact
+
+If you have questions, concerns, or requests regarding this Privacy Policy or our privacy practices:
+
+- **Privacy Officer:** [privacy@can-go.ca](mailto:privacy@can-go.ca)
+- **General Support:** [support@can-go.ca](mailto:support@can-go.ca)
+- **Mailing Address:** CAN-RIDE Privacy Office, Toronto, Ontario, Canada`,
   },
   {
     slug: 'faq-how-it-works',

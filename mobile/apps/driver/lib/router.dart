@@ -7,6 +7,7 @@ import 'screens/auth_screen.dart';
 import 'screens/chat_detail_screen.dart';
 import 'screens/chats_screen.dart';
 import 'screens/instructions_screen.dart';
+import 'screens/legal_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/offer_review_screen.dart';
 import 'screens/onboarding/documents_screen.dart';
@@ -46,6 +47,9 @@ GoRouter createRouter(AppState appState) {
             ? (appState.onboardedComplete ? '/' : '/onboarding/profile')
             : '/auth';
       }
+
+      final isLegal = loc.startsWith('/legal');
+      if (isLegal) return null;
 
       final onboarding = loc.startsWith('/onboarding');
       final isAuth = loc == '/auth';
@@ -200,6 +204,16 @@ GoRouter createRouter(AppState appState) {
         path: '/chat/:id',
         builder: (_, state) =>
             ChatDetailScreen(threadId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/legal/:slug',
+        builder: (_, state) => DriverLegalScreen(
+          initialSlug: state.pathParameters['slug'] ?? 'privacy',
+        ),
+      ),
+      GoRoute(
+        path: '/legal',
+        builder: (_, __) => const DriverLegalScreen(initialSlug: 'privacy'),
       ),
     ],
   );

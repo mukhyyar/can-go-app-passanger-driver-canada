@@ -407,8 +407,14 @@ export function AuthModal({
             </button>
             <p className="legal">
               By registering, you agree to the{' '}
-              <a href="/privacy">CAN-RIDE Privacy Policy</a>, as well as the{' '}
-              <a href="/terms">CAN-RIDE Service Agreement</a>.
+              <a href="/privacy" target="_blank" rel="noopener noreferrer">
+                CAN-RIDE Privacy Policy
+              </a>
+              , as well as the{' '}
+              <a href="/terms" target="_blank" rel="noopener noreferrer">
+                CAN-RIDE Service Agreement
+              </a>
+              .
             </p>
           </>
         )}
@@ -474,6 +480,17 @@ export function AuthModal({
               autoComplete="new-password"
               required
             />
+            <p className="legal">
+              By creating an account, you agree to the{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer">
+                Privacy Policy
+              </a>{' '}
+              and{' '}
+              <a href="/terms" target="_blank" rel="noopener noreferrer">
+                Service Agreement
+              </a>
+              .
+            </p>
             <button className="cta" disabled={busy} type="submit">
               Create account
             </button>

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -70,9 +71,16 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _savedPassword;
   bool _bioAutoPrompted = false;
 
+  late final TapGestureRecognizer _privacyRecognizer;
+  late final TapGestureRecognizer _termsRecognizer;
+
   @override
   void initState() {
     super.initState();
+    _privacyRecognizer = TapGestureRecognizer()
+      ..onTap = () => context.push('/legal/privacy');
+    _termsRecognizer = TapGestureRecognizer()
+      ..onTap = () => context.push('/legal/terms');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOAuthConfig();
       _loadCredentialPrefs();
@@ -186,6 +194,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    _privacyRecognizer.dispose();
+    _termsRecognizer.dispose();
     _resendTimer?.cancel();
     _email.dispose();
     _password.dispose();
@@ -691,15 +701,39 @@ class _AuthScreenState extends State<AuthScreen> {
       title: _title,
       subtitle: _subtitle,
       onBack: _onBack,
-      footer: _step == _AuthStep.methods
-          ? const Text(
-              'By registering, you agree to the CAN-RIDE Privacy Policy, as well as the CAN-RIDE Service Agreement.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.45,
-                color: GtColors.textMuted,
+      footer: (_step == _AuthStep.methods || _step == _AuthStep.register)
+          ? Text.rich(
+              TextSpan(
+                text: 'By continuing, you agree to the ',
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.45,
+                  color: GtColors.textMuted,
+                ),
+                children: [
+                  TextSpan(
+                    text: 'CAN-RIDE Privacy Policy',
+                    style: const TextStyle(
+                      color: GtColors.brand,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                    ),
+                    recognizer: _privacyRecognizer,
+                  ),
+                  const TextSpan(text: ', as well as the '),
+                  TextSpan(
+                    text: 'CAN-RIDE Service Agreement',
+                    style: const TextStyle(
+                      color: GtColors.brand,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                    ),
+                    recognizer: _termsRecognizer,
+                  ),
+                  const TextSpan(text: '.'),
+                ],
               ),
+              textAlign: TextAlign.center,
             )
           : null,
       child: Column(

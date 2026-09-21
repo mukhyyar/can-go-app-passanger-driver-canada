@@ -18,4 +18,5 @@ export 'src/route_path.dart';
 export 'src/splash.dart';
 export 'src/theme.dart';
 export 'src/widgets.dart';
+export 'src/legal_document_view.dart';
 

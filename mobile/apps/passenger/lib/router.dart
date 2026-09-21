@@ -3,6 +3,7 @@ import 'package:passenger/screens/account_screen.dart';
 import 'package:passenger/screens/auth_screen.dart';
 import 'package:passenger/screens/booking_confirmed_screen.dart';
 import 'package:passenger/screens/edit_ride_screen.dart';
+import 'package:passenger/screens/legal_screen.dart';
 import 'package:passenger/screens/location_screen.dart';
 import 'package:passenger/screens/map_pick_screen.dart';
 import 'package:passenger/screens/notifications_screen.dart';
@@ -38,7 +39,7 @@ GoRouter createRouter(AppState state) {
           loc.startsWith('/edit-ride/');
       if (!state.isAuthenticated && needsAuth) return '/auth';
 
-      if (!state.onboarded && loc != '/onboarding') {
+      if (!state.onboarded && loc != '/onboarding' && !loc.startsWith('/legal')) {
         return '/onboarding';
       }
       if (state.onboarded && loc == '/onboarding') return '/';
@@ -157,6 +158,16 @@ GoRouter createRouter(AppState state) {
             field: extra['field'] as String? ?? 'fullName',
           );
         },
+      ),
+      GoRoute(
+        path: '/legal/:slug',
+        builder: (_, state) => LegalScreen(
+          initialSlug: state.pathParameters['slug'] ?? 'privacy',
+        ),
+      ),
+      GoRoute(
+        path: '/legal',
+        builder: (_, __) => const LegalScreen(initialSlug: 'privacy'),
       ),
     ],
   );

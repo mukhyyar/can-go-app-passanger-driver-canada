@@ -275,14 +275,23 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                 showDivider: false,
               ),
               const SizedBox(height: 16),
-              const _SectionLabel('Help'),
+              const _SectionLabel('Help & Legal'),
               _MenuTile(
                 icon: Icons.help_outline,
                 label: 'Support',
                 onTap: () => _open('/instructions'),
+              ),
+              _MenuTile(
+                icon: Icons.shield_outlined,
+                label: 'Privacy Policy',
+                onTap: () => _open('/legal/privacy'),
+              ),
+              _MenuTile(
+                icon: Icons.gavel_outlined,
+                label: 'Service Agreement',
+                onTap: () => _open('/legal/terms'),
                 showDivider: false,
               ),
-              const SizedBox(height: 16),
               const SizedBox(height: 16),
               const _SectionLabel('Driving'),
               SwitchListTile.adaptive(
