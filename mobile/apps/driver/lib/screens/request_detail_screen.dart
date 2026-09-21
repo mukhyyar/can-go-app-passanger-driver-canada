@@ -27,6 +27,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   bool _submitting = false;
   String? _offerError;
   bool _mapFullscreen = false;
+  int _selectedRouteIndex = 0;
+  List<GtRouteOption> _availableRoutes = const [];
   late OfferDraft _draft;
   final _outCtrl = TextEditingController();
   final _retCtrl = TextEditingController();
@@ -325,6 +327,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     final currency = req.currency;
     final hasActiveOffer = req.hasOffer && req.myOffer != null;
 
+    final selectedRoute = (_selectedRouteIndex >= 0 &&
+            _selectedRouteIndex < _availableRoutes.length)
+        ? _availableRoutes[_selectedRouteIndex]
+        : null;
+    final currentDistanceLabel = selectedRoute != null
+        ? '${selectedRoute.distanceKm} km · ${selectedRoute.durationMin} min'
+        : '${req.distance} · ${req.duration}';
+
     if (_mapFullscreen && req.fromLat != null && req.fromLng != null) {
       return Scaffold(
         body: SafeArea(
@@ -335,11 +345,24 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             toLat: req.toLat,
             toLng: req.toLng,
             toLabel: req.to,
-            distanceLabel: '${req.distance} · ${req.duration}',
+            distanceLabel: currentDistanceLabel,
             height: MediaQuery.of(context).size.height,
             canExpand: false,
             interactive: true,
             bundleId: 'com.canride.driver',
+            initialRouteIndex: _selectedRouteIndex,
+            enableRouteSelection: true,
+            onRoutesLoaded: (routes) {
+              if (mounted && _availableRoutes.length != routes.length) {
+                setState(() => _availableRoutes = routes);
+              }
+            },
+            onRouteSelected: (route) {
+              final idx = _availableRoutes.indexWhere((r) => r.id == route.id);
+              if (mounted && idx >= 0 && idx != _selectedRouteIndex) {
+                setState(() => _selectedRouteIndex = idx);
+              }
+            },
             onBack: () => setState(() => _mapFullscreen = false),
           ),
         ),
@@ -516,10 +539,24 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       toLat: req.toLat,
                       toLng: req.toLng,
                       toLabel: req.to,
-                      distanceLabel: '${req.distance} · ${req.duration}',
+                      distanceLabel: currentDistanceLabel,
                       height: 220,
                       expandedHeight: 390,
                       bundleId: 'com.canride.driver',
+                      initialRouteIndex: _selectedRouteIndex,
+                      enableRouteSelection: true,
+                      onRoutesLoaded: (routes) {
+                        if (mounted && _availableRoutes.length != routes.length) {
+                          setState(() => _availableRoutes = routes);
+                        }
+                      },
+                      onRouteSelected: (route) {
+                        final idx =
+                            _availableRoutes.indexWhere((r) => r.id == route.id);
+                        if (mounted && idx >= 0 && idx != _selectedRouteIndex) {
+                          setState(() => _selectedRouteIndex = idx);
+                        }
+                      },
                       onFullscreen: () =>
                           setState(() => _mapFullscreen = true),
                     )

@@ -328,7 +328,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     if (widget.initialRouteIndex >= 0 &&
         widget.initialRouteIndex < _routes.length &&
         widget.initialRouteIndex != _selectedRouteIndex) {
-      _selectRoute(widget.initialRouteIndex);
+      _selectRoute(widget.initialRouteIndex, notify: false);
     }
   }
 
@@ -399,18 +399,35 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       ..repeat();
   }
 
-  void _selectRoute(int index) {
-    if (index < 0 || index >= _routes.length || index == _selectedRouteIndex) {
+  void _selectRoute(int index, {bool notify = true}) {
+    if (index < 0 || index >= _routes.length) {
+      return;
+    }
+    if (index == _selectedRouteIndex && _routePoints.isNotEmpty) {
       return;
     }
     final selected = _routes[index];
     final pts = selected.points.cast<LatLng>();
+
+    _suppressCarUpdates = true;
+
     setState(() {
       _selectedRouteIndex = index;
       _routePoints = pts;
     });
+
     _startCar(pts);
-    widget.onRouteSelected?.call(selected);
+    _fitBounds(extra: pts, force: true);
+
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) {
+        _suppressCarUpdates = false;
+      }
+    });
+
+    if (notify) {
+      widget.onRouteSelected?.call(selected);
+    }
   }
 
   Future<void> _loadRoute() async {
@@ -1007,7 +1024,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       if (_routePoints.length < 2) return {};
       return {
         Polyline(
-          polylineId: const PolylineId('route_primary'),
+          polylineId: const PolylineId('route_line_0'),
           points: _routePoints,
           color: GtColors.brand,
           width: 5,
@@ -1015,52 +1032,43 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       };
     }
     final polylines = <Polyline>{};
-    // Draw unselected alternative routes first so the selected route renders on top
     for (var i = 0; i < _routes.length; i++) {
-      if (i == _selectedRouteIndex) continue;
       final route = _routes[i];
       final pts = route.points.cast<LatLng>();
+      final isSelected = i == _selectedRouteIndex;
 
       // Invisible wide polyline to act as a generous tap target (32px wide)
       if (widget.enableRouteSelection) {
         polylines.add(
           Polyline(
-            polylineId: PolylineId('route_alt_hit_$i'),
+            polylineId: PolylineId('route_hit_$i'),
             points: pts,
             color: Colors.transparent,
             width: 32,
-            zIndex: 2,
-            consumeTapEvents: true,
-            onTap: () => _selectRoute(i),
+            zIndex: isSelected ? 3 : 2,
+            consumeTapEvents: !isSelected,
+            onTap: isSelected ? null : () => _selectRoute(i, notify: true),
           ),
         );
       }
 
-      // Visible slate grey line
+      // Visible polyline: red brand color for selected, slate grey for alternatives
       polylines.add(
         Polyline(
-          polylineId: PolylineId('route_alt_$i'),
+          polylineId: PolylineId('route_line_$i'),
           points: pts,
-          color: const Color(0xFF8E8E93).withValues(alpha: 0.85),
-          width: 5,
-          zIndex: 1,
-          consumeTapEvents: widget.enableRouteSelection,
-          onTap: widget.enableRouteSelection ? () => _selectRoute(i) : null,
+          color: isSelected
+              ? GtColors.brand
+              : const Color(0xFF8E8E93).withValues(alpha: 0.85),
+          width: isSelected ? 6 : 4,
+          zIndex: isSelected ? 5 : 1,
+          consumeTapEvents: widget.enableRouteSelection && !isSelected,
+          onTap: (widget.enableRouteSelection && !isSelected)
+              ? () => _selectRoute(i, notify: true)
+              : null,
         ),
       );
     }
-    // Draw selected active route
-    final selected = _routes[_selectedRouteIndex];
-    polylines.add(
-      Polyline(
-        polylineId: PolylineId('route_selected_$_selectedRouteIndex'),
-        points: selected.points.cast<LatLng>(),
-        color: GtColors.brand,
-        width: 6,
-        zIndex: 4,
-        consumeTapEvents: true,
-      ),
-    );
     return polylines;
   }
 
@@ -1116,7 +1124,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: () => _selectRoute(i),
+                        onTap: () => _selectRoute(i, notify: true),
                         borderRadius: BorderRadius.circular(16),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
