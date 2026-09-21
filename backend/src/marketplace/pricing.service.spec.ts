@@ -25,7 +25,7 @@ describe('PricingService (unit)', () => {
 
   it('freezeBid rejects below min and above max', () => {
     const guidance: PriceSnapshot = {
-      currency: 'USD',
+      currency: 'CAD',
       serviceType: 'RIDE',
       vehicleClass: 'sedan',
       distanceKm: 10,
@@ -47,7 +47,7 @@ describe('PricingService (unit)', () => {
 
   it('freezeBid computes commission and driver earning', () => {
     const guidance: PriceSnapshot = {
-      currency: 'USD',
+      currency: 'CAD',
       serviceType: 'RIDE',
       vehicleClass: 'sedan',
       distanceKm: 10,
@@ -74,7 +74,7 @@ describe('PricingService (unit)', () => {
 
   it('freezeBid stores outbound/return and price band', () => {
     const guidance: PriceSnapshot = {
-      currency: 'USD',
+      currency: 'CAD',
       serviceType: 'RIDE',
       vehicleClass: 'sedan',
       distanceKm: 20,
@@ -105,7 +105,7 @@ describe('PricingService (unit)', () => {
 
   it('freezeBid rejects zero/negative via min band', () => {
     const guidance: PriceSnapshot = {
-      currency: 'USD',
+      currency: 'CAD',
       serviceType: 'RIDE',
       vehicleClass: 'sedan',
       distanceKm: 10,

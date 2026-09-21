@@ -140,7 +140,7 @@ export function friendlyRideStatus(status?: string): string {
   }
 }
 
-export function formatMoney(amount?: number | null, currency = 'USD'): string {
+export function formatMoney(amount?: number | null, currency = 'CAD'): string {
   if (amount == null || Number.isNaN(amount)) return '—';
   const code = currency.toUpperCase();
   const prefix =

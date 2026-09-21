@@ -619,7 +619,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     });
     if (!rows.length) {
       const p = await this.prisma.passengerProfile.findFirst({ select: { currency: true } });
-      return p?.currency ?? 'USD';
+      return p?.currency ?? 'CAD';
     }
     return rows.sort((a, b) => b._count._all - a._count._all)[0].currency;
   }
@@ -2299,7 +2299,7 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       demo: true,
       empty: false,
       emptyMessage: null,
-      currency: 'USD',
+      currency: 'CAD',
       timezone: resolved.timezone,
       range: this.rangeMeta(resolved, q),
       lastUpdated: new Date().toISOString(),

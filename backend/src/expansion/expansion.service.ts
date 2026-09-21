@@ -109,7 +109,7 @@ export class ExpansionService {
         refereeId: userId,
         role,
         creditAmount: credit,
-        currency: 'USD',
+        currency: 'CAD',
       },
     });
 

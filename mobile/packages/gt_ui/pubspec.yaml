@@ -11,8 +11,9 @@ dependencies:
     sdk: flutter
   google_fonts: ^6.2.1
   google_maps_flutter: ^2.12.1
-  google_maps_flutter_android: ^2.18.3
-  google_maps_flutter_platform_interface: ^2.17.0
+  # Pin maps packages to Dart 3.8 / Flutter 3.32 (local SDK). Newer interfaces need Dart 3.9+.
+  google_maps_flutter_android: 2.18.3
+  google_maps_flutter_platform_interface: 2.14.1
   intl: ^0.20.2
   local_auth: ^2.3.0
   crop_your_image: ^2.0.0

@@ -815,7 +815,7 @@ function RidesTab({
                 </div>
               </td>
               <td>{String(r.serviceType || '—')}</td>
-              <td>{money(Number(r.fare || 0), String(r.currency || 'USD'))}</td>
+              <td>{money(Number(r.fare || 0), String(r.currency || 'CAD'))}</td>
               <td>{String(r.offerCount ?? '—')}</td>
               <td>
                 <Chip tone={statusTone(String(r.status))}>{formatRideStatus(String(r.status))}</Chip>
@@ -879,7 +879,7 @@ function PaymentsTab({
           {payments.slice(0, 40).map((p) => (
             <tr key={String(p.id)}>
               <td className="mono">{shortId(String(p.id))}</td>
-              <td>{money(Number(p.amount), String(p.currency || 'USD'))}</td>
+              <td>{money(Number(p.amount), String(p.currency || 'CAD'))}</td>
               <td>
                 <Chip tone={String(p.status).toLowerCase().includes('fail') ? 'bad' : 'ok'}>
                   {String(p.status)}

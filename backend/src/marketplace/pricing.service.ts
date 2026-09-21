@@ -135,12 +135,12 @@ export class PricingService implements OnModuleInit {
           serviceType_vehicleClass_currency: {
             serviceType: d.serviceType,
             vehicleClass: d.vehicleClass,
-            currency: 'USD',
+            currency: 'CAD',
           },
         },
         create: {
           ...d,
-          currency: 'USD',
+          currency: 'CAD',
           minBidMultiplier: 0.8,
           maxBidMultiplier: 1.5,
           platformCommissionPct: 15,
@@ -184,7 +184,7 @@ export class PricingService implements OnModuleInit {
     for (const item of items) {
       await this.prisma.catalogItem.upsert({
         where: { slug: item.slug },
-        create: { ...item, currency: 'USD', active: true },
+        create: { ...item, currency: 'CAD', active: true },
         update: {},
       });
     }
@@ -220,7 +220,7 @@ export class PricingService implements OnModuleInit {
       );
     }
 
-    const currency = input.currency ?? 'USD';
+    const currency = input.currency ?? 'CAD';
     const vehicleClass = input.vehicleClass ?? '*';
     const rule = await this.resolveRule(
       input.serviceType,

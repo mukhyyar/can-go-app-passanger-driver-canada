@@ -131,7 +131,7 @@ export function AnalyticsWorkspace() {
       (t.permission === 'analytics.safety' && hasPermission(perms, 'risk.view')),
   );
 
-  const currency = String((data as Overview | null)?.currency ?? 'USD');
+  const currency = String((data as Overview | null)?.currency ?? 'CAD');
   const demo = Boolean((data as Overview | null)?.demo);
   const empty = Boolean((data as Overview | null)?.empty);
   const rangeLabel = String((data as Overview | null)?.range?.compareLabel ?? (data as Overview | null)?.range?.label ?? '');

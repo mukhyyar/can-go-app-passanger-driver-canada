@@ -20,7 +20,7 @@ export function statusTone(s?: string) {
   return 'info' as const;
 }
 
-export function money(n?: number, c = 'USD') {
+export function money(n?: number, c = 'CAD') {
   if (n == null || Number.isNaN(n)) return '—';
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: c }).format(n);
 }

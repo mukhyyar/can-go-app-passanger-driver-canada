@@ -205,7 +205,7 @@ export class PromoService {
         code: data.code.trim().toUpperCase(),
         percentOff: data.percentOff,
         amountOff: data.amountOff,
-        currency: data.currency ?? 'USD',
+        currency: data.currency ?? 'CAD',
         maxUses: data.maxUses,
         endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
       },

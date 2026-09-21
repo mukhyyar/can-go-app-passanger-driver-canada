@@ -76,7 +76,7 @@ export function qsFromParams(p: URLSearchParams) {
   return q.toString();
 }
 
-export function formatMetric(n: number, unit: KpiCard['unit'], currency = 'USD') {
+export function formatMetric(n: number, unit: KpiCard['unit'], currency = 'CAD') {
   if (n == null || Number.isNaN(n)) return '—';
   if (unit === 'currency') {
     try {
@@ -92,7 +92,7 @@ export function formatMetric(n: number, unit: KpiCard['unit'], currency = 'USD')
   return new Intl.NumberFormat().format(n);
 }
 
-export function formatMoney(n: number, currency = 'USD') {
+export function formatMoney(n: number, currency = 'CAD') {
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
   } catch {

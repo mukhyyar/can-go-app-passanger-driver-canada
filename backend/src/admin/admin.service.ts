@@ -1117,7 +1117,7 @@ export class AdminOpsService {
         assignedDriverId: r.assignedDriverId,
         offerCount: r.offers?.length ?? 0,
         fare: snapField(r.priceSnapshot, 'total') || snapField(r.priceSnapshot, 'passengerTotal'),
-        currency: (r.priceSnapshot as { currency?: string } | null)?.currency ?? 'USD',
+        currency: (r.priceSnapshot as { currency?: string } | null)?.currency ?? 'CAD',
       })),
       payments: payments.slice(0, 30),
       refunds,

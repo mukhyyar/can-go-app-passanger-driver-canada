@@ -93,7 +93,7 @@ export class MarketplaceService {
     }
 
     const vehicleClass = dto.vehicleClassIds[0] ?? '*';
-    const currency = dto.currency ?? 'USD';
+    const currency = dto.currency ?? 'CAD';
     const passengerUser = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { passengerProfile: true },
