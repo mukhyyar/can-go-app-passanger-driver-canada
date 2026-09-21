@@ -460,26 +460,46 @@ class _OffersScreenState extends State<OffersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  offer.displayName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            offer.displayName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${offer.vehicleClass} · ${offer.passengers} pax'
+                            '${offer.baggage != null ? ' · ${offer.baggage} bags' : ''}',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.black54),
+                          ),
+                          if (offer.ratingCount > 0) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '★ ${offer.rating.toStringAsFixed(1)} (${offer.ratingCount})',
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.black45),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () => context
+                          .push('/offer/${widget.rideId}/${offer.id}'),
+                      child: _imageThumbnail(offer),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${offer.vehicleClass} · ${offer.passengers} pax'
-                  '${offer.baggage != null ? ' · ${offer.baggage} bags' : ''}',
-                  style: const TextStyle(fontSize: 13, color: Colors.black54),
-                ),
-                if (offer.ratingCount > 0) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '★ ${offer.rating.toStringAsFixed(1)} (${offer.ratingCount})',
-                    style: const TextStyle(fontSize: 12, color: Colors.black45),
-                  ),
-                ],
                 const SizedBox(height: 10),
                 Text(
                   offer.priceLabel,
@@ -584,6 +604,68 @@ class _OffersScreenState extends State<OffersScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _imageThumbnail(Offer offer) {
+    final asset = MockData.vehicleImageAsset(offer.vehicleClass);
+    final images = offer.imageUrls;
+    final primaryUrl = images.isNotEmpty ? images.first : offer.imageUrl;
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 86,
+            height: 72,
+            color: GtColors.bgGrey,
+            child: primaryUrl != null && primaryUrl.isNotEmpty
+                ? AuthNetworkImage(
+                    url: primaryUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Image.asset(
+                      asset,
+                      package: 'gt_ui',
+                      fit: BoxFit.contain,
+                    ),
+                  )
+                : Image.asset(
+                    asset,
+                    package: 'gt_ui',
+                    fit: BoxFit.contain,
+                  ),
+          ),
+        ),
+        if (images.length > 1)
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.photo_library_outlined,
+                      size: 10, color: Colors.white),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${images.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

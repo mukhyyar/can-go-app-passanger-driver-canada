@@ -191,7 +191,12 @@ export class OfferPresentationService {
       where: {
         vehicleId,
         docType: 'vehicle_photo',
-        status: DocumentReviewStatus.APPROVED,
+        status: {
+          in: [
+            DocumentReviewStatus.APPROVED,
+            DocumentReviewStatus.PENDING,
+          ],
+        },
         lifecycleStatus: DocumentLifecycleStatus.CURRENT,
       },
       orderBy: VEHICLE_PHOTO_PRIMARY_ORDER,

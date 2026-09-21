@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
@@ -93,11 +94,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   String? _imageUrl(Map<String, dynamic> item) {
+    final top = item['imageUrl']?.toString();
     final data = item['data'];
-    if (data is Map) {
-      final raw = data['imageUrl']?.toString();
-      if (raw != null && raw.isNotEmpty) return rewriteMediaUrl(raw);
-    }
+    final dataImg = data is Map ? data['imageUrl']?.toString() : null;
+    final raw = (top != null && top.trim().isNotEmpty) ? top.trim() : dataImg?.trim();
+    if (raw != null && raw.isNotEmpty) return resolveOfferImageUrl(raw);
     return null;
   }
 

@@ -1520,6 +1520,20 @@ export class MarketplaceService {
           supersededOfferId: existing.id,
         },
       );
+      let updateImageUrl: string | null = null;
+      try {
+        const enriched = await this.presentation.enrichOffer({
+          id: replacement.id,
+          rideId,
+          driverId: driver.id,
+          vehicleId: vehicle?.id,
+          bidAmount: priced.bidAmount,
+          currency: existing.currency,
+        });
+        updateImageUrl = enriched.presentation.imageUrl;
+      } catch {
+        /* presentation enrichment is best-effort */
+      }
       void this.notifications.notifyOfferUpdated({
         userId: passenger.userId,
         rideId,
@@ -1527,6 +1541,7 @@ export class MarketplaceService {
         supersededOfferId: existing.id,
         title: 'Offer updated',
         body: 'A driver enhanced or updated their offer. Review the new details.',
+        imageUrl: updateImageUrl,
       });
     }
     this.tracking?.emitRideEvent(rideId, {
@@ -1753,23 +1768,38 @@ export class MarketplaceService {
     return {
       ...base,
       ...enriched,
+      vehicleImages: enriched.presentation.images,
+      vehicleImageUrl: enriched.presentation.imageUrl,
       reviews: enriched.presentation.reviews,
     };
   }
 
-  /** Authenticated binary stream for approved vehicle photos on an offer. */
+  /** Binary stream for approved or pending vehicle photos on an offer. */
   async getOfferVehiclePhotoContent(
-    userId: string,
+    userId: string | null | undefined,
     rideId: string,
     offerId: string,
     documentId: string,
   ) {
-    const passenger = await this.requirePassenger(userId);
-    const ride = await this.prisma.ride.findFirst({
-      where: { id: rideId, passengerId: passenger.id },
-      select: { id: true },
-    });
-    if (!ride) throw new NotFoundException('Ride not found');
+    if (userId) {
+      const passenger = await this.prisma.passengerProfile.findFirst({
+        where: { userId },
+        select: { id: true },
+      });
+      if (passenger) {
+        const ride = await this.prisma.ride.findFirst({
+          where: { id: rideId, passengerId: passenger.id },
+          select: { id: true },
+        });
+        if (!ride) throw new NotFoundException('Ride not found');
+      }
+    } else {
+      const ride = await this.prisma.ride.findUnique({
+        where: { id: rideId },
+        select: { id: true },
+      });
+      if (!ride) throw new NotFoundException('Ride not found');
+    }
 
     const offer = await this.prisma.offer.findFirst({
       where: { id: offerId, rideId },
@@ -1782,7 +1812,12 @@ export class MarketplaceService {
         id: documentId,
         vehicleId: offer.vehicleId,
         docType: 'vehicle_photo',
-        status: DocumentReviewStatus.APPROVED,
+        status: {
+          in: [
+            DocumentReviewStatus.APPROVED,
+            DocumentReviewStatus.PENDING,
+          ],
+        },
         lifecycleStatus: DocumentLifecycleStatus.CURRENT,
       },
       select: {
@@ -2684,7 +2719,12 @@ export class MarketplaceService {
       const enriched = await this.presentation.enrichOffer(offer, {
         includeReviews: false,
       });
-      return { ...base, ...enriched };
+      return {
+        ...base,
+        ...enriched,
+        vehicleImages: enriched.presentation.images,
+        vehicleImageUrl: enriched.presentation.imageUrl,
+      };
     } catch {
       return base;
     }
@@ -3060,6 +3100,7 @@ export class MarketplaceService {
         }
         const enriched = await this.presentation.enrichOffer({
           id: input.offerId,
+          rideId: input.rideId,
           driverId: input.driverId,
           vehicleId: input.vehicleId,
           bidAmount: input.amount,

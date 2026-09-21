@@ -225,7 +225,8 @@ Offer offerFromServer(Map<String, dynamic> json) {
       : <String>['EN'];
 
   final images = <OfferImage>[];
-  final imagesRaw = pres['images'];
+  final imagesRaw =
+      pres['images'] ?? json['vehicleImages'] ?? json['images'] ?? pres['vehicleImages'];
   if (imagesRaw is List) {
     for (final img in imagesRaw) {
       if (img is Map && img['url'] != null) {
@@ -235,6 +236,8 @@ Offer offerFromServer(Map<String, dynamic> json) {
             url: img['url'].toString(),
           ),
         );
+      } else if (img is String && img.trim().isNotEmpty) {
+        images.add(OfferImage(id: img.trim(), url: img.trim()));
       }
     }
   }
@@ -324,7 +327,9 @@ Offer offerFromServer(Map<String, dynamic> json) {
         ? ratingBreakdown.yearsWithPlatform
         : 1,
     reviews: reviews,
-    imageUrl: pres['imageUrl']?.toString(),
+    imageUrl: pres['imageUrl']?.toString() ??
+        json['vehicleImageUrl']?.toString() ??
+        (images.isNotEmpty ? images.first.url : null),
     images: images,
     year: _asIntNullable(pres['year']),
     baggage: _asIntNullable(pres['baggage']),
@@ -427,6 +432,23 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
     final driverName = driver['fullName']?.toString().trim();
     final offerStatus = json['status']?.toString();
     final isOfferCompleted = (offerStatus ?? '').toUpperCase() == 'COMPLETED';
+    final images = <OfferImage>[];
+    final imagesRaw =
+        pres['images'] ?? json['vehicleImages'] ?? json['images'] ?? pres['vehicleImages'];
+    if (imagesRaw is List) {
+      for (final img in imagesRaw) {
+        if (img is Map && img['url'] != null) {
+          images.add(
+            OfferImage(
+              id: img['id']?.toString() ?? img['url'].toString(),
+              url: img['url'].toString(),
+            ),
+          );
+        } else if (img is String && img.trim().isNotEmpty) {
+          images.add(OfferImage(id: img.trim(), url: img.trim()));
+        }
+      }
+    }
     return Offer(
       id: id,
       vehicleBrand: pres['brand']?.toString() ??
@@ -447,7 +469,10 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
       carrierId:
           pres['carrierId']?.toString() ?? driver['id']?.toString() ?? '',
       passengers: _asInt(pres['passengers'], fallback: 3),
-      imageUrl: pres['imageUrl']?.toString(),
+      imageUrl: pres['imageUrl']?.toString() ??
+          json['vehicleImageUrl']?.toString() ??
+          (images.isNotEmpty ? images.first.url : null),
+      images: images,
       status: json['status']?.toString(),
       vehicleDisplayName: pres['vehicleDisplayName']?.toString() ??
           vehicle['name']?.toString(),

@@ -158,17 +158,14 @@ export class MarketplaceController {
   }
 
   @Get('rides/:id/offers/:offerId/photos/:documentId/content')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.PASSENGER)
   async getOfferVehiclePhoto(
-    @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Param('offerId') offerId: string,
     @Param('documentId') documentId: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     const file = await this.marketplace.getOfferVehiclePhotoContent(
-      user.id,
+      null,
       id,
       offerId,
       documentId,

@@ -87,6 +87,7 @@ export class NotificationsController {
         id: r.id,
         title: r.title,
         body: r.body,
+        imageUrl: (data.imageUrl as string | undefined) ?? null,
         templateKey: r.templateKey,
         status: r.status,
         createdAt: r.createdAt,

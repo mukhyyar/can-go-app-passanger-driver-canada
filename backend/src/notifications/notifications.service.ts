@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FirebaseService } from '../firebase/firebase.service';
@@ -25,7 +26,28 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly firebase: FirebaseService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
+
+  private resolvePublicImageUrl(raw?: string | null): string | undefined {
+    if (!raw) return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      const base =
+        this.config?.get<string>('apiBaseUrl') ||
+        process.env.API_BASE_URL ||
+        process.env.PUBLIC_API_BASE ||
+        '';
+      if (base) {
+        return `${base.replace(/\/+$/, '')}${trimmed}`;
+      }
+    }
+    return trimmed;
+  }
 
   async registerDeviceToken(input: {
     token: string;
@@ -128,10 +150,12 @@ export class NotificationsService {
       where: { userId: payload.userId },
     });
 
+    const resolvedImageUrl = this.resolvePublicImageUrl(payload.imageUrl);
+
     const dataWithEvent = {
       ...payload.data,
       ...(payload.eventId ? { eventId: payload.eventId } : {}),
-      ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+      ...(resolvedImageUrl ? { imageUrl: resolvedImageUrl } : {}),
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
     };
 
@@ -175,14 +199,14 @@ export class NotificationsService {
           notification: {
             title: payload.title,
             body: payload.body,
-            ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+            ...(resolvedImageUrl ? { imageUrl: resolvedImageUrl } : {}),
           },
           data: dataWithEvent,
           android: {
             priority: 'high',
             notification: {
               channelId: 'can_ride_high',
-              ...(payload.imageUrl ? { imageUrl: payload.imageUrl } : {}),
+              ...(resolvedImageUrl ? { imageUrl: resolvedImageUrl } : {}),
             },
           },
           apns: {
@@ -190,11 +214,11 @@ export class NotificationsService {
               aps: {
                 sound: 'default',
                 contentAvailable: true,
-                mutableContent: !!payload.imageUrl,
+                mutableContent: !!resolvedImageUrl,
               },
             },
-            ...(payload.imageUrl
-              ? { fcmOptions: { imageUrl: payload.imageUrl } }
+            ...(resolvedImageUrl
+              ? { fcmOptions: { imageUrl: resolvedImageUrl } }
               : {}),
           },
         });
@@ -298,6 +322,7 @@ export class NotificationsService {
         driverId: input.driverId,
         vehicleId: input.vehicleId ?? '',
         deepLink: `/offers/${input.rideId}?offerId=${input.offerId}`,
+        ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
       },
     });
   }
@@ -310,6 +335,7 @@ export class NotificationsService {
     supersededOfferId?: string | null;
     title?: string;
     body?: string;
+    imageUrl?: string | null;
   }) {
     return this.sendToUser({
       userId: input.userId,
@@ -318,6 +344,7 @@ export class NotificationsService {
         input.body ??
         'A driver enhanced or updated their offer. Review the new details.',
       templateKey: 'ride.offer_updated',
+      imageUrl: input.imageUrl ?? undefined,
       eventId: `offer.updated.${input.offerId}`,
       data: {
         type: 'OFFER_UPDATED',
@@ -326,6 +353,7 @@ export class NotificationsService {
         offerId: input.offerId,
         supersededOfferId: input.supersededOfferId ?? '',
         deepLink: `/offer/${input.rideId}/${input.offerId}`,
+        ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
       },
     });
   }

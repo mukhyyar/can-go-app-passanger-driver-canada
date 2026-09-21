@@ -127,6 +127,7 @@ class _GtNotificationCardState extends State<GtNotificationCard> {
                           ? DecorationImage(
                               image: NetworkImage(imageUrl),
                               fit: BoxFit.cover,
+                              onError: (_, __) {},
                             )
                           : null,
                     ),

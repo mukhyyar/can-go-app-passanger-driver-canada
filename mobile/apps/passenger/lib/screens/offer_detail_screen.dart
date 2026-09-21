@@ -371,22 +371,27 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        PageView.builder(
-                          controller: _page,
-                          itemCount: images.isEmpty ? 1 : images.length,
-                          onPageChanged: (i) =>
-                              setState(() => _pageIndex = i),
-                          itemBuilder: (_, i) {
-                            if (images.isEmpty) {
-                              return _imagePlaceholder(asset);
-                            }
-                            return AuthNetworkImage(
-                              url: images[i],
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _imagePlaceholder(asset),
-                            );
-                          },
+                        GestureDetector(
+                          onTap: images.isNotEmpty
+                              ? () => _openGallery(images, _pageIndex, asset)
+                              : null,
+                          child: PageView.builder(
+                            controller: _page,
+                            itemCount: images.isEmpty ? 1 : images.length,
+                            onPageChanged: (i) =>
+                                setState(() => _pageIndex = i),
+                            itemBuilder: (_, i) {
+                              if (images.isEmpty) {
+                                return _imagePlaceholder(asset);
+                              }
+                              return AuthNetworkImage(
+                                url: images[i],
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    _imagePlaceholder(asset),
+                              );
+                            },
+                          ),
                         ),
                         if (images.length > 1)
                           Positioned(
@@ -409,6 +414,40 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                                         : Colors.white54,
                                   ),
                                 ),
+                              ),
+                            ),
+                          ),
+                        if (images.length > 1)
+                          Positioned(
+                            left: 12,
+                            top: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.photo_camera_outlined,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_pageIndex + 1} / ${images.length}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -488,6 +527,118 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     ],
                   ),
                 ),
+                // Vehicle photos gallery (showing all photos in description)
+                if (images.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _Section(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Vehicle photos',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '${images.length} photo${images.length == 1 ? '' : 's'}',
+                              style: const TextStyle(
+                                color: GtColors.brand,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 84,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: images.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 10),
+                            itemBuilder: (_, i) {
+                              final isSelected = i == _pageIndex;
+                              return GestureDetector(
+                                onTap: () {
+                                  if (_page.hasClients) {
+                                    _page.animateToPage(
+                                      i,
+                                      duration:
+                                          const Duration(milliseconds: 300),
+                                      curve: Curves.easeInOut,
+                                    );
+                                  }
+                                  setState(() => _pageIndex = i);
+                                  _openGallery(images, i, asset);
+                                },
+                                child: Stack(
+                                  children: [
+                                    Container(
+                                      width: 110,
+                                      height: 84,
+                                      decoration: BoxDecoration(
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? GtColors.brand
+                                              : GtColors.border,
+                                          width: isSelected ? 2.5 : 1,
+                                        ),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                        child: AuthNetworkImage(
+                                          url: images[i],
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              _imagePlaceholder(asset),
+                                        ),
+                                      ),
+                                    ),
+                                    if (i == 0)
+                                      Positioned(
+                                        bottom: 4,
+                                        left: 4,
+                                        child: Container(
+                                          padding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withValues(
+                                                alpha: 0.72),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            'Primary',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 // Amenities
                 if (offer.options.isNotEmpty)
@@ -745,6 +896,84 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
               child:
                   Icon(Icons.directions_car, size: 72, color: Colors.black45),
             ),
+    );
+  }
+
+  void _openGallery(List<String> images, int initialIndex, String? asset) {
+    if (images.isEmpty) return;
+    final pageController = PageController(initialPage: initialIndex);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        int current = initialIndex;
+        return StatefulBuilder(
+          builder: (ctx, setDlgState) {
+            return Dialog(
+              insetPadding: EdgeInsets.zero,
+              backgroundColor: Colors.black,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PageView.builder(
+                    controller: pageController,
+                    itemCount: images.length,
+                    onPageChanged: (i) {
+                      setDlgState(() => current = i);
+                      if (_page.hasClients) {
+                        _page.jumpToPage(i);
+                      }
+                      setState(() => _pageIndex = i);
+                    },
+                    itemBuilder: (_, i) {
+                      return InteractiveViewer(
+                        minScale: 0.8,
+                        maxScale: 3.5,
+                        child: Center(
+                          child: AuthNetworkImage(
+                            url: images[i],
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) =>
+                                _imagePlaceholder(asset),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  Positioned(
+                    top: 40,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${current + 1} / ${images.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 40,
+                    right: 16,
+                    child: IconButton(
+                      icon: const Icon(Icons.close,
+                          color: Colors.white, size: 28),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
