@@ -39,6 +39,10 @@ type TabId =
 
 type User360 = {
   user: Record<string, unknown>;
+  isDualRole?: boolean;
+  hasPassengerProfile?: boolean;
+  hasDriverProfile?: boolean;
+  roles?: string[];
   hasAvatar?: boolean;
   avatarPath?: string | null;
   avatarStorageKey?: string | null;
@@ -134,8 +138,12 @@ export function User360Workspace() {
   const drv = asObj(user.driverProfile);
   const name = String(pax.fullName || drv.fullName || user.email || user.id || 'User');
   const role = String(user.role || '');
-  const isDriver = role === 'DRIVER' || Boolean(drv.id);
-  const isPassenger = role === 'PASSENGER' || Boolean(pax.id);
+  const isDriver = role === 'DRIVER' || Boolean(drv.id) || Boolean(data?.hasDriverProfile);
+  const isPassenger = role === 'PASSENGER' || Boolean(pax.id) || Boolean(data?.hasPassengerProfile);
+  const isDual =
+    Boolean(data?.isDualRole) ||
+    (Boolean(drv.id) && Boolean(pax.id)) ||
+    (isDriver && isPassenger);
   const sessions = asArr(user.sessions);
   const vehicles = asArr(drv.vehicles);
   const documents = asArr(drv.documents);
@@ -264,23 +272,32 @@ export function User360Workspace() {
     mkt && mkt.rides > 0 ? Math.round((mkt.cancelled / mkt.rides) * 100) : null;
   const lastSession = sessions[0] as { lastSeenAt?: string; ip?: string; userAgent?: string } | undefined;
 
-  const kpis: Array<{ label: string; value: string }> = isDriver
+  const kpis: Array<{ label: string; value: string }> = isDual
     ? [
-        { label: 'Trips', value: String(mkt?.rides ?? 0) },
+        { label: 'Total rides', value: String(mkt?.rides ?? 0) },
         { label: 'Completed', value: String(mkt?.completed ?? 0) },
-        { label: 'Cancelled', value: String(mkt?.cancelled ?? 0) },
+        { label: 'Driver earnings', value: money(mkt?.earnings) },
+        { label: 'Passenger spend', value: money(mkt?.spend) },
         { label: 'Cancel %', value: cancelRate != null ? `${cancelRate}%` : '—' },
-        { label: 'Earnings', value: money(mkt?.earnings) },
         { label: 'Avg rating', value: mkt?.avgRating != null ? String(mkt.avgRating) : '—' },
       ]
-    : [
-        { label: 'Rides', value: String(mkt?.rides ?? 0) },
-        { label: 'Completed', value: String(mkt?.completed ?? 0) },
-        { label: 'Cancelled', value: String(mkt?.cancelled ?? 0) },
-        { label: 'Unfulfilled', value: String(mkt?.unfulfilled ?? 0) },
-        { label: 'Spend', value: money(mkt?.spend) },
-        { label: 'Avg rating', value: mkt?.avgRating != null ? String(mkt.avgRating) : '—' },
-      ];
+    : isDriver
+      ? [
+          { label: 'Trips', value: String(mkt?.rides ?? 0) },
+          { label: 'Completed', value: String(mkt?.completed ?? 0) },
+          { label: 'Cancelled', value: String(mkt?.cancelled ?? 0) },
+          { label: 'Cancel %', value: cancelRate != null ? `${cancelRate}%` : '—' },
+          { label: 'Earnings', value: money(mkt?.earnings) },
+          { label: 'Avg rating', value: mkt?.avgRating != null ? String(mkt.avgRating) : '—' },
+        ]
+      : [
+          { label: 'Rides', value: String(mkt?.rides ?? 0) },
+          { label: 'Completed', value: String(mkt?.completed ?? 0) },
+          { label: 'Cancelled', value: String(mkt?.cancelled ?? 0) },
+          { label: 'Unfulfilled', value: String(mkt?.unfulfilled ?? 0) },
+          { label: 'Spend', value: money(mkt?.spend) },
+          { label: 'Avg rating', value: mkt?.avgRating != null ? String(mkt.avgRating) : '—' },
+        ];
 
   return (
     <div className="user360">
@@ -301,7 +318,7 @@ export function User360Workspace() {
               {name}
             </h1>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-              <RoleBadge role={role} />
+              <RoleBadge role={role} user={{ ...user, isDualRole: isDual, roles: data?.roles }} isDual={isDual} />
               <AccountStatusBadge
                 suspended={Boolean(user.isSuspended)}
                 archived={isArchived}
@@ -310,6 +327,11 @@ export function User360Workspace() {
               {isDriver ? <KycBadge status={String(drv.approvalStatus || '')} /> : null}
               <RiskBadge band={risk.band} />
               {Boolean(pax.isVip) && <Chip tone="warn">VIP</Chip>}
+              {isDual && (
+                <Chip tone="action" title="Registered as Driver and Passenger with same email">
+                  Dual Account
+                </Chip>
+              )}
               {watchlist.length > 0 && <Chip tone="action">Watchlist</Chip>}
               {tags.map((t) => (
                 <Chip key={String(t.id || t.slug)}>{String(t.label || t.slug)}</Chip>
@@ -476,6 +498,7 @@ export function User360Workspace() {
             timeline={data.timeline}
             isDriver={isDriver}
             isPassenger={isPassenger}
+            isDual={isDual}
             canDanger={canArchive || canAnonymize || canDelete}
             onOpenDanger={() => setDangerOpen(true)}
           />
@@ -609,6 +632,7 @@ function OverviewTab(props: {
   timeline: Array<{ at: string; kind: string; label: string }>;
   isDriver: boolean;
   isPassenger: boolean;
+  isDual?: boolean;
   canDanger?: boolean;
   onOpenDanger?: () => void;
 }) {
@@ -625,6 +649,7 @@ function OverviewTab(props: {
     lastSession,
     timeline,
     isDriver,
+    isDual,
     canDanger,
     onOpenDanger,
   } = props;
@@ -660,7 +685,25 @@ function OverviewTab(props: {
         </Card>
         <Card title="Account">
           <Row label="Status" value={user.isSuspended ? 'Suspended' : 'Active'} />
-          <Row label="Role" value={roleLabel(String(user.role))} />
+          <Row
+            label="Role"
+            value={
+              isDual ? (
+                <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                  <strong>Driver & Passenger</strong>
+                  <Chip tone="action">Dual</Chip>
+                </span>
+              ) : (
+                roleLabel(String(user.role))
+              )
+            }
+          />
+          {isDual && (
+            <Row
+              label="Dual account"
+              value="Driver & Passenger profiles active with same email"
+            />
+          )}
           <Row label="Phone verified" value={when(user.phoneVerifiedAt as string)} />
           <Row label="KYC" value={isDriver ? String(drv.approvalStatus || '—') : 'N/A'} />
           <Row label="Driver activated" value={isDriver ? String(Boolean(drv.isActivated)) : 'N/A'} />

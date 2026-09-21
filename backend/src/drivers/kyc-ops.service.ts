@@ -423,11 +423,19 @@ export class KycOpsService {
     const driver = await this.requireDriver(doc.driverId);
     this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
 
+    const newExpiresAt = dto.expiresAt !== undefined
+      ? (dto.expiresAt ? new Date(dto.expiresAt) : null)
+      : doc.expiresAt;
+    if (dto.status === 'APPROVED' && newExpiresAt && newExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Cannot approve an expired document. Please update the expiry date.');
+    }
+
     const previous = doc.status;
     const updated = await this.prisma.driverDocument.update({
       where: { id: documentId },
       data: {
         status: dto.status as DocumentReviewStatus,
+        expiresAt: newExpiresAt,
         rejectionReason:
           dto.status === 'REJECTED' ? dto.rejectionReason!.trim() : null,
         resubmissionReason: null,

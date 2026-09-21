@@ -84,10 +84,15 @@ export class DriversService {
     const current = docs.filter(
       (d) => d.lifecycleStatus === DocumentLifecycleStatus.CURRENT,
     );
+    const expiredDocs = current.filter(
+      (d) => d.expiresAt && d.expiresAt.getTime() < Date.now(),
+    );
     return {
       driverId: driver.id,
       approvalStatus: driver.approvalStatus,
       isActivated: driver.isActivated,
+      hasExpiredDocuments: expiredDocs.length > 0,
+      expiredDocumentTypes: expiredDocs.map((d) => d.docType),
       requiredDocTypes: REQUIRED_DOC_TYPES,
       maxVehiclePhotos: MAX_VEHICLE_PHOTOS,
       documents: current.map((d) => this.kycDocs.serializeDoc(d)),
@@ -324,6 +329,18 @@ export class DriversService {
           'KYC must be approved before turning on driving mode',
         );
       }
+      const expiredDoc = await this.prisma.driverDocument.findFirst({
+        where: {
+          driverId: driver.id,
+          lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+          expiresAt: { lt: new Date() },
+        },
+      });
+      if (expiredDoc) {
+        throw new ForbiddenException(
+          `Cannot turn on driving mode: your ${expiredDoc.docType} has expired. Please upload an updated document.`,
+        );
+      }
     }
     const updated = await this.prisma.driverProfile.update({
       where: { id: driver.id },
@@ -482,7 +499,7 @@ export class DriversService {
     if (rule?.platformCommissionPct != null) {
       return Number(rule.platformCommissionPct.toString());
     }
-    const fallback = process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '15';
+    const fallback = process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '0';
     return Number(fallback);
   }
 

@@ -122,9 +122,11 @@ export class OfferPresentationService {
 
   priceBreakdown(snap?: PriceSnapshot | null) {
     if (!snap) return null;
-    const ridePrice = round2(
-      (snap.subtotal ?? snap.bidAmount ?? snap.guidanceAmount ?? 0) as number,
+    const driverBid = round2(
+      (snap.bidAmount ??
+        (snap.subtotal ? snap.subtotal / 1.2 : snap.guidanceAmount ?? 0)) as number,
     );
+    const ridePrice = round2(driverBid * 1.2);
     const platformFee = round2(ridePrice * 0.2);
     const taxes = round2(snap.taxAmount ?? 0);
     const total = round2(ridePrice + platformFee + taxes);
@@ -383,7 +385,7 @@ export class OfferPresentationService {
       ? breakdown.total
       : (snap?.passengerTotal != null
           ? Number(snap.passengerTotal)
-          : round2(Number(offer.bidAmount ?? 0) * 1.2));
+          : round2(Number(offer.bidAmount ?? 0) * 1.44));
 
     return {
       presentation: {

@@ -31,21 +31,30 @@ void main() {
       expect(d.selectedOptions.contains('water'), isFalse);
     });
 
-    test('computes totalPrice, 20% platformFee, and customerTotal correctly', () {
+    test('computes totalPrice, customerRidePrice, platformFee, and customerTotal correctly', () {
+      final userExample = OfferDraft(outboundPrice: 17);
+      expect(userExample.totalPrice, 17.0);
+      expect(userExample.customerRidePrice, 20.40);
+      expect(userExample.platformFee, 4.08);
+      expect(userExample.customerTotal, 24.48);
+
       final oneWay = OfferDraft(outboundPrice: 100);
       expect(oneWay.totalPrice, 100.0);
-      expect(oneWay.platformFee, 20.0);
-      expect(oneWay.customerTotal, 120.0);
+      expect(oneWay.customerRidePrice, 120.0);
+      expect(oneWay.platformFee, 24.0);
+      expect(oneWay.customerTotal, 144.0);
 
       final roundTrip = OfferDraft(outboundPrice: 150, returnPrice: 150);
       expect(roundTrip.totalPrice, 300.0);
-      expect(roundTrip.platformFee, 60.0);
-      expect(roundTrip.customerTotal, 360.0);
+      expect(roundTrip.customerRidePrice, 360.0);
+      expect(roundTrip.platformFee, 72.0);
+      expect(roundTrip.customerTotal, 432.0);
 
       final withDecimals = OfferDraft(outboundPrice: 55.50);
       expect(withDecimals.totalPrice, 55.50);
-      expect(withDecimals.platformFee, 11.10);
-      expect(withDecimals.customerTotal, 66.60);
+      expect(withDecimals.customerRidePrice, 66.60);
+      expect(withDecimals.platformFee, 13.32);
+      expect(withDecimals.customerTotal, 79.92);
     });
   });
 

@@ -85,12 +85,14 @@ class DriverApi {
     required String filename,
     String contentType = 'image/jpeg',
     String? vehicleId,
+    String? expiresAt,
   }) {
     return client.postMultipart(
       '/driver/documents',
       fields: {
         'docType': docType,
         if (vehicleId != null) 'vehicleId': vehicleId,
+        if (expiresAt != null) 'expiresAt': expiresAt,
       },
       files: [
         http.MultipartFile.fromBytes(
@@ -106,10 +108,13 @@ class DriverApi {
     required String documentId,
     required Uint8List bytes,
     required String filename,
+    String? expiresAt,
   }) {
     return client.postMultipart(
       '/driver/documents/$documentId/reupload',
-      fields: const {},
+      fields: {
+        if (expiresAt != null) 'expiresAt': expiresAt,
+      },
       files: [
         http.MultipartFile.fromBytes(
           'file',

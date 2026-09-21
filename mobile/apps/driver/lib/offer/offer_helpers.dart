@@ -88,11 +88,14 @@ class OfferDraft {
 
   double get totalPrice => (outboundPrice ?? 0) + (returnPrice ?? 0);
 
+  double get customerRidePrice =>
+      ((totalPrice * 1.20) * 100).roundToDouble() / 100.0;
+
   double get platformFee =>
-      ((totalPrice * 0.20) * 100).roundToDouble() / 100.0;
+      ((customerRidePrice * 0.20) * 100).roundToDouble() / 100.0;
 
   double get customerTotal =>
-      ((totalPrice + platformFee) * 100).roundToDouble() / 100.0;
+      ((customerRidePrice + platformFee) * 100).roundToDouble() / 100.0;
 }
 
 /// Translation provider abstraction — no fake translations.

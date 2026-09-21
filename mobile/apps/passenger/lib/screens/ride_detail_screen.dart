@@ -414,6 +414,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     String? proposedPickupAt,
     String? note,
     String? flightNumber,
+    String? contactPhone,
   }) async {
     setState(() => _actionBusy = true);
     try {
@@ -423,10 +424,17 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             proposedPickupAt: proposedPickupAt,
             note: note,
             flightNumber: flightNumber,
+            contactPhone: contactPhone,
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Request submitted')),
+          SnackBar(
+            content: Text(
+              type == 'LOST_ITEM'
+                  ? 'Driver notified to check vehicle for lost items'
+                  : 'Request submitted',
+            ),
+          ),
         );
       }
     } catch (_) {
@@ -628,6 +636,122 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
       );
     }
+    noteCtrl.dispose();
+  }
+
+  Future<void> _showLostItemSheet() async {
+    final app = context.read<AppState>();
+    final phoneCtrl = TextEditingController(text: app.repo.passenger.phone);
+    final noteCtrl = TextEditingController();
+
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.search, color: GtColors.brand, size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'Find lost item',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Icon(Icons.lock_outline, color: Color(0xFF16A34A), size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'To protect your privacy, you don\'t need to describe personal items. We will notify your driver to inspect their vehicle and reach out to you if anything was left behind.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFF166534),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Contact phone number',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                  helperText: 'Your driver or support will use this to reach you',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Location in vehicle (optional)',
+                  hintText: 'e.g. Back seat, trunk, door pocket',
+                  helperText: 'Do not name personal items to protect privacy',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              GtGreenButton(
+                label: 'Notify driver',
+                onPressed: () {
+                  final phone = phoneCtrl.text.trim();
+                  if (phone.isEmpty) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a contact phone number'),
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      await _submitChangeRequest(
+        type: 'LOST_ITEM',
+        contactPhone: phoneCtrl.text.trim(),
+        note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+      );
+      if (mounted) {
+        await app.refreshRide(widget.rideId);
+        setState(() {});
+      }
+    }
+    phoneCtrl.dispose();
     noteCtrl.dispose();
   }
 
@@ -1077,6 +1201,55 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                     ],
                     if (status == 'COMPLETED') ...[
+                      const SizedBox(height: 10),
+                      if (ride?.hasLostItemRequest == true)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.search,
+                                  color: Color(0xFF1D4ED8), size: 22),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      'Lost item inquiry active',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: Color(0xFF1E3A8A),
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'The driver has been notified to check their vehicle. We will contact you if an item is found.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF1E40AF),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        OutlinedButton.icon(
+                          onPressed: _actionBusy ? null : _showLostItemSheet,
+                          icon: const Icon(Icons.search, size: 18),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
+                          ),
+                          label: const Text('Find lost item'),
+                        ),
                       const SizedBox(height: 10),
                       OutlinedButton(
                         onPressed: _actionBusy

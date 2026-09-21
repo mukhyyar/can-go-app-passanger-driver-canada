@@ -155,11 +155,44 @@ class _RequestsScreenState extends State<RequestsScreen>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: DriverBrandHeader(
-                subtitle: s.isActivated
-                    ? null
-                    : 'Complete activation to offer prices',
+                subtitle: s.hasExpiredDocuments
+                    ? 'Documents expired — account disabled'
+                    : (s.isActivated ? null : 'Complete activation to offer prices'),
               ),
             ),
+            if (s.hasExpiredDocuments)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: InkWell(
+                  onTap: () => context.push('/onboarding/documents'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      border: Border.all(color: Colors.red.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline, color: Colors.red.shade800, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Documents expired. Tap to re-upload and re-activate.',
+                            style: TextStyle(
+                              color: Colors.red.shade900,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: Colors.red.shade800, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -180,11 +213,15 @@ class _RequestsScreenState extends State<RequestsScreen>
                   DriverStatChip(
                     icon: Icons.verified_outlined,
                     label: 'Status',
-                    value: s.drivingEnabled ? 'On' : 'Off',
-                    valueColor: s.drivingEnabled
-                        ? GtColors.green
-                        : GtColors.textMuted,
-                    onTap: !s.isActivated
+                    value: s.hasExpiredDocuments
+                        ? 'Disabled'
+                        : (s.drivingEnabled ? 'On' : 'Off'),
+                    valueColor: s.hasExpiredDocuments
+                        ? Colors.red.shade700
+                        : (s.drivingEnabled
+                            ? GtColors.green
+                            : GtColors.textMuted),
+                    onTap: (!s.isActivated || s.hasExpiredDocuments)
                         ? null
                         : () async {
                             try {
@@ -488,7 +525,7 @@ class _RequestCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Customer: ${MoneyFormat.formatFlexible(request.offerPrice! * 1.2, request.currency)}',
+                      'Customer: ${MoneyFormat.formatFlexible(request.offerPrice! * 1.44, request.currency)}',
                       style: const TextStyle(
                         color: GtColors.textSecondary,
                         fontWeight: FontWeight.w600,

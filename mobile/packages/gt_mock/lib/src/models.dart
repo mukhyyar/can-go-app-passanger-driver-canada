@@ -128,10 +128,11 @@ class OfferPriceBreakdown {
     String currency = 'CAD',
     double taxes = 0,
   }) {
-    final fee = ((basePrice * 0.20) * 100).roundToDouble() / 100.0;
-    final total = ((basePrice + fee + taxes) * 100).roundToDouble() / 100.0;
+    final ridePrice = ((basePrice * 1.20) * 100).roundToDouble() / 100.0;
+    final fee = ((ridePrice * 0.20) * 100).roundToDouble() / 100.0;
+    final total = ((ridePrice + fee + taxes) * 100).roundToDouble() / 100.0;
     return OfferPriceBreakdown(
-      ridePrice: basePrice,
+      ridePrice: ridePrice,
       platformFee: fee,
       marketplaceFee: fee,
       taxes: taxes,
@@ -389,6 +390,7 @@ class RideRequest {
     this.createdAtLabel,
     this.viewCount,
     this.currency = 'CAD',
+    this.hasLostItemRequest = false,
   });
 
   final String id;
@@ -408,6 +410,7 @@ class RideRequest {
   final String? createdAtLabel;
   final int? viewCount;
   final String? currency;
+  final bool hasLostItemRequest;
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
@@ -660,6 +663,7 @@ class DriverRequest {
     this.shortId,
     this.pickupAt,
     this.passengerName,
+    this.hasLostItemRequest = false,
   });
 
   final String id;
@@ -701,6 +705,7 @@ class DriverRequest {
   final DateTime? pickupAt;
   /// Booked passenger display name (from API `passengerName` / `passenger.fullName`).
   final String? passengerName;
+  final bool hasLostItemRequest;
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
@@ -716,6 +721,7 @@ class DriverRequest {
     DriverOfferSummary? myOffer,
     DateTime? pickupAt,
     String? status,
+    bool? hasLostItemRequest,
   }) {
     return DriverRequest(
       id: id,
@@ -755,6 +761,7 @@ class DriverRequest {
       shortId: shortId,
       pickupAt: pickupAt ?? this.pickupAt,
       passengerName: passengerName,
+      hasLostItemRequest: hasLostItemRequest ?? this.hasLostItemRequest,
     );
   }
 }

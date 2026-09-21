@@ -154,6 +154,7 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     viewCount: (json['viewCount'] as num?)?.toInt() ??
         int.tryParse('${json['viewCount'] ?? ''}'),
     currency: json['currency']?.toString(),
+    hasLostItemRequest: json['hasLostItemRequest'] == true,
   );
 }
 
@@ -191,7 +192,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
   double price = priceBreakdown?.total ?? _asDouble(pres['passengerTotal']);
   if (price <= 0) price = _asDouble(snapMap?['passengerTotal']);
   if (price <= 0 && rawBid > 0) {
-    price = ((rawBid * 1.20) * 100).roundToDouble() / 100.0;
+    price = ((((rawBid * 1.20) * 1.20) * 100).roundToDouble() / 100.0);
   }
   if (price <= 0) price = rawBid;
 
@@ -410,7 +411,7 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
         json['outboundPrice'],
       ]) {
         final d = _asDouble(v);
-        if (d > 0) return ((d * 1.20) * 100).roundToDouble() / 100.0;
+        if (d > 0) return ((((d * 1.20) * 1.20) * 100).roundToDouble() / 100.0);
       }
       return 0;
     }
@@ -419,7 +420,7 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
     final effectiveBreakdown = breakdown ??
         (price > 0
             ? OfferPriceBreakdown.fromBasePrice(
-                price / 1.20,
+                price / 1.44,
                 currency: currency,
               )
             : null);
@@ -747,6 +748,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     shortId: json['shortId']?.toString(),
     pickupAt: pickupAt,
     passengerName: passengerName,
+    hasLostItemRequest: json['hasLostItemRequest'] == true,
   );
 }
 

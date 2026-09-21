@@ -11,12 +11,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum ServiceType { ride, perHour, delivery }
 
 class AppState extends ChangeNotifier {
-  AppState() {
+  AppState({CanGoSession? session}) : api = session ?? CanGoSession() {
     _bootstrap();
   }
 
   final MockRepository repo = MockRepository.instance;
-  final CanGoSession api = CanGoSession();
+  final CanGoSession api;
   RideRealtime? _realtime;
   Timer? _openRidePoll;
 
@@ -743,6 +743,8 @@ class AppState extends ChangeNotifier {
           createdAtLabel: existing?.createdAtLabel,
           viewCount: (raw['viewCount'] as num?)?.toInt() ?? existing?.viewCount,
           currency: raw['currency']?.toString() ?? existing?.currency ?? 'CAD',
+          hasLostItemRequest: raw['hasLostItemRequest'] == true ||
+              existing?.hasLostItemRequest == true,
         );
       }
 
@@ -765,6 +767,7 @@ class AppState extends ChangeNotifier {
           createdAtLabel: ride.createdAtLabel,
           viewCount: ride.viewCount,
           currency: ride.currency,
+          hasLostItemRequest: ride.hasLostItemRequest,
         );
       }
 
@@ -1050,14 +1053,44 @@ class AppState extends ChangeNotifier {
     String? proposedPickupAt,
     String? note,
     String? flightNumber,
-  }) =>
-      api.marketplace.createChangeRequest(
-        rideId,
-        type: type,
-        proposedPickupAt: proposedPickupAt,
-        note: note,
-        flightNumber: flightNumber,
-      );
+    String? contactPhone,
+  }) async {
+    final res = await api.marketplace.createChangeRequest(
+      rideId,
+      type: type,
+      proposedPickupAt: proposedPickupAt,
+      note: note,
+      flightNumber: flightNumber,
+      contactPhone: contactPhone,
+    );
+    if (type == 'LOST_ITEM') {
+      final idx = repo.rides.indexWhere((r) => r.id == rideId);
+      if (idx >= 0) {
+        final existing = repo.rides[idx];
+        repo.rides[idx] = RideRequest(
+          id: existing.id,
+          datetimeLabel: existing.datetimeLabel,
+          from: existing.from,
+          to: existing.to,
+          distance: existing.distance,
+          duration: existing.duration,
+          timeBadge: existing.timeBadge,
+          status: existing.status,
+          offerCount: existing.offerCount,
+          returnLabel: existing.returnLabel,
+          selectedOfferId: existing.selectedOfferId,
+          serverStatus: existing.serverStatus,
+          shortId: existing.shortId,
+          createdAtLabel: existing.createdAtLabel,
+          viewCount: existing.viewCount,
+          currency: existing.currency,
+          hasLostItemRequest: true,
+        );
+        notifyListeners();
+      }
+    }
+    return res;
+  }
 
   Future<void> recordRideView(String rideId) async {
     if (!isAuthenticated) return;
@@ -1085,6 +1118,7 @@ class AppState extends ChangeNotifier {
             createdAtLabel: existing.createdAtLabel,
             viewCount: count,
             currency: existing.currency,
+            hasLostItemRequest: existing.hasLostItemRequest,
           );
           notifyListeners();
         }
@@ -1785,6 +1819,7 @@ class AppState extends ChangeNotifier {
       createdAtLabel: ride.createdAtLabel,
       viewCount: ride.viewCount,
       currency: ride.currency,
+      hasLostItemRequest: ride.hasLostItemRequest,
     );
     final idx = repo.rides.indexWhere((r) => r.id == local.id);
     if (idx >= 0) {

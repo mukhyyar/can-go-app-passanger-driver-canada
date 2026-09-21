@@ -162,7 +162,8 @@ export class DriverWalletService {
         ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
           ? (ride.priceSnapshot as Record<string, unknown>)
           : {};
-      const rawEarning = snap.driverEarning;
+      const rawEarning =
+        snap.bidAmount ?? snap.driverEarning ?? snap.subtotal;
       if (rawEarning === null || rawEarning === undefined) {
         await this.audit(
           opts?.actorId,

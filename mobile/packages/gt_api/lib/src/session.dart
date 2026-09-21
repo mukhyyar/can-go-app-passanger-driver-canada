@@ -7,13 +7,13 @@ import 'notifications_api.dart';
 
 /// Shared API façade for Passenger + Driver apps.
 class CanGoSession {
-  CanGoSession({String? baseUrl})
-      : client = ApiClient(baseUrl: baseUrl) {
-    auth = AuthApi(client);
-    marketplace = MarketplaceApi(client);
-    driver = DriverApi(client);
-    cms = CmsApi(client);
-    notifications = NotificationsApi(client);
+  CanGoSession({String? baseUrl, ApiClient? client})
+      : client = client ?? ApiClient(baseUrl: baseUrl) {
+    auth = AuthApi(this.client);
+    marketplace = MarketplaceApi(this.client);
+    driver = DriverApi(this.client);
+    cms = CmsApi(this.client);
+    notifications = NotificationsApi(this.client);
   }
 
   final ApiClient client;

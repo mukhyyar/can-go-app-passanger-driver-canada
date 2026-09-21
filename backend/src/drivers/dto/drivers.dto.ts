@@ -44,6 +44,10 @@ export class ReviewDocumentDto {
   @IsOptional()
   @IsISO8601()
   expectedUpdatedAt?: string;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}/)
+  expiresAt?: string;
 }
 
 export class RejectKycDto {

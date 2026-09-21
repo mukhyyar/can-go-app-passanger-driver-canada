@@ -592,8 +592,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       builder: (_) {
                         final myOffer = req.myOffer!;
                         final offered = myOffer.bidAmount;
-                        final fee = ((offered * 0.20) * 100).roundToDouble() / 100.0;
-                        final totalCust = ((offered + fee) * 100).roundToDouble() / 100.0;
+                        final ridePrice = ((offered * 1.20) * 100).roundToDouble() / 100.0;
+                        final fee = ((ridePrice * 0.20) * 100).roundToDouble() / 100.0;
+                        final totalCust = ((ridePrice + fee) * 100).roundToDouble() / 100.0;
 
                         return Container(
                           padding: const EdgeInsets.all(16),
@@ -642,7 +643,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                               const SizedBox(height: 12),
                               _offerCostRow('Your offered fare', offered, currency),
                               const SizedBox(height: 4),
-                              _offerCostRow('Platform fee', fee, currency),
+                              _offerCostRow('Platform fee (paid by passenger)', fee, currency),
                               const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 6),
                                 child: Divider(height: 1),

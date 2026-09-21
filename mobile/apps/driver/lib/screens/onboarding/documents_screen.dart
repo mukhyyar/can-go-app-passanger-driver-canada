@@ -32,7 +32,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   Future<void> _loadPreviews() async {
     final s = context.read<AppState>();
-    for (final slot in const ['selfie', 'license', 'vehicle_registration']) {
+    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
       final doc = s.documentForType(slot);
       final id = doc?['id']?.toString();
       if (id == null) continue;
@@ -66,17 +66,34 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       imageQuality: 85,
     );
     if (file == null || !mounted) return;
+
+    String? expiresAt;
+    if (docType != 'selfie') {
+      final now = DateTime.now();
+      final pickedDate = await showDatePicker(
+        context: context,
+        initialDate: now.add(const Duration(days: 365)),
+        firstDate: now.subtract(const Duration(days: 365)),
+        lastDate: now.add(const Duration(days: 365 * 10)),
+        helpText: 'Select document expiry date',
+      );
+      if (pickedDate == null || !mounted) return;
+      expiresAt =
+          '${pickedDate.year.toString().padLeft(4, '0')}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
+    }
+
     final app = context.read<AppState>();
     setState(() => _busy = true);
     try {
       final bytes = await file.readAsBytes();
-      if (docType == 'vehicle_registration') {
+      if (docType == 'vehicle_registration' || docType == 'insurance') {
         await app.ensureVehicle();
       }
       await app.uploadKycBytes(
         docType: docType,
         bytes: bytes,
         filename: file.name,
+        expiresAt: expiresAt,
       );
       final id = app.documentForType(docType)?['id']?.toString();
       if (id != null && mounted) {
@@ -208,6 +225,33 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (s.hasExpiredDocuments) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      border: Border.all(color: Colors.red.shade200),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.red.shade800),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Your profile is disabled due to expired documents. Please re-upload updated documents to regain ride eligibility once verified by admin.',
+                            style: TextStyle(
+                              color: Colors.red.shade900,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -280,6 +324,22 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       s.isDocumentLocked(
                           s.documentForType('vehicle_registration')!),
                 ),
+                const SizedBox(height: 12),
+                _DocSlot(
+                  title: 'Vehicle insurance',
+                  doc: s.documentForType('insurance'),
+                  previewBytes:
+                      _previewBytes[s.documentForType('insurance')?['id']],
+                  previewFailed: _previewFailed
+                      .contains(s.documentForType('insurance')?['id']?.toString()),
+                  busy: _busy,
+                  onUpload: () => _pickAndUpload('insurance'),
+                  onReplace: () => _pickAndUpload('insurance'),
+                  onDelete: (doc) => _deleteDoc(doc),
+                  onPreview: _openPreview,
+                  isLocked: s.documentForType('insurance') != null &&
+                      s.isDocumentLocked(s.documentForType('insurance')!),
+                ),
               ],
             ),
           ),
@@ -333,12 +393,22 @@ class _DocSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasDoc = doc != null;
+    final s = context.watch<AppState>();
+    final isExpired = s.isDocumentExpired(doc);
+    final isExpiring = s.isDocumentExpiringSoon(doc);
+    final expiresAtStr = doc?['expiresAt']?.toString();
+    final expiryFormatted = expiresAtStr != null && expiresAtStr.length >= 10
+        ? expiresAtStr.substring(0, 10)
+        : null;
+
     final status = doc?['status']?.toString().toUpperCase() ?? '';
-    final statusColor = status == 'APPROVED'
-        ? GtColors.brand
-        : status == 'REJECTED' || status == 'NEEDS_RESUBMISSION'
-            ? Colors.orange.shade800
-            : GtColors.textSecondary;
+    final statusColor = isExpired
+        ? Colors.red.shade700
+        : status == 'APPROVED'
+            ? GtColors.brand
+            : status == 'REJECTED' || status == 'NEEDS_RESUBMISSION'
+                ? Colors.orange.shade800
+                : GtColors.textSecondary;
 
     return GtCard(
       child: Column(
@@ -347,20 +417,45 @@ class _DocSlot extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    if (expiryFormatted != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        isExpired
+                            ? 'Expired: $expiryFormatted'
+                            : 'Expires: $expiryFormatted',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isExpired
+                              ? Colors.red.shade700
+                              : isExpiring
+                                  ? Colors.orange.shade800
+                                  : GtColors.textSecondary,
+                          fontWeight:
+                              isExpired ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               if (hasDoc)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: GtColors.soft,
+                    color: isExpired ? Colors.red.shade50 : GtColors.soft,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    status.isEmpty ? 'Uploaded' : status.replaceAll('_', ' '),
+                    isExpired
+                        ? 'EXPIRED'
+                        : (status.isEmpty ? 'Uploaded' : status.replaceAll('_', ' ')),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -438,7 +533,13 @@ class _DocSlot extends StatelessWidget {
                       OutlinedButton.icon(
                         onPressed: busy ? null : onReplace,
                         icon: const Icon(Icons.swap_horiz, size: 18),
-                        label: const Text('Replace'),
+                        label: Text(isExpired ? 'Re-upload' : 'Replace'),
+                        style: isExpired
+                            ? OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red.shade700,
+                                side: BorderSide(color: Colors.red.shade400),
+                              )
+                            : null,
                       ),
                       const SizedBox(height: 6),
                       TextButton.icon(

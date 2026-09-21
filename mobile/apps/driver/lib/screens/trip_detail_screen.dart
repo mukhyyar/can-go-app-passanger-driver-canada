@@ -457,6 +457,51 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                             children: [
+                              if (isCompleted && r.hasLostItemRequest)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFFBEB),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFFDE68A),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(Icons.search,
+                                          color: Color(0xFFD97706), size: 24),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: const [
+                                            Text(
+                                              'Lost item inquiry',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
+                                                color: Color(0xFF92400E),
+                                              ),
+                                            ),
+                                            SizedBox(height: 2),
+                                            Text(
+                                              'A passenger reported they may have left an item in your vehicle. Please inspect your vehicle interior. Contact support if you locate any forgotten items.',
+                                              style: TextStyle(
+                                                fontSize: 12.5,
+                                                color: Color(0xFFB45309),
+                                                height: 1.35,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               GtCard(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,

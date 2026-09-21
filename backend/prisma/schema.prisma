@@ -400,6 +400,7 @@ model DriverDocument {
   @@index([driverId, docType, lifecycleStatus])
   @@index([status])
   @@index([lifecycleStatus])
+  @@index([lifecycleStatus, expiresAt])
 }
 
 model KycFlag {

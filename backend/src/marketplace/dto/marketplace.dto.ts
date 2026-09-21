@@ -634,6 +634,7 @@ export const CHANGE_REQUEST_TYPES = [
   'BILLING_HELP',
   'REFUND_REQUEST',
   'CURRENT_RIDE_HELP',
+  'LOST_ITEM',
 ] as const;
 
 export class CreateChangeRequestDto {
@@ -652,6 +653,11 @@ export class CreateChangeRequestDto {
   @IsOptional()
   @IsString()
   flightNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  contactPhone?: string;
 }
 
 

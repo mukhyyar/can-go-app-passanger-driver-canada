@@ -167,6 +167,7 @@ export class KycDocumentsService {
         status: DocumentReviewStatus;
         lifecycleStatus: DocumentLifecycleStatus;
         docType: string;
+        expiresAt?: Date | null;
       } | null = null;
 
       if (replaceDocumentId) {
@@ -179,6 +180,7 @@ export class KycDocumentsService {
             status: true,
             lifecycleStatus: true,
             docType: true,
+            expiresAt: true,
           },
         });
         if (!previous) throw new NotFoundException('Document to replace not found');
@@ -188,6 +190,18 @@ export class KycDocumentsService {
         if (previous.lifecycleStatus !== DocumentLifecycleStatus.CURRENT) {
           throw new BadRequestException(
             'Only the CURRENT version can be replaced. Restore or select the current version.',
+          );
+        }
+        const isExpiringSoonOrExpired =
+          previous?.expiresAt != null &&
+          previous.expiresAt.getTime() <= Date.now() + 30 * 24 * 60 * 60 * 1000;
+        if (
+          previous?.status === DocumentReviewStatus.APPROVED &&
+          !allowReplaceApproved &&
+          !isExpiringSoonOrExpired
+        ) {
+          throw new BadRequestException(
+            `${docType} already approved; use admin replace with permission to create a new version`,
           );
         }
       } else if (SINGLE_ACTIVE_DOC_TYPES.includes(docType)) {
@@ -205,11 +219,16 @@ export class KycDocumentsService {
             status: true,
             lifecycleStatus: true,
             docType: true,
+            expiresAt: true,
           },
         });
+        const isExpiringSoonOrExpired =
+          previous?.expiresAt != null &&
+          previous.expiresAt.getTime() <= Date.now() + 30 * 24 * 60 * 60 * 1000;
         if (
           previous?.status === DocumentReviewStatus.APPROVED &&
-          !allowReplaceApproved
+          !allowReplaceApproved &&
+          !isExpiringSoonOrExpired
         ) {
           throw new BadRequestException(
             `${docType} already approved; use admin replace with permission to create a new version`,

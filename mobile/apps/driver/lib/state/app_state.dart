@@ -115,6 +115,8 @@ class AppState extends ChangeNotifier {
   bool selfieUploaded = false;
   bool licenseUploaded = false;
   bool vehicleDocUploaded = false;
+  bool insuranceUploaded = false;
+  bool hasExpiredDocumentsFromServer = false;
   int vehiclePhotoCount = 0;
   bool photoRequirementsSeen = false;
   String? primaryVehicleId;
@@ -429,6 +431,11 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setDrivingMode(bool enabled) async {
+    if (enabled && hasExpiredDocuments) {
+      throw Exception(
+        'Cannot go online: you have expired documents. Please re-upload updated documents.',
+      );
+    }
     final res = await api.driver.setAvailability(enabled: enabled);
     drivingEnabled = res['enabled'] == true;
     notifyListeners();
@@ -1024,6 +1031,8 @@ class AppState extends ChangeNotifier {
       selfieUploaded = false;
       licenseUploaded = false;
       vehicleDocUploaded = false;
+      insuranceUploaded = false;
+      hasExpiredDocumentsFromServer = status['hasExpiredDocuments'] == true;
       vehiclePhotoCount = 0;
       documents = [];
 
@@ -1047,6 +1056,7 @@ class AppState extends ChangeNotifier {
           if (type == 'selfie') selfieUploaded = true;
           if (type == 'license') licenseUploaded = true;
           if (type == 'vehicle_registration') vehicleDocUploaded = true;
+          if (type == 'insurance') insuranceUploaded = true;
           if (type == 'vehicle_photo') {
             vehiclePhotoCount = (vehiclePhotoCount + 1).clamp(0, 6);
           }
@@ -1100,8 +1110,39 @@ class AppState extends ChangeNotifier {
     return list.isEmpty ? null : list.first;
   }
 
-  bool isDocumentLocked(Map<String, dynamic> doc) =>
-      (doc['status']?.toString().toUpperCase() ?? '') == 'APPROVED';
+  bool isDocumentExpired(Map<String, dynamic>? doc) {
+    if (doc == null) return false;
+    final expStr = doc['expiresAt']?.toString();
+    if (expStr == null || expStr.isEmpty) return false;
+    final dt = DateTime.tryParse(expStr);
+    if (dt == null) return false;
+    return dt.isBefore(DateTime.now());
+  }
+
+  bool isDocumentExpiringSoon(Map<String, dynamic>? doc, {int days = 30}) {
+    if (doc == null) return false;
+    final expStr = doc['expiresAt']?.toString();
+    if (expStr == null || expStr.isEmpty) return false;
+    final dt = DateTime.tryParse(expStr);
+    if (dt == null) return false;
+    final now = DateTime.now();
+    return dt.isAfter(now) && dt.isBefore(now.add(Duration(days: days)));
+  }
+
+  bool get hasExpiredDocuments {
+    if (hasExpiredDocumentsFromServer) return true;
+    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
+      final doc = documentForType(slot);
+      if (isDocumentExpired(doc)) return true;
+    }
+    return false;
+  }
+
+  bool isDocumentLocked(Map<String, dynamic> doc) {
+    // If expired, unlock so driver can re-upload even if previously approved
+    if (isDocumentExpired(doc)) return false;
+    return (doc['status']?.toString().toUpperCase() ?? '') == 'APPROVED';
+  }
 
   /// In-memory document thumbnails (survive screen pop/push within session).
   final Map<String, Uint8List> documentPreviewCache = {};
@@ -1191,6 +1232,7 @@ class AppState extends ChangeNotifier {
     required Uint8List bytes,
     required String filename,
     String? vehicleId,
+    String? expiresAt,
   }) async {
     final resolvedVehicleId = vehicleId ?? primaryVehicleId;
     if (docType == 'vehicle_photo' &&
@@ -1202,10 +1244,12 @@ class AppState extends ChangeNotifier {
       bytes: bytes,
       filename: filename,
       vehicleId: resolvedVehicleId,
+      expiresAt: expiresAt,
     );
     if (docType == 'selfie') selfieUploaded = true;
     if (docType == 'license') licenseUploaded = true;
     if (docType == 'vehicle_registration') vehicleDocUploaded = true;
+    if (docType == 'insurance') insuranceUploaded = true;
     if (docType == 'vehicle_photo') {
       vehiclePhotoCount = (vehiclePhotoCount + 1).clamp(0, 6);
     }
@@ -1719,6 +1763,11 @@ class AppState extends ChangeNotifier {
 
   void markVehicleDocUploaded() {
     vehicleDocUploaded = true;
+    notifyListeners();
+  }
+
+  void markInsuranceUploaded() {
+    insuranceUploaded = true;
     notifyListeners();
   }
 

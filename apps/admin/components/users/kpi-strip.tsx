@@ -11,6 +11,12 @@ const CARDS: Array<{
   { key: 'total', label: 'Total', get: (s) => (s ? String(s.total) : '—') },
   { key: 'passengers', label: 'Passengers', get: (s) => (s ? String(s.passengers) : '—'), tone: 'info' },
   { key: 'drivers', label: 'Drivers', get: (s) => (s ? String(s.drivers) : '—'), tone: 'info' },
+  {
+    key: 'dualRole',
+    label: 'Driver & Passenger',
+    get: (s) => (s?.dualRole != null ? String(s.dualRole) : '—'),
+    tone: 'action',
+  },
   { key: 'active', label: 'Active', get: (s) => (s ? String(s.active) : '—'), tone: 'ok' },
   {
     key: 'pendingVerification',

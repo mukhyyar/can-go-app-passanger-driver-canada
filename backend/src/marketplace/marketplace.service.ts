@@ -600,6 +600,15 @@ export class MarketplaceService {
             },
           },
         },
+        supportCases: {
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            status: true,
+            createdAt: true,
+          },
+        },
       },
     });
     return Promise.all(
@@ -650,6 +659,15 @@ export class MarketplaceService {
         events: { orderBy: { createdAt: 'asc' }, take: 100 },
         payments: true,
         passenger: { select: { id: true, fullName: true, userId: true } },
+        supportCases: {
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            status: true,
+            createdAt: true,
+          },
+        },
       },
     });
     if (!ride) throw new NotFoundException('Ride not found');
@@ -766,6 +784,7 @@ export class MarketplaceService {
       CURRENT_RIDE_HELP: ongoing,
       BILLING_HELP: [RideStatus.COMPLETED],
       REFUND_REQUEST: [RideStatus.COMPLETED],
+      LOST_ITEM: [RideStatus.COMPLETED],
     };
     const allowed = allowedByType[dto.type];
     if (!allowed.includes(ride.status)) {
@@ -780,6 +799,7 @@ export class MarketplaceService {
       BILLING_HELP: 'Billing help request',
       REFUND_REQUEST: 'Refund request',
       CURRENT_RIDE_HELP: 'Help with current ride',
+      LOST_ITEM: 'Lost item inquiry',
     };
     const caseType =
       dto.type === 'BILLING_HELP' || dto.type === 'REFUND_REQUEST'
@@ -790,6 +810,7 @@ export class MarketplaceService {
       `Type: ${dto.type}`,
       dto.flightNumber ? `Flight: ${dto.flightNumber}` : null,
       dto.proposedPickupAt ? `Proposed pickup: ${dto.proposedPickupAt}` : null,
+      dto.contactPhone ? `Passenger contact phone: ${dto.contactPhone}` : null,
       dto.note ? `Note: ${dto.note}` : null,
     ].filter(Boolean) as string[];
 
@@ -799,6 +820,7 @@ export class MarketplaceService {
         type: caseType,
         createdById: userId,
         passengerProfileId: passenger.id,
+        driverProfileId: ride.assignedDriverId ?? undefined,
         rideId,
         slaDueAt: new Date(Date.now() + 24 * 3600_000),
         notes: {
@@ -811,6 +833,17 @@ export class MarketplaceService {
       },
     });
 
+    await this.prisma.rideEvent.create({
+      data: {
+        rideId,
+        fromStatus: ride.status,
+        toStatus: ride.status,
+        actorType: 'passenger',
+        actorId: userId,
+        payload: { action: 'change_request', type: dto.type, caseId: row.id },
+      },
+    });
+
     await this.audit(userId, 'ride.change_request', 'SupportCase', row.id, ip);
 
     const driverUserId = ride.selectedOffer?.driver.userId;
@@ -818,16 +851,21 @@ export class MarketplaceService {
       driverUserId &&
       (dto.type === 'FLIGHT_DELAY' ||
         dto.type === 'RESCHEDULE' ||
-        dto.type === 'CURRENT_RIDE_HELP');
+        dto.type === 'CURRENT_RIDE_HELP' ||
+        dto.type === 'LOST_ITEM');
     if (notifyDriver) {
+      const isLostItem = dto.type === 'LOST_ITEM';
+      const body = isLostItem
+        ? `Passenger reported leaving an item in your vehicle on completed ride #${shortIdFrom(ride.id)}. Please check your vehicle.`
+        : (dto.note?.slice(0, 120) ?? titles[dto.type]);
       void this.notifications.notifyRideStatus({
         userIds: [driverUserId],
         rideId,
-        status: 'CHANGE_REQUEST',
+        status: isLostItem ? 'LOST_ITEM' : 'CHANGE_REQUEST',
         title: titles[dto.type],
-        body: dto.note?.slice(0, 120) ?? titles[dto.type],
+        body,
         data: {
-          type: 'CHANGE_REQUEST',
+          type: dto.type,
           changeRequestId: row.id,
           requestType: dto.type,
           deepLink: `/driver/trip/${rideId}`,
@@ -1105,6 +1143,15 @@ export class MarketplaceService {
           include: { vehicle: true },
         },
         passenger: { select: { fullName: true } },
+        supportCases: {
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            status: true,
+            createdAt: true,
+          },
+        },
       },
       orderBy: { pickupAt: 'asc' },
       take: 100,
@@ -2411,6 +2458,18 @@ export class MarketplaceService {
     ) {
       throw new ForbiddenException('Driver not activated');
     }
+    const expiredDoc = await this.prisma.driverDocument.findFirst({
+      where: {
+        driverId: user.driverProfile.id,
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        expiresAt: { lt: new Date() },
+      },
+    });
+    if (expiredDoc) {
+      throw new ForbiddenException(
+        `Cannot accept rides or make offers: your ${expiredDoc.docType} has expired. Please upload an updated document for verification.`,
+      );
+    }
     return user.driverProfile;
   }
 
@@ -2446,6 +2505,18 @@ export class MarketplaceService {
       : null;
     const isCompleted = status === RideStatus.COMPLETED;
     const offerObj = selectedOffer as Record<string, unknown> | null;
+    const supportCases = Array.isArray(ride.supportCases)
+      ? (ride.supportCases as Array<{
+          id: string;
+          title: string;
+          status: string;
+          createdAt: Date;
+        }>)
+      : [];
+    const lostItemCase = supportCases.find(
+      (c) => c.title === 'Lost item inquiry',
+    );
+    const hasLostItemRequest = !!lostItemCase;
     const id = String(ride.id ?? '');
     const base = {
       id: ride.id,
@@ -2550,6 +2621,14 @@ export class MarketplaceService {
               }
             : null)
         : ride.passenger,
+      hasLostItemRequest,
+      lostItemCase: lostItemCase
+        ? {
+            id: lostItemCase.id,
+            status: lostItemCase.status,
+            createdAt: lostItemCase.createdAt,
+          }
+        : null,
     };
     if (opts?.includeEvents) {
       return { ...base, events: ride.events };
@@ -2911,9 +2990,11 @@ export class MarketplaceService {
   }
 
   private async assertOfferBookableDriverVehicle(offer: {
+    driverId?: string;
     vehicleId: string | null;
     vehicle?: { id: string; isActive: boolean } | null;
     driver: {
+      id?: string;
       isActivated: boolean;
       approvalStatus: DriverApprovalStatus;
       user: { isSuspended: boolean };
@@ -2927,6 +3008,21 @@ export class MarketplaceService {
     }
     if (offer.driver.user.isSuspended) {
       throw new BadRequestException('Driver account is suspended');
+    }
+    const driverId = offer.driver.id ?? offer.driverId;
+    if (driverId) {
+      const expiredDoc = await this.prisma.driverDocument.findFirst({
+        where: {
+          driverId,
+          lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+          expiresAt: { lt: new Date() },
+        },
+      });
+      if (expiredDoc) {
+        throw new BadRequestException(
+          'Driver has expired documents and cannot take rides',
+        );
+      }
     }
     const vehicle =
       offer.vehicle ??

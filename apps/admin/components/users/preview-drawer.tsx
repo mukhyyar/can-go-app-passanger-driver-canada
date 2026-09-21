@@ -67,7 +67,7 @@ export function UserPreviewDrawer({
         <div>
           <strong style={{ fontSize: 18 }}>{user.displayName}</strong>
           <div className="row" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-            <RoleBadge role={user.role} />
+            <RoleBadge role={user.role} user={user} />
             <AccountStatusBadge
               suspended={user.isSuspended}
               archived={user.accountStatus === 'ARCHIVED'}
@@ -118,6 +118,16 @@ export function UserPreviewDrawer({
           <div className="muted label-xs">Plate</div>
           <div>{user.plate || '—'}</div>
         </div>
+        {Boolean(user.isDualRole || (user.passengerProfile && user.driverProfile)) && (
+          <div style={{ gridColumn: '1 / -1', background: 'var(--brand-soft)', padding: '8px 10px', borderRadius: 6 }}>
+            <div className="label-xs" style={{ color: 'var(--brand)', fontWeight: 600 }}>
+              Dual Account Notice
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--foreground)', marginTop: 2 }}>
+              This user is registered with the same email for both <strong>Driver</strong> and <strong>Passenger</strong> apps.
+            </div>
+          </div>
+        )}
       </div>
 
       {user.watchlisted ? (

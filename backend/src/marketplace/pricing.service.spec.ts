@@ -60,16 +60,43 @@ describe('PricingService (unit)', () => {
       perKm: 1.4,
       perMinute: 0.25,
       perHour: 0,
-      platformCommissionPct: 15,
+      platformCommissionPct: 0,
       taxPct: 13,
     };
     const frozen = pricing.freezeBid(guidance, 100);
     expect(frozen.bidAmount).toBe(100);
-    expect(frozen.taxAmount).toBe(13);
-    expect(frozen.passengerTotal).toBe(113);
-    expect(frozen.platformFee).toBe(15);
-    expect(frozen.driverEarning).toBe(85);
+    expect(frozen.subtotal).toBe(120);
+    expect(frozen.platformFee).toBe(24);
+    expect(frozen.taxAmount).toBe(18.72);
+    expect(frozen.passengerTotal).toBe(162.72);
+    expect(frozen.driverEarning).toBe(100);
     expect(frozen.frozenAt).toBeTruthy();
+  });
+
+  it('freezeBid computes user example ($17 offer -> $20.40 ride price + $4.08 platform fee -> $24.48 total)', () => {
+    const guidance: PriceSnapshot = {
+      currency: 'CAD',
+      serviceType: 'RIDE',
+      vehicleClass: 'sedan',
+      distanceKm: 5,
+      durationMin: 10,
+      guidanceAmount: 20,
+      minBid: 15,
+      maxBid: 30,
+      minFare: 10,
+      baseFare: 5,
+      perKm: 1.0,
+      perMinute: 0.2,
+      perHour: 0,
+      platformCommissionPct: 0,
+      taxPct: 0,
+    };
+    const frozen = pricing.freezeBid(guidance, 17);
+    expect(frozen.bidAmount).toBe(17);
+    expect(frozen.subtotal).toBe(20.4);
+    expect(frozen.platformFee).toBe(4.08);
+    expect(frozen.passengerTotal).toBe(24.48);
+    expect(frozen.driverEarning).toBe(17);
   });
 
   it('freezeBid stores outbound/return and price band', () => {
@@ -87,7 +114,7 @@ describe('PricingService (unit)', () => {
       perKm: 1.4,
       perMinute: 0.25,
       perHour: 0,
-      platformCommissionPct: 13,
+      platformCommissionPct: 0,
       taxPct: 0,
       isRoundTrip: true,
       legs: 2,
@@ -98,8 +125,10 @@ describe('PricingService (unit)', () => {
     });
     expect(frozen.outboundPrice).toBe(120);
     expect(frozen.returnPrice).toBe(100);
-    expect(frozen.platformFee).toBe(28.6);
-    expect(frozen.driverEarning).toBe(191.4);
+    expect(frozen.subtotal).toBe(264);
+    expect(frozen.platformFee).toBe(52.8);
+    expect(frozen.passengerTotal).toBe(316.8);
+    expect(frozen.driverEarning).toBe(220);
     expect(frozen.priceBand).toBe('typical');
   });
 

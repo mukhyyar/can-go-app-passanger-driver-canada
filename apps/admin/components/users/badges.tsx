@@ -68,10 +68,87 @@ export function UserAvatar({
   );
 }
 
-export function RoleBadge({ role }: { role?: string | null }) {
+export function RoleBadge({
+  role,
+  user,
+  hasPassenger,
+  hasDriver,
+  isDual,
+}: {
+  role?: string | null;
+  user?: {
+    role?: string | null;
+    isDualRole?: boolean;
+    hasPassengerProfile?: boolean;
+    hasDriverProfile?: boolean;
+    passengerProfile?: unknown;
+    driverProfile?: unknown;
+    roles?: string[];
+  } | null;
+  hasPassenger?: boolean;
+  hasDriver?: boolean;
+  isDual?: boolean;
+}) {
+  const isUserDual =
+    Boolean(isDual) ||
+    Boolean(user?.isDualRole) ||
+    role === 'DUAL' ||
+    (Boolean(user?.hasPassengerProfile) && Boolean(user?.hasDriverProfile)) ||
+    (Boolean(user?.passengerProfile) && Boolean(user?.driverProfile)) ||
+    (Boolean(hasPassenger) && Boolean(hasDriver)) ||
+    (Array.isArray(user?.roles) && user!.roles.includes('DRIVER') && user!.roles.includes('PASSENGER'));
+
+  if (isUserDual) {
+    return (
+      <span
+        className="role-chips"
+        style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}
+        title="Dual Account: Registered as Driver & Passenger with same email"
+      >
+        <Chip tone="ok">Driver</Chip>
+        <Chip tone="info">Passenger</Chip>
+        <Chip tone="action">Dual</Chip>
+      </span>
+    );
+  }
+
+  if (user?.roles && user.roles.length > 1) {
+    return (
+      <span
+        className="role-chips"
+        style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}
+      >
+        {user.roles.map((r) => (
+          <Chip
+            key={r}
+            tone={r === 'DRIVER' ? 'ok' : r === 'PASSENGER' ? 'info' : r === 'SUPER_ADMIN' ? 'ok' : 'info'}
+          >
+            {roleLabel(r)}
+          </Chip>
+        ))}
+      </span>
+    );
+  }
+
+  const effectiveRole =
+    role ??
+    (user?.hasDriverProfile || user?.driverProfile ? 'DRIVER' : null) ??
+    (user?.hasPassengerProfile || user?.passengerProfile ? 'PASSENGER' : null) ??
+    user?.role ??
+    null;
+
   const tone =
-    role === 'SUPER_ADMIN' ? 'ok' : role === 'ADMIN' ? 'info' : statusTone(role ?? '');
-  return <Chip tone={tone}>{roleLabel(role)}</Chip>;
+    effectiveRole === 'SUPER_ADMIN'
+      ? 'ok'
+      : effectiveRole === 'ADMIN'
+        ? 'info'
+        : effectiveRole === 'DRIVER'
+          ? 'ok'
+          : effectiveRole === 'PASSENGER'
+            ? 'info'
+            : statusTone(effectiveRole ?? '');
+
+  return <Chip tone={tone}>{roleLabel(effectiveRole)}</Chip>;
 }
 
 export function AccountStatusBadge({

@@ -1,4 +1,4 @@
-export type UserRoleFilter = '' | 'PASSENGER' | 'DRIVER' | 'ADMIN' | 'SUPER_ADMIN';
+export type UserRoleFilter = '' | 'PASSENGER' | 'DRIVER' | 'DUAL' | 'ADMIN' | 'SUPER_ADMIN';
 export type AccountStatusFilter = '' | 'active' | 'suspended' | 'archived' | 'anonymized';
 export type KycFilter =
   | ''
@@ -32,6 +32,7 @@ export type UserStats = {
   total: number;
   passengers: number;
   drivers: number;
+  dualRole?: number;
   admins: number;
   active: number;
   suspended: number;
@@ -53,6 +54,10 @@ export type UserListRow = {
   phoneE164?: string | null;
   phoneVerifiedAt?: string | null;
   role: string;
+  isDualRole?: boolean;
+  hasPassengerProfile?: boolean;
+  hasDriverProfile?: boolean;
+  roles?: string[];
   isSuspended: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -197,6 +202,8 @@ export function roleLabel(role?: string | null) {
       return 'Passenger';
     case 'DRIVER':
       return 'Driver';
+    case 'DUAL':
+      return 'Driver & Passenger';
     case 'ADMIN':
       return 'Admin';
     case 'SUPER_ADMIN':
@@ -308,7 +315,7 @@ export function usersToCsv(rows: UserListRow[]) {
       r.displayName,
       r.email ?? '',
       r.phoneE164 ?? '',
-      r.role,
+      r.isDualRole ? 'DRIVER & PASSENGER' : (r.roles?.join(' & ') || r.role),
       r.accountStatus,
       r.kycStatus ?? '',
       r.riskBand,
@@ -337,6 +344,7 @@ export type KpiKey =
   | 'total'
   | 'passengers'
   | 'drivers'
+  | 'dualRole'
   | 'active'
   | 'pendingVerification'
   | 'kycPending'
@@ -358,6 +366,8 @@ export function kpiToFilters(key: KpiKey, base: UsersFilters = DEFAULT_USER_FILT
       return { ...reset, role: 'PASSENGER' };
     case 'drivers':
       return { ...reset, role: 'DRIVER' };
+    case 'dualRole':
+      return { ...reset, role: 'DUAL' };
     case 'active':
       return { ...reset, status: 'active' };
     case 'pendingVerification':

@@ -143,10 +143,12 @@ export class PricingService implements OnModuleInit {
           currency: 'CAD',
           minBidMultiplier: 0.8,
           maxBidMultiplier: 1.5,
-          platformCommissionPct: 15,
+          platformCommissionPct: 0,
           taxPct: 0,
         },
-        update: {},
+        update: {
+          platformCommissionPct: 0,
+        },
       });
     }
   }
@@ -344,30 +346,31 @@ export class PricingService implements OnModuleInit {
       );
     }
 
-    const subtotal = round2(bidAmount);
-    const taxAmount = round2(subtotal * (guidance.taxPct / 100));
-    const passengerTotal = round2(subtotal + taxAmount);
-    const platformFee = round2(
-      subtotal * (guidance.platformCommissionPct / 100),
+    const driverBid = round2(bidAmount);
+    const ridePrice = round2(driverBid * 1.2);
+    const platformFee = round2(ridePrice * 0.2);
+    const taxAmount = round2(
+      (ridePrice + platformFee) * (guidance.taxPct / 100),
     );
-    const driverEarning = round2(subtotal - platformFee);
+    const passengerTotal = round2(ridePrice + platformFee + taxAmount);
+    const driverEarning = driverBid;
     const outbound =
-      opts?.outboundPrice != null ? round2(opts.outboundPrice) : subtotal;
+      opts?.outboundPrice != null ? round2(opts.outboundPrice) : driverBid;
     const returnPrice =
       opts?.returnPrice != null ? round2(opts.returnPrice) : undefined;
 
     let priceBand: PriceSnapshot['priceBand'] = 'typical';
     const span = Math.max(0.01, guidance.maxBid - guidance.minBid);
-    const t = (subtotal - guidance.minBid) / span;
+    const t = (driverBid - guidance.minBid) / span;
     if (t <= 0.33) priceBand = 'competitive';
     else if (t >= 0.67) priceBand = 'above_typical';
 
     return {
       ...guidance,
-      bidAmount: subtotal,
+      bidAmount: driverBid,
       outboundPrice: outbound,
       returnPrice,
-      subtotal,
+      subtotal: ridePrice,
       taxAmount,
       platformFee,
       driverEarning,

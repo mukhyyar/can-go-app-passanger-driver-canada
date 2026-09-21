@@ -260,6 +260,7 @@ class MarketplaceApi {
     String? proposedPickupAt,
     String? note,
     String? flightNumber,
+    String? contactPhone,
   }) =>
       client.post(
         '/rides/$rideId/change-requests',
@@ -268,6 +269,7 @@ class MarketplaceApi {
           if (proposedPickupAt != null) 'proposedPickupAt': proposedPickupAt,
           if (note != null) 'note': note,
           if (flightNumber != null) 'flightNumber': flightNumber,
+          if (contactPhone != null) 'contactPhone': contactPhone,
         },
       );
 

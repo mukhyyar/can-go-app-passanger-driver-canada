@@ -579,8 +579,27 @@ export class AdminOpsService {
     const where: Prisma.UserWhereInput = {};
     const and: Prisma.UserWhereInput[] = [];
 
-    if (params.role && Object.values(UserRole).includes(params.role as UserRole)) {
-      where.role = params.role as UserRole;
+    if (params.role) {
+      const r = params.role.toUpperCase();
+      if (r === 'DUAL') {
+        and.push({
+          passengerProfile: { isNot: null },
+          driverProfile: { isNot: null },
+        });
+      } else if (r === 'DRIVER') {
+        and.push({
+          OR: [{ role: UserRole.DRIVER }, { driverProfile: { isNot: null } }],
+        });
+      } else if (r === 'PASSENGER') {
+        and.push({
+          OR: [
+            { role: UserRole.PASSENGER },
+            { passengerProfile: { isNot: null } },
+          ],
+        });
+      } else if (Object.values(UserRole).includes(params.role as UserRole)) {
+        where.role = params.role as UserRole;
+      }
     }
 
     const status = (params.status || '').toLowerCase();
@@ -716,10 +735,19 @@ export class AdminOpsService {
       newToday,
       newThisWeek,
       openCasesUsers,
+      dualRole,
     ] = await Promise.all([
       this.prisma.user.count(),
-      this.prisma.user.count({ where: { role: UserRole.PASSENGER } }),
-      this.prisma.user.count({ where: { role: UserRole.DRIVER } }),
+      this.prisma.user.count({
+        where: {
+          OR: [{ role: UserRole.PASSENGER }, { passengerProfile: { isNot: null } }],
+        },
+      }),
+      this.prisma.user.count({
+        where: {
+          OR: [{ role: UserRole.DRIVER }, { driverProfile: { isNot: null } }],
+        },
+      }),
       this.prisma.user.count({
         where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] } },
       }),
@@ -749,12 +777,19 @@ export class AdminOpsService {
           },
         },
       }),
+      this.prisma.user.count({
+        where: {
+          passengerProfile: { isNot: null },
+          driverProfile: { isNot: null },
+        },
+      }),
     ]);
 
     return {
       total,
       passengers,
       drivers,
+      dualRole,
       admins,
       active,
       suspended,
@@ -887,8 +922,23 @@ export class AdminOpsService {
         u.driverProfile?.avatarStorageKey ??
         null;
 
+      const hasPassengerProfile = Boolean(u.passengerProfile);
+      const hasDriverProfile = Boolean(u.driverProfile);
+      const isDualRole = hasPassengerProfile && hasDriverProfile;
+      const roles: string[] = [];
+      if (u.role === UserRole.SUPER_ADMIN) roles.push('SUPER_ADMIN');
+      else if (u.role === UserRole.ADMIN) roles.push('ADMIN');
+      else {
+        if (hasDriverProfile || u.role === UserRole.DRIVER) roles.push('DRIVER');
+        if (hasPassengerProfile || u.role === UserRole.PASSENGER) roles.push('PASSENGER');
+      }
+
       return {
         ...u,
+        isDualRole,
+        hasPassengerProfile,
+        hasDriverProfile,
+        roles,
         displayName: name,
         accountStatus: u.archivedAt
           ? 'ARCHIVED'
@@ -975,11 +1025,19 @@ export class AdminOpsService {
     });
     if (!user) throw new NotFoundException('User not found');
 
-    const rideWhere: Prisma.RideWhereInput = user.passengerProfile
-      ? { passengerId: user.passengerProfile.id }
-      : user.driverProfile
-        ? { assignedDriverId: user.driverProfile.id }
-        : { id: '__none__' };
+    const rideWhere: Prisma.RideWhereInput =
+      user.passengerProfile && user.driverProfile
+        ? {
+            OR: [
+              { passengerId: user.passengerProfile.id },
+              { assignedDriverId: user.driverProfile.id },
+            ],
+          }
+        : user.passengerProfile
+          ? { passengerId: user.passengerProfile.id }
+          : user.driverProfile
+            ? { assignedDriverId: user.driverProfile.id }
+            : { id: '__none__' };
 
     const rides = await this.prisma.ride.findMany({
       where: rideWhere,
@@ -1091,8 +1149,23 @@ export class AdminOpsService {
       user.passengerProfile?.avatarStorageKey ??
       user.driverProfile?.avatarStorageKey ??
       null;
+    const hasPassengerProfile = Boolean(user.passengerProfile);
+    const hasDriverProfile = Boolean(user.driverProfile);
+    const isDualRole = hasPassengerProfile && hasDriverProfile;
+    const roles: string[] = [];
+    if (user.role === UserRole.SUPER_ADMIN) roles.push('SUPER_ADMIN');
+    else if (user.role === UserRole.ADMIN) roles.push('ADMIN');
+    else {
+      if (hasDriverProfile || user.role === UserRole.DRIVER) roles.push('DRIVER');
+      if (hasPassengerProfile || user.role === UserRole.PASSENGER) roles.push('PASSENGER');
+    }
+
     return {
       user: safe,
+      isDualRole,
+      hasPassengerProfile,
+      hasDriverProfile,
+      roles,
       avatarStorageKey,
       hasAvatar: Boolean(avatarStorageKey),
       avatarPath: avatarStorageKey ? `/admin/users/${user.id}/avatar` : null,

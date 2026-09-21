@@ -31,11 +31,14 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
 
   double get _offeredFare => widget.draft.totalPrice;
 
+  double get _customerRidePrice =>
+      ((_offeredFare * 1.20) * 100).roundToDouble() / 100.0;
+
   double get _platformFee =>
-      ((_offeredFare * 0.20) * 100).roundToDouble() / 100.0;
+      ((_customerRidePrice * 0.20) * 100).roundToDouble() / 100.0;
 
   double get _customerTotal =>
-      ((_offeredFare + _platformFee) * 100).roundToDouble() / 100.0;
+      ((_customerRidePrice + _platformFee) * 100).roundToDouble() / 100.0;
 
   Future<void> _submit() async {
     if (_submitting) return;
@@ -304,7 +307,7 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
                 ],
                 _costRow('Your offered fare', _offeredFare),
                 const SizedBox(height: 4),
-                _costRow('Platform fee', _platformFee),
+                _costRow('Platform fee (paid by passenger)', _platformFee),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
                   child: Divider(height: 1),
@@ -313,23 +316,6 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
                   'Total customer fare',
                   _customerTotal,
                   isTotal: true,
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF7EE),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    'The customer will see ${MoneyFormat.formatFlexible(_customerTotal, _currency)} as the total fare. Your share is ${MoneyFormat.formatFlexible(_offeredFare, _currency)}.',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.35,
-                      color: GtColors.text,
-                    ),
-                  ),
                 ),
               ],
             ),

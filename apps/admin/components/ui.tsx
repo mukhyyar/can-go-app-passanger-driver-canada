@@ -3,11 +3,19 @@
 export function Chip({
   children,
   tone = 'default',
+  title,
+  style,
 }: {
   children: React.ReactNode;
   tone?: 'default' | 'ok' | 'warn' | 'bad' | 'info' | 'action';
+  title?: string;
+  style?: React.CSSProperties;
 }) {
-  return <span className={`chip ${tone === 'default' ? '' : tone}`}>{children}</span>;
+  return (
+    <span className={`chip ${tone === 'default' ? '' : tone}`} title={title} style={style}>
+      {children}
+    </span>
+  );
 }
 
 export function statusTone(s?: string) {

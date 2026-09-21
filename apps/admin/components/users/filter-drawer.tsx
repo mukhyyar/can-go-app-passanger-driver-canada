@@ -48,6 +48,7 @@ export function UserFilterDrawer({
             <option value="">Any</option>
             <option value="PASSENGER">Passenger</option>
             <option value="DRIVER">Driver</option>
+            <option value="DUAL">Driver & Passenger (Dual)</option>
             <option value="ADMIN">Admin</option>
             <option value="SUPER_ADMIN">Super Admin</option>
           </select>

@@ -496,7 +496,7 @@ export function UsersWorkspace() {
                     </div>
                   </td>
                   <td className="col-role">
-                    <RoleBadge role={r.role} />
+                    <RoleBadge role={r.role} user={r} />
                   </td>
                   <td className="col-status">
                     <AccountStatusBadge
@@ -754,7 +754,7 @@ export function UsersWorkspace() {
                   </button>
                 )}
                 <div className="menu-group">VERIFICATION</div>
-                {u.role === 'DRIVER' && u.driverProfile?.id && (
+                {Boolean(u.driverProfile?.id) && (
                   <button
                     type="button"
                     onClick={() => {
