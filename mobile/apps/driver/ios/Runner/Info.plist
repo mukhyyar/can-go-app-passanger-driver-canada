@@ -91,5 +91,11 @@
 	<string>CAN-RIDE Driver needs camera access to capture your profile photo and upload required vehicle and driver documents.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>CAN-RIDE Driver needs photo library access to upload your profile photo and vehicle documents.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+		<string>googlechromes</string>
+		<string>waze</string>
+	</array>
 </dict>
 </plist>

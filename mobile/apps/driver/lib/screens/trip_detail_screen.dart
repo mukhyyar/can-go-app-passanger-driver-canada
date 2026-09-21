@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
@@ -283,14 +285,119 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   Future<void> _openMaps() async {
     final r = _ride;
     if (r == null) return;
-    final lat = r.fromLat;
-    final lng = r.fromLng;
-    if (lat == null || lng == null) return;
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+
+    // Heading to DROP-OFF if trip is in progress; otherwise heading to PICKUP
+    final isTripInProgress = _serverStatus == 'TRIP_STARTED' ||
+        _serverStatus == 'IN_PROGRESS' ||
+        (r.status ?? '').toUpperCase() == 'TRIP_STARTED' ||
+        (r.status ?? '').toUpperCase() == 'IN_PROGRESS';
+
+    final destLat = (isTripInProgress && r.toLat != null)
+        ? r.toLat!
+        : (r.fromLat ?? r.toLat);
+    final destLng = (isTripInProgress && r.toLng != null)
+        ? r.toLng!
+        : (r.fromLng ?? r.toLng);
+
+    if (destLat == null || destLng == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Destination coordinates unavailable')),
+        );
+      }
+      return;
+    }
+
+    // Retrieve driver's live GPS location
+    double? currLat;
+    double? currLng;
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 3),
+          ),
+        );
+        currLat = pos.latitude;
+        currLng = pos.longitude;
+      }
+    } catch (_) {}
+
+    if (currLat == null || currLng == null) {
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          currLat = last.latitude;
+          currLng = last.longitude;
+        }
+      } catch (_) {}
+    }
+
+    // 1. Android: Try native Google Maps turn-by-turn navigation intent
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final navUri = Uri.parse(
+        'google.navigation:q=$destLat,$destLng&mode=d',
+      );
+      try {
+        if (await canLaunchUrl(navUri)) {
+          final launched = await launchUrl(
+            navUri,
+            mode: LaunchMode.externalApplication,
+          );
+          if (launched) return;
+        }
+      } catch (_) {}
+    }
+
+    // 2. iOS: Try native Google Maps app scheme with origin & destination
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      final saddr = (currLat != null && currLng != null)
+          ? '$currLat,$currLng'
+          : '';
+      final iosMapsUri = Uri.parse(
+        'comgooglemaps://?saddr=$saddr&daddr=$destLat,$destLng&directionsmode=driving',
+      );
+      try {
+        if (await canLaunchUrl(iosMapsUri)) {
+          final launched = await launchUrl(
+            iosMapsUri,
+            mode: LaunchMode.externalApplication,
+          );
+          if (launched) return;
+        }
+      } catch (_) {}
+    }
+
+    // 3. Universal Google Maps Directions URL (driving mode + navigate action)
+    final originParam = (currLat != null && currLng != null)
+        ? 'origin=$currLat,$currLng&'
+        : '';
+    final universalUri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&${originParam}destination=$destLat,$destLng&travelmode=driving&dir_action=navigate',
     );
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    try {
+      if (await canLaunchUrl(universalUri)) {
+        await launchUrl(universalUri, mode: LaunchMode.externalApplication);
+      } else {
+        final fallbackUri = Uri.parse(
+          'https://www.google.com/maps/search/?api=1&query=$destLat,$destLng',
+        );
+        await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Could not launch navigation: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open map navigation')),
+        );
+      }
     }
   }
 
