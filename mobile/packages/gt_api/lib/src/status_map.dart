@@ -676,8 +676,11 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
   final flight = json['flight']?.toString();
 
   PricingGuidance? pricing;
-  if (snapMap != null && snapMap['guidanceAmount'] != null) {
+  if (snapMap != null &&
+      (snapMap['guidanceAmount'] != null || snapMap['minBid'] != null)) {
     pricing = PricingGuidance.fromJson(snapMap);
+  } else if (guidanceRaw is Map) {
+    pricing = PricingGuidance.fromJson(Map<String, dynamic>.from(guidanceRaw));
   }
 
   final id = json['id']?.toString();

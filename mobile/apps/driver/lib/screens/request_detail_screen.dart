@@ -141,6 +141,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       final ret = _draft.returnPrice;
       if (ret == null || ret < 0) return 'Enter a valid B → A price';
     }
+    if (req != null &&
+        req.pricing != null &&
+        req.pricing!.minBid > 0 &&
+        req.pricing!.maxBid > req.pricing!.minBid) {
+      final total = _draft.totalPrice;
+      if (total < req.pricing!.minBid - 0.001) {
+        return 'Offer cannot be lower than minimum eligible ${MoneyFormat.formatFlexible(req.pricing!.minBid, req.currency)}';
+      }
+      if (total > req.pricing!.maxBid + 0.001) {
+        return 'Offer cannot exceed maximum eligible ${MoneyFormat.formatFlexible(req.pricing!.maxBid, req.currency)}';
+      }
+    }
     for (final r in req?.requiredOptions ?? const <String>[]) {
       if (!_draft.selectedOptions.contains(r)) {
         return 'Required option missing: $r';

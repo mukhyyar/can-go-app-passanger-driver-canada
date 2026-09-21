@@ -3,6 +3,7 @@ import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 
 import 'offer_helpers.dart';
+import 'price_range_heatmap_bar.dart';
 
 const kOfferOptionCatalog = <(String key, String label, IconData icon)>[
   ('wifi', 'Free Wi-Fi', Icons.wifi),
@@ -44,6 +45,37 @@ class InlineOfferForm extends StatefulWidget {
 }
 
 class _InlineOfferFormState extends State<InlineOfferForm> {
+  @override
+  void initState() {
+    super.initState();
+    widget.outCtrl.addListener(_onPriceChanged);
+    widget.retCtrl.addListener(_onPriceChanged);
+  }
+
+  @override
+  void didUpdateWidget(InlineOfferForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.outCtrl != widget.outCtrl) {
+      oldWidget.outCtrl.removeListener(_onPriceChanged);
+      widget.outCtrl.addListener(_onPriceChanged);
+    }
+    if (oldWidget.retCtrl != widget.retCtrl) {
+      oldWidget.retCtrl.removeListener(_onPriceChanged);
+      widget.retCtrl.addListener(_onPriceChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.outCtrl.removeListener(_onPriceChanged);
+    widget.retCtrl.removeListener(_onPriceChanged);
+    super.dispose();
+  }
+
+  void _onPriceChanged() {
+    if (mounted) setState(() {});
+  }
+
   DriverVehicle? get _vehicle {
     final id = widget.draft.vehicleId;
     if (id == null) {
@@ -198,6 +230,23 @@ class _InlineOfferFormState extends State<InlineOfferForm> {
       widget.draft.selectedOptions.add('name_sign');
     }
 
+    final resolvedPricing = PriceRangeHeatmapBar.resolvePricing(
+      pricing: widget.request.pricing,
+      distanceStr: widget.request.distance,
+      isRoundTrip: widget.request.isRoundTrip,
+    );
+
+    final outVal = double.tryParse(widget.outCtrl.text.trim());
+    final retVal = double.tryParse(widget.retCtrl.text.trim());
+    final double? currentPrice;
+    if (widget.request.isRoundTrip) {
+      currentPrice = (outVal != null || retVal != null)
+          ? ((outVal ?? 0.0) + (retVal ?? 0.0))
+          : null;
+    } else {
+      currentPrice = outVal;
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -281,6 +330,15 @@ class _InlineOfferFormState extends State<InlineOfferForm> {
               onChanged: (_) => widget.onChanged(),
             ),
           ],
+          const SizedBox(height: 14),
+          PriceRangeHeatmapBar(
+            minBid: resolvedPricing.minBid,
+            maxBid: resolvedPricing.maxBid,
+            guidanceAmount: resolvedPricing.guidanceAmount,
+            currency: _currency,
+            currentPrice: currentPrice,
+            isRoundTrip: widget.request.isRoundTrip,
+          ),
           const SizedBox(height: 16),
           GtGreenButton(
             label:

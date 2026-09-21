@@ -4,6 +4,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../offer/offer_helpers.dart';
+import '../offer/price_range_heatmap_bar.dart';
 import '../state/app_state.dart';
 
 class OfferReviewScreen extends StatefulWidget {
@@ -241,6 +242,26 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
                 ],
               ],
             ),
+          ),
+          const SizedBox(height: 16),
+
+          // Eligible price range heatmap indicator
+          Builder(
+            builder: (_) {
+              final resolvedPricing = PriceRangeHeatmapBar.resolvePricing(
+                pricing: widget.request.pricing,
+                distanceStr: widget.request.distance,
+                isRoundTrip: widget.request.isRoundTrip,
+              );
+              return PriceRangeHeatmapBar(
+                minBid: resolvedPricing.minBid,
+                maxBid: resolvedPricing.maxBid,
+                guidanceAmount: resolvedPricing.guidanceAmount,
+                currency: _currency,
+                currentPrice: _offeredFare,
+                isRoundTrip: widget.request.isRoundTrip,
+              );
+            },
           ),
           const SizedBox(height: 16),
 

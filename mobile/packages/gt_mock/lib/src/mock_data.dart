@@ -194,7 +194,14 @@ class MockData {
           fromLat: 43.6702,
           fromLng: -79.3915,
           toLat: 43.6777,
-          toLng: -79.6248,
+          pricing: PricingGuidance(
+            guidanceAmount: 95.0,
+            minBid: 75.0,
+            maxBid: 150.0,
+            platformCommissionPct: 20.0,
+            distanceKm: 34.0,
+            durationMin: 44.0,
+          ),
         ),
         DriverRequest(
           id: '25120504',
@@ -211,6 +218,14 @@ class MockData {
           fromLng: -79.6248,
           toLat: 44.5008,
           toLng: -80.2167,
+          pricing: PricingGuidance(
+            guidanceAmount: 240.0,
+            minBid: 190.0,
+            maxBid: 360.0,
+            platformCommissionPct: 20.0,
+            distanceKm: 128.0,
+            durationMin: 107.0,
+          ),
         ),
         DriverRequest(
           id: '25120999',
@@ -226,6 +241,14 @@ class MockData {
           fromLng: 11.0780,
           toLat: 48.1402,
           toLng: 11.5583,
+          pricing: PricingGuidance(
+            guidanceAmount: 310.0,
+            minBid: 250.0,
+            maxBid: 480.0,
+            platformCommissionPct: 20.0,
+            distanceKm: 170.0,
+            durationMin: 110.0,
+          ),
         ),
       ];
 
