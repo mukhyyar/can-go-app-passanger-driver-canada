@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'google_route_map_impl.dart'
     if (dart.library.html) 'google_route_map_web.dart' as map_impl;
@@ -125,8 +126,13 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
     final currentHeight = isExpanded ? widget.expandedHeight : widget.height;
     final isInteractive = widget.interactive ?? isExpanded;
 
+    final isNativeMobile = !kIsWeb &&
+        (Theme.of(context).platform == TargetPlatform.android ||
+            Theme.of(context).platform == TargetPlatform.iOS);
+
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 320),
+      duration:
+          isNativeMobile ? Duration.zero : const Duration(milliseconds: 320),
       curve: Curves.easeInOutCubic,
       height: currentHeight,
       width: double.infinity,

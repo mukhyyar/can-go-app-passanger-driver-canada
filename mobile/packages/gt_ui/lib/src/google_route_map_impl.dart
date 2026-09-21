@@ -123,6 +123,15 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   BitmapDescriptor? _pinA;
   BitmapDescriptor? _pinB;
 
+  static BitmapDescriptor? _cachedCarIcon;
+  static BitmapDescriptor? _cachedPinA;
+  static BitmapDescriptor? _cachedPinB;
+  static final Map<String, List<GtRouteOption>> _routeCache = {};
+
+  int _lastCarTickMs = 0;
+  bool _suppressCarUpdates = false;
+  bool _isFittingBounds = false;
+
   bool get _hasRoute => widget.toLat != null && widget.toLng != null;
 
   LatLng get _from => LatLng(widget.fromLat, widget.fromLng);
@@ -143,7 +152,15 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       vsync: this,
       duration: const Duration(seconds: 10),
     )..addListener(_onCarTick);
-    unawaited(_loadIcons());
+
+    if (_cachedCarIcon != null && _cachedPinA != null && _cachedPinB != null) {
+      _carIcon = _cachedCarIcon;
+      _pinA = _cachedPinA;
+      _pinB = _cachedPinB;
+    } else {
+      unawaited(_loadIcons());
+    }
+
     if (_hasRoute) {
       unawaited(_loadRoute());
     } else {
@@ -152,9 +169,12 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   }
 
   Future<void> _loadIcons() async {
-    final car = await _carBitmap();
-    final a = await _circlePinBitmap('A', GtColors.brand);
-    final b = await _circlePinBitmap('B', const Color(0xFF1A1A1A));
+    final car = _cachedCarIcon ?? await _carBitmap();
+    final a = _cachedPinA ?? await _circlePinBitmap('A', GtColors.brand);
+    final b = _cachedPinB ?? await _circlePinBitmap('B', const Color(0xFF1A1A1A));
+    _cachedCarIcon = car;
+    _cachedPinA = a;
+    _cachedPinB = b;
     if (!mounted) return;
     setState(() {
       _carIcon = car;
@@ -266,9 +286,26 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       );
     }
     if (widget.isExpanded != oldWidget.isExpanded) {
-      Future.delayed(const Duration(milliseconds: 320), () {
+      _suppressCarUpdates = true;
+      final isNative = !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.android ||
+              defaultTargetPlatform == TargetPlatform.iOS);
+      if (isNative) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _fitBounds(extra: _routePoints, force: true);
+          }
+        });
+      } else {
+        Future.delayed(const Duration(milliseconds: 320), () {
+          if (mounted) {
+            _fitBounds(extra: _routePoints, force: true);
+          }
+        });
+      }
+      Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
-          _fitBounds(extra: _routePoints, force: true);
+          _suppressCarUpdates = false;
         }
       });
     }
@@ -306,17 +343,27 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   }
 
   void _onCarTick() {
+    if (_suppressCarUpdates) return;
     final sampler = _sampler;
     if (sampler == null || sampler.isEmpty) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // Throttle marker position updates to ~8 fps (every 120ms) to prevent
+    // flooding the Android/iOS PlatformView MethodChannel.
+    if (now - _lastCarTickMs < 120) return;
+
     final sample = sampler.sample(_carCtrl.value);
     final next = LatLng(sample.lat, sample.lng);
     final prev = _carPos;
     var bearingDelta = (sample.bearingDeg - _carBearing).abs();
     if (bearingDelta > 180) bearingDelta = 360 - bearingDelta;
     final moved = prev == null ||
-        (next.latitude - prev.latitude).abs() > 1e-7 ||
-        (next.longitude - prev.longitude).abs() > 1e-7;
-    if (!moved && bearingDelta < 0.5) return;
+        (next.latitude - prev.latitude).abs() > 1e-5 ||
+        (next.longitude - prev.longitude).abs() > 1e-5;
+    if (!moved && bearingDelta < 1.0) return;
+
+    _lastCarTickMs = now;
+    if (!mounted) return;
     setState(() {
       _carPos = next;
       _carBearing = sample.bearingDeg;
@@ -369,6 +416,30 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   Future<void> _loadRoute() async {
     final to = _to;
     if (to == null) return;
+
+    final cacheKey =
+        '${widget.fromLat.toStringAsFixed(4)},${widget.fromLng.toStringAsFixed(4)}->'
+        '${widget.toLat!.toStringAsFixed(4)},${widget.toLng!.toStringAsFixed(4)}';
+    if (_routeCache.containsKey(cacheKey) &&
+        _routeCache[cacheKey]!.isNotEmpty) {
+      final cached = _routeCache[cacheKey]!;
+      if (!mounted) return;
+      final selectedIdx = widget.initialRouteIndex
+          .clamp(0, math.max(0, cached.length - 1))
+          .toInt();
+      final activePoints = cached[selectedIdx].points.cast<LatLng>();
+      setState(() {
+        _routes = cached;
+        _selectedRouteIndex = selectedIdx;
+        _routePoints = activePoints;
+      });
+      widget.onRoutesLoaded?.call(cached);
+      widget.onRouteSelected?.call(cached[selectedIdx]);
+      _startCar(activePoints);
+      _fitBounds(extra: activePoints);
+      return;
+    }
+
     List<GtRouteOption> loadedRoutes = const [];
 
     // 1. Primary: Direct Google Directions API with iOS/Android bundle headers
@@ -453,6 +524,10 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
           isFastest: true,
         ),
       ];
+    }
+
+    if (loadedRoutes.isNotEmpty) {
+      _routeCache[cacheKey] = loadedRoutes;
     }
 
     if (!mounted) return;
@@ -850,34 +925,41 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     if (_fitted && !force) return;
     final map = _map;
     if (map == null) return;
-    final pts = <LatLng>[_from, if (_to != null) _to!, ...extra];
-    if (pts.length == 1) {
+    if (_isFittingBounds) return;
+    _isFittingBounds = true;
+    try {
+      final pts = <LatLng>[_from, if (_to != null) _to!, ...extra];
+      if (pts.length == 1) {
+        await map.animateCamera(
+          CameraUpdate.newLatLngZoom(pts.first, 13),
+        );
+        _fitted = true;
+        return;
+      }
+      var minLat = pts.first.latitude;
+      var maxLat = pts.first.latitude;
+      var minLng = pts.first.longitude;
+      var maxLng = pts.first.longitude;
+      for (final p in pts.skip(1)) {
+        if (p.latitude < minLat) minLat = p.latitude;
+        if (p.latitude > maxLat) maxLat = p.latitude;
+        if (p.longitude < minLng) minLng = p.longitude;
+        if (p.longitude > maxLng) maxLng = p.longitude;
+      }
       await map.animateCamera(
-        CameraUpdate.newLatLngZoom(pts.first, 13),
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(minLat, minLng),
+            northeast: LatLng(maxLat, maxLng),
+          ),
+          48,
+        ),
       );
       _fitted = true;
-      return;
+    } catch (_) {
+    } finally {
+      _isFittingBounds = false;
     }
-    var minLat = pts.first.latitude;
-    var maxLat = pts.first.latitude;
-    var minLng = pts.first.longitude;
-    var maxLng = pts.first.longitude;
-    for (final p in pts.skip(1)) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
-    await map.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
-        ),
-        48,
-      ),
-    );
-    _fitted = true;
   }
 
   Set<Marker> get _markers {
@@ -987,32 +1069,34 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     return Stack(
       fit: StackFit.expand,
       children: [
-        GoogleMap(
-          initialCameraPosition: CameraPosition(target: _from, zoom: 13),
-          markers: _markers,
-          polylines: _polylines,
-          myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          mapToolbarEnabled: false,
-          compassEnabled: widget.interactive,
-          scrollGesturesEnabled: widget.interactive,
-          zoomGesturesEnabled: widget.interactive,
-          rotateGesturesEnabled: widget.interactive,
-          tiltGesturesEnabled: widget.interactive,
-          gestureRecognizers: widget.interactive
-              ? <Factory<OneSequenceGestureRecognizer>>{
-                  Factory<OneSequenceGestureRecognizer>(
-                    () => EagerGestureRecognizer(),
-                  ),
-                }
-              : const <Factory<OneSequenceGestureRecognizer>>{},
-          onTap: (latLng) {
-            widget.onTap?.call();
-          },
-          onMapCreated: (c) {
-            _map = c;
-            if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
-          },
+        RepaintBoundary(
+          child: GoogleMap(
+            initialCameraPosition: CameraPosition(target: _from, zoom: 13),
+            markers: _markers,
+            polylines: _polylines,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            compassEnabled: widget.interactive,
+            scrollGesturesEnabled: widget.interactive,
+            zoomGesturesEnabled: widget.interactive,
+            rotateGesturesEnabled: widget.interactive,
+            tiltGesturesEnabled: widget.interactive,
+            gestureRecognizers: widget.interactive
+                ? <Factory<OneSequenceGestureRecognizer>>{
+                    Factory<OneSequenceGestureRecognizer>(
+                      () => EagerGestureRecognizer(),
+                    ),
+                  }
+                : const <Factory<OneSequenceGestureRecognizer>>{},
+            onTap: (latLng) {
+              widget.onTap?.call();
+            },
+            onMapCreated: (c) {
+              _map = c;
+              if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
+            },
+          ),
         ),
         if (widget.isExpanded &&
             widget.enableRouteSelection &&
