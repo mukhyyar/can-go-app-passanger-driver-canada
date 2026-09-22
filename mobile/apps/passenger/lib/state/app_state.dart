@@ -1395,6 +1395,7 @@ class AppState extends ChangeNotifier {
   }
 
   void setServiceType(ServiceType type) {
+    if (serviceType == type) return;
     serviceType = type;
     if (type == ServiceType.perHour &&
         perHourDurationMinutes == null &&
