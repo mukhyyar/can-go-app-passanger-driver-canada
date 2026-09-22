@@ -354,32 +354,34 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     if (_mapFullscreen && req.fromLat != null && req.fromLng != null) {
       return Scaffold(
         body: SafeArea(
-          child: GtGoogleRouteMap(
-            fromLat: req.fromLat!,
-            fromLng: req.fromLng!,
-            fromLabel: req.from,
-            toLat: req.toLat,
-            toLng: req.toLng,
-            toLabel: req.to,
-            distanceLabel: currentDistanceLabel,
-            height: MediaQuery.of(context).size.height,
-            canExpand: false,
-            interactive: true,
-            bundleId: 'com.canride.driver',
-            initialRouteIndex: _selectedRouteIndex,
-            enableRouteSelection: true,
-            onRoutesLoaded: (routes) {
-              if (mounted && _availableRoutes.length != routes.length) {
-                setState(() => _availableRoutes = routes);
-              }
-            },
-            onRouteSelected: (route) {
-              final idx = _availableRoutes.indexWhere((r) => r.id == route.id);
-              if (mounted && idx >= 0 && idx != _selectedRouteIndex) {
-                setState(() => _selectedRouteIndex = idx);
-              }
-            },
-            onBack: () => setState(() => _mapFullscreen = false),
+          child: SizedBox.expand(
+            child: GtGoogleRouteMap(
+              fromLat: req.fromLat!,
+              fromLng: req.fromLng!,
+              fromLabel: req.from,
+              toLat: req.toLat,
+              toLng: req.toLng,
+              toLabel: req.to,
+              distanceLabel: currentDistanceLabel,
+              height: MediaQuery.of(context).size.height,
+              canExpand: false,
+              interactive: true,
+              bundleId: 'com.canride.driver',
+              initialRouteIndex: _selectedRouteIndex,
+              enableRouteSelection: true,
+              onRoutesLoaded: (routes) {
+                if (mounted && _availableRoutes.length != routes.length) {
+                  setState(() => _availableRoutes = routes);
+                }
+              },
+              onRouteSelected: (route) {
+                final idx = _availableRoutes.indexWhere((r) => r.id == route.id);
+                if (mounted && idx >= 0 && idx != _selectedRouteIndex) {
+                  setState(() => _selectedRouteIndex = idx);
+                }
+              },
+              onBack: () => setState(() => _mapFullscreen = false),
+            ),
           ),
         ),
       );
@@ -555,33 +557,38 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   ),
                   const SizedBox(height: 16),
                   if (req.fromLat != null && req.fromLng != null)
-                    GtGoogleRouteMap(
-                      fromLat: req.fromLat!,
-                      fromLng: req.fromLng!,
-                      fromLabel: req.from,
-                      toLat: req.toLat,
-                      toLng: req.toLng,
-                      toLabel: req.to,
-                      distanceLabel: currentDistanceLabel,
+                    // Fixed-height SizedBox prevents ListView from remeasuring
+                    // the PlatformView on every scroll frame.
+                    SizedBox(
                       height: 220,
-                      expandedHeight: 390,
-                      bundleId: 'com.canride.driver',
-                      initialRouteIndex: _selectedRouteIndex,
-                      enableRouteSelection: true,
-                      onRoutesLoaded: (routes) {
-                        if (mounted && _availableRoutes.length != routes.length) {
-                          setState(() => _availableRoutes = routes);
-                        }
-                      },
-                      onRouteSelected: (route) {
-                        final idx =
-                            _availableRoutes.indexWhere((r) => r.id == route.id);
-                        if (mounted && idx >= 0 && idx != _selectedRouteIndex) {
-                          setState(() => _selectedRouteIndex = idx);
-                        }
-                      },
-                      onFullscreen: () =>
-                          setState(() => _mapFullscreen = true),
+                      child: GtGoogleRouteMap(
+                        fromLat: req.fromLat!,
+                        fromLng: req.fromLng!,
+                        fromLabel: req.from,
+                        toLat: req.toLat,
+                        toLng: req.toLng,
+                        toLabel: req.to,
+                        distanceLabel: currentDistanceLabel,
+                        height: 220,
+                        expandedHeight: 390,
+                        bundleId: 'com.canride.driver',
+                        initialRouteIndex: _selectedRouteIndex,
+                        enableRouteSelection: true,
+                        onRoutesLoaded: (routes) {
+                          if (mounted && _availableRoutes.length != routes.length) {
+                            setState(() => _availableRoutes = routes);
+                          }
+                        },
+                        onRouteSelected: (route) {
+                          final idx =
+                              _availableRoutes.indexWhere((r) => r.id == route.id);
+                          if (mounted && idx >= 0 && idx != _selectedRouteIndex) {
+                            setState(() => _selectedRouteIndex = idx);
+                          }
+                        },
+                        onFullscreen: () =>
+                            setState(() => _mapFullscreen = true),
+                      ),
                     )
                   else
                     Container(

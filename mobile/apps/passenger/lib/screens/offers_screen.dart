@@ -18,11 +18,7 @@ enum _OfferSort {
 }
 
 class OffersScreen extends StatefulWidget {
-  const OffersScreen({
-    super.key,
-    required this.rideId,
-    this.focusOfferId,
-  });
+  const OffersScreen({super.key, required this.rideId, this.focusOfferId});
 
   final String rideId;
   final String? focusOfferId;
@@ -44,7 +40,10 @@ class _OffersScreenState extends State<OffersScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
-    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _pollRideStatus());
+    _poll = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _pollRideStatus(),
+    );
   }
 
   @override
@@ -177,9 +176,9 @@ class _OffersScreenState extends State<OffersScreen> {
         context.go('/ride/${widget.rideId}');
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cannot book: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cannot book: $e')));
     } finally {
       if (mounted) setState(() => _booking = false);
     }
@@ -212,9 +211,9 @@ class _OffersScreenState extends State<OffersScreen> {
       context.go('/');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not cancel: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not cancel: $e')));
     }
   }
 
@@ -231,12 +230,14 @@ class _OffersScreenState extends State<OffersScreen> {
     final live = state.offersFor(widget.rideId);
     final source = _offers.isNotEmpty ? _offers : live;
     final offers = _sorted(source);
-    final offerCount =
-        offers.isNotEmpty ? offers.length : (ride?.offerCount ?? 0);
+    final offerCount = offers.isNotEmpty
+        ? offers.length
+        : (ride?.offerCount ?? 0);
     final status = (ride?.serverStatus ?? '').toUpperCase();
     final canEdit =
         status == 'WAITING_FOR_OFFERS' || status == 'OFFER_SELECTION';
-    final canCancel = status == 'WAITING_FOR_OFFERS' ||
+    final canCancel =
+        status == 'WAITING_FOR_OFFERS' ||
         status == 'OFFER_SELECTION' ||
         status == 'PAYMENT_PENDING';
 
@@ -287,14 +288,19 @@ class _OffersScreenState extends State<OffersScreen> {
             children: [
               Text(
                 ride.from,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
               ),
               if (ride.to != null) ...[
                 const SizedBox(height: 6),
                 Text(
                   ride.to!,
-                  style:
-                      const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
                 ),
               ],
               const SizedBox(height: 10),
@@ -363,17 +369,14 @@ class _OffersScreenState extends State<OffersScreen> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              switch (_sort) {
-                                _OfferSort.recommended => 'Recommended',
-                                _OfferSort.lowestPrice => 'Lowest price',
-                                _OfferSort.highestPrice => 'Highest price',
-                                _OfferSort.bestRated => 'Best rated',
-                                _OfferSort.newest => 'Newest',
-                                _OfferSort.vehicleClass => 'Vehicle class',
-                              },
-                              style: const TextStyle(fontSize: 14),
-                            ),
+                            child: Text(switch (_sort) {
+                              _OfferSort.recommended => 'Recommended',
+                              _OfferSort.lowestPrice => 'Lowest price',
+                              _OfferSort.highestPrice => 'Highest price',
+                              _OfferSort.bestRated => 'Best rated',
+                              _OfferSort.newest => 'Newest',
+                              _OfferSort.vehicleClass => 'Vehicle class',
+                            }, style: const TextStyle(fontSize: 14)),
                           ),
                           const Icon(Icons.arrow_drop_down),
                         ],
@@ -422,7 +425,10 @@ class _OffersScreenState extends State<OffersScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _loadError!,
-                  style: const TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+                  style: const TextStyle(
+                    color: Color(0xFF9F1239),
+                    fontSize: 13,
+                  ),
                 ),
               ],
               const SizedBox(height: 8),
@@ -479,14 +485,18 @@ class _OffersScreenState extends State<OffersScreen> {
                             '${offer.vehicleClass} · ${offer.passengers} pax'
                             '${offer.baggage != null ? ' · ${offer.baggage} bags' : ''}',
                             style: const TextStyle(
-                                fontSize: 13, color: Colors.black54),
+                              fontSize: 13,
+                              color: Colors.black54,
+                            ),
                           ),
                           if (offer.ratingCount > 0) ...[
                             const SizedBox(height: 4),
                             Text(
                               '★ ${offer.rating.toStringAsFixed(1)} (${offer.ratingCount})',
                               style: const TextStyle(
-                                  fontSize: 12, color: Colors.black45),
+                                fontSize: 12,
+                                color: Colors.black45,
+                              ),
                             ),
                           ],
                         ],
@@ -494,8 +504,8 @@ class _OffersScreenState extends State<OffersScreen> {
                     ),
                     const SizedBox(width: 12),
                     GestureDetector(
-                      onTap: () => context
-                          .push('/offer/${widget.rideId}/${offer.id}'),
+                      onTap: () =>
+                          context.push('/offer/${widget.rideId}/${offer.id}'),
                       child: _imageThumbnail(offer),
                     ),
                   ],
@@ -512,8 +522,8 @@ class _OffersScreenState extends State<OffersScreen> {
                 Row(
                   children: [
                     TextButton(
-                      onPressed: () => context
-                          .push('/offer/${widget.rideId}/${offer.id}'),
+                      onPressed: () =>
+                          context.push('/offer/${widget.rideId}/${offer.id}'),
                       child: const Text(
                         'DETAILS',
                         style: TextStyle(
@@ -551,9 +561,7 @@ class _OffersScreenState extends State<OffersScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
-        title: Text(
-          ride != null ? 'Offers · #${ride.displayId}' : 'Offers',
-        ),
+        title: Text(ride != null ? 'Offers · #${ride.displayId}' : 'Offers'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.canPop() ? context.pop() : context.go('/'),
@@ -625,16 +633,12 @@ class _OffersScreenState extends State<OffersScreen> {
                     url: primaryUrl,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Image.asset(
-                      asset,
+                      asset!,
                       package: 'gt_ui',
                       fit: BoxFit.contain,
                     ),
                   )
-                : Image.asset(
-                    asset,
-                    package: 'gt_ui',
-                    fit: BoxFit.contain,
-                  ),
+                : Image.asset(asset!, package: 'gt_ui', fit: BoxFit.contain),
           ),
         ),
         if (images.length > 1)
@@ -650,8 +654,11 @@ class _OffersScreenState extends State<OffersScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.photo_library_outlined,
-                      size: 10, color: Colors.white),
+                  const Icon(
+                    Icons.photo_library_outlined,
+                    size: 10,
+                    color: Colors.white,
+                  ),
                   const SizedBox(width: 3),
                   Text(
                     '${images.length}',

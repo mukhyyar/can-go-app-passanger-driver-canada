@@ -35,7 +35,8 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
-    _controller?.dispose();
+    // Do NOT call _controller?.dispose() — the GoogleMap widget owns the
+    // controller lifecycle. Disposing it manually causes PlatformView errors.
     super.dispose();
   }
 

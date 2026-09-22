@@ -778,11 +778,16 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final ride = app.rideById(widget.rideId);
-    final offerId = ride?.selectedOfferId;
-    final offer =
-        offerId != null ? app.offerByIds(widget.rideId, offerId) : null;
+    // Subscribe only to the ride + offer data for this specific ride.
+    // This prevents unrelated AppState changes (avatar load, notification
+    // badge count, etc.) from triggering a rebuild of the entire screen
+    // — which would force the Google Maps PlatformView to re-evaluate.
+    final (ride, offer) = context
+        .select<AppState, (RideRequest?, Offer?)>((s) {
+      final r = s.rideById(widget.rideId);
+      final oId = r?.selectedOfferId;
+      return (r, oId != null ? s.offerByIds(widget.rideId, oId) : null);
+    });
     final status = (ride?.serverStatus ?? '').toUpperCase();
     final isCompleted =
         status == 'COMPLETED' || ride?.status == RideStatus.past;
@@ -894,19 +899,25 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                 final toLng = toDrop
                                     ? (dropoff['lng'] as num?)?.toDouble()
                                     : (pickup['lng'] as num?)?.toDouble();
-                                return GtGoogleRouteMap(
-                                  fromLat:
-                                      (live['lat'] as num).toDouble(),
-                                  fromLng:
-                                      (live['lng'] as num).toDouble(),
-                                  fromLabel: 'Driver',
-                                  toLat: toLat,
-                                  toLng: toLng,
-                                  toLabel: toDrop ? 'Dropoff' : 'Pickup',
-                                  distanceLabel: eta is Map
-                                      ? '${eta['distanceKm']} km'
-                                      : null,
+                                // Fixed-height SizedBox prevents the ListView
+                                // from remeasuring the PlatformView on every
+                                // scroll frame.
+                                return SizedBox(
                                   height: 200,
+                                  child: GtGoogleRouteMap(
+                                    fromLat:
+                                        (live['lat'] as num).toDouble(),
+                                    fromLng:
+                                        (live['lng'] as num).toDouble(),
+                                    fromLabel: 'Driver',
+                                    toLat: toLat,
+                                    toLng: toLng,
+                                    toLabel: toDrop ? 'Dropoff' : 'Pickup',
+                                    distanceLabel: eta is Map
+                                        ? '${eta['distanceKm']} km'
+                                        : null,
+                                    height: 200,
+                                  ),
                                 );
                               },
                             ),

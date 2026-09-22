@@ -110,6 +110,14 @@ class _NativeRouteMap extends StatefulWidget {
   State<_NativeRouteMap> createState() => _NativeRouteMapState();
 }
 
+/// Holds the animated car position + heading so [ValueNotifier] can
+/// diff on reference equality without extra setState calls.
+class _CarState {
+  const _CarState(this.pos, this.bearing);
+  final LatLng pos;
+  final double bearing;
+}
+
 class _NativeRouteMapState extends State<_NativeRouteMap>
     with SingleTickerProviderStateMixin {
   GoogleMapController? _map;
@@ -117,8 +125,11 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   bool _fitted = false;
   RoutePathSampler? _sampler;
   late final AnimationController _carCtrl;
-  LatLng? _carPos;
-  double _carBearing = 0;
+
+  /// Car position/heading isolated in a ValueNotifier so animation ticks
+  /// only rebuild the Marker layer — NOT the entire widget subtree.
+  final ValueNotifier<_CarState?> _carNotifier = ValueNotifier(null);
+
   BitmapDescriptor? _carIcon;
   BitmapDescriptor? _pinA;
   BitmapDescriptor? _pinB;
@@ -308,6 +319,11 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
           _suppressCarUpdates = false;
         }
       });
+      // Pause/resume animation when the expanded state changes.
+      _updateAnimationState();
+    }
+    if (widget.interactive != oldWidget.interactive) {
+      _updateAnimationState();
     }
     if (oldWidget.fromLat != widget.fromLat ||
         oldWidget.fromLng != widget.fromLng ||
@@ -337,6 +353,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     widget.controller?.attachRecenter(null);
     _carCtrl.removeListener(_onCarTick);
     _carCtrl.dispose();
+    _carNotifier.dispose();
     // Do not dispose GoogleMapController — the GoogleMap widget owns it.
     _map = null;
     super.dispose();
@@ -354,28 +371,26 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
 
     final sample = sampler.sample(_carCtrl.value);
     final next = LatLng(sample.lat, sample.lng);
-    final prev = _carPos;
-    var bearingDelta = (sample.bearingDeg - _carBearing).abs();
+    final prev = _carNotifier.value;
+    var bearingDelta = (sample.bearingDeg - (prev?.bearing ?? 0)).abs();
     if (bearingDelta > 180) bearingDelta = 360 - bearingDelta;
     final moved = prev == null ||
-        (next.latitude - prev.latitude).abs() > 1e-5 ||
-        (next.longitude - prev.longitude).abs() > 1e-5;
+        (next.latitude - prev.pos.latitude).abs() > 1e-5 ||
+        (next.longitude - prev.pos.longitude).abs() > 1e-5;
     if (!moved && bearingDelta < 1.0) return;
 
     _lastCarTickMs = now;
     if (!mounted) return;
-    setState(() {
-      _carPos = next;
-      _carBearing = sample.bearingDeg;
-    });
+    // Update the ValueNotifier — only the ValueListenableBuilder in build()
+    // will respond to this, NOT the whole widget subtree.
+    _carNotifier.value = _CarState(next, sample.bearingDeg);
   }
 
   void _stopCar() {
     _carCtrl.stop();
     _carCtrl.reset();
     _sampler = null;
-    _carPos = null;
-    _carBearing = 0;
+    _carNotifier.value = null;
   }
 
   void _startCar(List<LatLng> points) {
@@ -392,11 +407,26 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     }
     _sampler = sampler;
     final first = sampler.sample(0);
-    _carPos = LatLng(first.lat, first.lng);
-    _carBearing = first.bearingDeg;
+    _carNotifier.value = _CarState(
+      LatLng(first.lat, first.lng),
+      first.bearingDeg,
+    );
     _carCtrl
       ..duration = _carAnimDurationFor(sampler.totalMeters)
       ..repeat();
+  }
+
+  /// Pause the animation when the map is not visible to avoid wasted
+  /// per-frame work when the widget is collapsed or non-interactive.
+  void _updateAnimationState() {
+    final shouldRun = widget.interactive || widget.isExpanded;
+    if (shouldRun) {
+      if (_sampler != null && !_carCtrl.isAnimating) {
+        _carCtrl.repeat();
+      }
+    } else {
+      if (_carCtrl.isAnimating) _carCtrl.stop();
+    }
   }
 
   void _selectRoute(int index, {bool notify = true}) {
@@ -979,7 +1009,9 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     }
   }
 
-  Set<Marker> get _markers {
+  /// Static markers (A and B pins) that only change when the route changes.
+  /// Kept separate from the animated car marker to minimise rebuild scope.
+  Set<Marker> get _staticMarkers {
     final out = <Marker>{
       Marker(
         markerId: const MarkerId('from'),
@@ -1001,13 +1033,18 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
         ),
       );
     }
-    final car = _carPos;
+    return out;
+  }
+
+  /// Build the full marker set combining static pins + animated car.
+  Set<Marker> _buildMarkers(_CarState? car) {
+    final out = _staticMarkers;
     if (car != null) {
       out.add(
         Marker(
           markerId: const MarkerId('car'),
-          position: car,
-          rotation: _carBearing,
+          position: car.pos,
+          rotation: car.bearing,
           flat: true,
           anchor: const Offset(0.5, 0.5),
           icon: _carIcon ??
@@ -1077,34 +1114,45 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     return Stack(
       fit: StackFit.expand,
       children: [
-        RepaintBoundary(
-          child: GoogleMap(
-            initialCameraPosition: CameraPosition(target: _from, zoom: 13),
-            markers: _markers,
-            polylines: _polylines,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            compassEnabled: widget.interactive,
-            scrollGesturesEnabled: widget.interactive,
-            zoomGesturesEnabled: widget.interactive,
-            rotateGesturesEnabled: widget.interactive,
-            tiltGesturesEnabled: widget.interactive,
-            gestureRecognizers: widget.interactive
-                ? <Factory<OneSequenceGestureRecognizer>>{
-                    Factory<OneSequenceGestureRecognizer>(
-                      () => EagerGestureRecognizer(),
-                    ),
-                  }
-                : const <Factory<OneSequenceGestureRecognizer>>{},
-            onTap: (latLng) {
-              widget.onTap?.call();
-            },
-            onMapCreated: (c) {
-              _map = c;
-              if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
-            },
-          ),
+        // ValueListenableBuilder ensures ONLY the GoogleMap's markers
+        // parameter is rebuilt on each car animation tick. The outer
+        // RepaintBoundary isolates pixel-level repaints from the rest of the
+        // screen, but it is the ValueListenableBuilder that prevents
+        // unnecessary widget rebuilds propagating up the tree.
+        ValueListenableBuilder<_CarState?>(
+          valueListenable: _carNotifier,
+          builder: (context, carState, _) {
+            return RepaintBoundary(
+              child: GoogleMap(
+                initialCameraPosition:
+                    CameraPosition(target: _from, zoom: 13),
+                markers: _buildMarkers(carState),
+                polylines: _polylines,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                mapToolbarEnabled: false,
+                compassEnabled: widget.interactive,
+                scrollGesturesEnabled: widget.interactive,
+                zoomGesturesEnabled: widget.interactive,
+                rotateGesturesEnabled: widget.interactive,
+                tiltGesturesEnabled: widget.interactive,
+                gestureRecognizers: widget.interactive
+                    ? <Factory<OneSequenceGestureRecognizer>>{
+                        Factory<OneSequenceGestureRecognizer>(
+                          () => EagerGestureRecognizer(),
+                        ),
+                      }
+                    : const <Factory<OneSequenceGestureRecognizer>>{},
+                onTap: (latLng) {
+                  widget.onTap?.call();
+                },
+                onMapCreated: (c) {
+                  _map = c;
+                  if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
+                },
+              ),
+            );
+          },
         ),
         if (widget.isExpanded &&
             widget.enableRouteSelection &&

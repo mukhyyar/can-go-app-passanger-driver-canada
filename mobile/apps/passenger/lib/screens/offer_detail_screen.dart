@@ -299,9 +299,20 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
+    // Subscribe ONLY to the four realtime-event fields + isBooked status.
+    // This avoids rebuilding the entire screen (photo gallery, PageView,
+    // etc.) on unrelated AppState changes like avatar load or notification
+    // badge count updates.
+    context.select<AppState, (String?, String?, String?, String?, bool)>((s) => (
+      s.pendingOfferEventType,
+      s.pendingOfferEventRideId,
+      s.pendingOfferEventOfferId,
+      s.pendingOfferEventSupersededId,
+      s.rideById(widget.rideId)?.isBooked ?? false,
+    ));
+    // Use read for mutations — does NOT subscribe to changes.
+    final app = context.read<AppState>();
     _consumeRealtime(app);
-
     final ride = app.rideById(widget.rideId);
     if (ride != null && ride.isBooked) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
