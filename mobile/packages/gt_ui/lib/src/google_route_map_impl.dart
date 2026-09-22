@@ -22,17 +22,6 @@ const _prodApiBase = 'https://www.can-rides.ca/api';
 /// Logical size of A/B circle pin bitmaps.
 const _pinLogicalSize = 40.0;
 
-/// Visual car speed along the route (~80 m/s), clamped for short/long trips.
-const _carAnimMetersPerSec = 80.0;
-const _carAnimMinMs = 6000;
-const _carAnimMaxMs = 18000;
-
-Duration _carAnimDurationFor(double totalMeters) {
-  final ms = (totalMeters / _carAnimMetersPerSec * 1000)
-      .round()
-      .clamp(_carAnimMinMs, _carAnimMaxMs);
-  return Duration(milliseconds: ms);
-}
 
 String get _normalizedApiBase {
   final raw = _apiBaseFromEnv.isNotEmpty ? _apiBaseFromEnv : _prodApiBase;
@@ -118,13 +107,15 @@ class _CarState {
   final double bearing;
 }
 
-class _NativeRouteMapState extends State<_NativeRouteMap>
-    with SingleTickerProviderStateMixin {
+class _NativeRouteMapState extends State<_NativeRouteMap> {
   GoogleMapController? _map;
   List<LatLng> _routePoints = const [];
   bool _fitted = false;
-  RoutePathSampler? _sampler;
-  late final AnimationController _carCtrl;
+
+  Timer? _carTimer;
+  List<RouteSample> _trajectoryFrames = const [];
+  int _carFrameIndex = 0;
+  int _loadTrajectoryGeneration = 0;
 
   /// Car position/heading isolated in a ValueNotifier so animation ticks
   /// only rebuild the Marker layer — NOT the entire widget subtree.
@@ -139,7 +130,6 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   static BitmapDescriptor? _cachedPinB;
   static final Map<String, List<GtRouteOption>> _routeCache = {};
 
-  int _lastCarTickMs = 0;
   bool _suppressCarUpdates = false;
   bool _isFittingBounds = false;
 
@@ -244,10 +234,6 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     widget.controller?.attachRecenter(
       () => _fitBounds(extra: _routePoints, force: true),
     );
-    _carCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 10),
-    )..addListener(_onCarTick);
 
     // Prime caches before icons are loaded (uses default markers initially).
     _updateCachedStaticMarkers();
@@ -445,81 +431,100 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   @override
   void dispose() {
     widget.controller?.attachRecenter(null);
-    _carCtrl.removeListener(_onCarTick);
-    _carCtrl.dispose();
+    _carTimer?.cancel();
     _carNotifier.dispose();
     // Do not dispose GoogleMapController — the GoogleMap widget owns it.
     _map = null;
     super.dispose();
   }
 
-  void _onCarTick() {
-    if (_suppressCarUpdates) return;
-    final sampler = _sampler;
-    if (sampler == null || sampler.isEmpty) return;
+  void _onCarTimerTick() {
+    if (_suppressCarUpdates || !mounted) return;
+    if (_trajectoryFrames.isEmpty) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    // Throttle marker position updates to ~8 fps (every 120ms) to prevent
-    // flooding the Android/iOS PlatformView MethodChannel.
-    if (now - _lastCarTickMs < 120) return;
-
-    final sample = sampler.sample(_carCtrl.value);
+    _carFrameIndex = (_carFrameIndex + 1) % _trajectoryFrames.length;
+    final sample = _trajectoryFrames[_carFrameIndex];
     final next = LatLng(sample.lat, sample.lng);
     final prev = _carNotifier.value;
-    var bearingDelta = (sample.bearingDeg - (prev?.bearing ?? 0)).abs();
-    if (bearingDelta > 180) bearingDelta = 360 - bearingDelta;
-    final moved = prev == null ||
-        (next.latitude - prev.pos.latitude).abs() > 1e-5 ||
-        (next.longitude - prev.pos.longitude).abs() > 1e-5;
-    if (!moved && bearingDelta < 1.0) return;
 
-    _lastCarTickMs = now;
-    if (!mounted) return;
-    // Update the ValueNotifier — only the ValueListenableBuilder in build()
+    // Deadband filter: don't push platform channel update unless car actually moved
+    // noticeably or turned significantly (saves unnecessary MethodChannel traffic).
+    if (prev != null) {
+      var bearingDelta = (sample.bearingDeg - prev.bearing).abs();
+      if (bearingDelta > 180) bearingDelta = 360 - bearingDelta;
+      final moved = (next.latitude - prev.pos.latitude).abs() > 1e-4 ||
+          (next.longitude - prev.pos.longitude).abs() > 1e-4;
+      if (!moved && bearingDelta < 3.0) return;
+    }
+
+    // Update the ValueNotifier — only the ValueListenableBuilder in _MapLayer
     // will respond to this, NOT the whole widget subtree.
     _carNotifier.value = _CarState(next, sample.bearingDeg);
   }
 
   void _stopCar() {
-    _carCtrl.stop();
-    _carCtrl.reset();
-    _sampler = null;
+    _carTimer?.cancel();
+    _carTimer = null;
+    _trajectoryFrames = const [];
+    _carFrameIndex = 0;
     _carNotifier.value = null;
   }
 
-  void _startCar(List<LatLng> points) {
-    if (points.length < 2) {
+  Future<void> _startCar(List<LatLng> points) async {
+    final shouldAnimate = widget.interactive || widget.isExpanded;
+    if (!shouldAnimate || points.length < 2) {
       _stopCar();
       return;
     }
-    final sampler = RoutePathSampler(
-      points.map((p) => RouteLatLng(p.latitude, p.longitude)).toList(),
-    );
-    if (sampler.isEmpty) {
+
+    final gen = ++_loadTrajectoryGeneration;
+    final rPoints =
+        points.map((p) => RouteLatLng(p.latitude, p.longitude)).toList();
+
+    // Precompute keyframes in a background isolate via [compute].
+    // All Haversine cumulative distance calculations, bearing trigonometry
+    // (atan2, sin, cos), and keyframe interpolation happen off the UI thread.
+    final frames = await precomputeTrajectory(rPoints, sampleCount: 120);
+    if (!mounted || gen != _loadTrajectoryGeneration) return;
+    if (frames.isEmpty) {
       _stopCar();
       return;
     }
-    _sampler = sampler;
-    final first = sampler.sample(0);
+
+    _trajectoryFrames = frames;
+    _carFrameIndex = 0;
+
+    final first = frames.first;
     _carNotifier.value = _CarState(
       LatLng(first.lat, first.lng),
       first.bearingDeg,
     );
-    _carCtrl
-      ..duration = _carAnimDurationFor(sampler.totalMeters)
-      ..repeat();
+
+    _carTimer?.cancel();
+    // 10 FPS (100ms) interval — completely decoupled from Flutter vsync engine,
+    // consumes zero UI thread CPU between ticks.
+    _carTimer = Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) => _onCarTimerTick(),
+    );
   }
 
-  /// Pause the animation when the map is not visible to avoid wasted
-  /// per-frame work when the widget is collapsed or non-interactive.
+  /// Pause/resume the animation when interactive or expanded state changes.
   void _updateAnimationState() {
     final shouldRun = widget.interactive || widget.isExpanded;
     if (shouldRun) {
-      if (_sampler != null && !_carCtrl.isAnimating) {
-        _carCtrl.repeat();
+      if (_trajectoryFrames.isNotEmpty && _carTimer == null) {
+        _carTimer = Timer.periodic(
+          const Duration(milliseconds: 100),
+          (_) => _onCarTimerTick(),
+        );
+      } else if (_routePoints.length >= 2 && _trajectoryFrames.isEmpty) {
+        unawaited(_startCar(_routePoints));
       }
     } else {
-      if (_carCtrl.isAnimating) _carCtrl.stop();
+      _carTimer?.cancel();
+      _carTimer = null;
+      _carNotifier.value = null;
     }
   }
 
@@ -542,7 +547,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       _updateCachedStaticMarkers();
     });
 
-    _startCar(pts);
+    unawaited(_startCar(pts));
     _fitBounds(extra: pts, force: true);
 
     Future.delayed(const Duration(milliseconds: 400), () {
@@ -580,7 +585,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       });
       widget.onRoutesLoaded?.call(cached);
       widget.onRouteSelected?.call(cached[selectedIdx]);
-      _startCar(activePoints);
+      unawaited(_startCar(activePoints));
       _fitBounds(extra: activePoints);
       return;
     }
@@ -692,7 +697,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     widget.onRoutesLoaded?.call(loadedRoutes);
     widget.onRouteSelected?.call(loadedRoutes[selectedIdx]);
 
-    _startCar(activePoints);
+    unawaited(_startCar(activePoints));
     _fitBounds(extra: activePoints);
   }
 

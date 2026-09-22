@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 
 /// A lat/lng point used for route sampling (platform-agnostic).
 class RouteLatLng {
@@ -20,6 +21,60 @@ class RouteSample {
 
   /// Degrees clockwise from north (0 = north, 90 = east).
   final double bearingDeg;
+}
+
+/// Parameters passed to the background isolate for trajectory generation.
+class TrajectoryParams {
+  const TrajectoryParams({
+    required this.points,
+    this.sampleCount = 120,
+  });
+
+  final List<RouteLatLng> points;
+  final int sampleCount;
+}
+
+/// Top-level function executed in a background isolate via [compute].
+///
+/// Offloads all Haversine cumulative distance calculations, bearing trigonometry
+/// (`atan2`, `sin`, `cos`), and keyframe interpolation from the main UI thread.
+List<RouteSample> computeTrajectoryIsolate(TrajectoryParams params) {
+  final sampler = RoutePathSampler(params.points);
+  if (sampler.isEmpty) return const [];
+
+  final count = params.sampleCount.clamp(20, 400);
+  final samples = <RouteSample>[];
+  for (var i = 0; i < count; i++) {
+    final t = i / (count - 1);
+    samples.add(sampler.sample(t));
+  }
+  return samples;
+}
+
+/// Asynchronously precomputes a sampled trajectory for the given route points.
+///
+/// Runs in a background isolate via [compute] so the main UI thread stays 100% free
+/// for scrolling and animations.
+Future<List<RouteSample>> precomputeTrajectory(
+  List<RouteLatLng> points, {
+  int sampleCount = 120,
+}) async {
+  if (points.length < 2) return const [];
+  if (kIsWeb || points.length < 10) {
+    return computeTrajectoryIsolate(
+      TrajectoryParams(points: points, sampleCount: sampleCount),
+    );
+  }
+  try {
+    return await compute(
+      computeTrajectoryIsolate,
+      TrajectoryParams(points: points, sampleCount: sampleCount),
+    );
+  } catch (_) {
+    return computeTrajectoryIsolate(
+      TrajectoryParams(points: points, sampleCount: sampleCount),
+    );
+  }
 }
 
 /// Cumulative-distance sampler for animating along an A→B polyline.
@@ -64,25 +119,29 @@ class RoutePathSampler {
     }
 
     final d = distanceM.clamp(0.0, _total);
-    for (var i = 1; i < _points.length; i++) {
-      if (d <= _cum[i]) {
-        final segLen = (_cum[i] - _cum[i - 1]).clamp(1e-6, double.infinity);
-        final localT = (d - _cum[i - 1]) / segLen;
-        final a = _points[i - 1];
-        final b = _points[i];
-        return RouteSample(
-          lat: a.lat + (b.lat - a.lat) * localT,
-          lng: a.lng + (b.lng - a.lng) * localT,
-          bearingDeg: _bearingDeg(a, b),
-        );
+
+    // O(log N) binary search on cumulative distances instead of O(N) linear loop.
+    var low = 1;
+    var high = _points.length - 1;
+    var idx = high;
+    while (low <= high) {
+      final mid = (low + high) >> 1;
+      if (_cum[mid] >= d) {
+        idx = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
       }
     }
-    final last = _points.last;
-    final prev = _points[_points.length - 2];
+
+    final segLen = (_cum[idx] - _cum[idx - 1]).clamp(1e-6, double.infinity);
+    final localT = (d - _cum[idx - 1]) / segLen;
+    final a = _points[idx - 1];
+    final b = _points[idx];
     return RouteSample(
-      lat: last.lat,
-      lng: last.lng,
-      bearingDeg: _bearingDeg(prev, last),
+      lat: a.lat + (b.lat - a.lat) * localT,
+      lng: a.lng + (b.lng - a.lng) * localT,
+      bearingDeg: _bearingDeg(a, b),
     );
   }
 
