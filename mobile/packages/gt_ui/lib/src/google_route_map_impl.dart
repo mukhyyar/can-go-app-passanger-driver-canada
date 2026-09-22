@@ -1138,16 +1138,24 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
         // _MapLayer isolates the ValueListenableBuilder rebuild to just the
         // GoogleMap widget. The outer build() is only called when route data,
         // icons, or interactive state changes — never for car animation ticks.
-        _MapLayer(
-          mapState: this,
-          from: _from,
-          carNotifier: _carNotifier,
-          interactive: widget.interactive,
-          onTap: widget.onTap,
-          onMapCreated: (c) {
-            _map = c;
-            if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
-          },
+        //
+        // IgnorePointer when non-interactive: the GoogleMap PlatformView MUST
+        // receive zero touch events when acting as a static preview. Even with
+        // scrollGesturesEnabled:false the native view can claim pointer events
+        // on Android/iOS, causing gesture competition with parent scrollers.
+        IgnorePointer(
+          ignoring: !widget.interactive,
+          child: _MapLayer(
+            mapState: this,
+            from: _from,
+            carNotifier: _carNotifier,
+            interactive: widget.interactive,
+            onTap: widget.onTap,
+            onMapCreated: (c) {
+              _map = c;
+              if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
+            },
+          ),
         ),
         if (widget.isExpanded &&
             widget.enableRouteSelection &&

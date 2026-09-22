@@ -56,6 +56,9 @@ class _MapBody extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // canExpand: false + interactive: false = the map is a locked static
+        // preview. It never intercepts touch events, so scrolling and the
+        // bottom navigation bar remain fully responsive.
         GtGoogleRouteMap(
           fromLat: from.lat,
           fromLng: from.lng,
@@ -64,11 +67,11 @@ class _MapBody extends StatelessWidget {
           toLng: showTo ? to.lng : null,
           toLabel: showTo ? to.label : null,
           distanceLabel: distanceLabel,
-          height: 220,
-          expandedHeight: 390,
-          canExpand: showTo,
+          height: 200,
+          canExpand: false,
+          interactive: false,
           initialRouteIndex: state.selectedRouteIndex,
-          enableRouteSelection: true,
+          enableRouteSelection: false,
           onRoutesLoaded: (routes) {
             state.setAvailableRoutes(routes);
           },

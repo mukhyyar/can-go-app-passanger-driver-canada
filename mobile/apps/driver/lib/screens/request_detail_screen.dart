@@ -570,6 +570,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                         toLabel: req.to,
                         distanceLabel: currentDistanceLabel,
                         height: 220,
+                        canExpand: false,
+                        interactive: false,
                         expandedHeight: 390,
                         bundleId: 'com.canride.driver',
                         initialRouteIndex: _selectedRouteIndex,

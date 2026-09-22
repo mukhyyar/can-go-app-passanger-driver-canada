@@ -917,6 +917,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                         ? '${eta['distanceKm']} km'
                                         : null,
                                     height: 200,
+                                    canExpand: false,
+                                    interactive: false,
                                   ),
                                 );
                               },
