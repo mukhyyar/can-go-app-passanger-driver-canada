@@ -152,6 +152,91 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
   List<GtRouteOption> _routes = const [];
   int _selectedRouteIndex = 0;
 
+  // ─── Cached render objects ─────────────────────────────────────────────────
+  // Recomputed only when the data they depend on changes — NOT on every
+  // animation tick. This prevents 8×/sec object allocation for polylines
+  // and static markers while the car animates.
+  Set<Polyline> _cachedPolylines = const {};
+  Set<Marker> _cachedStaticMarkers = const {};
+
+  void _updateCachedPolylines() {
+    if (_routes.isEmpty) {
+      if (_routePoints.length < 2) {
+        _cachedPolylines = const {};
+        return;
+      }
+      _cachedPolylines = {
+        Polyline(
+          polylineId: const PolylineId('route_line_0'),
+          points: _routePoints,
+          color: GtColors.brand,
+          width: 5,
+        ),
+      };
+      return;
+    }
+    final polylines = <Polyline>{};
+    for (var i = 0; i < _routes.length; i++) {
+      final route = _routes[i];
+      final pts = route.points.cast<LatLng>();
+      final isSelected = i == _selectedRouteIndex;
+      if (widget.enableRouteSelection) {
+        polylines.add(
+          Polyline(
+            polylineId: PolylineId('route_hit_$i'),
+            points: pts,
+            color: Colors.transparent,
+            width: 32,
+            zIndex: isSelected ? 3 : 2,
+            consumeTapEvents: !isSelected,
+            onTap: isSelected ? null : () => _selectRoute(i, notify: true),
+          ),
+        );
+      }
+      polylines.add(
+        Polyline(
+          polylineId: PolylineId('route_line_$i'),
+          points: pts,
+          color: isSelected
+              ? GtColors.brand
+              : const Color(0xFF8E8E93).withValues(alpha: 0.85),
+          width: isSelected ? 6 : 4,
+          zIndex: isSelected ? 5 : 1,
+          consumeTapEvents: widget.enableRouteSelection && !isSelected,
+          onTap: (widget.enableRouteSelection && !isSelected)
+              ? () => _selectRoute(i, notify: true)
+              : null,
+        ),
+      );
+    }
+    _cachedPolylines = polylines;
+  }
+
+  void _updateCachedStaticMarkers() {
+    final out = <Marker>{
+      Marker(
+        markerId: const MarkerId('from'),
+        position: _from,
+        icon: _pinA ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        anchor: const Offset(0.5, 0.5),
+      ),
+    };
+    final to = _to;
+    if (to != null) {
+      out.add(
+        Marker(
+          markerId: const MarkerId('to'),
+          position: to,
+          icon: _pinB ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
+    }
+    _cachedStaticMarkers = out;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -163,6 +248,10 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       vsync: this,
       duration: const Duration(seconds: 10),
     )..addListener(_onCarTick);
+
+    // Prime caches before icons are loaded (uses default markers initially).
+    _updateCachedStaticMarkers();
+    _updateCachedPolylines();
 
     if (_cachedCarIcon != null && _cachedPinA != null && _cachedPinB != null) {
       _carIcon = _cachedCarIcon;
@@ -191,6 +280,8 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       _carIcon = car;
       _pinA = a;
       _pinB = b;
+      // Invalidate static marker cache now that icons are loaded.
+      _updateCachedStaticMarkers();
     });
   }
 
@@ -334,6 +425,9 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       _selectedRouteIndex = widget.initialRouteIndex;
       _routePoints = const [];
       _stopCar();
+      // Invalidate caches for the new route endpoints.
+      _updateCachedPolylines();
+      _updateCachedStaticMarkers();
       if (_hasRoute) {
         unawaited(_loadRoute());
       } else {
@@ -444,6 +538,8 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     setState(() {
       _selectedRouteIndex = index;
       _routePoints = pts;
+      _updateCachedPolylines();
+      _updateCachedStaticMarkers();
     });
 
     _startCar(pts);
@@ -479,6 +575,8 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
         _routes = cached;
         _selectedRouteIndex = selectedIdx;
         _routePoints = activePoints;
+        _updateCachedPolylines();
+        _updateCachedStaticMarkers();
       });
       widget.onRoutesLoaded?.call(cached);
       widget.onRouteSelected?.call(cached[selectedIdx]);
@@ -587,6 +685,8 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
       _routes = loadedRoutes;
       _selectedRouteIndex = selectedIdx;
       _routePoints = activePoints;
+      _updateCachedPolylines();
+      _updateCachedStaticMarkers();
     });
 
     widget.onRoutesLoaded?.call(loadedRoutes);
@@ -1009,149 +1109,44 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
     }
   }
 
-  /// Static markers (A and B pins) that only change when the route changes.
-  /// Kept separate from the animated car marker to minimise rebuild scope.
-  Set<Marker> get _staticMarkers {
-    final out = <Marker>{
-      Marker(
-        markerId: const MarkerId('from'),
-        position: _from,
-        icon: _pinA ??
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        anchor: const Offset(0.5, 0.5),
-      ),
-    };
-    final to = _to;
-    if (to != null) {
-      out.add(
-        Marker(
-          markerId: const MarkerId('to'),
-          position: to,
-          icon: _pinB ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          anchor: const Offset(0.5, 0.5),
-        ),
-      );
-    }
-    return out;
-  }
-
   /// Build the full marker set combining static pins + animated car.
   Set<Marker> _buildMarkers(_CarState? car) {
-    final out = _staticMarkers;
-    if (car != null) {
-      out.add(
-        Marker(
-          markerId: const MarkerId('car'),
-          position: car.pos,
-          rotation: car.bearing,
-          flat: true,
-          anchor: const Offset(0.5, 0.5),
-          icon: _carIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          zIndexInt: 2,
-        ),
-      );
-    }
-    return out;
+    if (car == null) return _cachedStaticMarkers;
+    return {
+      ..._cachedStaticMarkers,
+      Marker(
+        markerId: const MarkerId('car'),
+        position: car.pos,
+        rotation: car.bearing,
+        flat: true,
+        anchor: const Offset(0.5, 0.5),
+        icon: _carIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        zIndexInt: 2,
+      ),
+    };
   }
 
-  Set<Polyline> get _polylines {
-    if (_routes.isEmpty) {
-      if (_routePoints.length < 2) return {};
-      return {
-        Polyline(
-          polylineId: const PolylineId('route_line_0'),
-          points: _routePoints,
-          color: GtColors.brand,
-          width: 5,
-        ),
-      };
-    }
-    final polylines = <Polyline>{};
-    for (var i = 0; i < _routes.length; i++) {
-      final route = _routes[i];
-      final pts = route.points.cast<LatLng>();
-      final isSelected = i == _selectedRouteIndex;
-
-      // Invisible wide polyline to act as a generous tap target (32px wide)
-      if (widget.enableRouteSelection) {
-        polylines.add(
-          Polyline(
-            polylineId: PolylineId('route_hit_$i'),
-            points: pts,
-            color: Colors.transparent,
-            width: 32,
-            zIndex: isSelected ? 3 : 2,
-            consumeTapEvents: !isSelected,
-            onTap: isSelected ? null : () => _selectRoute(i, notify: true),
-          ),
-        );
-      }
-
-      // Visible polyline: red brand color for selected, slate grey for alternatives
-      polylines.add(
-        Polyline(
-          polylineId: PolylineId('route_line_$i'),
-          points: pts,
-          color: isSelected
-              ? GtColors.brand
-              : const Color(0xFF8E8E93).withValues(alpha: 0.85),
-          width: isSelected ? 6 : 4,
-          zIndex: isSelected ? 5 : 1,
-          consumeTapEvents: widget.enableRouteSelection && !isSelected,
-          onTap: (widget.enableRouteSelection && !isSelected)
-              ? () => _selectRoute(i, notify: true)
-              : null,
-        ),
-      );
-    }
-    return polylines;
-  }
+  /// Returns the cached polyline set. Updated only when routes change.
+  Set<Polyline> get _polylines => _cachedPolylines;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ValueListenableBuilder ensures ONLY the GoogleMap's markers
-        // parameter is rebuilt on each car animation tick. The outer
-        // RepaintBoundary isolates pixel-level repaints from the rest of the
-        // screen, but it is the ValueListenableBuilder that prevents
-        // unnecessary widget rebuilds propagating up the tree.
-        ValueListenableBuilder<_CarState?>(
-          valueListenable: _carNotifier,
-          builder: (context, carState, _) {
-            return RepaintBoundary(
-              child: GoogleMap(
-                initialCameraPosition:
-                    CameraPosition(target: _from, zoom: 13),
-                markers: _buildMarkers(carState),
-                polylines: _polylines,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                mapToolbarEnabled: false,
-                compassEnabled: widget.interactive,
-                scrollGesturesEnabled: widget.interactive,
-                zoomGesturesEnabled: widget.interactive,
-                rotateGesturesEnabled: widget.interactive,
-                tiltGesturesEnabled: widget.interactive,
-                gestureRecognizers: widget.interactive
-                    ? <Factory<OneSequenceGestureRecognizer>>{
-                        Factory<OneSequenceGestureRecognizer>(
-                          () => EagerGestureRecognizer(),
-                        ),
-                      }
-                    : const <Factory<OneSequenceGestureRecognizer>>{},
-                onTap: (latLng) {
-                  widget.onTap?.call();
-                },
-                onMapCreated: (c) {
-                  _map = c;
-                  if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
-                },
-              ),
-            );
+        // _MapLayer isolates the ValueListenableBuilder rebuild to just the
+        // GoogleMap widget. The outer build() is only called when route data,
+        // icons, or interactive state changes — never for car animation ticks.
+        _MapLayer(
+          mapState: this,
+          from: _from,
+          carNotifier: _carNotifier,
+          interactive: widget.interactive,
+          onTap: widget.onTap,
+          onMapCreated: (c) {
+            _map = c;
+            if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
           },
         ),
         if (widget.isExpanded &&
@@ -1233,6 +1228,66 @@ class _NativeRouteMapState extends State<_NativeRouteMap>
             ),
           ),
       ],
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+/// Isolated widget that owns the [ValueListenableBuilder] → [GoogleMap] layer.
+///
+/// Keeping this in a separate widget means the car animation's
+/// [ValueNotifier] updates only rebuild [_MapLayer.build] — the parent
+/// [_NativeRouteMapState.build] is never touched during animation.
+// ────────────────────────────────────────────────────────────────────────────────
+class _MapLayer extends StatelessWidget {
+  const _MapLayer({
+    required this.mapState,
+    required this.from,
+    required this.carNotifier,
+    required this.interactive,
+    required this.onMapCreated,
+    this.onTap,
+  });
+
+  final _NativeRouteMapState mapState;
+  final LatLng from;
+  final ValueNotifier<_CarState?> carNotifier;
+  final bool interactive;
+  final void Function(GoogleMapController) onMapCreated;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<_CarState?>(
+      valueListenable: carNotifier,
+      builder: (context, carState, _) {
+        return RepaintBoundary(
+          child: GoogleMap(
+            initialCameraPosition: CameraPosition(target: from, zoom: 13),
+            // Use the already-built marker set from mapState.
+            markers: mapState._buildMarkers(carState),
+            // Polylines are cached — no recomputation during car animation.
+            polylines: mapState._polylines,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            compassEnabled: interactive,
+            scrollGesturesEnabled: interactive,
+            zoomGesturesEnabled: interactive,
+            rotateGesturesEnabled: interactive,
+            tiltGesturesEnabled: interactive,
+            gestureRecognizers: interactive
+                ? <Factory<OneSequenceGestureRecognizer>>{
+                    Factory<OneSequenceGestureRecognizer>(
+                      () => EagerGestureRecognizer(),
+                    ),
+                  }
+                : const <Factory<OneSequenceGestureRecognizer>>{},
+            onTap: onTap != null ? (_) => onTap!() : null,
+            onMapCreated: onMapCreated,
+          ),
+        );
+      },
     );
   }
 }
