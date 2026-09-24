@@ -101,7 +101,11 @@ GoRouter createRouter(AppState appState) {
       ),
       GoRoute(
         path: '/onboarding/edit-vehicle',
-        builder: (_, __) => const EditVehicleScreen(),
+        builder: (context, state) {
+          final id =
+              state.uri.queryParameters['id'] ?? (state.extra as String?);
+          return EditVehicleScreen(vehicleId: id);
+        },
       ),
       GoRoute(
         path: '/onboarding/payment',

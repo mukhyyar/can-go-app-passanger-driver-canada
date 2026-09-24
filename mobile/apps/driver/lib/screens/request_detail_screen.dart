@@ -343,6 +343,16 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     final currency = req.currency;
     final hasActiveOffer = req.hasOffer && req.myOffer != null;
 
+    final statusUpper = (req.status ?? '').toUpperCase();
+    final offerStatusUpper = (req.myOffer?.status ?? '').toUpperCase();
+    final isCompleted =
+        statusUpper == 'COMPLETED' || offerStatusUpper == 'COMPLETED';
+    final isCancelled =
+        statusUpper.contains('CANCEL') || offerStatusUpper.contains('CANCEL');
+    final isExpired =
+        statusUpper == 'EXPIRED' || offerStatusUpper == 'EXPIRED';
+    final isClosed = isCompleted || isCancelled || isExpired;
+
     final selectedRoute = (_selectedRouteIndex >= 0 &&
             _selectedRouteIndex < _availableRoutes.length)
         ? _availableRoutes[_selectedRouteIndex]
@@ -424,7 +434,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       ],
                     ),
                   ),
-                  if (req.myOffer == null)
+                  if (req.myOffer == null && !isClosed)
                     Material(
                       color: GtColors.brand,
                       borderRadius: BorderRadius.circular(10),
@@ -637,13 +647,25 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                       vertical: 4,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFEAF7EE),
+                                      color: isCompleted
+                                          ? const Color(0xFFEAF7EE)
+                                          : ((isCancelled || isExpired)
+                                              ? const Color(0xFFFDE8E8)
+                                              : const Color(0xFFEAF7EE)),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: const Text(
-                                      'OFFER ACTIVE',
+                                    child: Text(
+                                      isCompleted
+                                          ? 'COMPLETED'
+                                          : (isCancelled
+                                              ? 'CANCELLED'
+                                              : (isExpired
+                                                  ? 'EXPIRED'
+                                                  : 'OFFER ACTIVE')),
                                       style: TextStyle(
-                                        color: GtColors.green,
+                                        color: (isCancelled || isExpired)
+                                            ? GtColors.red
+                                            : GtColors.green,
                                         fontWeight: FontWeight.w800,
                                         fontSize: 11,
                                       ),
@@ -651,9 +673,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                   ),
                                   const Spacer(),
                                   Text(
-                                    myOffer.status,
-                                    style: const TextStyle(
-                                      color: GtColors.textSecondary,
+                                    isCompleted ? 'COMPLETED' : myOffer.status,
+                                    style: TextStyle(
+                                      color: (isCancelled || isExpired)
+                                          ? GtColors.red
+                                          : (isCompleted
+                                              ? GtColors.green
+                                              : GtColors.textSecondary),
                                       fontWeight: FontWeight.w600,
                                       fontSize: 12,
                                     ),
@@ -675,53 +701,141 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       },
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  InlineOfferForm(
-                    request: req,
-                    vehicles: _vehicles,
-                    draft: _draft,
-                    outCtrl: _outCtrl,
-                    retCtrl: _retCtrl,
-                    submitting: _submitting,
-                    existingOffer: req.myOffer,
-                    error: _offerError,
-                    onChanged: () {
-                      _persistDraft();
-                      setState(() => _offerError = null);
-                    },
-                    onSubmit: _submitOffer,
-                  ),
-                  if (req.myOffer != null) ...[
-                    const SizedBox(height: 14),
-                    SizedBox(
+                  if (!isClosed) ...[
+                    const SizedBox(height: 16),
+                    InlineOfferForm(
+                      request: req,
+                      vehicles: _vehicles,
+                      draft: _draft,
+                      outCtrl: _outCtrl,
+                      retCtrl: _retCtrl,
+                      submitting: _submitting,
+                      existingOffer: req.myOffer,
+                      error: _offerError,
+                      onChanged: () {
+                        _persistDraft();
+                        setState(() => _offerError = null);
+                      },
+                      onSubmit: _submitOffer,
+                    ),
+                    if (req.myOffer != null) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: OutlinedButton.icon(
+                          onPressed: (_submitting || _withdrawing) ? null : _withdraw,
+                          icon: _withdrawing
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: GtColors.brand,
+                                  ),
+                                )
+                              : const Icon(Icons.delete_outline, size: 18),
+                          label: Text(
+                            _withdrawing ? 'Withdrawing…' : 'Withdraw offer',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: GtColors.brand,
+                            side: const BorderSide(color: GtColors.brand, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ] else if (isCompleted) ...[
+                    const SizedBox(height: 16),
+                    Container(
                       width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: (_submitting || _withdrawing) ? null : _withdraw,
-                        icon: _withdrawing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: GtColors.brand,
-                                ),
-                              )
-                            : const Icon(Icons.delete_outline, size: 18),
-                        label: Text(
-                          _withdrawing ? 'Withdrawing…' : 'Withdraw offer',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF7EE),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: GtColors.green.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_circle_rounded,
+                              color: GtColors.green, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'This ride has been completed',
+                            style: TextStyle(
+                              color: GtColors.green,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
                           ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: GtColors.brand,
-                          side: const BorderSide(color: GtColors.brand, width: 1.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                        ],
+                      ),
+                    ),
+                  ] else if (isCancelled) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFDE8E8),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: GtColors.red.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.cancel_rounded,
+                              color: GtColors.red, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'This ride was cancelled',
+                            style: TextStyle(
+                              color: GtColors.red,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
                           ),
-                        ),
+                        ],
+                      ),
+                    ),
+                  ] else if (isExpired) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F2F7),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: GtColors.border),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.timer_off_outlined,
+                              color: GtColors.textSecondary, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'This ride request has expired',
+                            style: TextStyle(
+                              color: GtColors.textSecondary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

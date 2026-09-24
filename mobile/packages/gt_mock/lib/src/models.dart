@@ -397,6 +397,7 @@ class RideRequest {
     required this.status,
     this.offerCount = 0,
     this.returnLabel,
+    this.isRoundTrip = false,
     this.selectedOfferId,
     this.serverStatus,
     this.shortId,
@@ -416,6 +417,7 @@ class RideRequest {
   RideStatus status;
   int offerCount;
   final String? returnLabel;
+  final bool isRoundTrip;
   String? selectedOfferId;
   /// Canonical Nest status when wired to API.
   String? serverStatus;
@@ -424,6 +426,10 @@ class RideRequest {
   final int? viewCount;
   final String? currency;
   final bool hasLostItemRequest;
+
+  bool get hasReturnTrip =>
+      isRoundTrip ||
+      (returnLabel != null && returnLabel!.trim().isNotEmpty);
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;

@@ -138,11 +138,19 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
                           distance: ride.distance,
                           duration: ride.duration,
                           timeBadge: ride.timeBadge,
+                          isRoundTrip: ride.hasReturnTrip,
+                          returnLabel: ride.returnLabel,
                         ),
                         const SizedBox(height: 12),
                         _row('Pickup', ride.datetimeLabel),
-                        if (ride.returnLabel != null)
-                          _row('Return', ride.returnLabel!),
+                        if (ride.hasReturnTrip)
+                          _row(
+                            'Return',
+                            ride.returnLabel != null &&
+                                    ride.returnLabel!.isNotEmpty
+                                ? ride.returnLabel!
+                                : 'Return trip (Round trip)',
+                          ),
                       ],
                       if (offer != null) ...[
                         const Divider(height: 24),

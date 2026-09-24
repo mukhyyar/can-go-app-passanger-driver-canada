@@ -655,6 +655,48 @@ class _RequestCard extends StatelessWidget {
                   ],
                 ),
               )
+            else if ((request.status ?? '').toUpperCase() == 'COMPLETED')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF7EE),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: GtColors.green.withValues(alpha: 0.2),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'Completed',
+                  style: TextStyle(
+                    color: GtColors.green,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+            else if ((request.status ?? '').toUpperCase().contains('CANCEL'))
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFDE8E8),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: GtColors.red.withValues(alpha: 0.2),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'Cancelled',
+                  style: TextStyle(
+                    color: GtColors.red,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
             else
               GtGreenButton(label: 'Offer price', onPressed: onOffer),
           ],

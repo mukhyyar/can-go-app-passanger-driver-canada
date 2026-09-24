@@ -113,9 +113,28 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
           return int.tryParse('$raw') ?? 0;
         })();
 
+  bool parseBool(dynamic v) {
+    if (v == null) return false;
+    if (v is bool) return v;
+    final s = v.toString().toLowerCase().trim();
+    return s == 'true' || s == '1';
+  }
+
+  final snapGuidance = json['pricingGuidance'];
+  final snapMap =
+      snap is Map ? snap : (snapGuidance is Map ? snapGuidance : null);
+
+  final isRoundTrip = parseBool(json['isRoundTrip']) ||
+      (snapMap != null && parseBool(snapMap['isRoundTrip'])) ||
+      (json['returnAt'] != null &&
+          json['returnAt'].toString().trim().isNotEmpty) ||
+      (snapMap != null && (_asInt(snapMap['legs'], fallback: 1)) > 1);
+
   final pickupLabel = _formatPickup(json['pickupAt']);
   final returnLabel =
-      json['returnAt'] != null ? _formatPickup(json['returnAt']) : null;
+      json['returnAt'] != null && json['returnAt'].toString().trim().isNotEmpty
+          ? _formatPickup(json['returnAt'])
+          : null;
 
   String? createdAtLabel;
   final createdRaw = json['createdAt'];
@@ -147,6 +166,7 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     status: mapServerRideStatus(json['status']?.toString()),
     offerCount: offerCount,
     returnLabel: returnLabel,
+    isRoundTrip: isRoundTrip,
     selectedOfferId: json['selectedOfferId']?.toString(),
     serverStatus: json['status']?.toString(),
     shortId: json['shortId']?.toString(),

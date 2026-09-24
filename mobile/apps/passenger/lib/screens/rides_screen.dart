@@ -241,13 +241,46 @@ class _RideList extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  'Request #${r.displayId}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: GtColors.textMuted,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      'Request #${r.displayId}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: GtColors.textMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (r.hasReturnTrip) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3CD),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: const Color(0xFFE6B800), width: 0.8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.swap_vert_rounded,
+                                size: 11, color: Color(0xFF8A6900)),
+                            SizedBox(width: 3),
+                            Text(
+                              'Return',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF6B5000),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 if (driverSubtitle != null) ...[
                   const SizedBox(height: 4),
@@ -277,17 +310,9 @@ class _RideList extends StatelessWidget {
                   distance: r.distance,
                   duration: r.duration,
                   timeBadge: r.timeBadge,
+                  isRoundTrip: r.hasReturnTrip,
+                  returnLabel: r.returnLabel,
                 ),
-                if (r.returnLabel != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    'Return: ${r.returnLabel}',
-                    style: const TextStyle(
-                      color: GtColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
               ],
             ),
           );

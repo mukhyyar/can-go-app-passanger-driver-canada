@@ -932,23 +932,48 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (ride.hasReturnTrip) ...[
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF3CD),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color: const Color(0xFFE6B800), width: 0.8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.swap_vert_rounded,
+                                      size: 15, color: Color(0xFF8A6900)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      ride.returnLabel != null &&
+                                              ride.returnLabel!.isNotEmpty
+                                          ? 'Return: ${ride.returnLabel!}'
+                                          : 'Return trip (Round trip)',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12.5,
+                                        color: Color(0xFF6B5000),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           GtRouteRow(
                             from: ride.from,
                             to: ride.to ?? '',
                             distance: ride.distance,
                             duration: ride.duration,
                             timeBadge: ride.timeBadge,
+                            isRoundTrip: ride.hasReturnTrip,
+                            returnLabel: ride.returnLabel,
                           ),
-                          if (ride.returnLabel != null) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              'Return: ${ride.returnLabel}',
-                              style: const TextStyle(
-                                color: GtColors.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
                           const SizedBox(height: 8),
                           Text(
                             ride.datetimeLabel,

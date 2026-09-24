@@ -837,6 +837,8 @@ class _ScheduledRideCard extends StatelessWidget {
               to: request.to,
               distance: request.distance,
               duration: request.duration,
+              isRoundTrip: request.isRoundTrip,
+              returnLabel: request.returnDatetimeLabel,
             ),
             const SizedBox(height: 12),
             GtVehicleChips(

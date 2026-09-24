@@ -9,7 +9,9 @@ import '../../state/app_state.dart';
 import '../settings/vehicle_form_widgets.dart';
 
 class EditVehicleScreen extends StatefulWidget {
-  const EditVehicleScreen({super.key});
+  const EditVehicleScreen({super.key, this.vehicleId});
+
+  final String? vehicleId;
 
   @override
   State<EditVehicleScreen> createState() => _EditVehicleScreenState();
@@ -43,13 +45,18 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
   final Map<String, bool> _amenities = {};
   DateTime? _loadedUpdatedAt;
   String? _boundVehicleId;
+  String? _targetVehicleId;
   bool _dirty = false;
 
   @override
   void initState() {
     super.initState();
+    _targetVehicleId = widget.vehicleId;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final s = context.read<AppState>();
+      if (_targetVehicleId != null && _targetVehicleId!.isNotEmpty) {
+        s.primaryVehicleId = _targetVehicleId;
+      }
       if (s.isAuthenticated) {
         await s.loadDriverVehicles();
         await s.syncDocumentsStatus();
@@ -62,6 +69,19 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
   }
 
   @override
+  void didUpdateWidget(EditVehicleScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.vehicleId != oldWidget.vehicleId) {
+      _targetVehicleId = widget.vehicleId;
+      final s = context.read<AppState>();
+      if (_targetVehicleId != null && _targetVehicleId!.isNotEmpty) {
+        s.primaryVehicleId = _targetVehicleId;
+      }
+      _bindFromState();
+    }
+  }
+
+  @override
   void dispose() {
     _name.dispose();
     _plate.dispose();
@@ -71,8 +91,11 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
   }
 
   DriverVehicle? _current(AppState s) {
-    for (final v in s.vehicles) {
-      if (v.id == s.primaryVehicleId) return v;
+    final targetId = _targetVehicleId ?? s.primaryVehicleId;
+    if (targetId != null) {
+      for (final v in s.vehicles) {
+        if (v.id == targetId) return v;
+      }
     }
     return s.vehicles.isNotEmpty ? s.vehicles.first : null;
   }

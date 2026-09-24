@@ -178,6 +178,8 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
                   to: widget.request.to,
                   distance: widget.request.distance,
                   duration: widget.request.duration,
+                  isRoundTrip: widget.request.isRoundTrip,
+                  returnLabel: widget.request.returnDatetimeLabel,
                 ),
                 if (widget.vehicle != null) ...[
                   const Divider(height: 24),

@@ -594,6 +594,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       to: r.to,
                                       distance: r.distance,
                                       duration: r.duration,
+                                      isRoundTrip: r.isRoundTrip,
+                                      returnLabel: r.returnDatetimeLabel,
                                     ),
                                     const SizedBox(height: 12),
                                     GtVehicleChips(

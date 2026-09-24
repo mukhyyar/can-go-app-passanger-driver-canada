@@ -90,7 +90,10 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
                                       before: v.autocancelBefore,
                                       after: v.autocancelAfter,
                                     );
-                                    await context.push('/onboarding/edit-vehicle');
+                                    await context.push(
+                                      '/onboarding/edit-vehicle?id=${v.id}',
+                                      extra: v.id,
+                                    );
                                     if (mounted) await _reload();
                                   },
                                   onDelete: () async {

@@ -146,6 +146,9 @@ class GtRouteRow extends StatelessWidget {
     this.distance,
     this.duration,
     this.timeBadge,
+    this.isRoundTrip = false,
+    this.returnLabel,
+    this.useChips = true,
   });
 
   final String from;
@@ -153,21 +156,60 @@ class GtRouteRow extends StatelessWidget {
   final String? distance;
   final String? duration;
   final String? timeBadge;
+  final bool isRoundTrip;
+  final String? returnLabel;
+  final bool useChips;
 
   @override
   Widget build(BuildContext context) {
+    final isReturn = isRoundTrip ||
+        (returnLabel != null && returnLabel!.trim().isNotEmpty);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Column(
           children: [
             const GtPointLabel(letter: 'A'),
-            Container(
-              width: 2,
-              height: to == null ? 28 : 36,
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              color: GtColors.border,
-            ),
+            if (isReturn && to != null) ...[
+              Container(
+                width: 2,
+                height: 6,
+                margin: const EdgeInsets.only(top: 3, bottom: 2),
+                color: const Color(0xFFE6A800),
+              ),
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3CD),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: const Color(0xFFE6B800),
+                    width: 0.8,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.swap_vert_rounded,
+                  size: 13,
+                  color: Color(0xFF8A6900),
+                ),
+              ),
+              Container(
+                width: 2,
+                height: 6,
+                margin: const EdgeInsets.only(top: 2, bottom: 3),
+                color: const Color(0xFFE6A800),
+              ),
+            ] else ...[
+              Container(
+                width: 2,
+                height: to == null ? 28 : (useChips ? 20 : 36),
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                color: GtColors.border,
+              ),
+            ],
             if (to != null)
               const GtPointLabel(letter: 'B')
             else if (timeBadge != null)
@@ -180,36 +222,185 @@ class GtRouteRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(from, style: const TextStyle(fontSize: 14, height: 1.3)),
-              if (distance != null || duration != null) ...[
+              if (!useChips && (distance != null || duration != null)) ...[
                 const SizedBox(height: 6),
                 Row(
                   children: [
                     if (distance != null) ...[
-                      const Icon(Icons.route, size: 14, color: GtColors.textMuted),
+                      const Icon(Icons.route,
+                          size: 14, color: GtColors.textMuted),
                       const SizedBox(width: 4),
-                      Text(distance!, style: const TextStyle(fontSize: 12, color: GtColors.textSecondary)),
+                      Text(distance!,
+                          style: const TextStyle(
+                              fontSize: 12, color: GtColors.textSecondary)),
                       const SizedBox(width: 10),
                     ],
                     if (duration != null) ...[
-                      const Icon(Icons.schedule, size: 14, color: GtColors.textMuted),
+                      const Icon(Icons.schedule,
+                          size: 14, color: GtColors.textMuted),
                       const SizedBox(width: 4),
-                      Text(duration!, style: const TextStyle(fontSize: 12, color: GtColors.textSecondary)),
+                      Text(duration!,
+                          style: const TextStyle(
+                              fontSize: 12, color: GtColors.textSecondary)),
                     ],
                   ],
                 ),
               ],
               if (to != null) ...[
-                const SizedBox(height: 10),
+                SizedBox(height: isReturn ? 12 : (useChips ? 12 : 10)),
                 Text(to!, style: const TextStyle(fontSize: 14, height: 1.3)),
-              ] else if (timeBadge != null) ...[
+              ] else if (timeBadge != null && !useChips) ...[
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: GtColors.soft,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(timeBadge!, style: const TextStyle(fontSize: 13)),
+                  child: Text(timeBadge!,
+                      style: const TextStyle(fontSize: 13)),
+                ),
+              ],
+              if (useChips &&
+                  (isReturn ||
+                      (distance != null &&
+                          distance!.isNotEmpty &&
+                          distance != '—') ||
+                      (duration != null &&
+                          duration!.isNotEmpty &&
+                          duration != '—') ||
+                      (timeBadge != null && timeBadge!.isNotEmpty))) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (isReturn)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3CD),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFFE6B800),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.swap_vert_rounded,
+                              size: 13,
+                              color: Color(0xFF8A6900),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              returnLabel != null &&
+                                      returnLabel!.trim().isNotEmpty
+                                  ? 'Return: ${returnLabel!.trim()}'
+                                  : 'Return trip',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF6B5000),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (distance != null &&
+                        distance!.isNotEmpty &&
+                        distance != '—')
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF2F2F7),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: GtColors.border,
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.straighten_rounded,
+                              size: 13,
+                              color: GtColors.textSecondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              distance!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: GtColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (duration != null &&
+                        duration!.isNotEmpty &&
+                        duration != '—')
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF2F2F7),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: GtColors.border,
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.schedule_rounded,
+                              size: 13,
+                              color: GtColors.textSecondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              duration!,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: GtColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (timeBadge != null && timeBadge!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: GtColors.soft,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: GtColors.brand.withValues(alpha: 0.16),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          timeBadge!,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: GtColors.brand,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ],

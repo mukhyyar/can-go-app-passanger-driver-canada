@@ -157,22 +157,75 @@ class _WaitingScreenState extends State<WaitingScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (ride.datetimeLabel.isNotEmpty) ...[
-                    Text(
-                      ride.datetimeLabel,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (ride.datetimeLabel.isNotEmpty)
+                              Text(
+                                ride.datetimeLabel,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            if (ride.hasReturnTrip &&
+                                ride.returnLabel != null &&
+                                ride.returnLabel!.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Return: ${ride.returnLabel}',
+                                style: const TextStyle(
+                                  color: Color(0xFF8A6900),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
+                      if (ride.hasReturnTrip)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3CD),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: const Color(0xFFE6B800), width: 0.8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.swap_vert_rounded,
+                                  size: 13, color: Color(0xFF8A6900)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Return trip',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF6B5000),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   GtRouteRow(
                     from: ride.from,
                     to: ride.to,
                     distance: ride.distance,
                     duration: ride.duration,
                     timeBadge: ride.timeBadge,
+                    isRoundTrip: ride.hasReturnTrip,
+                    returnLabel: ride.returnLabel,
                   ),
                 ],
               ),

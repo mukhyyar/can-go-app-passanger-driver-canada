@@ -2060,9 +2060,13 @@ class AppState extends ChangeNotifier {
           .toList();
       settingsVehicleCount = vehicles.length;
       if (vehicles.isNotEmpty) {
-        final def = vehicles.where((v) => v.isDefault);
-        primaryVehicleId =
-            def.isNotEmpty ? def.first.id : vehicles.first.id;
+        final currentValid = primaryVehicleId != null &&
+            vehicles.any((x) => x.id == primaryVehicleId);
+        if (!currentValid) {
+          final def = vehicles.where((v) => v.isDefault);
+          primaryVehicleId =
+              def.isNotEmpty ? def.first.id : vehicles.first.id;
+        }
         final v = vehicles.firstWhere(
           (x) => x.id == primaryVehicleId,
           orElse: () => vehicles.first,
