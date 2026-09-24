@@ -1496,6 +1496,13 @@ class AppState extends ChangeNotifier {
 
   void setReturnEnabled(bool value) {
     returnEnabled = value;
+    if (value && returnDateTime == null) {
+      final start = effectivePickupDateTime;
+      returnDateTime = start.add(const Duration(hours: 3));
+    } else if (!value) {
+      returnDateTime = null;
+      returnFlight = '';
+    }
     notifyListeners();
   }
 
@@ -1725,6 +1732,11 @@ class AppState extends ChangeNotifier {
     return formatDateTimeLabel(rideEndsDateTime!);
   }
 
+  String formatReturnLabel() {
+    if (returnDateTime == null) return 'Select return date & time';
+    return formatDateTimeLabel(returnDateTime!);
+  }
+
   RideRequest createBookingRequest() {
     throw UnsupportedError('Use createBookingRequestAsync()');
   }
@@ -1790,8 +1802,15 @@ class AppState extends ChangeNotifier {
 
     final childSeatsPayload =
         childSeats.total > 0 ? childSeats.toJson() : null;
-    final isRoundTrip = returnEnabled && returnDateTime != null;
-    final returnAt = isRoundTrip
+    final isRoundTrip = returnEnabled;
+    if (returnEnabled && returnDateTime == null) {
+      final start = pickupNow ? DateTime.now() : pickupDateTime;
+      returnDateTime = start.add(const Duration(hours: 3));
+    }
+    if (returnEnabled && returnDateTime != null) {
+      returnLabel = _formatDate(returnDateTime!);
+    }
+    final returnAt = isRoundTrip && returnDateTime != null
         ? returnDateTime!.toUtc().toIso8601String()
         : null;
 

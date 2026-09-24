@@ -249,28 +249,33 @@ class _ReturnDateField extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () async {
+        final now = DateTime.now();
+        final start = state.effectivePickupDateTime;
+        final initial =
+            state.returnDateTime ?? start.add(const Duration(hours: 3));
         final date = await showDatePicker(
           context: context,
-          initialDate:
-              state.returnDateTime ?? DateTime.now().add(const Duration(days: 1)),
-          firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 365)),
+          initialDate: initial.isBefore(now) ? now : initial,
+          firstDate: DateTime(now.year, now.month, now.day),
+          lastDate: now.add(const Duration(days: 365)),
         );
         if (date == null || !context.mounted) return;
         final time = await showTimePicker(
           context: context,
-          initialTime: const TimeOfDay(hour: 12, minute: 0),
+          initialTime: TimeOfDay.fromDateTime(initial),
         );
         if (time == null) return;
-        state.setReturnDateTime(
-          DateTime(
-            date.year,
-            date.month,
-            date.day,
-            time.hour,
-            time.minute,
-          ),
+        var returnDt = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          time.hour,
+          time.minute,
         );
+        if (!returnDt.isAfter(start)) {
+          returnDt = start.add(const Duration(hours: 2));
+        }
+        state.setReturnDateTime(returnDt);
       },
       borderRadius: BorderRadius.circular(10),
       child: Container(
@@ -287,15 +292,17 @@ class _ReturnDateField extends StatelessWidget {
               color: GtColors.textSecondary,
             ),
             const SizedBox(width: 10),
-            Text(
-              state.returnDateTime == null
-                  ? 'Return ride date & time'
-                  : state.returnDateTime!.toString().substring(0, 16),
-              style: TextStyle(
-                color: state.returnDateTime == null
-                    ? GtColors.textMuted
-                    : GtColors.text,
-                fontWeight: FontWeight.w500,
+            Expanded(
+              child: Text(
+                state.returnDateTime == null
+                    ? 'Return ride date & time'
+                    : 'Return: ${state.formatReturnLabel()}',
+                style: TextStyle(
+                  color: state.returnDateTime == null
+                      ? GtColors.textMuted
+                      : GtColors.text,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],

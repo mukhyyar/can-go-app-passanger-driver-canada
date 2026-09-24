@@ -39,6 +39,10 @@ class TripEssentials extends StatelessWidget {
             value: state.returnEnabled,
             onChanged: state.setReturnEnabled,
           ),
+          if (state.returnEnabled) ...[
+            const SizedBox(height: 8),
+            _ReturnTripRow(state: state),
+          ],
         ],
       ],
     );
@@ -443,6 +447,95 @@ class _ChildrenRow extends StatelessWidget {
           ),
           GtStepper(value: value, min: 0, max: 5, onChanged: onChanged),
         ],
+      ),
+    );
+  }
+}
+
+class _ReturnTripRow extends StatelessWidget {
+  const _ReturnTripRow({required this.state});
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return _EssentialsCard(
+      child: InkWell(
+        onTap: () async {
+          final now = DateTime.now();
+          final start = state.effectivePickupDateTime;
+          final initial =
+              state.returnDateTime ?? start.add(const Duration(hours: 3));
+          final date = await showDatePicker(
+            context: context,
+            initialDate: initial.isBefore(now) ? now : initial,
+            firstDate: DateTime(now.year, now.month, now.day),
+            lastDate: now.add(const Duration(days: 365)),
+          );
+          if (date == null || !context.mounted) return;
+          final time = await showTimePicker(
+            context: context,
+            initialTime: TimeOfDay.fromDateTime(initial),
+          );
+          if (time == null || !context.mounted) return;
+          var returnDt = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            time.hour,
+            time.minute,
+          );
+          if (!returnDt.isAfter(start)) {
+            returnDt = start.add(const Duration(hours: 2));
+          }
+          state.setReturnDateTime(returnDt);
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3CD),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE6B800), width: 0.8),
+              ),
+              child: const Icon(
+                Icons.swap_vert_rounded,
+                color: Color(0xFF8A6900),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Return · ${state.formatReturnLabel()}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                      color: Color(0xFF6B5000),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Tap to schedule return',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: GtColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.calendar_month_outlined,
+              size: 20,
+              color: Color(0xFF8A6900),
+            ),
+          ],
+        ),
       ),
     );
   }
