@@ -6,11 +6,12 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
-import { RideStatus, UserRole } from '@prisma/client';
+import { DriverPayoutStatus, RideStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 import { DriverWalletService } from '../wallet/driver-wallet.service';
+import { StripeConnectService } from '../providers/stripe/stripe-connect.service';
 
 @Injectable()
 export class TripService {
@@ -20,6 +21,7 @@ export class TripService {
     @Inject(forwardRef(() => TrackingGateway))
     private readonly tracking: TrackingGateway,
     private readonly wallet: DriverWalletService,
+    private readonly stripeConnect?: StripeConnectService,
   ) {}
 
   async transition(
@@ -92,6 +94,45 @@ export class TripService {
           tx,
           actorId: userId,
         });
+
+        const financial = await tx.rideFinancial.findUnique({
+          where: { rideId },
+        });
+        const driver = ride.selectedOffer?.driver;
+
+        if (
+          financial &&
+          driver?.stripeAccountId &&
+          driver?.stripePayoutsEnabled &&
+          this.stripeConnect?.isConfigured()
+        ) {
+          try {
+            const transfer = await this.stripeConnect.transferToDriver({
+              amount: Number(financial.driverNetEarning),
+              currency: financial.currency,
+              destinationAccountId: driver.stripeAccountId,
+              transferGroup: financial.stripeTransferGroup || `group_${rideId}`,
+              rideId,
+              driverId: driver.id,
+            });
+
+            await tx.rideFinancial.update({
+              where: { rideId },
+              data: {
+                driverPayoutStatus: DriverPayoutStatus.SUCCEEDED,
+                stripeTransferId: transfer.transferId,
+                payoutReleasedAt: new Date(),
+              },
+            });
+          } catch {
+            await tx.rideFinancial.update({
+              where: { rideId },
+              data: {
+                driverPayoutStatus: DriverPayoutStatus.HELD,
+              },
+            });
+          }
+        }
       }
     });
 

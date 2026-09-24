@@ -13,6 +13,7 @@ import { OTP_PROVIDER } from './otp/otp-provider.interface';
 import { MockOtpProvider } from './otp/mock-otp.provider';
 import { PrismaOtpProvider } from './otp/prisma-otp.provider';
 import { LaunchGateService } from './launch-gate.service';
+import { StripeConnectService } from './stripe/stripe-connect.service';
 import { ProvidersController } from './providers.controller';
 
 @Global()
@@ -23,6 +24,7 @@ import { ProvidersController } from './providers.controller';
     StripePaymentProvider,
     DevPayoutProvider,
     StripePayoutProvider,
+    StripeConnectService,
     MockSmsProvider,
     TwilioSmsProvider,
     MockOtpProvider,
@@ -87,6 +89,7 @@ import { ProvidersController } from './providers.controller';
     SMS_PROVIDER,
     OTP_PROVIDER,
     LaunchGateService,
+    StripeConnectService,
   ],
 })
 export class ProvidersModule implements OnModuleInit {

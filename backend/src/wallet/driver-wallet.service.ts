@@ -1003,6 +1003,12 @@ export class DriverWalletService {
       [DriverPayoutStatus.REQUESTED]: [
         DriverPayoutStatus.PROCESSING,
         DriverPayoutStatus.FAILED,
+        DriverPayoutStatus.HELD,
+      ],
+      [DriverPayoutStatus.HELD]: [
+        DriverPayoutStatus.PROCESSING,
+        DriverPayoutStatus.REQUESTED,
+        DriverPayoutStatus.FAILED,
       ],
       [DriverPayoutStatus.PROCESSING]: [
         DriverPayoutStatus.SUCCEEDED,

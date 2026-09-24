@@ -11,6 +11,7 @@ import {
   DocumentLifecycleStatus,
   DocumentReviewStatus,
   DriverApprovalStatus,
+  DriverPayoutStatus,
   OfferStatus,
   Prisma,
   RideStatus,
@@ -255,18 +256,18 @@ export class MarketplaceService {
     if (Number.isNaN(pickupAt.getTime())) {
       throw new BadRequestException('Invalid pickupAt');
     }
-    const isRoundTrip =
-      dto.isRoundTrip !== undefined
-        ? (dto.isRoundTrip === true ||
-            String(dto.isRoundTrip).toLowerCase() === 'true' ||
-            Boolean(dto.returnAt ?? returnAtRaw))
-        : (Boolean(ride.isRoundTrip) || Boolean(ride.returnAt));
     const returnAtRaw =
       dto.returnAt !== undefined
         ? dto.returnAt
           ? new Date(dto.returnAt)
           : null
         : ride.returnAt;
+    const isRoundTrip =
+      dto.isRoundTrip !== undefined
+        ? (dto.isRoundTrip === true ||
+            String(dto.isRoundTrip).toLowerCase() === 'true' ||
+            Boolean(dto.returnAt ?? returnAtRaw))
+        : (Boolean(ride.isRoundTrip) || Boolean(ride.returnAt));
     if (isRoundTrip && !returnAtRaw) {
       throw new BadRequestException('returnAt required for round-trip rides');
     }
@@ -2104,6 +2105,11 @@ export class MarketplaceService {
       },
     });
 
+    await this.recordRideFinancial(ride.id, {
+      paymentId: payment.id,
+      paymentRef: intent.intentId,
+    });
+
     if (intent.status === 'succeeded') {
       await this.markBooked(ride.id, payment.id, userId);
     }
@@ -2147,6 +2153,34 @@ export class MarketplaceService {
       },
       update: {},
     });
+
+    if (event.type === 'account.updated') {
+      const rawObj = (event.raw as any)?.data?.object;
+      if (rawObj?.id) {
+        const isComplete = Boolean(rawObj.charges_enabled && rawObj.payouts_enabled);
+        const reqDue = rawObj.requirements?.currently_due ?? [];
+        const status = isComplete
+          ? 'ACTIVE'
+          : reqDue.length > 0
+            ? 'REQUIREMENTS_DUE'
+            : 'PENDING';
+        await this.prisma.driverProfile.updateMany({
+          where: { stripeAccountId: rawObj.id },
+          data: {
+            stripeAccountStatus: status,
+            stripeChargesEnabled: Boolean(rawObj.charges_enabled),
+            stripePayoutsEnabled: Boolean(rawObj.payouts_enabled),
+          },
+        });
+      }
+      await this.prisma.webhookEvent.update({
+        where: {
+          provider_eventId: { provider: event.provider, eventId: event.eventId },
+        },
+        data: { processedAt: new Date() },
+      });
+      return { ok: true, handled: 'account.updated' };
+    }
 
     const paymentRef = event.paymentRef;
     if (!paymentRef) {
@@ -2285,6 +2319,10 @@ export class MarketplaceService {
           actorId: actorId ?? undefined,
         },
       });
+      await this.recordRideFinancial(rideId, {
+        tx,
+        paymentId,
+      });
       return true;
     });
 
@@ -2372,6 +2410,84 @@ export class MarketplaceService {
         offerId: ride.selectedOfferId,
       });
     }
+  }
+
+  /**
+   * Records or updates RideFinancial breakdown for marketplace rides.
+   */
+  async recordRideFinancial(
+    rideId: string,
+    opts?: { tx?: Prisma.TransactionClient; paymentId?: string; paymentRef?: string },
+  ) {
+    const client = opts?.tx || this.prisma;
+    const ride = await client.ride.findUnique({
+      where: { id: rideId },
+    });
+    if (!ride) return null;
+
+    const snap =
+      ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
+        ? (ride.priceSnapshot as Record<string, unknown>)
+        : {};
+
+    const rawFare = snap.subtotal ?? snap.bidAmount ?? snap.driverEarning ?? 0;
+    const rideFare = typeof rawFare === 'number' ? rawFare : parseFloat(String(rawFare) || '0');
+
+    const rawFee = snap.platformFee ?? snap.marketplaceFee ?? 0;
+    const marketplaceFee = typeof rawFee === 'number' ? rawFee : parseFloat(String(rawFee) || '0');
+
+    const rawTax = snap.taxAmount ?? 0;
+    const taxes = typeof rawTax === 'number' ? rawTax : parseFloat(String(rawTax) || '0');
+
+    const rawTotal = snap.passengerTotal ?? (rideFare + marketplaceFee + taxes);
+    const passengerTotalCharged = typeof rawTotal === 'number' ? rawTotal : parseFloat(String(rawTotal) || '0');
+
+    // CAN-RIDE Driver Commission standard is 20%
+    const commissionRate = 0.2000;
+    const driverCommission = parseFloat((rideFare * commissionRate).toFixed(2));
+    const rawDriverEarning = snap.driverEarning ?? snap.bidAmount ?? (rideFare - driverCommission);
+    const driverNetEarning = typeof rawDriverEarning === 'number' ? rawDriverEarning : parseFloat(String(rawDriverEarning) || '0');
+
+    const canRideGrossRevenue = parseFloat((marketplaceFee + driverCommission).toFixed(2));
+
+    let paymentRef = opts?.paymentRef || null;
+    if (!paymentRef) {
+      const p = await client.payment.findFirst({
+        where: { rideId: ride.id },
+        orderBy: { createdAt: 'desc' },
+      });
+      paymentRef = p?.providerRef || null;
+    }
+    const transferGroup = `group_${ride.id}`;
+
+    return client.rideFinancial.upsert({
+      where: { rideId: ride.id },
+      create: {
+        rideId: ride.id,
+        rideFare: new Prisma.Decimal(rideFare),
+        marketplaceFee: new Prisma.Decimal(marketplaceFee),
+        passengerTotalCharged: new Prisma.Decimal(passengerTotalCharged),
+        driverCommission: new Prisma.Decimal(driverCommission),
+        driverCommissionRate: new Prisma.Decimal(commissionRate),
+        driverNetEarning: new Prisma.Decimal(driverNetEarning),
+        taxes: new Prisma.Decimal(taxes),
+        canRideGrossRevenue: new Prisma.Decimal(canRideGrossRevenue),
+        currency: (ride.currency || 'CAD').toUpperCase(),
+        driverPayoutStatus: DriverPayoutStatus.REQUESTED,
+        stripeTransferGroup: transferGroup,
+        stripePaymentIntentId: paymentRef,
+      },
+      update: {
+        rideFare: new Prisma.Decimal(rideFare),
+        marketplaceFee: new Prisma.Decimal(marketplaceFee),
+        passengerTotalCharged: new Prisma.Decimal(passengerTotalCharged),
+        driverCommission: new Prisma.Decimal(driverCommission),
+        driverNetEarning: new Prisma.Decimal(driverNetEarning),
+        taxes: new Prisma.Decimal(taxes),
+        canRideGrossRevenue: new Prisma.Decimal(canRideGrossRevenue),
+        ...(paymentRef ? { stripePaymentIntentId: paymentRef } : {}),
+      },
+    });
   }
 
   /** Release a payment reservation so competing offers stay bookable. */

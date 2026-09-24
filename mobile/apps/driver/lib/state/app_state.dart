@@ -108,6 +108,11 @@ class AppState extends ChangeNotifier {
   String? paymentReviewNote;
   String? paymentReviewedAt;
 
+  String? stripeAccountId;
+  String stripeAccountStatus = 'UNLINKED';
+  bool stripeChargesEnabled = false;
+  bool stripePayoutsEnabled = false;
+
   /// Bumped on each successful hydrate so screens can ignore stale GETs while editing.
   int paymentDetailsGeneration = 0;
   bool paymentDetailsLoaded = false;
@@ -909,11 +914,54 @@ class AppState extends ChangeNotifier {
         : num.tryParse('${parsed['commissionPct'] ?? ''}');
     paymentReviewNote = parsed['reviewNote'] as String?;
     paymentReviewedAt = parsed['reviewedAt'] as String?;
+    stripeAccountId = data['stripeAccountId'] as String?;
+    stripeAccountStatus = (data['stripeAccountStatus'] as String?) ?? 'UNLINKED';
+    stripeChargesEnabled = data['stripeChargesEnabled'] == true;
+    stripePayoutsEnabled = data['stripePayoutsEnabled'] == true;
     paymentDetailsLoaded = true;
     paymentDetailsGeneration++;
     paymentSummaryLabel =
         '$outpaymentCurrency · ${paymentStatus == 'NOT_CONFIGURED' ? 'Not configured' : paymentStatus.toLowerCase().replaceAll('_', ' ')}';
     notifyListeners();
+  }
+
+  Future<String> getStripeOnboardingUrl({
+    String? returnUrl,
+    String? refreshUrl,
+  }) async {
+    if (!isAuthenticated) throw StateError('Not authenticated');
+    final res = await api.driver.stripeOnboarding(
+      returnUrl: returnUrl,
+      refreshUrl: refreshUrl,
+    );
+    final url = res['url'] as String? ?? '';
+    if (res['accountId'] != null) {
+      stripeAccountId = res['accountId'] as String;
+    }
+    if (res['status'] != null) {
+      stripeAccountStatus = res['status'] as String;
+    }
+    notifyListeners();
+    return url;
+  }
+
+  Future<Map<String, dynamic>> refreshStripeStatus() async {
+    if (!isAuthenticated) throw StateError('Not authenticated');
+    final res = await api.driver.stripeStatus();
+    stripeAccountStatus = (res['status'] as String?) ?? stripeAccountStatus;
+    stripeChargesEnabled = res['chargesEnabled'] == true;
+    stripePayoutsEnabled = res['payoutsEnabled'] == true;
+    if (res['accountId'] != null) {
+      stripeAccountId = res['accountId'] as String;
+    }
+    notifyListeners();
+    return res;
+  }
+
+  Future<String> getStripeDashboardUrl() async {
+    if (!isAuthenticated) throw StateError('Not authenticated');
+    final res = await api.driver.stripeDashboardLink();
+    return res['url'] as String? ?? '';
   }
 
   Future<Map<String, dynamic>> savePaymentDetails({

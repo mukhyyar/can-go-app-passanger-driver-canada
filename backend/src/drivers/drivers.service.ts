@@ -33,6 +33,7 @@ import type {
 import { DocumentLifecycleStatus } from '@prisma/client';
 import { sanitizeContentDispositionFilename } from './vehicle-photos.util';
 import { normalizeAccountMask } from './payment-mask.util';
+import { StripeConnectService } from '../providers/stripe/stripe-connect.service';
 
 type PayoutSettings = {
   billingPeriod?: string;
@@ -54,6 +55,7 @@ export class DriversService {
     private readonly storage: StorageService,
     private readonly kycOps: KycOpsService,
     private readonly kycDocs: KycDocumentsService,
+    private readonly stripeConnect?: StripeConnectService,
   ) {}
 
   private async requireDriverProfile(userId: string) {
@@ -486,7 +488,155 @@ export class DriversService {
       commissionPct,
       reviewedAt: payout.reviewedAt ?? null,
       reviewNote: payout.reviewNote ?? null,
+      stripeAccountId: driver.stripeAccountId ?? null,
+      stripeAccountStatus: driver.stripeAccountStatus ?? 'UNLINKED',
+      stripeChargesEnabled: driver.stripeChargesEnabled ?? false,
+      stripePayoutsEnabled: driver.stripePayoutsEnabled ?? false,
     };
+  }
+
+  async createStripeOnboardingLink(
+    userId: string,
+    opts?: { returnUrl?: string; refreshUrl?: string },
+  ) {
+    if (!this.stripeConnect) {
+      throw new BadRequestException('Stripe Connect service is not available');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { driverProfile: true },
+    });
+    if (!user || !user.driverProfile) {
+      throw new NotFoundException('Driver profile not found');
+    }
+
+    let accountId = user.driverProfile.stripeAccountId;
+    if (!accountId) {
+      if (!this.stripeConnect.isConfigured()) {
+        accountId = `acct_mock_${user.driverProfile.id}`;
+        await this.prisma.driverProfile.update({
+          where: { id: user.driverProfile.id },
+          data: {
+            stripeAccountId: accountId,
+            stripeAccountStatus: 'PENDING',
+          },
+        });
+        return {
+          url: opts?.returnUrl || 'https://can-ride.ca/stripe/return',
+          accountId,
+          status: 'PENDING',
+        };
+      }
+      accountId = await this.stripeConnect.createDriverExpressAccount(
+        user.driverProfile.id,
+        user.email || `${user.id}@can-ride.ca`,
+      );
+      await this.prisma.driverProfile.update({
+        where: { id: user.driverProfile.id },
+        data: {
+          stripeAccountId: accountId,
+          stripeAccountStatus: 'PENDING',
+        },
+      });
+    }
+
+    if (!this.stripeConnect.isConfigured()) {
+      return {
+        url: opts?.returnUrl || 'https://can-ride.ca/stripe/return',
+        accountId,
+        status: user.driverProfile.stripeAccountStatus || 'PENDING',
+      };
+    }
+
+    const url = await this.stripeConnect.createAccountOnboardingLink(
+      accountId,
+      opts?.returnUrl,
+      opts?.refreshUrl,
+    );
+
+    return {
+      url,
+      accountId,
+      status: user.driverProfile.stripeAccountStatus || 'PENDING',
+    };
+  }
+
+  async getStripeStatus(userId: string) {
+    const driver = await this.requireDriverProfile(userId);
+    if (!driver.stripeAccountId) {
+      return {
+        configured: false,
+        accountId: null,
+        status: 'UNLINKED',
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        requirements: { currentlyDue: [], eventuallyDue: [], pastDue: [], disabledReason: null },
+      };
+    }
+
+    if (!this.stripeConnect || !this.stripeConnect.isConfigured()) {
+      return {
+        configured: true,
+        accountId: driver.stripeAccountId,
+        status: driver.stripeAccountStatus || 'PENDING',
+        chargesEnabled: driver.stripeChargesEnabled,
+        payoutsEnabled: driver.stripePayoutsEnabled,
+        requirements: { currentlyDue: [], eventuallyDue: [], pastDue: [], disabledReason: null },
+      };
+    }
+
+    try {
+      const status = await this.stripeConnect.getAccountStatus(driver.stripeAccountId);
+      const isComplete = status.chargesEnabled && status.payoutsEnabled;
+      const accountStatus = isComplete
+        ? 'ACTIVE'
+        : status.requirements.currentlyDue.length > 0
+          ? 'REQUIREMENTS_DUE'
+          : 'PENDING';
+
+      await this.prisma.driverProfile.update({
+        where: { id: driver.id },
+        data: {
+          stripeAccountStatus: accountStatus,
+          stripeChargesEnabled: status.chargesEnabled,
+          stripePayoutsEnabled: status.payoutsEnabled,
+        },
+      });
+
+      return {
+        configured: true,
+        accountId: driver.stripeAccountId,
+        status: accountStatus,
+        chargesEnabled: status.chargesEnabled,
+        payoutsEnabled: status.payoutsEnabled,
+        requirements: status.requirements,
+      };
+    } catch (err) {
+      return {
+        configured: true,
+        accountId: driver.stripeAccountId,
+        status: driver.stripeAccountStatus || 'ERROR',
+        chargesEnabled: driver.stripeChargesEnabled,
+        payoutsEnabled: driver.stripePayoutsEnabled,
+        requirements: { currentlyDue: [], eventuallyDue: [], pastDue: [], disabledReason: null },
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  async getStripeDashboardLink(userId: string) {
+    if (!this.stripeConnect) {
+      throw new BadRequestException('Stripe Connect service is not available');
+    }
+    const driver = await this.requireDriverProfile(userId);
+    if (!driver.stripeAccountId) {
+      throw new BadRequestException('Driver has no connected Stripe account');
+    }
+    if (!this.stripeConnect.isConfigured()) {
+      return { url: 'https://dashboard.stripe.com/test/express' };
+    }
+    const url = await this.stripeConnect.createDashboardLoginLink(driver.stripeAccountId);
+    return { url };
   }
 
   /** Active FareRule commission, else platform configured default. Never rewrite snapshots. */

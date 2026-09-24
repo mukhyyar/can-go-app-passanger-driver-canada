@@ -7,6 +7,9 @@ jest.mock('./kyc-ops.service', () => ({
 jest.mock('./kyc-documents.service', () => ({
   KycDocumentsService: class KycDocumentsService {},
 }));
+jest.mock('../providers/stripe/stripe-connect.service', () => ({
+  StripeConnectService: class StripeConnectService {},
+}));
 
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DriverApprovalStatus, UserRole } from '@prisma/client';

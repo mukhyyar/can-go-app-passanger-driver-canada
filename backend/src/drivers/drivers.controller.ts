@@ -90,6 +90,24 @@ export class DriversController {
     return this.drivers.updatePaymentDetails(user.id, dto, req.ip);
   }
 
+  @Post('me/stripe/onboarding')
+  getStripeOnboarding(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: { returnUrl?: string; refreshUrl?: string },
+  ) {
+    return this.drivers.createStripeOnboardingLink(user.id, dto);
+  }
+
+  @Get('me/stripe/status')
+  getStripeStatus(@CurrentUser() user: AuthUser) {
+    return this.drivers.getStripeStatus(user.id);
+  }
+
+  @Get('me/stripe/dashboard-link')
+  getStripeDashboardLink(@CurrentUser() user: AuthUser) {
+    return this.drivers.getStripeDashboardLink(user.id);
+  }
+
   @Get('documents')
   listDocuments(@CurrentUser() user: AuthUser) {
     return this.drivers.listMyDocuments(user.id);

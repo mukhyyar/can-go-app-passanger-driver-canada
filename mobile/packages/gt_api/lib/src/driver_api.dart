@@ -29,6 +29,24 @@ class DriverApi {
           Map<String, dynamic> body) =>
       client.patch('/driver/me/payment-details', body: body);
 
+  Future<Map<String, dynamic>> stripeOnboarding({
+    String? returnUrl,
+    String? refreshUrl,
+  }) =>
+      client.post(
+        '/driver/me/stripe/onboarding',
+        body: {
+          if (returnUrl != null) 'returnUrl': returnUrl,
+          if (refreshUrl != null) 'refreshUrl': refreshUrl,
+        },
+      );
+
+  Future<Map<String, dynamic>> stripeStatus() =>
+      client.get('/driver/me/stripe/status');
+
+  Future<Map<String, dynamic>> stripeDashboardLink() =>
+      client.get('/driver/me/stripe/dashboard-link');
+
   Future<Map<String, dynamic>> wallet() => client.get('/driver/me/wallet');
 
   Future<Map<String, dynamic>> walletEntries({

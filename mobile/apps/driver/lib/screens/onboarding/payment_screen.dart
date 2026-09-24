@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../payment/payment_details_rules.dart';
 import '../../state/app_state.dart';
@@ -338,6 +339,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ? _formatReviewedAt(s.paymentReviewedAt)
                     : null,
               ),
+              const SizedBox(height: 12),
+              const _StripeConnectCard(),
               const SizedBox(height: 12),
               GtCard(
                 child: Column(
@@ -739,3 +742,176 @@ class _LabeledDropdown extends StatelessWidget {
     );
   }
 }
+
+class _StripeConnectCard extends StatefulWidget {
+  const _StripeConnectCard();
+
+  @override
+  State<_StripeConnectCard> createState() => _StripeConnectCardState();
+}
+
+class _StripeConnectCardState extends State<_StripeConnectCard> {
+  bool _loading = false;
+  String? _error;
+
+  Future<void> _handleStripeAction(AppState s) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      if (s.stripeAccountStatus == 'ACTIVE' || s.stripePayoutsEnabled) {
+        final url = await s.getStripeDashboardUrl();
+        if (url.isNotEmpty) {
+          final uri = Uri.parse(url);
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      } else {
+        final url = await s.getStripeOnboardingUrl();
+        if (url.isNotEmpty) {
+          final uri = Uri.parse(url);
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      }
+    } catch (e) {
+      setState(() => _error = 'Could not open Stripe: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _refresh(AppState s) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await s.refreshStripeStatus();
+    } catch (e) {
+      setState(() => _error = 'Refresh failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final isLinked = s.stripeAccountId != null && s.stripeAccountId!.isNotEmpty;
+    final isActive = s.stripeAccountStatus == 'ACTIVE' || s.stripePayoutsEnabled;
+    final isPending = isLinked && !isActive;
+
+    Color badgeColor;
+    String badgeText;
+    IconData iconData;
+
+    if (isActive) {
+      badgeColor = Colors.green.shade700;
+      badgeText = 'DIRECT PAYOUTS ACTIVE';
+      iconData = Icons.verified;
+    } else if (isPending) {
+      badgeColor = Colors.amber.shade800;
+      badgeText = 'VERIFICATION PENDING';
+      iconData = Icons.pending_actions;
+    } else {
+      badgeColor = const Color(0xFF635BFF);
+      badgeText = 'STRIPE EXPRESS';
+      iconData = Icons.account_balance;
+    }
+
+    return GtCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(iconData, color: badgeColor, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'Direct Payouts (Stripe)',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: badgeColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            isActive
+                ? 'Your Canadian bank account is connected with Stripe Express. Ride earnings are transferred automatically upon completing each trip.'
+                : isPending
+                    ? 'Your Stripe account needs verification or additional documents before payouts can be deposited. Tap below to complete setup.'
+                    : 'Connect your Canadian bank account securely via Stripe Express for immediate automated trip payouts and official tax reporting.',
+            style: const TextStyle(fontSize: 13, color: GtColors.textSecondary, height: 1.4),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: _loading ? null : () => _handleStripeAction(s),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isActive ? const Color(0xFF1E293B) : const Color(0xFF635BFF),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      elevation: 0,
+                    ),
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : Icon(isActive ? Icons.dashboard_outlined : Icons.open_in_new, size: 18),
+                    label: Text(
+                      isActive
+                          ? 'Open Stripe Dashboard'
+                          : isPending
+                              ? 'Complete Verification'
+                              : 'Set Up Stripe Payouts',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                  ),
+                ),
+              ),
+              if (isLinked) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Refresh Status',
+                  onPressed: _loading ? null : () => _refresh(s),
+                  icon: const Icon(Icons.refresh, size: 20),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
