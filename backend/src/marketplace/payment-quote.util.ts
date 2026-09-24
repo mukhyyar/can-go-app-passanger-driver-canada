@@ -62,7 +62,7 @@ export function parseVehicleName(name: string): {
   const withoutYear = cleaned.replace(/,?\s*(19|20)\d{2}\s*$/, '').trim();
   const parts = withoutYear.split(/\s+/);
   const brand = parts[0] ?? cleaned;
-  const model = parts.slice(1).join(' ') || withoutYear;
+  const model = parts.slice(1).join(' ');
   return {
     brand,
     model,

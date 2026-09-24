@@ -125,17 +125,28 @@ export class TripService {
     });
 
     const driverUserId = ride.selectedOffer?.driver?.userId;
-    const targets = [ride.passenger.userId, driverUserId].filter(
-      Boolean,
-    ) as string[];
 
-    await this.notifications.notifyRideStatus({
-      userIds: targets,
-      rideId,
-      status: notifyStatus,
-      title: this.titleFor(notifyStatus),
-      body: this.bodyFor(notifyStatus, ride.fromLabel),
-    });
+    if (ride.passenger?.userId) {
+      await this.notifications.notifyRideStatus({
+        userIds: [ride.passenger.userId],
+        rideId,
+        status: notifyStatus,
+        title: this.titleFor(notifyStatus),
+        body: this.bodyFor(notifyStatus, ride.fromLabel),
+        targetRole: ['PASSENGER', 'PASSENGER_WEB'],
+      });
+    }
+
+    if (driverUserId) {
+      await this.notifications.notifyRideStatus({
+        userIds: [driverUserId],
+        rideId,
+        status: notifyStatus,
+        title: this.titleFor(notifyStatus),
+        body: this.bodyFor(notifyStatus, ride.fromLabel),
+        targetRole: 'DRIVER',
+      });
+    }
 
     return {
       id: rideId,

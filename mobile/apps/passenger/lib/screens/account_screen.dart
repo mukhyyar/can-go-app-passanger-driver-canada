@@ -39,7 +39,7 @@ class AccountScreen extends StatelessWidget {
         title: const Text('Account'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
       ),
       body: ListView(
@@ -235,7 +235,7 @@ class _EditFieldScreenState extends State<EditFieldScreen> {
         title: Text(widget.title),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
         actions: [
           TextButton(

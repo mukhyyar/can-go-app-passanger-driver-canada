@@ -165,6 +165,7 @@ export class ChatService {
           ? passengerUserId
           : null;
     if (recipientId) {
+      const isPassengerRecipient = recipientId === passengerUserId;
       const preview = body.length > 120 ? `${body.slice(0, 117)}…` : body;
       void this.notifications
         .sendToUser({
@@ -173,12 +174,15 @@ export class ChatService {
           body: preview,
           templateKey: 'chat_message',
           eventId: `chat.message.${msg.id}`,
+          targetRole: isPassengerRecipient
+            ? ['PASSENGER', 'PASSENGER_WEB']
+            : 'DRIVER',
           data: {
             type: 'chat',
             rideId,
             messageId: msg.id,
             deepLink:
-              recipientId === passengerUserId
+              isPassengerRecipient
                 ? `/ride/${rideId}/chat`
                 : `/chat/${rideId}`,
           },

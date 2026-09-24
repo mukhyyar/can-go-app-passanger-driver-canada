@@ -1,37 +1,46 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:passenger/screens/book/service_mode_segment.dart';
+import 'package:passenger/screens/book/book_screen.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:provider/provider.dart';
+import 'package:gt_mock/gt_mock.dart';
 
 void main() {
-  testWidgets('switching between tabs updates serviceType', (tester) async {
+  testWidgets('BookScreen switching from delivery back to ride with full state', (tester) async {
     final state = AppState();
-    expect(state.serviceType, ServiceType.ride);
+    state.setFrom(MockData.places.first);
+    state.setTo(MockData.places.last);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return ServiceModeSegment(state: state);
-            },
-          ),
+      ChangeNotifierProvider<AppState>.value(
+        value: state,
+        child: const MaterialApp(
+          home: BookScreen(),
         ),
       ),
     );
+    await tester.pumpAndSettle();
+
+    expect(state.serviceType, ServiceType.ride);
 
     // Tap DELIVERY
-    await tester.tap(find.text('DELIVERY'));
+    final deliveryTab = find.text('DELIVERY');
+    expect(deliveryTab, findsOneWidget);
+    await tester.tap(deliveryTab);
     await tester.pumpAndSettle();
     expect(state.serviceType, ServiceType.delivery);
 
     // Tap RIDE
-    await tester.tap(find.text('RIDE'));
+    final rideTab = find.text('RIDE');
+    expect(rideTab, findsOneWidget);
+    await tester.tap(rideTab);
     await tester.pumpAndSettle();
     expect(state.serviceType, ServiceType.ride);
 
     // Tap PER HOUR
-    await tester.tap(find.text('PER HOUR'));
+    final perHourTab = find.text('PER HOUR');
+    expect(perHourTab, findsOneWidget);
+    await tester.tap(perHourTab);
     await tester.pumpAndSettle();
     expect(state.serviceType, ServiceType.perHour);
   });

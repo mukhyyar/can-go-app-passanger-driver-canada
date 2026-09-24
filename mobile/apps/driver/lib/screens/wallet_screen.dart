@@ -219,7 +219,7 @@ class _WalletScreenState extends State<WalletScreen> {
         title: const Text('Wallet'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
         actions: [
           IconButton(

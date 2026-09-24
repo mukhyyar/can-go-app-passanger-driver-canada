@@ -264,7 +264,7 @@ class _MapPickScreenState extends State<MapPickScreen>
         title: Text(_fieldTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
       ),
       body: Stack(

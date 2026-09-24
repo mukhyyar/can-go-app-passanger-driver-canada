@@ -115,7 +115,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Vehicle added successfully')),
     );
-    context.pop();
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/settings/vehicles');
+    }
   }
 
   @override
@@ -133,7 +137,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               _finish();
               return;
             }
-            context.pop();
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/settings/vehicles');
+            }
           },
         ),
       ),

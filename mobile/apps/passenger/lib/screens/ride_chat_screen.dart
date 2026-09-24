@@ -134,7 +134,9 @@ class _RideChatScreenState extends State<RideChatScreen> {
         title: Text(title),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go('/ride/${widget.rideId}'),
         ),
       ),
       body: Column(

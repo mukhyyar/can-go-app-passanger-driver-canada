@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
@@ -44,7 +45,8 @@ class _LegalScreenState extends State<LegalScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back',
-          onPressed: () => Navigator.of(context).maybePop(),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/'),
         ),
       ),
       body: SafeArea(

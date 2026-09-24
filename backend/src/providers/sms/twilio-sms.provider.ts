@@ -16,9 +16,9 @@ export class TwilioSmsProvider implements SmsProvider {
   private readonly from: string | undefined;
 
   constructor(config: ConfigService) {
-    this.accountSid = config.get<string>('twilio.accountSid');
-    this.authToken = config.get<string>('twilio.authToken');
-    this.from = config.get<string>('twilio.fromNumber');
+    this.accountSid = config.get<string>('twilio.accountSid')?.trim();
+    this.authToken = config.get<string>('twilio.authToken')?.trim();
+    this.from = config.get<string>('twilio.fromNumber')?.replace(/\s+/g, '');
   }
 
   async sendSms(toE164: string, body: string) {
@@ -29,7 +29,8 @@ export class TwilioSmsProvider implements SmsProvider {
     }
     const url = `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`;
     const form = new URLSearchParams();
-    form.set('To', toE164);
+    const cleanedTo = toE164.trim().replace(/\s+/g, '');
+    form.set('To', cleanedTo);
     form.set('From', this.from);
     form.set('Body', body);
     const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString(

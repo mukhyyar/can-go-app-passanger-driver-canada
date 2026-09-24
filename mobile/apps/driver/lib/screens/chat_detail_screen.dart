@@ -153,7 +153,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/chats'),
         ),
       ),
       body: Column(

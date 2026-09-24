@@ -455,6 +455,8 @@ class _RequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isReturn = request.isRoundTrip && request.returnDatetimeLabel != null;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GtCard(
@@ -462,14 +464,54 @@ class _RequestCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Header: datetime + return date + TTL pill ────────────────
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    request.datetimeLabel,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        request.datetimeLabel,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (isReturn) ...[
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3CD),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                                color: const Color(0xFFE6B800), width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.swap_horiz_rounded,
+                                  size: 13, color: Color(0xFF8A6900)),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Return: ${request.returnDatetimeLabel!}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF6B5000),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -493,53 +535,76 @@ class _RequestCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              'Ride #${request.id}',
-              style: const TextStyle(color: GtColors.textMuted, fontSize: 12),
+              'Ride #${request.displayId}',
+              style:
+                  const TextStyle(color: GtColors.textMuted, fontSize: 11),
             ),
+
+            // ── Flight badge ─────────────────────────────────────────────
             if (request.flightWait != null) ...[
               const SizedBox(height: 6),
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: GtColors.soft,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.flight, size: 14, color: GtColors.brand),
-                        const SizedBox(width: 4),
-                        Text(
-                          request.flightWait!,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: GtColors.soft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.flight,
+                        size: 14, color: GtColors.brand),
+                    const SizedBox(width: 4),
+                    Text(request.flightWait!,
+                        style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
               ),
             ],
-            const SizedBox(height: 12),
-            GtRouteRow(
+
+            const SizedBox(height: 14),
+
+            // ── Outbound route A → B ─────────────────────────────────────
+            _RouteSegment(
               from: request.from,
               to: request.to,
               distance: request.distance,
               duration: request.duration,
+              isReturn: false,
             ),
+
+            // ── Return leg B → A ─────────────────────────────────────────
+            if (isReturn) ...[
+              const SizedBox(height: 8),
+              _ReturnDivider(),
+              const SizedBox(height: 8),
+              _RouteSegment(
+                from: request.to,
+                to: request.from,
+                distance: request.distance,
+                duration: request.duration,
+                isReturn: true,
+              ),
+            ],
+
             const SizedBox(height: 12),
+
+            // ── Vehicle chips ─────────────────────────────────────────────
             GtVehicleChips(
               types: request.vehicleClassIds,
               rawNeed: request.vehicleNeed,
               passengers: request.passengers,
             ),
+
             const SizedBox(height: 12),
+
+            // ── Price or offer button ─────────────────────────────────────
             if (showPrice && request.offerPrice != null)
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: GtColors.soft,
                   borderRadius: BorderRadius.circular(10),
@@ -573,6 +638,246 @@ class _RequestCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Route segment widget (used for both outbound A→B and return B→A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RouteSegment extends StatelessWidget {
+  const _RouteSegment({
+    required this.from,
+    required this.to,
+    this.distance,
+    this.duration,
+    required this.isReturn,
+  });
+
+  final String from;
+  final String to;
+  final String? distance;
+  final String? duration;
+  final bool isReturn;
+
+  static const _amber = Color(0xFFE6A800);
+  static const _amberLight = Color(0xFFFFF3CD);
+  static const _amberText = Color(0xFF6B5000);
+  static const _amberSubtext = Color(0xFF8A6900);
+  static const _amberLine = Color(0xFFFFDD80);
+
+  @override
+  Widget build(BuildContext context) {
+    final originLetter = isReturn ? 'B' : 'A';
+    final destLetter = isReturn ? 'A' : 'B';
+
+    final originBg = isReturn ? _amberLight : GtColors.text;
+    final originTextColor = isReturn ? _amberText : Colors.white;
+    final originBorderColor = isReturn ? _amber : Colors.transparent;
+
+    final destBg = isReturn ? GtColors.text : GtColors.brand;
+    final lineColor = isReturn ? _amberLine : GtColors.border;
+
+    final distLabel =
+        distance != null ? (isReturn ? '$distance × 2' : distance!) : null;
+    final durLabel =
+        duration != null ? (isReturn ? '$duration × 2' : duration!) : null;
+
+    final hasMeta = distLabel != null || durLabel != null;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Left column: dots + connector ─────────────────────────────
+        SizedBox(
+          width: 28,
+          child: Column(
+            children: [
+              // Origin dot (A or B)
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: originBg,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: originBorderColor, width: 1.5),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  originLetter,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: originTextColor,
+                  ),
+                ),
+              ),
+              // Connector segment
+              Container(
+                  width: 2, height: 6, color: lineColor),
+              // Mid meta chip
+              if (hasMeta)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 4, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isReturn ? _amberLight : const Color(0xFFF2F2F7),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    children: [
+                      if (distLabel != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.route,
+                                size: 10,
+                                color: isReturn
+                                    ? _amberSubtext
+                                    : GtColors.textMuted),
+                            const SizedBox(width: 2),
+                            Text(
+                              distLabel,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                                color: isReturn
+                                    ? _amberText
+                                    : GtColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      if (durLabel != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.schedule,
+                                size: 10,
+                                color: isReturn
+                                    ? _amberSubtext
+                                    : GtColors.textMuted),
+                            const SizedBox(width: 2),
+                            Text(
+                              durLabel,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                                color: isReturn
+                                    ? _amberText
+                                    : GtColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                    width: 2, height: 22, color: lineColor),
+              Container(
+                  width: 2, height: 6, color: lineColor),
+              // Destination dot (B or A)
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: destBg,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  destLetter,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        // ── Right column: addresses ───────────────────────────────────
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  from,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+              SizedBox(height: hasMeta ? 36 : 22),
+              Text(
+                to,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Divider between outbound and return legs
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ReturnDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(height: 1, color: const Color(0xFFE6D4A0)),
+        ),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF3CD),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: const Color(0xFFE6B800), width: 0.8),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.swap_vert_rounded,
+                  size: 12, color: Color(0xFF8A6900)),
+              SizedBox(width: 4),
+              Text(
+                'RETURN',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                  color: Color(0xFF6B5000),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Container(height: 1, color: const Color(0xFFE6D4A0)),
+        ),
+      ],
     );
   }
 }

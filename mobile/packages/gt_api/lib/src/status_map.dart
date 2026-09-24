@@ -452,7 +452,11 @@ Offer offerFromServerOrMinimal(Map<String, dynamic> json) {
     return Offer(
       id: id,
       vehicleBrand: pres['brand']?.toString() ??
-          vehicle['name']?.toString() ??
+          () {
+            final name = vehicle['name']?.toString().trim() ?? '';
+            if (name.isEmpty) return null;
+            return name.split(RegExp(r'\s+')).first;
+          }() ??
           'Vehicle',
       vehicleModel: pres['model']?.toString() ?? '',
       vehicleClass: pres['vehicleClass']?.toString() ??

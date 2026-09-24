@@ -262,7 +262,7 @@ class _LocationScreenState extends State<LocationScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
         titleSpacing: 0,
         title: Container(

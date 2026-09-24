@@ -14,15 +14,46 @@ import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
 
 /// Marketplace trip composer — Book tab (RIDE / PER HOUR / DELIVERY).
-class BookScreen extends StatelessWidget {
+class BookScreen extends StatefulWidget {
   const BookScreen({super.key});
+
+  @override
+  State<BookScreen> createState() => _BookScreenState();
+}
+
+class _BookScreenState extends State<BookScreen> {
+  final ScrollController _scrollController = ScrollController();
+  ServiceType? _lastServiceType;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// Scroll back to the top so the service-mode tabs are always reachable.
+  void _resetScrollIfNeeded(ServiceType current) {
+    if (_lastServiceType != null && _lastServiceType != current) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
+    }
+    _lastServiceType = current;
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final mode = state.serviceType;
-    final showTo =
-        mode != ServiceType.perHour || state.perHourHasEnd;
+    _resetScrollIfNeeded(mode);
+
+    final showTo = mode != ServiceType.perHour || state.perHourHasEnd;
     final showSwap = mode == ServiceType.ride || mode == ServiceType.delivery;
     final showVehicles =
         mode == ServiceType.ride || mode == ServiceType.perHour;
@@ -39,6 +70,7 @@ class BookScreen extends StatelessWidget {
           children: [
             Expanded(
               child: ListView(
+                controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
                 children: [
                   const BookHeader(),

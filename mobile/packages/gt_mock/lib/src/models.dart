@@ -303,7 +303,20 @@ class Offer {
     if (vehicleDisplayName != null && vehicleDisplayName!.trim().isNotEmpty) {
       return vehicleDisplayName!;
     }
-    final base = '$vehicleBrand $vehicleModel'.trim();
+    final b = vehicleBrand.trim();
+    final m = vehicleModel.trim();
+    String base;
+    if (b.isNotEmpty && m.isNotEmpty) {
+      if (b.toLowerCase().contains(m.toLowerCase())) {
+        base = b;
+      } else if (m.toLowerCase().contains(b.toLowerCase())) {
+        base = m;
+      } else {
+        base = '$b $m';
+      }
+    } else {
+      base = b.isNotEmpty ? b : (m.isNotEmpty ? m : 'Vehicle');
+    }
     if (year != null) return '$base, $year';
     return base.isEmpty ? 'Vehicle' : base;
   }

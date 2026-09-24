@@ -1,10 +1,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { AppRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FirebaseService } from '../firebase/firebase.service';
 
-type AppRoleValue = 'PASSENGER' | 'DRIVER' | 'PASSENGER_WEB';
+export type AppRoleValue = 'PASSENGER' | 'DRIVER' | 'PASSENGER_WEB';
 
 export type PushPayload = {
   userId: string;
@@ -17,6 +17,8 @@ export type PushPayload = {
   imageUrl?: string;
   /** Deduplicate deliveries for the same logical event. */
   eventId?: string;
+  /** Target app role (e.g. 'DRIVER', 'PASSENGER', or array). If omitted, inferred from payload or sent to all tokens. */
+  targetRole?: AppRoleValue | AppRoleValue[];
 };
 
 @Injectable()
@@ -28,6 +30,78 @@ export class NotificationsService {
     private readonly firebase: FirebaseService,
     @Optional() private readonly config?: ConfigService,
   ) {}
+
+  resolveTargetRoles(payload: {
+    templateKey?: string;
+    targetRole?: AppRoleValue | AppRoleValue[];
+    data?: Record<string, string>;
+  }): AppRoleValue[] | undefined {
+    if (payload.targetRole) {
+      const roles = Array.isArray(payload.targetRole)
+        ? payload.targetRole
+        : [payload.targetRole];
+      if (roles.includes('PASSENGER') && !roles.includes('PASSENGER_WEB')) {
+        return [...roles, 'PASSENGER_WEB'];
+      }
+      return roles;
+    }
+
+    const templateKey = (payload.templateKey || '').toLowerCase();
+    const type = (payload.data?.type || '').toUpperCase();
+    const status = (payload.data?.status || '').toUpperCase();
+    const deepLink = payload.data?.deepLink || '';
+
+    // Driver-specific cues
+    if (
+      templateKey.startsWith('driver.') ||
+      templateKey.startsWith('wallet.') ||
+      templateKey.startsWith('kyc') ||
+      templateKey === 'ride.new_request' ||
+      templateKey === 'ride.offer_not_selected' ||
+      templateKey === 'ride.offer_reserved' ||
+      templateKey === 'ride.lost_item' ||
+      templateKey === 'ride.change_request' ||
+      type === 'OFFER_NOT_SELECTED' ||
+      type === 'OFFER_RESERVED' ||
+      type === 'RIDE_REQUEST' ||
+      type === 'KYC' ||
+      type.startsWith('WALLET.') ||
+      type === 'DOCUMENT_EXPIRED' ||
+      type === 'DOCUMENT_EXPIRING' ||
+      status === 'OFFER_NOT_SELECTED' ||
+      status === 'OFFER_RESERVED' ||
+      status === 'LOST_ITEM' ||
+      status === 'CHANGE_REQUEST' ||
+      deepLink.startsWith('/driver') ||
+      deepLink.startsWith('/request/') ||
+      deepLink.startsWith('/chat/')
+    ) {
+      return ['DRIVER'];
+    }
+
+    // Passenger-specific cues
+    if (
+      templateKey.startsWith('ride.offer_received') ||
+      templateKey.startsWith('ride.offer_updated') ||
+      templateKey.startsWith('ride.offer_withdrawn') ||
+      templateKey === 'ride.passenger_cancelled' ||
+      type === 'RIDE_OFFER_RECEIVED' ||
+      type === 'OFFER_UPDATED' ||
+      type === 'OFFER_WITHDRAWN' ||
+      status === 'OFFER_RECEIVED' ||
+      status === 'OFFER_UPDATED' ||
+      status === 'OFFER_WITHDRAWN' ||
+      status === 'PASSENGER_CANCELLED' ||
+      deepLink.startsWith('/offers/') ||
+      deepLink.startsWith('/offer/') ||
+      deepLink.startsWith('/booking-confirmed/') ||
+      deepLink.startsWith('/ride/')
+    ) {
+      return ['PASSENGER', 'PASSENGER_WEB'];
+    }
+
+    return undefined;
+  }
 
   private resolvePublicImageUrl(raw?: string | null): string | undefined {
     if (!raw) return undefined;
@@ -126,7 +200,7 @@ export class NotificationsService {
     });
   }
 
-  /** Send FCM to all device tokens for a user; cleans invalid tokens. */
+  /** Send FCM to device tokens for a user matching target appRole; cleans invalid tokens. */
   async sendToUser(payload: PushPayload) {
     if (payload.eventId && (await this.prisma.isReady())) {
       const prior = await this.prisma.notificationDelivery.findFirst({
@@ -146,8 +220,19 @@ export class NotificationsService {
     }
 
     const messaging = this.firebase.messaging();
+    const targetRoles = this.resolveTargetRoles(payload);
     const tokens = await this.prisma.deviceToken.findMany({
-      where: { userId: payload.userId },
+      where: {
+        userId: payload.userId,
+        ...(targetRoles && targetRoles.length > 0
+          ? {
+              appRole:
+                targetRoles.length === 1
+                  ? (targetRoles[0] as AppRole)
+                  : { in: targetRoles as AppRole[] },
+            }
+          : {}),
+      },
     });
 
     const resolvedImageUrl = this.resolvePublicImageUrl(payload.imageUrl);
@@ -156,6 +241,9 @@ export class NotificationsService {
       ...payload.data,
       ...(payload.eventId ? { eventId: payload.eventId } : {}),
       ...(resolvedImageUrl ? { imageUrl: resolvedImageUrl } : {}),
+      ...(targetRoles && targetRoles.length > 0
+        ? { targetRoles: targetRoles.join(',') }
+        : {}),
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
     };
 
@@ -166,7 +254,11 @@ export class NotificationsService {
         templateKey: payload.templateKey,
         title: payload.title,
         body: payload.body,
-        dataJson: { ...dataWithEvent, eventId: payload.eventId },
+        dataJson: {
+          ...dataWithEvent,
+          eventId: payload.eventId,
+          ...(targetRoles ? { targetRoles } : {}),
+        },
         status: 'skipped_no_token',
       });
       return { sent: 0, skipped: true };
@@ -181,7 +273,11 @@ export class NotificationsService {
           templateKey: payload.templateKey,
           title: payload.title,
           body: payload.body,
-          dataJson: { ...dataWithEvent, eventId: payload.eventId },
+          dataJson: {
+            ...dataWithEvent,
+            eventId: payload.eventId,
+            appRole: t.appRole,
+          },
           status: 'skipped_fcm_unconfigured',
         });
       }
@@ -230,7 +326,11 @@ export class NotificationsService {
           templateKey: payload.templateKey,
           title: payload.title,
           body: payload.body,
-          dataJson: { ...dataWithEvent, eventId: payload.eventId },
+          dataJson: {
+            ...dataWithEvent,
+            eventId: payload.eventId,
+            appRole: t.appRole,
+          },
           status: 'sent',
           providerMsgId: msgId,
         });
@@ -246,7 +346,11 @@ export class NotificationsService {
           templateKey: payload.templateKey,
           title: payload.title,
           body: payload.body,
-          dataJson: { ...dataWithEvent, eventId: payload.eventId },
+          dataJson: {
+            ...dataWithEvent,
+            eventId: payload.eventId,
+            appRole: t.appRole,
+          },
           status: 'failed',
           errorCode: code,
         });
@@ -272,6 +376,7 @@ export class NotificationsService {
     data?: Record<string, string>;
     imageUrl?: string;
     eventId?: string;
+    targetRole?: AppRoleValue | AppRoleValue[];
   }) {
     const results = [];
     for (const userId of input.userIds) {
@@ -283,6 +388,7 @@ export class NotificationsService {
           templateKey: `ride.${input.status.toLowerCase()}`,
           imageUrl: input.imageUrl,
           eventId: input.eventId,
+          targetRole: input.targetRole,
           data: {
             type: input.data?.type ?? 'ride.status',
             rideId: input.rideId,
@@ -314,6 +420,7 @@ export class NotificationsService {
       templateKey: 'ride.offer_received',
       imageUrl: input.imageUrl ?? undefined,
       eventId: `offer.created.${input.offerId}`,
+      targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       data: {
         type: 'RIDE_OFFER_RECEIVED',
         rideRequestId: input.rideId,
@@ -346,6 +453,7 @@ export class NotificationsService {
       templateKey: 'ride.offer_updated',
       imageUrl: input.imageUrl ?? undefined,
       eventId: `offer.updated.${input.offerId}`,
+      targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       data: {
         type: 'OFFER_UPDATED',
         rideRequestId: input.rideId,
@@ -377,6 +485,7 @@ export class NotificationsService {
           body,
           templateKey: 'ride.new_request',
           eventId: `ride.new_request.${input.rideId}.${userId}`,
+          targetRole: 'DRIVER',
           data: {
             type: 'ride_request',
             rideId: input.rideId,

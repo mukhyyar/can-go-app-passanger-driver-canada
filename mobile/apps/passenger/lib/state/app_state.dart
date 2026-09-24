@@ -602,7 +602,7 @@ class AppState extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> listNotifications({int limit = 50}) async {
     if (!isAuthenticated) return const [];
-    final raw = await api.notifications.list(limit: limit);
+    final raw = await api.notifications.list(limit: limit, appRole: 'PASSENGER');
     final items = (raw['items'] as List?) ??
         (raw['_list'] as List?) ??
         const [];
@@ -619,7 +619,7 @@ class AppState extends ChangeNotifier {
       return 0;
     }
     try {
-      final raw = await api.notifications.unreadCount();
+      final raw = await api.notifications.unreadCount(appRole: 'PASSENGER');
       unreadNotificationCount = (raw['count'] as num?)?.toInt() ?? 0;
       notifyListeners();
       return unreadNotificationCount;

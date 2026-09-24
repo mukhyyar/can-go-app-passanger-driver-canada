@@ -745,6 +745,7 @@ export class MarketplaceService {
       status: RideStatus.PASSENGER_CANCELLED,
       title: 'Ride cancelled',
       body: 'Your ride request was cancelled.',
+      targetRole: ['PASSENGER', 'PASSENGER_WEB'],
     });
     return this.getRideForActor(userId, rideId);
   }
@@ -864,6 +865,7 @@ export class MarketplaceService {
         status: isLostItem ? 'LOST_ITEM' : 'CHANGE_REQUEST',
         title: titles[dto.type],
         body,
+        targetRole: 'DRIVER',
         data: {
           type: dto.type,
           changeRequestId: row.id,
@@ -985,6 +987,7 @@ export class MarketplaceService {
         status: 'OFFER_RESERVED',
         title: 'Offer reserved',
         body: 'A passenger started booking your offer. Payment is pending.',
+        targetRole: 'DRIVER',
         data: { rideId, offerId, type: 'OFFER_RESERVED' },
       });
     }
@@ -1594,6 +1597,7 @@ export class MarketplaceService {
         status: 'OFFER_WITHDRAWN',
         title: 'Offer withdrawn',
         body: 'A driver withdrew their offer.',
+        targetRole: ['PASSENGER', 'PASSENGER_WEB'],
         data: {
           type: 'OFFER_WITHDRAWN',
           offerId,
@@ -2301,6 +2305,7 @@ export class MarketplaceService {
       status: RideStatus.BOOKED,
       title: 'Booking confirmed',
       body: `Your transfer from ${ride.fromLabel} is confirmed.`,
+      targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       data: bookingData,
     });
     const driverUserId = ride.selectedOffer?.driver.userId;
@@ -2316,6 +2321,7 @@ export class MarketplaceService {
         status: RideStatus.BOOKED,
         title: 'Your offer has been accepted',
         body: `Pickup at ${pickupLabel} · ${when}`,
+        targetRole: 'DRIVER',
         data: bookingData,
       });
     }
@@ -2334,6 +2340,7 @@ export class MarketplaceService {
           status: 'OFFER_NOT_SELECTED',
           title: 'Offer not selected',
           body: 'Another offer was booked for this request.',
+          targetRole: 'DRIVER',
           data: { rideId, offerId: o.id, type: 'OFFER_NOT_SELECTED' },
         });
       }
@@ -3136,6 +3143,7 @@ export class MarketplaceService {
         status: 'OFFER_RECEIVED',
         title: 'New offer available',
         body: 'A driver submitted an offer on your transfer request.',
+        targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       });
     }
   }

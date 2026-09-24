@@ -392,11 +392,22 @@ export class OfferPresentationService {
           ? Number(snap.passengerTotal)
           : round2(Number(offer.bidAmount ?? 0) * 1.44));
 
+    const baseVehicleName = (() => {
+      const b = (brand ?? '').trim();
+      const m = (model ?? '').trim();
+      if (b && m) {
+        if (b.toLowerCase().includes(m.toLowerCase())) return b;
+        if (m.toLowerCase().includes(b.toLowerCase())) return m;
+        return `${b} ${m}`;
+      }
+      return b || m || 'Vehicle';
+    })();
+
     return {
       presentation: {
         vehicleDisplayName: year
-          ? `${brand} ${model}`.trim() + `, ${year}`
-          : `${brand} ${model}`.trim(),
+          ? `${baseVehicleName}, ${year}`
+          : baseVehicleName,
         brand,
         model,
         year,

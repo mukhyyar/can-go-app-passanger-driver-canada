@@ -49,7 +49,7 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
         title: const Text('Vehicles'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
       ),
       body: Column(

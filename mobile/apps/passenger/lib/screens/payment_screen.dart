@@ -345,7 +345,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         title: const Text('Payment'),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
         actions: [
           if (canCancel)

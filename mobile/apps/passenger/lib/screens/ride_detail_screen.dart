@@ -820,7 +820,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         title: Text(ride != null ? 'Ride #${ride.displayId}' : 'Ride'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
       ),
       body: _loading
@@ -1014,10 +1014,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      if (!isCompleted &&
-                                          (offer.driverName ?? '')
-                                              .trim()
-                                              .isNotEmpty)
+                                      if ((offer.driverName ?? '')
+                                          .trim()
+                                          .isNotEmpty)
                                         Text(
                                           offer.driverName!.trim(),
                                           style: const TextStyle(
@@ -1050,10 +1049,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                           ),
                                         ],
                                       ),
-                                      if (!isCompleted &&
-                                          (offer.driverName ?? '')
-                                              .trim()
-                                              .isNotEmpty) ...[
+                                      if ((offer.driverName ?? '')
+                                          .trim()
+                                          .isNotEmpty) ...[
                                         const SizedBox(height: 6),
                                         Text(
                                           offer.displayName,

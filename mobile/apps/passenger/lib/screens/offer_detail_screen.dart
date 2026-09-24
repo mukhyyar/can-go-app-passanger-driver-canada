@@ -349,7 +349,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
         title: const Text('Offer details'),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => context.pop(),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go('/offers/${widget.rideId}'),
         ),
       ),
       body: Column(

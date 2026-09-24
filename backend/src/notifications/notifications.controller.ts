@@ -54,11 +54,55 @@ export class NotificationsController {
     });
   }
 
+  private matchesAppRole(
+    r: { templateKey?: string | null; dataJson?: unknown },
+    appRole?: string,
+  ): boolean {
+    if (!appRole) return true;
+    const target = appRole.toUpperCase();
+    const data = (r.dataJson ?? {}) as Record<string, unknown>;
+    const assignedRole = (
+      (data.appRole as string) ||
+      (data.targetRole as string) ||
+      ''
+    ).toUpperCase();
+    const assignedRoles = (
+      (data.targetRoles as string) || ''
+    ).toUpperCase().split(',');
+
+    if (assignedRole) {
+      if (target === 'PASSENGER') {
+        return assignedRole === 'PASSENGER' || assignedRole === 'PASSENGER_WEB';
+      }
+      return assignedRole === target;
+    }
+    if (assignedRoles.length > 0 && assignedRoles[0] !== '') {
+      if (target === 'PASSENGER') {
+        return assignedRoles.includes('PASSENGER') || assignedRoles.includes('PASSENGER_WEB');
+      }
+      return assignedRoles.includes(target);
+    }
+
+    const inferred = this.notifications.resolveTargetRoles({
+      templateKey: r.templateKey ?? undefined,
+      data: data as Record<string, string>,
+    });
+    if (inferred && inferred.length > 0) {
+      if (target === 'PASSENGER') {
+        return inferred.includes('PASSENGER') || inferred.includes('PASSENGER_WEB');
+      }
+      return inferred.includes(target as any);
+    }
+
+    return true;
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard)
   async list(
     @CurrentUser() user: AuthUser,
     @Query('limit') limitRaw?: string,
+    @Query('appRole') appRole?: string,
   ) {
     const limit = Math.min(Math.max(Number(limitRaw) || 50, 1), 100);
     const rows = await this.prisma.notificationDelivery.findMany({
@@ -76,6 +120,8 @@ export class NotificationsController {
     const seen = new Set<string>();
     const items = [];
     for (const r of rows) {
+      if (!this.matchesAppRole(r, appRole)) continue;
+
       const data = (r.dataJson ?? {}) as Record<string, unknown>;
       const eventId = data.eventId?.toString();
       const dedupeKey =
@@ -101,14 +147,31 @@ export class NotificationsController {
 
   @Get('unread-count')
   @UseGuards(JwtAuthGuard)
-  async unreadCount(@CurrentUser() user: AuthUser) {
-    const count = await this.prisma.notificationDelivery.count({
+  async unreadCount(
+    @CurrentUser() user: AuthUser,
+    @Query('appRole') appRole?: string,
+  ) {
+    if (!appRole) {
+      const count = await this.prisma.notificationDelivery.count({
+        where: {
+          userId: user.id,
+          readAt: null,
+          OR: [{ title: { not: null } }, { body: { not: null } }],
+        },
+      });
+      return { count };
+    }
+
+    const unreadRows = await this.prisma.notificationDelivery.findMany({
       where: {
         userId: user.id,
         readAt: null,
         OR: [{ title: { not: null } }, { body: { not: null } }],
       },
+      select: { templateKey: true, dataJson: true },
+      take: 200,
     });
+    const count = unreadRows.filter((r) => this.matchesAppRole(r, appRole)).length;
     return { count };
   }
 

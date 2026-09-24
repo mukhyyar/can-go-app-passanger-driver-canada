@@ -115,6 +115,14 @@ class PushService with WidgetsBindingObserver {
 
   void _handleMessage(RemoteMessage message) {
     final data = message.data;
+    final targetRoles = (data['targetRoles']?.toString() ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (targetRoles.isNotEmpty && !targetRoles.contains('DRIVER')) {
+      return;
+    }
     final rideId = data['rideId']?.toString();
     if (rideId == null || rideId.isEmpty) return;
     final type = data['type']?.toString();
