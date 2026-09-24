@@ -40,7 +40,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final name = context.read<AppState>().me?['fullName']?.toString().trim();
+      final app = context.read<AppState>();
+      app.clearPendingOfferAlert();
+      app.clearPendingRideStatusAlert();
+      ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+
+      final name = app.me?['fullName']?.toString().trim();
       if (name != null && name.isNotEmpty) {
         _name.text = name;
       }
@@ -262,7 +267,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not cancel: $e')),
+        SnackBar(
+          content: Text('Could not cancel: $e'),
+          behavior: SnackBarBehavior.floating,
+          showCloseIcon: true,
+          duration: const Duration(seconds: 4),
+        ),
       );
     }
   }
@@ -339,8 +349,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             'The ride is not refundable in case of cancellation.');
 
 
-    return Scaffold(
-      backgroundColor: GtColors.bgGrey,
+    return ScaffoldMessenger(
+      child: Scaffold(
+        backgroundColor: GtColors.bgGrey,
       appBar: AppBar(
         title: const Text('Payment'),
         leading: IconButton(
@@ -392,6 +403,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               final ok = await _awaitPaymentConfirmation(app);
                               if (!mounted) return;
                               if (ok) {
+                                if (!context.mounted) return;
                                 context.go(
                                   '/booking-confirmed/${widget.rideId}',
                                 );
@@ -419,7 +431,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                 )
               : ListView(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    16,
+                    16,
+                    MediaQuery.paddingOf(context).bottom + 36,
+                  ),
                   children: [
                     if (offer != null)
                       GtCard(
@@ -651,14 +668,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                         ),
                       )
-                    else
+                    else ...[
                       GtGreenButton(
                         label:
                             'Pay ${formatMoney(onlineAmount > 0 ? onlineAmount : effectiveTotal, currency)}',
                         onPressed: _termsAccepted ? _pay : null,
                       ),
+                      const SizedBox(height: 20),
+                    ],
                   ],
                 ),
+      ),
     );
   }
 

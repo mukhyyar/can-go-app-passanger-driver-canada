@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:passenger/screens/account_screen.dart';
 import 'package:passenger/screens/auth_screen.dart';
@@ -111,9 +112,11 @@ GoRouter createRouter(AppState state) {
       ),
       GoRoute(
         path: '/payment/:rideId/:offerId',
-        builder: (_, state) => PaymentScreen(
-          rideId: state.pathParameters['rideId']!,
-          offerId: state.pathParameters['offerId']!,
+        builder: (_, state) => ScaffoldMessenger(
+          child: PaymentScreen(
+            rideId: state.pathParameters['rideId']!,
+            offerId: state.pathParameters['offerId']!,
+          ),
         ),
       ),
       GoRoute(

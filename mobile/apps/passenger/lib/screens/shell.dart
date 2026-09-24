@@ -73,6 +73,13 @@ class _ShellState extends State<Shell> {
     final rideAlert = app.pendingRideStatusAlert;
     final rideAlertId = app.pendingRideStatusRideId;
 
+    if (alert == null) {
+      _seenOfferAlert = null;
+    }
+    if (rideAlert == null) {
+      _seenRideStatusAlert = null;
+    }
+
     if (alert != null &&
         alertRideId != null &&
         alert != _seenOfferAlert &&
@@ -80,11 +87,20 @@ class _ShellState extends State<Shell> {
       _seenOfferAlert = alert;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+        if (!isCurrent) {
+          app.clearPendingOfferAlert();
+          return;
+        }
         final messenger = ScaffoldMessenger.of(context);
-        messenger.hideCurrentSnackBar();
+        messenger.clearSnackBars();
         messenger.showSnackBar(
           SnackBar(
             content: Text(alert),
+            behavior: SnackBarBehavior.floating,
+            dismissDirection: DismissDirection.horizontal,
+            showCloseIcon: true,
+            duration: const Duration(seconds: 4),
             action: SnackBarAction(
               label: 'View',
               onPressed: () {
@@ -94,7 +110,6 @@ class _ShellState extends State<Shell> {
                 GoRouter.of(context).push('/offers/$alertRideId');
               },
             ),
-            duration: const Duration(seconds: 6),
           ),
         );
         app.clearPendingOfferAlert();
@@ -108,11 +123,20 @@ class _ShellState extends State<Shell> {
       _seenRideStatusAlert = rideAlert;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+        final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+        if (!isCurrent) {
+          app.clearPendingRideStatusAlert();
+          return;
+        }
         final messenger = ScaffoldMessenger.of(context);
-        messenger.hideCurrentSnackBar();
+        messenger.clearSnackBars();
         messenger.showSnackBar(
           SnackBar(
             content: Text(rideAlert),
+            behavior: SnackBarBehavior.floating,
+            dismissDirection: DismissDirection.horizontal,
+            showCloseIcon: true,
+            duration: const Duration(seconds: 4),
             action: SnackBarAction(
               label: 'View',
               onPressed: () {
@@ -122,7 +146,6 @@ class _ShellState extends State<Shell> {
                 GoRouter.of(context).push('/ride/$rideAlertId');
               },
             ),
-            duration: const Duration(seconds: 6),
           ),
         );
         app.clearPendingRideStatusAlert();
