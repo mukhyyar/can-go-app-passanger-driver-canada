@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RideStatus, UserRole } from '@prisma/client';
+import { Prisma, RideStatus, SupportCaseStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -38,6 +38,10 @@ export class ChatService {
       include: {
         passenger: true,
         selectedOffer: { include: { driver: true } },
+        supportCases: {
+          where: { title: 'Lost item inquiry' },
+          select: { id: true, status: true },
+        },
       },
     });
     if (!ride) throw new NotFoundException('Ride not found');
@@ -56,7 +60,14 @@ export class ChatService {
     if (!isAdmin && !isPassenger && !isDriver) {
       throw new ForbiddenException('Not a chat participant');
     }
-    if (!isAdmin && !ALLOWED_STATUSES.includes(ride.status)) {
+    const hasActiveLostItem = ride.supportCases.some(
+      (c) => c.status !== SupportCaseStatus.RESOLVED,
+    );
+    if (
+      !isAdmin &&
+      !ALLOWED_STATUSES.includes(ride.status) &&
+      !(ride.status === RideStatus.COMPLETED && hasActiveLostItem)
+    ) {
       throw new BadRequestException('Chat unavailable for this ride status');
     }
     return ride;

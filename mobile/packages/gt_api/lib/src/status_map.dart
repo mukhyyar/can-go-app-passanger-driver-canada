@@ -32,6 +32,12 @@ RideStatus mapServerRideStatus(String? status) {
   }
 }
 
+LostItemDetails? _parseLostItem(dynamic raw) {
+  if (raw is! Map) return null;
+  final map = raw.map((key, value) => MapEntry(key.toString(), value));
+  return LostItemDetails.fromJson(map);
+}
+
 String friendlyRideStatus(String? serverStatus) {
   switch ((serverStatus ?? '').toUpperCase()) {
     case 'WAITING_FOR_OFFERS':
@@ -175,6 +181,7 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
         int.tryParse('${json['viewCount'] ?? ''}'),
     currency: json['currency']?.toString(),
     hasLostItemRequest: json['hasLostItemRequest'] == true,
+    lostItem: _parseLostItem(json['lostItem']),
   );
 }
 
@@ -807,6 +814,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     pickupAt: pickupAt,
     passengerName: passengerName,
     hasLostItemRequest: json['hasLostItemRequest'] == true,
+    lostItem: _parseLostItem(json['lostItem']),
   );
 }
 

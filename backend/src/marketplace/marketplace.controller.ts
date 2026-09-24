@@ -31,6 +31,8 @@ import {
   CreateRideDto,
   PaymentQuoteDto,
   PricingQuoteDto,
+  ResolveLostItemDto,
+  RespondLostItemDto,
   SelectOfferDto,
   UpdateOfferDto,
   UpdateRideDto,
@@ -314,6 +316,29 @@ export class MarketplaceController {
     @Req() req: { ip?: string },
   ) {
     return this.marketplace.createPaymentIntent(user.id, dto, req.ip);
+  }
+
+  @Post('rides/:rideId/lost-item/respond')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  respondLostItem(
+    @CurrentUser() user: AuthUser,
+    @Param('rideId') rideId: string,
+    @Body() dto: RespondLostItemDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.respondToLostItem(user.id, rideId, dto, req.ip);
+  }
+
+  @Post('rides/:rideId/lost-item/returned')
+  @UseGuards(JwtAuthGuard)
+  resolveLostItem(
+    @CurrentUser() user: AuthUser,
+    @Param('rideId') rideId: string,
+    @Body() dto: ResolveLostItemDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.markLostItemReturned(user.id, rideId, dto, req.ip);
   }
 
   @Post('payments/webhooks/:provider')

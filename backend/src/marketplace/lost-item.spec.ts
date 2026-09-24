@@ -1,6 +1,10 @@
 import 'reflect-metadata';
 import { RideStatus, SupportCaseStatus, SupportCaseType } from '@prisma/client';
-import { CreateChangeRequestDto } from './dto/marketplace.dto';
+import {
+  CreateChangeRequestDto,
+  ResolveLostItemDto,
+  RespondLostItemDto,
+} from './dto/marketplace.dto';
 import { validate } from 'class-validator';
 
 describe('Lost & Found Change Request', () => {
@@ -10,6 +14,32 @@ describe('Lost & Found Change Request', () => {
     dto.contactPhone = '+15551234567';
     dto.note = 'Please check back seat';
 
+    const errors = await validate(dto);
+    expect(errors.length).toBe(0);
+  });
+
+  it('validates RespondLostItemDto with FOUND and NOT_FOUND actions', async () => {
+    const foundDto = new RespondLostItemDto();
+    foundDto.action = 'FOUND';
+    foundDto.note = 'Found under passenger seat';
+    const foundErrors = await validate(foundDto);
+    expect(foundErrors.length).toBe(0);
+
+    const notFoundDto = new RespondLostItemDto();
+    notFoundDto.action = 'NOT_FOUND';
+    notFoundDto.note = 'Checked cabin and trunk, not found';
+    const notFoundErrors = await validate(notFoundDto);
+    expect(notFoundErrors.length).toBe(0);
+
+    const invalidDto = new RespondLostItemDto();
+    (invalidDto as any).action = 'MAYBE';
+    const invalidErrors = await validate(invalidDto);
+    expect(invalidErrors.length).toBeGreaterThan(0);
+  });
+
+  it('validates ResolveLostItemDto', async () => {
+    const dto = new ResolveLostItemDto();
+    dto.note = 'Item successfully handed back to passenger';
     const errors = await validate(dto);
     expect(errors.length).toBe(0);
   });

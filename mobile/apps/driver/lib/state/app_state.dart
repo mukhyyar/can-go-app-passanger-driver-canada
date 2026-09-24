@@ -2406,4 +2406,32 @@ class AppState extends ChangeNotifier {
       debugPrint('pushTripLocation: $e');
     }
   }
+
+  Future<Map<String, dynamic>> respondToLostItem({
+    required String rideId,
+    required String action,
+    String? note,
+  }) async {
+    final res = await api.driver.respondLostItem(
+      rideId,
+      action: action,
+      note: note,
+    );
+    await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> markLostItemReturned({
+    required String rideId,
+    String? note,
+  }) async {
+    final res = await api.driver.markLostItemReturned(
+      rideId,
+      note: note,
+    );
+    await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
 }

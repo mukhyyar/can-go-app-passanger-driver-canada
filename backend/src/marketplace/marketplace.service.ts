@@ -15,6 +15,7 @@ import {
   OfferStatus,
   Prisma,
   RideStatus,
+  SupportCaseStatus,
   SupportCaseType,
   UserRole,
 } from '@prisma/client';
@@ -37,6 +38,8 @@ import type {
   CreatePaymentIntentDto,
   CreateRideDto,
   PaymentQuoteDto,
+  ResolveLostItemDto,
+  RespondLostItemDto,
   UpdateOfferDto,
   UpdateRideDto,
 } from './dto/marketplace.dto';
@@ -615,6 +618,15 @@ export class MarketplaceService {
             type: true,
             status: true,
             createdAt: true,
+            updatedAt: true,
+            notes: {
+              select: {
+                id: true,
+                body: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
           },
         },
       },
@@ -674,6 +686,15 @@ export class MarketplaceService {
             type: true,
             status: true,
             createdAt: true,
+            updatedAt: true,
+            notes: {
+              select: {
+                id: true,
+                body: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
           },
         },
       },
@@ -1161,6 +1182,15 @@ export class MarketplaceService {
             type: true,
             status: true,
             createdAt: true,
+            updatedAt: true,
+            notes: {
+              select: {
+                id: true,
+                body: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
           },
         },
       },
@@ -2676,6 +2706,8 @@ export class MarketplaceService {
           title: string;
           status: string;
           createdAt: Date;
+          updatedAt?: Date;
+          notes?: Array<{ id: string; body: string; createdAt: Date }>;
         }>)
       : [];
     const lostItemCase = supportCases.find(
@@ -2800,6 +2832,7 @@ export class MarketplaceService {
             createdAt: lostItemCase.createdAt,
           }
         : null,
+      lostItem: this.extractLostItemDetails(supportCases),
     };
     if (opts?.includeEvents) {
       return { ...base, events: ride.events };
@@ -3275,6 +3308,345 @@ export class MarketplaceService {
         targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       });
     }
+  }
+
+  extractLostItemDetails(supportCases: any[]): {
+    caseId: string;
+    status: 'REPORTED' | 'FOUND' | 'NOT_FOUND' | 'RETURNED';
+    contactPhone?: string | null;
+    itemDescription?: string | null;
+    driverNote?: string | null;
+    reportedAt: Date | string;
+    updatedAt?: Date | string;
+  } | null {
+    if (!Array.isArray(supportCases)) return null;
+    const lostItemCase = supportCases.find(
+      (c) => c.title === 'Lost item inquiry',
+    );
+    if (!lostItemCase) return null;
+
+    const notes: Array<{ body?: string; createdAt?: Date }> = Array.isArray(
+      lostItemCase.notes,
+    )
+      ? lostItemCase.notes
+      : [];
+
+    let contactPhone: string | null = null;
+    let itemDescription: string | null = null;
+    let driverNote: string | null = null;
+    let status: 'REPORTED' | 'FOUND' | 'NOT_FOUND' | 'RETURNED' = 'REPORTED';
+
+    for (const n of notes) {
+      const body = typeof n.body === 'string' ? n.body : '';
+      if (!contactPhone) {
+        const phoneMatch = body.match(/Passenger contact phone:\s*([^\n\r]+)/i);
+        if (phoneMatch) contactPhone = phoneMatch[1].trim();
+      }
+      if (!itemDescription) {
+        const descMatch = body.match(/Note:\s*([^\n\r]+)/i);
+        if (descMatch && !body.includes('[LOST_ITEM_')) {
+          itemDescription = descMatch[1].trim();
+        } else if (
+          !body.startsWith('Passenger contact phone:') &&
+          !body.includes('[LOST_ITEM_') &&
+          body.trim().length > 0
+        ) {
+          itemDescription = body.trim();
+        }
+      }
+      if (body.includes('[LOST_ITEM_RETURNED]')) {
+        status = 'RETURNED';
+        const match = body.match(/\[LOST_ITEM_RETURNED\](?:\s*Note:\s*)?(.*)/i);
+        if (match && match[1]?.trim()) driverNote = match[1].trim();
+      } else if (body.includes('[LOST_ITEM_FOUND]') && status !== 'RETURNED') {
+        status = 'FOUND';
+        const match = body.match(/\[LOST_ITEM_FOUND\](?:\s*Note:\s*)?(.*)/i);
+        if (match && match[1]?.trim()) driverNote = match[1].trim();
+      } else if (body.includes('[LOST_ITEM_NOT_FOUND]') && status !== 'RETURNED') {
+        status = 'NOT_FOUND';
+        const match = body.match(/\[LOST_ITEM_NOT_FOUND\](?:\s*Note:\s*)?(.*)/i);
+        if (match && match[1]?.trim()) driverNote = match[1].trim();
+      }
+    }
+
+    if (
+      status === 'REPORTED' &&
+      lostItemCase.status === SupportCaseStatus.RESOLVED
+    ) {
+      status = 'RETURNED';
+    }
+
+    return {
+      caseId: lostItemCase.id,
+      status,
+      contactPhone,
+      itemDescription,
+      driverNote,
+      reportedAt: lostItemCase.createdAt,
+      updatedAt: lostItemCase.updatedAt ?? lostItemCase.createdAt,
+    };
+  }
+
+  async respondToLostItem(
+    userId: string,
+    rideId: string,
+    dto: RespondLostItemDto,
+    ip?: string,
+  ) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: true,
+        selectedOffer: { include: { driver: true } },
+        supportCases: {
+          where: { title: 'Lost item inquiry' },
+          include: { notes: { orderBy: { createdAt: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const driverUserId = ride.selectedOffer?.driver.userId;
+    let isAssignedDriver = driverUserId === userId;
+    if (!isAssignedDriver && ride.assignedDriverId) {
+      const dp = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      if (dp?.userId === userId) isAssignedDriver = true;
+    }
+    if (!isAssignedDriver) {
+      throw new ForbiddenException(
+        'Only the assigned driver can respond to this lost item request',
+      );
+    }
+
+    const lostItemCase = ride.supportCases[0];
+    if (!lostItemCase) {
+      throw new NotFoundException('No active lost item inquiry found for this ride');
+    }
+
+    const isFound = dto.action === 'FOUND';
+    const tag = isFound ? '[LOST_ITEM_FOUND]' : '[LOST_ITEM_NOT_FOUND]';
+    const noteBody = dto.note?.trim()
+      ? `${tag} Note: ${dto.note.trim()}`
+      : tag;
+
+    await this.prisma.supportCaseNote.create({
+      data: {
+        caseId: lostItemCase.id,
+        authorId: userId,
+        body: noteBody,
+        internal: false,
+      },
+    });
+
+    await this.prisma.supportCase.update({
+      where: { id: lostItemCase.id },
+      data: {
+        status: isFound ? SupportCaseStatus.ASSIGNED : SupportCaseStatus.RESOLVED,
+      },
+    });
+
+    await this.prisma.rideEvent.create({
+      data: {
+        rideId,
+        fromStatus: ride.status,
+        toStatus: ride.status,
+        actorType: 'driver',
+        actorId: userId,
+        payload: {
+          action: isFound ? 'lost_item_found' : 'lost_item_not_found',
+          caseId: lostItemCase.id,
+          note: dto.note?.trim() || null,
+        },
+      },
+    });
+
+    await this.audit(
+      userId,
+      `ride.lost_item_${dto.action.toLowerCase()}`,
+      'SupportCase',
+      lostItemCase.id,
+      ip,
+    );
+
+    const passengerUserId = ride.passenger?.userId;
+    if (passengerUserId) {
+      const title = isFound ? 'Lost item found!' : 'Lost item update';
+      const body = isFound
+        ? `Great news! Your driver confirmed finding your item on ride #${shortIdFrom(ride.id)}.${dto.note?.trim() ? ` Driver: "${dto.note.trim()}"` : ' You can now contact your driver to coordinate pickup.'}`
+        : `Your driver checked their vehicle for ride #${shortIdFrom(ride.id)} and did not locate the item.${dto.note?.trim() ? ` Note: "${dto.note.trim()}"` : ' Please contact support if you need further help.'}`;
+
+      void this.notifications.notifyRideStatus({
+        userIds: [passengerUserId],
+        rideId,
+        status: isFound ? 'LOST_ITEM_FOUND' : 'LOST_ITEM_NOT_FOUND',
+        title,
+        body,
+        targetRole: 'PASSENGER',
+        data: {
+          rideId,
+          caseId: lostItemCase.id,
+          action: dto.action,
+          deepLink: `/passenger/ride/${rideId}`,
+        },
+      });
+
+      this.tracking?.emitToPassengers([passengerUserId], 'ride.status.changed', {
+        rideId,
+        status: ride.status,
+        lostItemAction: dto.action,
+      });
+    }
+
+    this.tracking?.emitRideEvent(rideId, {
+      event: `ride.lost_item.${dto.action.toLowerCase()}`,
+      rideId,
+      caseId: lostItemCase.id,
+    });
+
+    return {
+      success: true,
+      caseId: lostItemCase.id,
+      status: isFound ? 'FOUND' : 'NOT_FOUND',
+    };
+  }
+
+  async markLostItemReturned(
+    userId: string,
+    rideId: string,
+    dto: ResolveLostItemDto,
+    ip?: string,
+  ) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: true,
+        selectedOffer: { include: { driver: true } },
+        supportCases: {
+          where: { title: 'Lost item inquiry' },
+          include: { notes: { orderBy: { createdAt: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const driverUserId = ride.selectedOffer?.driver.userId;
+    let isDriver = driverUserId === userId;
+    if (!isDriver && ride.assignedDriverId) {
+      const dp = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      if (dp?.userId === userId) isDriver = true;
+    }
+    const isPassenger = ride.passenger?.userId === userId;
+
+    if (!isDriver && !isPassenger) {
+      throw new ForbiddenException(
+        'Not authorized to resolve this lost item request',
+      );
+    }
+
+    const lostItemCase = ride.supportCases[0];
+    if (!lostItemCase) {
+      throw new NotFoundException('No active lost item inquiry found for this ride');
+    }
+
+    const noteBody = dto.note?.trim()
+      ? `[LOST_ITEM_RETURNED] Note: ${dto.note.trim()}`
+      : `[LOST_ITEM_RETURNED]`;
+
+    await this.prisma.supportCaseNote.create({
+      data: {
+        caseId: lostItemCase.id,
+        authorId: userId,
+        body: noteBody,
+        internal: false,
+      },
+    });
+
+    await this.prisma.supportCase.update({
+      where: { id: lostItemCase.id },
+      data: {
+        status: SupportCaseStatus.RESOLVED,
+      },
+    });
+
+    await this.prisma.rideEvent.create({
+      data: {
+        rideId,
+        fromStatus: ride.status,
+        toStatus: ride.status,
+        actorType: isDriver ? 'driver' : 'passenger',
+        actorId: userId,
+        payload: {
+          action: 'lost_item_returned',
+          caseId: lostItemCase.id,
+          note: dto.note?.trim() || null,
+          resolvedBy: isDriver ? 'driver' : 'passenger',
+        },
+      },
+    });
+
+    await this.audit(
+      userId,
+      'ride.lost_item_returned',
+      'SupportCase',
+      lostItemCase.id,
+      ip,
+    );
+
+    const targetUserId = isDriver ? ride.passenger?.userId : driverUserId;
+    if (targetUserId) {
+      const title = isDriver ? 'Lost item returned' : 'Lost item received';
+      const body = isDriver
+        ? `Driver marked your lost item on ride #${shortIdFrom(ride.id)} as returned to you.`
+        : `Passenger confirmed receiving their lost item on ride #${shortIdFrom(ride.id)}.`;
+
+      void this.notifications.notifyRideStatus({
+        userIds: [targetUserId],
+        rideId,
+        status: 'LOST_ITEM_RETURNED',
+        title,
+        body,
+        targetRole: isDriver ? 'PASSENGER' : 'DRIVER',
+        data: {
+          rideId,
+          caseId: lostItemCase.id,
+          deepLink: isDriver ? `/passenger/ride/${rideId}` : `/driver/trip/${rideId}`,
+        },
+      });
+
+      if (isDriver) {
+        this.tracking?.emitToPassengers([targetUserId], 'ride.status.changed', {
+          rideId,
+          status: ride.status,
+          lostItemAction: 'RETURNED',
+        });
+      } else {
+        this.tracking?.emitToDrivers([targetUserId], 'ride.status.changed', {
+          rideId,
+          status: ride.status,
+          lostItemAction: 'RETURNED',
+        });
+      }
+    }
+
+    this.tracking?.emitRideEvent(rideId, {
+      event: 'ride.lost_item.returned',
+      rideId,
+      caseId: lostItemCase.id,
+    });
+
+    return {
+      success: true,
+      caseId: lostItemCase.id,
+      status: 'RETURNED',
+    };
   }
 
   private async audit(

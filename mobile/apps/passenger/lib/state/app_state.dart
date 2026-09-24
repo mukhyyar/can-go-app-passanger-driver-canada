@@ -746,6 +746,10 @@ class AppState extends ChangeNotifier {
           currency: raw['currency']?.toString() ?? existing?.currency ?? 'CAD',
           hasLostItemRequest: raw['hasLostItemRequest'] == true ||
               existing?.hasLostItemRequest == true,
+          lostItem: raw['lostItem'] is Map
+              ? LostItemDetails.fromJson(
+                  Map<String, dynamic>.from(raw['lostItem'] as Map))
+              : existing?.lostItem,
         );
       }
 
@@ -770,6 +774,7 @@ class AppState extends ChangeNotifier {
           viewCount: ride.viewCount,
           currency: ride.currency,
           hasLostItemRequest: ride.hasLostItemRequest,
+          lostItem: ride.lostItem,
         );
       }
 
@@ -1091,10 +1096,30 @@ class AppState extends ChangeNotifier {
           viewCount: existing.viewCount,
           currency: existing.currency,
           hasLostItemRequest: true,
+          lostItem: LostItemDetails(
+            caseId: res['id']?.toString() ?? '',
+            status: 'REPORTED',
+            contactPhone: contactPhone,
+            itemDescription: note,
+            reportedAt: DateTime.now(),
+          ),
         );
         notifyListeners();
       }
     }
+    return res;
+  }
+
+  Future<Map<String, dynamic>> markLostItemReturned(
+    String rideId, {
+    String? note,
+  }) async {
+    final res = await api.marketplace.markLostItemReturned(
+      rideId,
+      note: note,
+    );
+    await refreshRide(rideId);
+    notifyListeners();
     return res;
   }
 

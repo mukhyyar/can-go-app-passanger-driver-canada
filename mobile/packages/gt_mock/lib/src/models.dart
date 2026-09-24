@@ -385,6 +385,59 @@ enum RideStatus {
   cancelled,
 }
 
+class LostItemDetails {
+  const LostItemDetails({
+    required this.caseId,
+    required this.status,
+    this.contactPhone,
+    this.itemDescription,
+    this.driverNote,
+    this.reportedAt,
+    this.updatedAt,
+  });
+
+  final String caseId;
+  final String status;
+  final String? contactPhone;
+  final String? itemDescription;
+  final String? driverNote;
+  final DateTime? reportedAt;
+  final DateTime? updatedAt;
+
+  bool get isReported => status.toUpperCase() == 'REPORTED';
+  bool get isFound => status.toUpperCase() == 'FOUND';
+  bool get isNotFound => status.toUpperCase() == 'NOT_FOUND';
+  bool get isReturned => status.toUpperCase() == 'RETURNED';
+
+  factory LostItemDetails.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic d) {
+      if (d == null) return null;
+      if (d is DateTime) return d;
+      return DateTime.tryParse(d.toString());
+    }
+
+    return LostItemDetails(
+      caseId: json['caseId']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'REPORTED',
+      contactPhone: json['contactPhone']?.toString(),
+      itemDescription: json['itemDescription']?.toString(),
+      driverNote: json['driverNote']?.toString(),
+      reportedAt: parseDate(json['reportedAt']),
+      updatedAt: parseDate(json['updatedAt']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'caseId': caseId,
+        'status': status,
+        'contactPhone': contactPhone,
+        'itemDescription': itemDescription,
+        'driverNote': driverNote,
+        'reportedAt': reportedAt?.toIso8601String(),
+        'updatedAt': updatedAt?.toIso8601String(),
+      };
+}
+
 class RideRequest {
   RideRequest({
     required this.id,
@@ -405,6 +458,7 @@ class RideRequest {
     this.viewCount,
     this.currency = 'CAD',
     this.hasLostItemRequest = false,
+    this.lostItem,
   });
 
   final String id;
@@ -426,6 +480,7 @@ class RideRequest {
   final int? viewCount;
   final String? currency;
   final bool hasLostItemRequest;
+  final LostItemDetails? lostItem;
 
   bool get hasReturnTrip =>
       isRoundTrip ||
@@ -705,6 +760,7 @@ class DriverRequest {
     this.pickupAt,
     this.passengerName,
     this.hasLostItemRequest = false,
+    this.lostItem,
   });
 
   final String id;
@@ -747,6 +803,7 @@ class DriverRequest {
   /// Booked passenger display name (from API `passengerName` / `passenger.fullName`).
   final String? passengerName;
   final bool hasLostItemRequest;
+  final LostItemDetails? lostItem;
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
@@ -763,6 +820,7 @@ class DriverRequest {
     DateTime? pickupAt,
     String? status,
     bool? hasLostItemRequest,
+    LostItemDetails? lostItem,
   }) {
     return DriverRequest(
       id: id,
@@ -803,6 +861,7 @@ class DriverRequest {
       pickupAt: pickupAt ?? this.pickupAt,
       passengerName: passengerName,
       hasLostItemRequest: hasLostItemRequest ?? this.hasLostItemRequest,
+      lostItem: lostItem ?? this.lostItem,
     );
   }
 }

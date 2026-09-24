@@ -344,4 +344,28 @@ class DriverApi {
 
   Future<Map<String, dynamic>> removeDayOff(String id) =>
       client.delete('/driver/day-offs/$id');
+
+  Future<Map<String, dynamic>> respondLostItem(
+    String rideId, {
+    required String action,
+    String? note,
+  }) =>
+      client.post(
+        '/rides/$rideId/lost-item/respond',
+        body: {
+          'action': action,
+          if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        },
+      );
+
+  Future<Map<String, dynamic>> markLostItemReturned(
+    String rideId, {
+    String? note,
+  }) =>
+      client.post(
+        '/rides/$rideId/lost-item/returned',
+        body: {
+          if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        },
+      );
 }

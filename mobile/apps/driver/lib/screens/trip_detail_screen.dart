@@ -489,51 +489,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                             children: [
-                              if (isCompleted && r.hasLostItemRequest)
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFFBEB),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: const Color(0xFFFDE68A),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Icon(Icons.search,
-                                          color: Color(0xFFD97706), size: 24),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: const [
-                                            Text(
-                                              'Lost item inquiry',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 14,
-                                                color: Color(0xFF92400E),
-                                              ),
-                                            ),
-                                            SizedBox(height: 2),
-                                            Text(
-                                              'A passenger reported they may have left an item in your vehicle. Please inspect your vehicle interior. Contact support if you locate any forgotten items.',
-                                              style: TextStyle(
-                                                fontSize: 12.5,
-                                                color: Color(0xFFB45309),
-                                                height: 1.35,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                              if (isCompleted &&
+                                  (r.hasLostItemRequest || r.lostItem != null))
+                                _buildLostItemCard(r),
                               GtCard(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -879,6 +837,601 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       out.add(_TripChip(label: 'Booster seat × $booster'));
     }
     return out;
+  }
+
+  Widget _buildLostItemCard(DriverRequest r) {
+    final lost = r.lostItem;
+    final status = (lost?.status ?? (r.hasLostItemRequest ? 'REPORTED' : ''))
+        .toUpperCase();
+    if (status.isEmpty) return const SizedBox.shrink();
+
+    final isReported = status == 'REPORTED';
+    final isFound = status == 'FOUND';
+    final isNotFound = status == 'NOT_FOUND';
+    final isReturned = status == 'RETURNED';
+
+    Color bgColor;
+    Color borderColor;
+    Color primaryTextColor;
+    Color secondaryTextColor;
+    IconData headerIcon;
+    Color iconColor;
+    String title;
+    String subtitle;
+
+    if (isReturned) {
+      bgColor = const Color(0xFFF0FDF4);
+      borderColor = const Color(0xFFBBF7D0);
+      primaryTextColor = const Color(0xFF166534);
+      secondaryTextColor = const Color(0xFF15803D);
+      headerIcon = Icons.check_circle;
+      iconColor = const Color(0xFF16A34A);
+      title = 'Lost Item Returned';
+      subtitle = 'This item was returned to the passenger. Inquiry resolved.';
+    } else if (isFound) {
+      bgColor = const Color(0xFFF0FDF4);
+      borderColor = const Color(0xFF86EFAC);
+      primaryTextColor = const Color(0xFF14532D);
+      secondaryTextColor = const Color(0xFF166534);
+      headerIcon = Icons.task_alt;
+      iconColor = const Color(0xFF15803D);
+      title = 'Item Found — Return Pending';
+      subtitle =
+          'You confirmed locating the item in your vehicle. Coordinate return with the passenger.';
+    } else if (isNotFound) {
+      bgColor = const Color(0xFFF8FAFC);
+      borderColor = const Color(0xFFE2E8F0);
+      primaryTextColor = const Color(0xFF334155);
+      secondaryTextColor = const Color(0xFF64748B);
+      headerIcon = Icons.search_off;
+      iconColor = const Color(0xFF64748B);
+      title = 'Checked — Item Not Found';
+      subtitle =
+          'You inspected your vehicle and verified the item was not found.';
+    } else {
+      bgColor = const Color(0xFFFFFBEB);
+      borderColor = const Color(0xFFFDE68A);
+      primaryTextColor = const Color(0xFF92400E);
+      secondaryTextColor = const Color(0xFFB45309);
+      headerIcon = Icons.find_in_page_outlined;
+      iconColor = const Color(0xFFD97706);
+      title = 'Lost Item Inquiry';
+      subtitle =
+          'Passenger reported leaving an item in your vehicle. Please check your car interior.';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(headerIcon, color: iconColor, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          color: primaryTextColor,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: secondaryTextColor,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (lost?.itemDescription != null &&
+                lost!.itemDescription!.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: borderColor.withOpacity(0.7)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Passenger Note / Description:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.5,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      lost.itemDescription!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (lost?.driverNote != null &&
+                lost!.driverNote!.trim().isNotEmpty &&
+                (isFound || isNotFound || isReturned)) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: borderColor.withOpacity(0.7)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your Note:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.5,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      lost.driverNote!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if ((isReported || isFound) &&
+                ((lost?.contactPhone != null &&
+                        lost!.contactPhone!.trim().isNotEmpty) ||
+                    r.passengerName != null)) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (lost?.contactPhone != null &&
+                      lost!.contactPhone!.trim().isNotEmpty) ...[
+                    ActionChip(
+                      avatar: const Icon(Icons.phone,
+                          size: 16, color: Color(0xFF1E40AF)),
+                      label: Text(
+                        'Call (${lost.contactPhone})',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E40AF),
+                        ),
+                      ),
+                      backgroundColor: const Color(0xFFEFF6FF),
+                      side: const BorderSide(color: Color(0xFFBFDBFE)),
+                      onPressed: () =>
+                          launchUrl(Uri.parse('tel:${lost.contactPhone}')),
+                    ),
+                    ActionChip(
+                      avatar: const Icon(Icons.sms_outlined,
+                          size: 16, color: Color(0xFF1E40AF)),
+                      label: const Text(
+                        'SMS',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E40AF),
+                        ),
+                      ),
+                      backgroundColor: const Color(0xFFEFF6FF),
+                      side: const BorderSide(color: Color(0xFFBFDBFE)),
+                      onPressed: () =>
+                          launchUrl(Uri.parse('sms:${lost.contactPhone}')),
+                    ),
+                  ],
+                  ActionChip(
+                    avatar: const Icon(Icons.chat_outlined,
+                        size: 16, color: GtColors.brand),
+                    label: const Text(
+                      'Chat in App',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: GtColors.brand,
+                      ),
+                    ),
+                    backgroundColor: const Color(0xFFECFDF5),
+                    side: const BorderSide(color: Color(0xFFA7F3D0)),
+                    onPressed: () => context.push('/chat/${r.id}'),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            if (isReported) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _acting ? null : () => _showFoundDialog(r),
+                      icon: const Icon(Icons.check_circle_outline, size: 18),
+                      label: const Text('I Found It'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF16A34A),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _acting ? null : () => _showNotFoundDialog(r),
+                      icon: const Icon(Icons.close, size: 18),
+                      label: const Text('Not in Vehicle'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF64748B),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (isFound) ...[
+              ElevatedButton.icon(
+                onPressed: _acting ? null : () => _showReturnDialog(r),
+                icon: const Icon(Icons.handshake_outlined, size: 18),
+                label: const Text('Mark as Returned to Passenger'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: GtColors.brand,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 44),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ] else if (isNotFound) ...[
+              Center(
+                child: TextButton.icon(
+                  onPressed: _acting ? null : () => _showFoundDialog(r),
+                  icon: const Icon(Icons.search, size: 16),
+                  label: const Text('Found it later? Tap here to report found'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: GtColors.brand,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showFoundDialog(DriverRequest r) async {
+    final noteCtrl = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'I Found the Item',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Let the passenger know you found their item. You can add an optional note with details on where it was found or how to arrange return.',
+                style: TextStyle(
+                    fontSize: 13, color: GtColors.textSecondary, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Note for passenger (optional)',
+                  hintText: 'e.g. Found on rear right passenger floor',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 18),
+              GtGreenButton(
+                label: 'Confirm item found',
+                onPressed: () => Navigator.pop(ctx, true),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (ok == true && mounted) {
+      setState(() => _acting = true);
+      try {
+        await _app?.respondToLostItem(
+          rideId: r.id,
+          action: 'FOUND',
+          note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Marked as found! Passenger has been notified.'),
+            ),
+          );
+          await _load();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating inquiry: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _acting = false);
+      }
+    }
+    noteCtrl.dispose();
+  }
+
+  Future<void> _showNotFoundDialog(DriverRequest r) async {
+    final noteCtrl = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.search_off, color: Color(0xFFDC2626), size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'Item Not in Vehicle',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Confirm that you thoroughly checked your vehicle (seats, floor, door pockets, trunk) and the reported item was not found.',
+                style: TextStyle(
+                    fontSize: 13, color: GtColors.textSecondary, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Note (optional)',
+                  hintText: 'e.g. Checked seats and trunk, nothing left behind',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFDC2626),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+                child: const Text('Confirm not in vehicle'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (ok == true && mounted) {
+      setState(() => _acting = true);
+      try {
+        await _app?.respondToLostItem(
+          rideId: r.id,
+          action: 'NOT_FOUND',
+          note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Inquiry updated. Passenger has been notified.'),
+            ),
+          );
+          await _load();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating inquiry: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _acting = false);
+      }
+    }
+    noteCtrl.dispose();
+  }
+
+  Future<void> _showReturnDialog(DriverRequest r) async {
+    final noteCtrl = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.handshake_outlined,
+                      color: GtColors.brand, size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'Mark as Returned',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Confirm that the item has been safely returned to the passenger. This will close the inquiry.',
+                style: TextStyle(
+                    fontSize: 13, color: GtColors.textSecondary, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Delivery note (optional)',
+                  hintText: 'e.g. Handed to passenger at hotel front desk',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 18),
+              GtGreenButton(
+                label: 'Confirm item returned',
+                onPressed: () => Navigator.pop(ctx, true),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (ok == true && mounted) {
+      setState(() => _acting = true);
+      try {
+        await _app?.markLostItemReturned(
+          rideId: r.id,
+          note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('Item marked as returned! Lost item inquiry closed.'),
+            ),
+          );
+          await _load();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error closing inquiry: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _acting = false);
+      }
+    }
+    noteCtrl.dispose();
   }
 }
 

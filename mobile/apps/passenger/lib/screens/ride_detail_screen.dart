@@ -755,6 +755,321 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     noteCtrl.dispose();
   }
 
+  Future<void> _showConfirmReceivedDialog(RideRequest r) async {
+    final noteCtrl = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          left: 20,
+          right: 20,
+          top: 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 24),
+                  SizedBox(width: 8),
+                  Text(
+                    'Confirm Item Received',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Confirm that your driver has safely returned your lost item. This will close the lost item case.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: GtColors.textSecondary,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Note (optional)',
+                  hintText: 'e.g. Received my item back in good condition',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 18),
+              GtGreenButton(
+                label: 'Confirm item received',
+                onPressed: () => Navigator.pop(ctx, true),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (ok == true && mounted) {
+      setState(() => _actionBusy = true);
+      try {
+        await context.read<AppState>().markLostItemReturned(
+              r.id,
+              note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+            );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Item marked as received! Inquiry resolved.'),
+            ),
+          );
+          await context.read<AppState>().refreshRide(r.id);
+          setState(() {});
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not update case: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _actionBusy = false);
+      }
+    }
+    noteCtrl.dispose();
+  }
+
+  Widget _buildPassengerLostItemCard(RideRequest r) {
+    final lost = r.lostItem;
+    final status = (lost?.status ?? (r.hasLostItemRequest ? 'REPORTED' : ''))
+        .toUpperCase();
+
+    final isReported = status == 'REPORTED';
+    final isFound = status == 'FOUND';
+    final isNotFound = status == 'NOT_FOUND';
+    final isReturned = status == 'RETURNED';
+
+    Color bgColor;
+    Color borderColor;
+    Color primaryTextColor;
+    Color secondaryTextColor;
+    IconData headerIcon;
+    Color iconColor;
+    String title;
+    String subtitle;
+
+    if (isReturned) {
+      bgColor = const Color(0xFFF0FDF4);
+      borderColor = const Color(0xFFBBF7D0);
+      primaryTextColor = const Color(0xFF166534);
+      secondaryTextColor = const Color(0xFF15803D);
+      headerIcon = Icons.check_circle;
+      iconColor = const Color(0xFF16A34A);
+      title = 'Lost Item Returned';
+      subtitle =
+          'You confirmed receiving your lost item. This inquiry is resolved.';
+    } else if (isFound) {
+      bgColor = const Color(0xFFF0FDF4);
+      borderColor = const Color(0xFF86EFAC);
+      primaryTextColor = const Color(0xFF14532D);
+      secondaryTextColor = const Color(0xFF166534);
+      headerIcon = Icons.task_alt;
+      iconColor = const Color(0xFF15803D);
+      title = 'Great news! Item found';
+      subtitle =
+          'Your driver confirmed finding your item in their vehicle. Please arrange pickup or drop-off.';
+    } else if (isNotFound) {
+      bgColor = const Color(0xFFFFFBEB);
+      borderColor = const Color(0xFFFDE68A);
+      primaryTextColor = const Color(0xFF92400E);
+      secondaryTextColor = const Color(0xFFB45309);
+      headerIcon = Icons.search_off;
+      iconColor = const Color(0xFFD97706);
+      title = 'Item Not Located in Vehicle';
+      subtitle =
+          'Your driver inspected their vehicle and did not locate the reported item.';
+    } else {
+      bgColor = const Color(0xFFEFF6FF);
+      borderColor = const Color(0xFFBFDBFE);
+      primaryTextColor = const Color(0xFF1E3A8A);
+      secondaryTextColor = const Color(0xFF1E40AF);
+      headerIcon = Icons.search;
+      iconColor = const Color(0xFF1D4ED8);
+      title = 'Lost item inquiry active';
+      subtitle =
+          'The driver has been notified to check their vehicle. You will receive an update here as soon as they inspect it.';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(headerIcon, color: iconColor, size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                        color: primaryTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: secondaryTextColor,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (lost?.driverNote != null &&
+              lost!.driverNote!.trim().isNotEmpty &&
+              (isFound || isNotFound || isReturned)) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: borderColor.withOpacity(0.7)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Driver Note:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11.5,
+                      color: Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    lost.driverNote!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (isFound) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push('/chat/${r.id}'),
+                    icon: const Icon(Icons.chat_outlined, size: 16),
+                    label: const Text('Chat with Driver'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: GtColors.brand,
+                      side: const BorderSide(color: GtColors.brand),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _actionBusy
+                        ? null
+                        : () => _showConfirmReceivedDialog(r),
+                    icon: const Icon(Icons.check, size: 16),
+                    label: const Text('Item Received'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF16A34A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (isReported) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ActionChip(
+                avatar: const Icon(Icons.chat_outlined,
+                    size: 15, color: GtColors.brand),
+                label: const Text(
+                  'Message Driver about item',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: GtColors.brand,
+                  ),
+                ),
+                backgroundColor: Colors.white,
+                side: const BorderSide(color: Color(0xFFBFDBFE)),
+                onPressed: () => context.push('/chat/${r.id}'),
+              ),
+            ),
+          ] else if (isNotFound) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _actionBusy
+                    ? null
+                    : () => _showHelpForm(
+                          'CURRENT_RIDE_HELP',
+                          'Lost item assistance',
+                        ),
+                icon: const Icon(Icons.support_agent, size: 16),
+                label: const Text('Contact support for help'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFB45309),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   double _num(dynamic v) => (v is num) ? v.toDouble() : 0;
 
   Color _bannerColor(String status) {
@@ -1238,45 +1553,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     ],
                     if (status == 'COMPLETED') ...[
                       const SizedBox(height: 10),
-                      if (ride?.hasLostItemRequest == true)
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFBFDBFE)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.search,
-                                  color: Color(0xFF1D4ED8), size: 22),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
-                                    Text(
-                                      'Lost item inquiry active',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                        color: Color(0xFF1E3A8A),
-                                      ),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      'The driver has been notified to check their vehicle. We will contact you if an item is found.',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF1E40AF),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
+                      if (ride.hasLostItemRequest || ride.lostItem != null)
+                        _buildPassengerLostItemCard(ride)
                       else
                         OutlinedButton.icon(
                           onPressed: _actionBusy ? null : _showLostItemSheet,

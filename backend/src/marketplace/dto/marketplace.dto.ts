@@ -660,4 +660,21 @@ export class CreateChangeRequestDto {
   contactPhone?: string;
 }
 
+export class RespondLostItemDto {
+  @IsIn(['FOUND', 'NOT_FOUND'])
+  action!: 'FOUND' | 'NOT_FOUND';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class ResolveLostItemDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
 
