@@ -455,7 +455,7 @@ class _RequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isReturn = request.isRoundTrip && request.returnDatetimeLabel != null;
+    final isReturn = request.isRoundTrip;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -483,7 +483,7 @@ class _RequestCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 3),
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFF3CD),
                             borderRadius: BorderRadius.circular(6),
@@ -493,11 +493,13 @@ class _RequestCard extends StatelessWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.swap_horiz_rounded,
+                              const Icon(Icons.swap_vert_rounded,
                                   size: 13, color: Color(0xFF8A6900)),
                               const SizedBox(width: 4),
                               Text(
-                                'Return: ${request.returnDatetimeLabel!}',
+                                request.returnDatetimeLabel != null
+                                    ? 'Return: ${request.returnDatetimeLabel!}'
+                                    : 'Return trip',
                                 style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
@@ -565,28 +567,48 @@ class _RequestCard extends StatelessWidget {
 
             const SizedBox(height: 14),
 
-            // ── Outbound route A → B ─────────────────────────────────────
+            // ── Route A → B ──────────────────────────────────────────────
             _RouteSegment(
               from: request.from,
               to: request.to,
-              distance: request.distance,
-              duration: request.duration,
-              isReturn: false,
+              isReturn: isReturn,
             ),
 
-            // ── Return leg B → A ─────────────────────────────────────────
-            if (isReturn) ...[
-              const SizedBox(height: 8),
-              _ReturnDivider(),
-              const SizedBox(height: 8),
-              _RouteSegment(
-                from: request.to,
-                to: request.from,
-                distance: request.distance,
-                duration: request.duration,
-                isReturn: true,
-              ),
-            ],
+            const SizedBox(height: 10),
+
+            // ── Separate Chips: Return trip, Distance, Duration ──────────
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                if (isReturn)
+                  _MetaChip(
+                    icon: Icons.swap_vert_rounded,
+                    label: request.returnDatetimeLabel != null
+                        ? 'Return: ${request.returnDatetimeLabel!}'
+                        : 'Return trip',
+                    isAmber: true,
+                  ),
+                if (request.distance.isNotEmpty && request.distance != '—')
+                  _MetaChip(
+                    icon: Icons.straighten_rounded,
+                    label: isReturn
+                        ? (request.distance.contains('×')
+                            ? request.distance
+                            : '${request.distance} × 2')
+                        : request.distance,
+                  ),
+                if (request.duration.isNotEmpty && request.duration != '—')
+                  _MetaChip(
+                    icon: Icons.schedule_rounded,
+                    label: isReturn
+                        ? (request.duration.contains('×')
+                            ? request.duration
+                            : '${request.duration} × 2')
+                        : request.duration,
+                  ),
+              ],
+            ),
 
             const SizedBox(height: 12),
 
@@ -650,147 +672,92 @@ class _RouteSegment extends StatelessWidget {
   const _RouteSegment({
     required this.from,
     required this.to,
-    this.distance,
-    this.duration,
     required this.isReturn,
   });
 
   final String from;
   final String to;
-  final String? distance;
-  final String? duration;
   final bool isReturn;
-
-  static const _amber = Color(0xFFE6A800);
-  static const _amberLight = Color(0xFFFFF3CD);
-  static const _amberText = Color(0xFF6B5000);
-  static const _amberSubtext = Color(0xFF8A6900);
-  static const _amberLine = Color(0xFFFFDD80);
 
   @override
   Widget build(BuildContext context) {
-    final originLetter = isReturn ? 'B' : 'A';
-    final destLetter = isReturn ? 'A' : 'B';
-
-    final originBg = isReturn ? _amberLight : GtColors.text;
-    final originTextColor = isReturn ? _amberText : Colors.white;
-    final originBorderColor = isReturn ? _amber : Colors.transparent;
-
-    final destBg = isReturn ? GtColors.text : GtColors.brand;
-    final lineColor = isReturn ? _amberLine : GtColors.border;
-
-    final distLabel =
-        distance != null ? (isReturn ? '$distance × 2' : distance!) : null;
-    final durLabel =
-        duration != null ? (isReturn ? '$duration × 2' : duration!) : null;
-
-    final hasMeta = distLabel != null || durLabel != null;
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Left column: dots + connector ─────────────────────────────
+        // ── Left column: A dot, line with up-down arrows if return, B dot ──
         SizedBox(
           width: 28,
           child: Column(
             children: [
-              // Origin dot (A or B)
+              // Origin dot A
               Container(
                 width: 26,
                 height: 26,
-                decoration: BoxDecoration(
-                  color: originBg,
+                decoration: const BoxDecoration(
+                  color: GtColors.text,
                   shape: BoxShape.circle,
-                  border: Border.all(color: originBorderColor, width: 1.5),
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  originLetter,
+                child: const Text(
+                  'A',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: originTextColor,
+                    color: Colors.white,
                   ),
                 ),
               ),
-              // Connector segment
+              // Connector top line
               Container(
-                  width: 2, height: 6, color: lineColor),
-              // Mid meta chip
-              if (hasMeta)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 4, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isReturn ? _amberLight : const Color(0xFFF2F2F7),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Column(
-                    children: [
-                      if (distLabel != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.route,
-                                size: 10,
-                                color: isReturn
-                                    ? _amberSubtext
-                                    : GtColors.textMuted),
-                            const SizedBox(width: 2),
-                            Text(
-                              distLabel,
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: isReturn
-                                    ? _amberText
-                                    : GtColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      if (durLabel != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.schedule,
-                                size: 10,
-                                color: isReturn
-                                    ? _amberSubtext
-                                    : GtColors.textMuted),
-                            const SizedBox(width: 2),
-                            Text(
-                              durLabel,
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: isReturn
-                                    ? _amberText
-                                    : GtColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                )
-              else
-                Container(
-                    width: 2, height: 22, color: lineColor),
+                width: 2,
+                height: 6,
+                color: isReturn ? const Color(0xFFE6A800) : GtColors.border,
+              ),
+              // Arrow indicator: 2 arrows up-down for return, single down arrow for one-way
               Container(
-                  width: 2, height: 6, color: lineColor),
-              // Destination dot (B or A)
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: isReturn
+                      ? const Color(0xFFFFF3CD)
+                      : const Color(0xFFF2F2F7),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isReturn
+                        ? const Color(0xFFE6B800)
+                        : GtColors.border,
+                    width: 0.8,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  isReturn
+                      ? Icons.swap_vert_rounded
+                      : Icons.arrow_downward_rounded,
+                  size: 13,
+                  color: isReturn
+                      ? const Color(0xFF8A6900)
+                      : GtColors.textMuted,
+                ),
+              ),
+              // Connector bottom line
+              Container(
+                width: 2,
+                height: 6,
+                color: isReturn ? const Color(0xFFE6A800) : GtColors.border,
+              ),
+              // Destination dot B
               Container(
                 width: 26,
                 height: 26,
-                decoration: BoxDecoration(
-                  color: destBg,
+                decoration: const BoxDecoration(
+                  color: GtColors.brand,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  destLetter,
-                  style: const TextStyle(
+                child: const Text(
+                  'B',
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
@@ -807,23 +774,26 @@ class _RouteSegment extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.only(top: 3),
                 child: Text(
                   from,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w500,
                     height: 1.3,
                   ),
                 ),
               ),
-              SizedBox(height: hasMeta ? 36 : 22),
-              Text(
-                to,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  height: 1.3,
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  to,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
                 ),
               ),
             ],
@@ -834,50 +804,48 @@ class _RouteSegment extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Divider between outbound and return legs
-// ─────────────────────────────────────────────────────────────────────────────
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+    this.isAmber = false,
+  });
 
-class _ReturnDivider extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isAmber;
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(height: 1, color: const Color(0xFFE6D4A0)),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isAmber ? const Color(0xFFFFF3CD) : const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isAmber ? const Color(0xFFE6B800) : GtColors.border,
+          width: 0.8,
         ),
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 8),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF3CD),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-                color: const Color(0xFFE6B800), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 13,
+            color: isAmber ? const Color(0xFF8A6900) : GtColors.textSecondary,
           ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.swap_vert_rounded,
-                  size: 12, color: Color(0xFF8A6900)),
-              SizedBox(width: 4),
-              Text(
-                'RETURN',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  color: Color(0xFF6B5000),
-                ),
-              ),
-            ],
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isAmber ? FontWeight.w700 : FontWeight.w600,
+              color: isAmber ? const Color(0xFF6B5000) : GtColors.textSecondary,
+            ),
           ),
-        ),
-        Expanded(
-          child: Container(height: 1, color: const Color(0xFFE6D4A0)),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

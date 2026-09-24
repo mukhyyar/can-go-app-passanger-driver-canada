@@ -114,7 +114,10 @@ export class MarketplaceService {
     });
 
     const promo = await this.promos.validate(dto.promoCode, currency);
-    const isRoundTrip = dto.isRoundTrip === true;
+    const isRoundTrip =
+      dto.isRoundTrip === true ||
+      String(dto.isRoundTrip).toLowerCase() === 'true' ||
+      Boolean(dto.returnAt);
     let snapshot: PriceSnapshot & { promo?: Record<string, unknown> } = {
       ...quote,
       isRoundTrip,
@@ -253,7 +256,11 @@ export class MarketplaceService {
       throw new BadRequestException('Invalid pickupAt');
     }
     const isRoundTrip =
-      dto.isRoundTrip !== undefined ? dto.isRoundTrip : ride.isRoundTrip;
+      dto.isRoundTrip !== undefined
+        ? (dto.isRoundTrip === true ||
+            String(dto.isRoundTrip).toLowerCase() === 'true' ||
+            Boolean(dto.returnAt ?? returnAtRaw))
+        : (Boolean(ride.isRoundTrip) || Boolean(ride.returnAt));
     const returnAtRaw =
       dto.returnAt !== undefined
         ? dto.returnAt
@@ -2573,7 +2580,7 @@ export class MarketplaceService {
       toLng: ride.toLng,
       pickupAt: ride.pickupAt,
       returnAt: ride.returnAt,
-      isRoundTrip: ride.isRoundTrip ?? false,
+      isRoundTrip: Boolean(ride.isRoundTrip || ride.returnAt),
       pickupWaitMin: ride.pickupWaitMin,
       returnWaitMin: ride.returnWaitMin,
       vehicleClassIds: ride.vehicleClassIds,
@@ -2594,8 +2601,14 @@ export class MarketplaceService {
             platformCommissionPct: snap.platformCommissionPct,
             distanceKm: snap.distanceKm,
             durationMin: snap.durationMin,
-            isRoundTrip: snap.isRoundTrip ?? ride.isRoundTrip ?? false,
-            legs: snap.legs ?? ((ride.isRoundTrip as boolean) ? 2 : 1),
+            isRoundTrip:
+              snap.isRoundTrip ??
+              ride.isRoundTrip ??
+              Boolean(ride.returnAt) ??
+              false,
+            legs:
+              snap.legs ??
+              ((ride.isRoundTrip || ride.returnAt) ? 2 : 1),
           }
         : null,
       selectedOfferId: ride.selectedOfferId,

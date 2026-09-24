@@ -633,9 +633,18 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     snapMap = {...?snapMap, ...Map<String, dynamic>.from(guidanceRaw)};
   }
 
-  final isRoundTrip = json['isRoundTrip'] as bool? ??
-      snapMap?['isRoundTrip'] as bool? ??
-      false;
+  bool parseBool(dynamic v) {
+    if (v == null) return false;
+    if (v is bool) return v;
+    final s = v.toString().toLowerCase().trim();
+    return s == 'true' || s == '1';
+  }
+
+  final isRoundTrip = parseBool(json['isRoundTrip']) ||
+      parseBool(snapMap?['isRoundTrip']) ||
+      (json['returnAt'] != null &&
+          json['returnAt'].toString().trim().isNotEmpty) ||
+      (asInt(snapMap?['legs']) ?? 1) > 1;
   final legs = asInt(snapMap?['legs']) ?? (isRoundTrip ? 2 : 1);
 
   String distance = '—';

@@ -802,26 +802,36 @@ class _TripSchedule extends StatelessWidget {
               _WaitChip(label: '${request.pickupWaitMin} min'),
           ],
         ),
-        if (request.isRoundTrip && request.returnDatetimeLabel != null) ...[
+        if (request.isRoundTrip) ...[
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      const TextSpan(
-                        text: 'Return: ',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      TextSpan(text: request.returnDatetimeLabel),
-                    ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF3CD),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE6B800), width: 0.8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.swap_vert_rounded,
+                    size: 16, color: Color(0xFF8A6900)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    request.returnDatetimeLabel != null
+                        ? 'Return: ${request.returnDatetimeLabel!}'
+                        : 'Return trip (Round trip)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                      color: Color(0xFF6B5000),
+                    ),
                   ),
                 ),
-              ),
-              if (request.returnWaitMin != null)
-                _WaitChip(label: '${request.returnWaitMin} min'),
-            ],
+                if (request.returnWaitMin != null)
+                  _WaitChip(label: '${request.returnWaitMin} min'),
+              ],
+            ),
           ),
         ],
       ],
@@ -866,33 +876,76 @@ class _RouteBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _Marker(letter: 'A', color: Colors.black),
             const SizedBox(width: 10),
-            Expanded(child: Text(request.from)),
+            Expanded(
+              child: Text(
+                request.from,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.3,
+                ),
+              ),
+            ),
           ],
         ),
         Padding(
-          padding: const EdgeInsets.only(left: 10, top: 6, bottom: 6),
+          padding: const EdgeInsets.only(left: 1, top: 4, bottom: 4),
           child: Row(
             children: [
-              Icon(
-                request.isRoundTrip ? Icons.swap_vert : Icons.arrow_downward,
-                size: 18,
-                color: GtColors.textMuted,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '${request.distance}  ·  ${request.duration}',
-                style: const TextStyle(
-                  color: GtColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: request.isRoundTrip
+                      ? const Color(0xFFFFF3CD)
+                      : const Color(0xFFF2F2F7),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: request.isRoundTrip
+                        ? const Color(0xFFE6B800)
+                        : GtColors.border,
+                    width: 0.8,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  request.isRoundTrip
+                      ? Icons.swap_vert_rounded
+                      : Icons.arrow_downward_rounded,
+                  size: 13,
+                  color: request.isRoundTrip
+                      ? const Color(0xFF8A6900)
+                      : GtColors.textMuted,
                 ),
               ),
+              if (request.isRoundTrip) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3CD),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: const Color(0xFFE6B800), width: 0.8),
+                  ),
+                  child: const Text(
+                    'Return trip',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6B5000),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -901,7 +954,52 @@ class _RouteBlock extends StatelessWidget {
           children: [
             const _Marker(letter: 'B', color: Colors.black),
             const SizedBox(width: 10),
-            Expanded(child: Text(request.to)),
+            Expanded(
+              child: Text(
+                request.to,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Separate chips for Distance and Duration
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (request.isRoundTrip)
+              _Chip(
+                label: request.returnDatetimeLabel != null
+                    ? 'Return: ${request.returnDatetimeLabel!}'
+                    : 'Return trip',
+                icon: Icons.swap_vert_rounded,
+                backgroundColor: const Color(0xFFFFF3CD),
+                textColor: const Color(0xFF6B5000),
+                borderColor: const Color(0xFFE6B800),
+              ),
+            if (request.distance.isNotEmpty && request.distance != '—')
+              _Chip(
+                label: request.isRoundTrip
+                    ? (request.distance.contains('×')
+                        ? request.distance
+                        : '${request.distance} × 2')
+                    : request.distance,
+                icon: Icons.straighten_rounded,
+              ),
+            if (request.duration.isNotEmpty && request.duration != '—')
+              _Chip(
+                label: request.isRoundTrip
+                    ? (request.duration.contains('×')
+                        ? request.duration
+                        : '${request.duration} × 2')
+                    : request.duration,
+                icon: Icons.schedule_rounded,
+              ),
           ],
         ),
       ],
@@ -934,27 +1032,43 @@ class _Marker extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, this.icon});
+  const _Chip({
+    required this.label,
+    this.icon,
+    this.backgroundColor,
+    this.textColor,
+    this.borderColor,
+  });
   final String label;
   final IconData? icon;
+  final Color? backgroundColor;
+  final Color? textColor;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: backgroundColor ?? Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: GtColors.border),
+        border: Border.all(color: borderColor ?? GtColors.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 16),
+            Icon(icon, size: 15, color: textColor ?? GtColors.textSecondary),
             const SizedBox(width: 6),
           ],
-          Text(label, style: const TextStyle(fontSize: 13)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: textColor ?? GtColors.text,
+            ),
+          ),
         ],
       ),
     );
