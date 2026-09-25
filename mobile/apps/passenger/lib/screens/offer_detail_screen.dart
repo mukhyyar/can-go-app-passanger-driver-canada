@@ -316,7 +316,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     final ride = app.rideById(widget.rideId);
     if (ride != null && ride.isBooked) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go('/ride/${widget.rideId}');
+        if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
+          context.go('/ride/${widget.rideId}');
+        }
       });
     }
 

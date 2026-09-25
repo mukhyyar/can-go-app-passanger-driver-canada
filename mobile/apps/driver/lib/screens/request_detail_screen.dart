@@ -208,6 +208,18 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   Future<void> _submitOffer() async {
+    final s = context.read<AppState>();
+    if (!s.canSubmitOffers) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            s.profileHoldReason ??
+                'Your profile is on hold. You cannot submit offers right now.',
+          ),
+        ),
+      );
+      return;
+    }
     final req = _request;
     if (req == null || _submitting) return;
     final err = _validate();
@@ -339,6 +351,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
 
     final req = _request!;
+    final s = context.watch<AppState>();
     final age = driverRequestAgeLabel(req);
     final currency = req.currency;
     final hasActiveOffer = req.hasOffer && req.myOffer != null;
@@ -703,21 +716,83 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   ],
                   if (!isClosed) ...[
                     const SizedBox(height: 16),
-                    InlineOfferForm(
-                      request: req,
-                      vehicles: _vehicles,
-                      draft: _draft,
-                      outCtrl: _outCtrl,
-                      retCtrl: _retCtrl,
-                      submitting: _submitting,
-                      existingOffer: req.myOffer,
-                      error: _offerError,
-                      onChanged: () {
-                        _persistDraft();
-                        setState(() => _offerError = null);
-                      },
-                      onSubmit: _submitOffer,
-                    ),
+                    if (s.isProfileOnHold) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          border: Border.all(color: Colors.amber.shade300),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.pause_circle_outline,
+                                  color: Colors.amber.shade900,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Profile On Hold — Review in Progress',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Your resubmitted document is currently under review by our admin team. While on hold, sending offers to passengers is paused until verified.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.amber.shade900,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => context.push('/onboarding/documents'),
+                                icon: const Icon(Icons.description_outlined, size: 18),
+                                label: const Text('View Documents Status'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.amber.shade900,
+                                  side: BorderSide(color: Colors.amber.shade400),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      InlineOfferForm(
+                        request: req,
+                        vehicles: _vehicles,
+                        draft: _draft,
+                        outCtrl: _outCtrl,
+                        retCtrl: _retCtrl,
+                        submitting: _submitting,
+                        existingOffer: req.myOffer,
+                        error: _offerError,
+                        onChanged: () {
+                          _persistDraft();
+                          setState(() => _offerError = null);
+                        },
+                        onSubmit: _submitOffer,
+                      ),
+                    ],
                     if (req.myOffer != null) ...[
                       const SizedBox(height: 14),
                       SizedBox(

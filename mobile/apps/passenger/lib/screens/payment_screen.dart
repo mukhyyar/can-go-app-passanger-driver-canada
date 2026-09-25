@@ -175,7 +175,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           : null;
 
       if (rideStatus == 'BOOKED' || payStatus == 'succeeded') {
-        context.go('/booking-confirmed/${widget.rideId}');
+        _goToConfirmed();
         return;
       }
 
@@ -183,7 +183,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final confirmed = await _awaitPaymentConfirmation(app);
       if (!mounted) return;
       if (confirmed) {
-        context.go('/booking-confirmed/${widget.rideId}');
+        _goToConfirmed();
         return;
       }
 
@@ -197,7 +197,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final refreshed = await app.refreshRide(widget.rideId);
       if (!mounted) return;
       if (refreshed != null && refreshed.isBooked) {
-        context.go('/booking-confirmed/${widget.rideId}');
+        _goToConfirmed();
         return;
       }
       setState(() {
@@ -206,6 +206,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
             'Payment unsuccessful. Your ride has not been booked.\n$e';
       });
     }
+  }
+
+  void _goToConfirmed() {
+    if (!mounted) return;
+    final rideId = widget.rideId;
+    while (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    GoRouter.of(context).go('/booking-confirmed/$rideId');
   }
 
   Future<bool> _awaitPaymentConfirmation(AppState app) async {
@@ -403,10 +412,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               final ok = await _awaitPaymentConfirmation(app);
                               if (!mounted) return;
                               if (ok) {
-                                if (!context.mounted) return;
-                                context.go(
-                                  '/booking-confirmed/${widget.rideId}',
-                                );
+                                _goToConfirmed();
                                 return;
                               }
                               setState(() => _paying = false);

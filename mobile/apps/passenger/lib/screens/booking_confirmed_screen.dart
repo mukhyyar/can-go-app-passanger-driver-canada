@@ -77,136 +77,161 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
             ? _num(breakdownQuote['platformFee'])
             : (((rideFare * 0.2) * 100).roundToDouble() / 100.0));
 
-    return Scaffold(
-      backgroundColor: GtColors.bgGrey,
-      appBar: AppBar(
-        title: const Text('Booking confirmed'),
-        automaticallyImplyLeading: false,
-      ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: GtColors.brand),
-            )
-          : ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                const SizedBox(height: 12),
-                Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                      color: GtColors.green,
-                      shape: BoxShape.circle,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        app.clearPendingDeepLink();
+        app.setShellTab(1);
+        while (Navigator.of(context, rootNavigator: true).canPop()) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        GoRouter.of(context).go('/');
+      },
+      child: Scaffold(
+        backgroundColor: GtColors.bgGrey,
+        appBar: AppBar(
+          title: const Text('Booking confirmed'),
+          automaticallyImplyLeading: false,
+        ),
+        body: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: GtColors.brand),
+              )
+            : ListView(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  24,
+                  24,
+                  MediaQuery.paddingOf(context).bottom + 24,
+                ),
+                children: [
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(
+                        color: GtColors.green,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 40,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.check,
-                      color: Colors.white,
-                      size: 40,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'You\'re booked',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'You\'re booked',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
+                  const SizedBox(height: 8),
+                  Text(
+                    ride != null
+                        ? 'Booking #${ride.displayId}'
+                        : 'Booking #${widget.rideId}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: GtColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  ride != null
-                      ? 'Booking #${ride.displayId}'
-                      : 'Booking #${widget.rideId}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: GtColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                GtCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (ride != null) ...[
-                        GtRouteRow(
-                          from: ride.from,
-                          to: ride.to,
-                          distance: ride.distance,
-                          duration: ride.duration,
-                          timeBadge: ride.timeBadge,
-                          isRoundTrip: ride.hasReturnTrip,
-                          returnLabel: ride.returnLabel,
-                        ),
-                        const SizedBox(height: 12),
-                        _row('Pickup', ride.datetimeLabel),
-                        if (ride.hasReturnTrip)
+                  const SizedBox(height: 24),
+                  GtCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (ride != null) ...[
+                          GtRouteRow(
+                            from: ride.from,
+                            to: ride.to,
+                            distance: ride.distance,
+                            duration: ride.duration,
+                            timeBadge: ride.timeBadge,
+                            isRoundTrip: ride.hasReturnTrip,
+                            returnLabel: ride.returnLabel,
+                          ),
+                          const SizedBox(height: 12),
+                          _row('Pickup', ride.datetimeLabel),
+                          if (ride.hasReturnTrip)
+                            _row(
+                              'Return',
+                              ride.returnLabel != null &&
+                                      ride.returnLabel!.isNotEmpty
+                                  ? ride.returnLabel!
+                                  : 'Return trip (Round trip)',
+                            ),
+                        ],
+                        if (offer != null) ...[
+                          const Divider(height: 24),
+                          if ((offer.driverName ?? '').trim().isNotEmpty)
+                            _row('Driver', offer.driverName!.trim()),
+                          _row('Vehicle', offer.displayName),
+                          _row('Class', offer.vehicleClass),
+                          if (offer.plate != null &&
+                              offer.plate!.trim().isNotEmpty)
+                            _row('Plate', offer.plate!.trim().toUpperCase()),
+                        ],
+                        const Divider(height: 24),
+                        _row('Payment', payStatus),
+                        if (rideFare > 0 && platformFee > 0) ...[
+                          _row('Ride fare', formatMoney(rideFare, currency)),
+                          _row('Platform fee', formatMoney(platformFee, currency)),
+                        ],
+                        _row('Total', formatMoney(total, currency)),
+                        if (online > 0)
+                          _row('Paid online', formatMoney(online, currency)),
+                        if (cash > 0)
                           _row(
-                            'Return',
-                            ride.returnLabel != null &&
-                                    ride.returnLabel!.isNotEmpty
-                                ? ride.returnLabel!
-                                : 'Return trip (Round trip)',
+                            'Cash due to driver',
+                            formatMoney(cash, currency),
                           ),
                       ],
-                      if (offer != null) ...[
-                        const Divider(height: 24),
-                        if ((offer.driverName ?? '').trim().isNotEmpty)
-                          _row('Driver', offer.driverName!.trim()),
-                        _row('Vehicle', offer.displayName),
-                        _row('Class', offer.vehicleClass),
-                        if (offer.plate != null &&
-                            offer.plate!.trim().isNotEmpty)
-                          _row('Plate', offer.plate!.trim().toUpperCase()),
-                      ],
-                      const Divider(height: 24),
-                      _row('Payment', payStatus),
-                      if (rideFare > 0 && platformFee > 0) ...[
-                        _row('Ride fare', formatMoney(rideFare, currency)),
-                        _row('Platform fee', formatMoney(platformFee, currency)),
-                      ],
-                      _row('Total', formatMoney(total, currency)),
-                      if (online > 0)
-                        _row('Paid online', formatMoney(online, currency)),
-                      if (cash > 0)
-                        _row(
-                          'Cash due to driver',
-                          formatMoney(cash, currency),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                GtGreenButton(
-                  label: 'View ride',
-                  onPressed: () {
-                    context.go('/ride/${widget.rideId}');
-                  },
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: () {
-                    app.setShellTab(2);
-                    context.go('/');
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: GtColors.brand,
-                    side: const BorderSide(color: GtColors.brand),
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: const Text(
-                    'Contact support',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  const SizedBox(height: 24),
+                  GtGreenButton(
+                    label: 'View ride',
+                    onPressed: () {
+                      app.clearPendingDeepLink();
+                      while (Navigator.of(context, rootNavigator: true).canPop()) {
+                        Navigator.of(context, rootNavigator: true).pop();
+                      }
+                      GoRouter.of(context).go('/ride/${widget.rideId}');
+                    },
                   ),
-                ),
-              ],
-            ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () {
+                      app.clearPendingDeepLink();
+                      app.setShellTab(2);
+                      while (Navigator.of(context, rootNavigator: true).canPop()) {
+                        Navigator.of(context, rootNavigator: true).pop();
+                      }
+                      GoRouter.of(context).go('/');
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: GtColors.brand,
+                      side: const BorderSide(color: GtColors.brand),
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Contact support',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 

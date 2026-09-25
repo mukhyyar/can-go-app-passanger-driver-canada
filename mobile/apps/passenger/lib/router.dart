@@ -49,16 +49,17 @@ GoRouter createRouter(AppState state) {
       if (state.isAuthenticated &&
           state.pendingDeepLinkRideId != null &&
           !loc.startsWith('/offers') &&
-          !loc.startsWith('/offer/')) {
+          !loc.startsWith('/offer/') &&
+          !loc.startsWith('/payment') &&
+          !loc.startsWith('/booking-confirmed')) {
         final path = state.consumeDeepLinkPath();
         if (path != null) return path;
       }
 
-      // If a ride is already booked, redirect away from booking/waiting/payment screens to the ride screen.
+      // If a ride is already booked, redirect away from booking/waiting screens to the ride screen.
       if (loc.startsWith('/waiting/') ||
           loc.startsWith('/offers/') ||
-          loc.startsWith('/offer/') ||
-          loc.startsWith('/payment/')) {
+          loc.startsWith('/offer/')) {
         final segments = loc.split('/');
         if (segments.length >= 3) {
           final rideId = segments[2];

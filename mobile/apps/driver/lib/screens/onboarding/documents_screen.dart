@@ -60,7 +60,34 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     }
   }
 
-  Future<void> _pickAndUpload(String docType) async {
+  Future<void> _confirmAndResubmit(String docType, String docTitle) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Resubmit $docTitle?'),
+        content: const Text(
+          'Resubmitting this document will put your driver profile ON HOLD for admin review.\n\nWhile on hold, you will not be able to submit price offers to passengers until verified and approved.\n\nDo you want to proceed?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Proceed & Resubmit'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _pickAndUpload(docType, isResubmission: true);
+    }
+  }
+
+  Future<void> _pickAndUpload(String docType, {bool isResubmission = false}) async {
     final picker = ImagePicker();
     final file = await picker.pickImage(
       source: ImageSource.gallery,
@@ -120,8 +147,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         });
       }
       if (mounted) {
+        final snackMsg = isResubmission
+            ? 'Document resubmitted for review. Your profile is on hold.'
+            : (isReupload ? 'Re-uploaded $docType' : 'Uploaded $docType');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(isReupload ? 'Re-uploaded $docType' : 'Uploaded $docType')),
+          SnackBar(content: Text(snackMsg)),
         );
         await _loadPreviews();
       }
@@ -220,6 +250,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    final hasApprovedDoc = s.documents.any(
+      (d) => (d['status']?.toString().toUpperCase() ?? '') == 'APPROVED',
+    );
     final isAllUnderReview =
         (s.areDocumentsUnderReview || _submitted) &&
         !s.hasReuploadRequest &&
@@ -306,6 +339,76 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                ] else if (s.hasExpiredDocuments) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      border: Border.all(color: Colors.red.shade200),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Colors.red.shade800),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Your profile is disabled due to expired documents. Please re-upload updated documents to regain ride eligibility once verified by admin.',
+                            style: TextStyle(
+                              color: Colors.red.shade900,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ] else if (hasApprovedDoc && s.isProfileOnHold) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      border: Border.all(color: Colors.amber.shade300),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.pause_circle_outline,
+                          color: Colors.amber.shade900,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Profile on hold — documents under review',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'A resubmitted document is currently under review by our admin team. Submitting offers to passengers is paused until verified.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                 ] else if (isAllUnderReview) ...[
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -339,32 +442,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ] else if (s.hasExpiredDocuments) ...[
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      border: Border.all(color: Colors.red.shade200),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.warning_amber_rounded, color: Colors.red.shade800),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Your profile is disabled due to expired documents. Please re-upload updated documents to regain ride eligibility once verified by admin.',
-                            style: TextStyle(
-                              color: Colors.red.shade900,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
                           ),
                         ),
                       ],
@@ -410,6 +487,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   busy: _busy,
                   onUpload: () => _pickAndUpload('selfie'),
                   onReplace: () => _pickAndUpload('selfie'),
+                  onResubmit: () => _confirmAndResubmit('selfie', 'Selfie with driving license'),
                   onDelete: (doc) => _deleteDoc(doc),
                   onPreview: _openPreview,
                   isLocked: s.documentForType('selfie') != null &&
@@ -427,6 +505,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   busy: _busy,
                   onUpload: () => _pickAndUpload('license'),
                   onReplace: () => _pickAndUpload('license'),
+                  onResubmit: () => _confirmAndResubmit('license', 'Driving license'),
                   onDelete: (doc) => _deleteDoc(doc),
                   onPreview: _openPreview,
                   isLocked: s.documentForType('license') != null &&
@@ -446,6 +525,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   busy: _busy,
                   onUpload: () => _pickAndUpload('vehicle_registration'),
                   onReplace: () => _pickAndUpload('vehicle_registration'),
+                  onResubmit: () => _confirmAndResubmit('vehicle_registration', 'Vehicle registration'),
                   onDelete: (doc) => _deleteDoc(doc),
                   onPreview: _openPreview,
                   isLocked: s.documentForType('vehicle_registration') != null &&
@@ -466,6 +546,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   busy: _busy,
                   onUpload: () => _pickAndUpload('insurance'),
                   onReplace: () => _pickAndUpload('insurance'),
+                  onResubmit: () => _confirmAndResubmit('insurance', 'Vehicle insurance'),
                   onDelete: (doc) => _deleteDoc(doc),
                   onPreview: _openPreview,
                   isLocked: s.documentForType('insurance') != null &&
@@ -532,6 +613,7 @@ class _DocSlot extends StatelessWidget {
     required this.onDelete,
     required this.onPreview,
     required this.isLocked,
+    this.onResubmit,
     this.isUnderReview = false,
     this.feedback,
   });
@@ -546,6 +628,7 @@ class _DocSlot extends StatelessWidget {
   final void Function(Map<String, dynamic> doc) onDelete;
   final void Function(Uint8List bytes, String title) onPreview;
   final bool isLocked;
+  final VoidCallback? onResubmit;
   final bool isUnderReview;
   final String? feedback;
 
@@ -749,14 +832,32 @@ class _DocSlot extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (isLocked)
+                    if (isLocked) ...[
                       const Text(
                         'Approved — locked by admin',
                         style: TextStyle(
                           fontSize: 12,
                           color: GtColors.textSecondary,
                         ),
-                      )
+                      ),
+                      if (onResubmit != null) ...[
+                        const SizedBox(height: 6),
+                        OutlinedButton.icon(
+                          onPressed: busy ? null : onResubmit,
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: const Text(
+                            'Resubmit document',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: GtColors.brand,
+                            side: const BorderSide(color: GtColors.brand),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                          ),
+                        ),
+                      ],
+                    ]
                     else if (slotUnderReview)
                       OutlinedButton.icon(
                         onPressed: null,

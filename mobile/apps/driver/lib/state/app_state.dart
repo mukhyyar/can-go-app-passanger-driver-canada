@@ -1312,6 +1312,51 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  /// True if any uploaded document is currently in PENDING review status.
+  bool get hasPendingDocuments {
+    for (final doc in documents) {
+      if ((doc['status']?.toString().toUpperCase() ?? '') == 'PENDING') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// True if driver profile is held due to document verification / review.
+  bool get isProfileOnHold {
+    if (hasPendingDocuments) return true;
+    final st = approvalStatus.toUpperCase();
+    if (st == 'IN_REVIEW') return true;
+    if (st == 'PENDING_KYC' && documents.isNotEmpty) return true;
+    return false;
+  }
+
+  /// True if driver is active and permitted to submit price offers.
+  bool get canSubmitOffers {
+    if (isProfileOnHold) return false;
+    if (!isActivated) return false;
+    if (hasExpiredDocuments) return false;
+    if (hasReuploadRequest) return false;
+    return approvalStatus.toUpperCase() == 'APPROVED';
+  }
+
+  /// Explanatory reason if driver is restricted from submitting offers.
+  String? get profileHoldReason {
+    if (hasExpiredDocuments) {
+      return 'Your account is disabled due to expired documents. Please re-upload updated documents to regain eligibility.';
+    }
+    if (hasReuploadRequest) {
+      return 'Document review requested a new upload. Please re-upload the requested documents.';
+    }
+    if (isProfileOnHold) {
+      return 'Your driver profile is on hold while your documents are under review. You cannot submit offers to passengers until verified by our admin team.';
+    }
+    if (!isActivated || approvalStatus.toUpperCase() != 'APPROVED') {
+      return 'You will be able to offer your price after activation. Please complete your profile verification.';
+    }
+    return null;
+  }
+
   bool isDocumentLocked(Map<String, dynamic> doc) {
     // If expired or reupload requested, unlock so driver can re-upload even if previously approved
     if (isDocumentExpired(doc) || isDocumentReuploadRequested(doc)) return false;
@@ -2239,6 +2284,12 @@ class AppState extends ChangeNotifier {
     offerSubmitting = true;
     notifyListeners();
     try {
+      if (isAuthenticated && !canSubmitOffers) {
+        throw Exception(
+          profileHoldReason ??
+              'Your profile is currently on hold and cannot submit offers.',
+        );
+      }
       final outbound = draft.outboundPrice;
       if (outbound == null || outbound <= 0) {
         throw Exception('Enter a valid outbound price');

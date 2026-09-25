@@ -841,6 +841,9 @@ export class KycOpsService {
     const current = activeDocs(driver.documents);
     const data: Prisma.DriverProfileUpdateInput = {};
     if (!driver.kycSubmittedAt) data.kycSubmittedAt = new Date();
+    const hasPendingReview = current.some(
+      (d) => d.status === DocumentReviewStatus.PENDING,
+    );
     if (driver.approvalStatus === DriverApprovalStatus.REJECTED) {
       data.approvalStatus = DriverApprovalStatus.PENDING_KYC;
       data.kycDecidedAt = null;
@@ -853,6 +856,16 @@ export class KycOpsService {
           ? DriverApprovalStatus.IN_REVIEW
           : DriverApprovalStatus.PENDING_KYC;
       }
+    } else if (
+      driver.approvalStatus === DriverApprovalStatus.APPROVED &&
+      hasPendingReview
+    ) {
+      data.approvalStatus = driver.kycAssignedToId
+        ? DriverApprovalStatus.IN_REVIEW
+        : DriverApprovalStatus.PENDING_KYC;
+      data.isActivated = false;
+      data.drivingEnabled = false;
+      data.kycDecidedAt = null;
     }
     if (Object.keys(data).length) {
       await this.prisma.driverProfile.update({ where: { id: driverId }, data });

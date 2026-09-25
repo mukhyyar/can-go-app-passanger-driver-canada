@@ -1104,8 +1104,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       return (r, oId != null ? s.offerByIds(widget.rideId, oId) : null);
     });
     final status = (ride?.serverStatus ?? '').toUpperCase();
-    final isCompleted =
-        status == 'COMPLETED' || ride?.status == RideStatus.past;
     final statusLabel = friendlyRideStatus(ride?.serverStatus);
 
     final currency = _paymentStatus?['onlineCurrency']?.toString() ??
@@ -1129,16 +1127,34 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             ? _num(breakdownPayment['platformFee'])
             : (((rideFare * 0.2) * 100).roundToDouble() / 100.0));
 
-    return Scaffold(
-      backgroundColor: GtColors.bgGrey,
-      appBar: AppBar(
-        title: Text(ride != null ? 'Ride #${ride.displayId}' : 'Ride'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final app = context.read<AppState>();
+        app.setShellTab(1);
+        while (Navigator.of(context, rootNavigator: true).canPop()) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        GoRouter.of(context).go('/');
+      },
+      child: Scaffold(
+        backgroundColor: GtColors.bgGrey,
+        appBar: AppBar(
+          title: Text(ride != null ? 'Ride #${ride.displayId}' : 'Ride'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              final app = context.read<AppState>();
+              app.setShellTab(1);
+              while (Navigator.of(context, rootNavigator: true).canPop()) {
+                Navigator.of(context, rootNavigator: true).pop();
+              }
+              GoRouter.of(context).go('/');
+            },
+          ),
         ),
-      ),
-      body: _loading
+        body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: GtColors.brand),
             )
@@ -1635,6 +1651,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     const SizedBox(height: 24),
                   ],
                 ),
+      ),
     );
   }
 

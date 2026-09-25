@@ -2651,7 +2651,26 @@ export class MarketplaceService {
       !user.driverProfile.isActivated ||
       user.driverProfile.approvalStatus !== DriverApprovalStatus.APPROVED
     ) {
-      throw new ForbiddenException('Driver not activated');
+      const isHold =
+        user.driverProfile.approvalStatus === DriverApprovalStatus.IN_REVIEW ||
+        user.driverProfile.approvalStatus === DriverApprovalStatus.PENDING_KYC;
+      throw new ForbiddenException(
+        isHold
+          ? 'Your driver profile is currently on hold while your documents are under review. You cannot submit offers to passengers until verified.'
+          : 'Driver not activated',
+      );
+    }
+    const pendingDoc = await this.prisma.driverDocument.findFirst({
+      where: {
+        driverId: user.driverProfile.id,
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        status: DocumentReviewStatus.PENDING,
+      },
+    });
+    if (pendingDoc) {
+      throw new ForbiddenException(
+        `Your driver profile is currently on hold while your document (${pendingDoc.docType}) is under review. You cannot submit offers until it is approved.`,
+      );
     }
     const expiredDoc = await this.prisma.driverDocument.findFirst({
       where: {

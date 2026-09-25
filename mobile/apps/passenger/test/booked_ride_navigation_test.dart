@@ -176,6 +176,64 @@ void main() {
       expect(navigatedPath, equals('/ride/test-ride-123'));
       expect(find.text('Ride Detail Target'), findsOneWidget);
     });
+
+    testWidgets('Tapping "Contact support" button switches tab to 2 and navigates to /',
+        (tester) async {
+      final state = AppState();
+      String? navigatedPath;
+
+      final router = GoRouter(
+        initialLocation: '/booking-confirmed/test-ride-123',
+        routes: [
+          GoRoute(
+            path: '/booking-confirmed/:rideId',
+            builder: (context, state) =>
+                BookingConfirmedScreen(rideId: state.pathParameters['rideId']!),
+          ),
+          GoRoute(
+            path: '/',
+            builder: (context, state) {
+              navigatedPath = '/';
+              return const Scaffold(body: Text('Shell Root Target'));
+            },
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: state,
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final supportBtn = find.text('Contact support');
+      expect(supportBtn, findsOneWidget);
+
+      await tester.tap(supportBtn);
+      await tester.pumpAndSettle();
+
+      expect(navigatedPath, equals('/'));
+      expect(state.shellTabIndex, equals(2));
+      expect(find.text('Shell Root Target'), findsOneWidget);
+    });
+  });
+
+  group('Deep link booking confirmed paths', () {
+    test('consumeDeepLinkPath returns /booking-confirmed/:id for ride.booked type', () {
+      final state = AppState();
+      state.applyDeepLink(
+        rideId: 'ride-123',
+        type: 'ride.booked',
+      );
+
+      final path = state.consumeDeepLinkPath();
+      expect(path, equals('/booking-confirmed/ride-123'));
+    });
   });
 
   group('WaitingScreen redirect when ride is booked', () {

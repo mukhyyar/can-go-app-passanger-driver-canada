@@ -99,6 +99,34 @@ class _RequestsScreenState extends State<RequestsScreen>
 
   Future<void> _openRequest(DriverRequest req) async {
     final s = context.read<AppState>();
+    if (s.isProfileOnHold) {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Profile On Hold'),
+          content: const Text(
+            'Your driver profile is currently on hold while your documents are under review by our admin team. You cannot submit offers to passengers until verified.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK', style: TextStyle(color: GtColors.brand)),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
+              onPressed: () {
+                Navigator.pop(context);
+                context.push('/onboarding/documents');
+              },
+              child: const Text('View Documents'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     if (!s.isActivated) {
       await showDialog<void>(
         context: context,
@@ -159,7 +187,9 @@ class _RequestsScreenState extends State<RequestsScreen>
                     ? 'Documents expired — account disabled'
                     : (s.hasReuploadRequest
                         ? 'Document re-upload requested'
-                        : (s.isActivated ? null : 'Complete activation to offer prices')),
+                        : (s.isProfileOnHold
+                            ? 'Profile on hold — review in progress'
+                            : (s.isActivated ? null : 'Complete activation to offer prices'))),
               ),
             ),
             if (s.hasExpiredDocuments)
@@ -215,6 +245,39 @@ class _RequestsScreenState extends State<RequestsScreen>
                         Expanded(
                           child: Text(
                             'Document review: Re-upload requested. Tap to view and re-upload.',
+                            style: TextStyle(
+                              color: Colors.amber.shade900,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: Colors.amber.shade900, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else if (s.isProfileOnHold)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: InkWell(
+                  onTap: () => context.push('/onboarding/documents'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      border: Border.all(color: Colors.amber.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.pause_circle_outline, color: Colors.amber.shade900, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Profile on hold: Document under review. Offers are paused until verified.',
                             style: TextStyle(
                               color: Colors.amber.shade900,
                               fontSize: 12,

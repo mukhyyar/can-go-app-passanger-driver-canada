@@ -48,7 +48,13 @@ class PushService with WidgetsBindingObserver {
         unawaited(_registerToken(token));
       });
 
-      _foregroundSub = FirebaseMessaging.onMessage.listen(_handleMessage);
+      _foregroundSub = FirebaseMessaging.onMessage.listen((message) {
+        final data = message.data;
+        final rideId = data['rideId']?.toString();
+        if (rideId != null && rideId.isNotEmpty) {
+          app.refreshRide(rideId);
+        }
+      });
       _openedSub = FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
       final initial = await messaging.getInitialMessage();

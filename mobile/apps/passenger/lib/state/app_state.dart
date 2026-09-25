@@ -836,6 +836,9 @@ class AppState extends ChangeNotifier {
     if (type == 'chat') {
       return '/ride/$rideId/chat';
     }
+    if (type == 'ride.booked' || type == 'booking-confirmed') {
+      return '/booking-confirmed/$rideId';
+    }
     if (isRideBooked(rideId)) {
       return '/ride/$rideId';
     }
@@ -843,6 +846,12 @@ class AppState extends ChangeNotifier {
       return '/offers/$rideId?offerId=$offerId';
     }
     return '/offers/$rideId';
+  }
+
+  void clearPendingDeepLink() {
+    pendingDeepLinkRideId = null;
+    pendingDeepLinkOfferId = null;
+    pendingDeepLinkType = null;
   }
 
   Future<Map<String, dynamic>> validateBook(String rideId, String offerId) {

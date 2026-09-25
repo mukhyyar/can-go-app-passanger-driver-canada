@@ -198,7 +198,7 @@ export class DriversService {
       uploadedById: userId,
       uploadedByType: 'DRIVER',
       replaceDocumentId: current?.id,
-      allowReplaceApproved: false,
+      allowReplaceApproved: true,
     });
 
     if (driver.approvalStatus === DriverApprovalStatus.REJECTED) {
@@ -228,14 +228,6 @@ export class DriversService {
       where: { id: documentId, driverId: driver.id },
     });
     if (!prev) throw new NotFoundException('Document not found');
-    if (
-      prev.status !== DocumentReviewStatus.REJECTED &&
-      prev.status !== DocumentReviewStatus.NEEDS_RESUBMISSION
-    ) {
-      throw new BadRequestException(
-        'Only rejected or resubmission-requested documents can be re-uploaded',
-      );
-    }
     return this.uploadDocument(
       userId,
       file,
