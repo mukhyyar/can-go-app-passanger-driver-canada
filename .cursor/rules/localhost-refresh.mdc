@@ -1,19 +1,14 @@
 ---
-description: Preview Flutter apps in Cursor browser only — never open new Chrome windows
-alwaysApply: true
+description: Optional Flutter web preview in Cursor browser — only when the user asks for localhost/preview
+alwaysApply: false
 ---
 
-# Localhost preview — no new Chrome
+# Localhost preview — only on request
 
-After Flutter/UI edits the user must see updates, but **never launch Chrome/Edge** (slow, opens new windows).
-
-## Required workflow
+Use this **only when the user explicitly asks** for web/localhost preview. Not part of the default mobile APK workflow.
 
 1. Serve with **`flutter run -d web-server --web-port=5050 --web-hostname=127.0.0.1`** only (fallback ports OK if busy).
 2. **Forbidden:** `flutter run -d chrome`, `flutter run -d edge`, or any flag that opens a system browser.
-3. Preview only in **Cursor IDE browser** (`cursor-ide-browser`): navigate/refresh `http://127.0.0.1:5050` (or the active web-server port), then screenshot if needed.
-4. If web-server is already running on the preview port:
-   - Prefer keeping it alive; send hot restart if possible, or restart **that same web-server process** only.
-   - Do not spawn extra browser windows.
-5. After edits: refresh the existing Cursor browser tab (same URL) and confirm the update there.
-6. Tell the user the preview URL (default `http://127.0.0.1:5050`).
+3. Preview only in **Cursor IDE browser** (`cursor-ide-browser`): navigate/refresh `http://127.0.0.1:5050`.
+4. Prefer hot restart / same process if already running; do not spawn extra browser windows.
+5. Tell the user the preview URL (default `http://127.0.0.1:5050`).

@@ -1197,8 +1197,7 @@ class AppState extends ChangeNotifier {
     if (doc == null) return false;
     if (isDocumentExpired(doc)) return false;
     final st = doc['status']?.toString().toUpperCase() ?? '';
-    if (st == 'REJECTED' || st == 'NEEDS_RESUBMISSION') return false;
-    return true;
+    return st == 'PENDING';
   }
 
   bool isDocumentReuploadRequested(Map<String, dynamic>? doc) {
@@ -1302,6 +1301,9 @@ class AppState extends ChangeNotifier {
   }
 
   bool get areDocumentsUnderReview {
+    final st = approvalStatus.toUpperCase();
+    if (st == 'APPROVED') return false;
+    if (st != 'IN_REVIEW' && st != 'PENDING_KYC') return false;
     if (!hasAllRequiredDocuments) return false;
     if (hasExpiredDocuments) return false;
     if (hasReuploadRequest) return false;
@@ -1322,10 +1324,26 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
+  /// True if a KYC-required document (selfie / license / registration) is PENDING.
+  bool get hasPendingRequiredDocuments {
+    for (final slot in const ['selfie', 'license', 'vehicle_registration']) {
+      final doc = documentForType(slot);
+      if (doc == null) continue;
+      if ((doc['status']?.toString().toUpperCase() ?? '') == 'PENDING') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// True if driver profile is held due to document verification / review.
   bool get isProfileOnHold {
-    if (hasPendingDocuments) return true;
     final st = approvalStatus.toUpperCase();
+    // Activated + approved: only required-doc PENDING holds (ignore optional leftovers).
+    if (st == 'APPROVED' && isActivated) {
+      return hasPendingRequiredDocuments;
+    }
+    if (hasPendingRequiredDocuments) return true;
     if (st == 'IN_REVIEW') return true;
     if (st == 'PENDING_KYC' && documents.isNotEmpty) return true;
     return false;

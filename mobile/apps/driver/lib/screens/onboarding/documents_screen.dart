@@ -250,11 +250,18 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    // Sticky local submit flag must not keep the under-review banner after KYC approval.
+    if (_submitted && s.approvalStatus.toUpperCase() == 'APPROVED') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _submitted) setState(() => _submitted = false);
+      });
+    }
     final hasApprovedDoc = s.documents.any(
       (d) => (d['status']?.toString().toUpperCase() ?? '') == 'APPROVED',
     );
     final isAllUnderReview =
         (s.areDocumentsUnderReview || _submitted) &&
+        s.approvalStatus.toUpperCase() != 'APPROVED' &&
         !s.hasReuploadRequest &&
         !s.hasExpiredDocuments;
 

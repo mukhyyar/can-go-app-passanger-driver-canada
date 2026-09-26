@@ -57,6 +57,7 @@ import {
 } from './ride-update.logic';
 import { StorageService } from '../storage/storage.service';
 import { sanitizeContentDispositionFilename } from '../drivers/vehicle-photos.util';
+import { REQUIRED_DOC_TYPES } from '../drivers/documents.constants';
 
 const DEFAULT_OFFER_VALIDITY_SECONDS = 30 * 60;
 
@@ -2665,6 +2666,7 @@ export class MarketplaceService {
         driverId: user.driverProfile.id,
         lifecycleStatus: DocumentLifecycleStatus.CURRENT,
         status: DocumentReviewStatus.PENDING,
+        docType: { in: [...REQUIRED_DOC_TYPES] },
       },
     });
     if (pendingDoc) {

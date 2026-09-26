@@ -20,7 +20,7 @@ void main() {
   });
 
   group('Document Resubmission and Profile Hold State', () {
-    test('AppState flags profile on hold when any document is PENDING', () {
+    test('AppState flags profile on hold when a required document is PENDING', () {
       final state = AppState();
       state.approvalStatus = 'APPROVED';
       state.isActivated = true;
@@ -34,14 +34,49 @@ void main() {
       expect(state.canSubmitOffers, isTrue);
       expect(state.isProfileOnHold, isFalse);
 
-      // Resubmit document -> status becomes PENDING
+      // Resubmit required document -> status becomes PENDING
       state.documents = [
         {'id': 'd1-v2', 'docType': 'license', 'status': 'PENDING'},
       ];
       expect(state.hasPendingDocuments, isTrue);
+      expect(state.hasPendingRequiredDocuments, isTrue);
       expect(state.isProfileOnHold, isTrue);
       expect(state.canSubmitOffers, isFalse);
       expect(state.profileHoldReason, contains('on hold while your documents are under review'));
+    });
+
+    test('AppState does not hold approved+active driver for optional PENDING docs', () {
+      final state = AppState();
+      state.approvalStatus = 'APPROVED';
+      state.isActivated = true;
+      state.documents = [
+        {'id': 'd1', 'docType': 'selfie', 'status': 'APPROVED'},
+        {'id': 'd2', 'docType': 'license', 'status': 'APPROVED'},
+        {'id': 'd3', 'docType': 'vehicle_registration', 'status': 'APPROVED'},
+        {'id': 'd4', 'docType': 'insurance', 'status': 'PENDING'},
+        {'id': 'd5', 'docType': 'vehicle_photo', 'status': 'PENDING'},
+      ];
+      expect(state.hasPendingDocuments, isTrue);
+      expect(state.hasPendingRequiredDocuments, isFalse);
+      expect(state.isProfileOnHold, isFalse);
+      expect(state.canSubmitOffers, isTrue);
+      expect(state.areDocumentsUnderReview, isFalse);
+    });
+
+    test('AppState treats only PENDING docs as under review, not APPROVED', () {
+      final state = AppState();
+      state.approvalStatus = 'APPROVED';
+      state.isActivated = true;
+      state.documents = [
+        {'id': 'd1', 'docType': 'selfie', 'status': 'APPROVED'},
+        {'id': 'd2', 'docType': 'license', 'status': 'APPROVED'},
+        {'id': 'd3', 'docType': 'vehicle_registration', 'status': 'APPROVED'},
+        {'id': 'd4', 'docType': 'insurance', 'status': 'APPROVED'},
+      ];
+      expect(state.isDocumentUnderReview(state.documentForType('license')), isFalse);
+      expect(state.areDocumentsUnderReview, isFalse);
+      expect(state.isProfileOnHold, isFalse);
+      expect(state.canSubmitOffers, isTrue);
     });
 
     test('AppState flags profile on hold when approvalStatus is IN_REVIEW', () {

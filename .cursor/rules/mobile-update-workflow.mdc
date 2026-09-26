@@ -1,75 +1,57 @@
 ---
-description: After mobile changes — localhost preview, WiFi-debug install, and 4 APKs (passenger/driver × local/live)
+description: After mobile changes — build only live release APK(s) for apps that changed, then install on phone if connected
 alwaysApply: true
 ---
 
-# Mobile update workflow (required after mobile changes)
+# Mobile update workflow (fast track)
 
-When finishing work that touches `mobile/` (apps, packages, Android, or shared API client), do **all** of the following before stopping. Do not skip APKs unless the user explicitly says so.
+When finishing work that touches `mobile/`, build **live release APK(s) only** for the app(s) that actually changed. Do not skip unless the user explicitly says so.
 
-## 1. Localhost preview (web)
+## Scope — which APK(s)
 
-Follow [localhost-refresh](localhost-refresh.mdc):
+| What changed | Build |
+|---|---|
+| `mobile/apps/driver/**` only | `can-go-driver-release.apk` only |
+| `mobile/apps/passenger/**` only | `can-go-passenger-release.apk` only |
+| Shared (`mobile/packages/**`, both apps, Android shared) | Both release APKs |
+| Backend / admin / web only (no `mobile/` edits) | Skip |
 
-- Run the app under edit with `flutter run -d web-server --web-port=5050 --web-hostname=127.0.0.1` (fallback port OK).
-- Never open Chrome/Edge. Refresh Cursor IDE browser at `http://127.0.0.1:5050`.
-- Prefer hot restart / same process if already running.
+Never build local/LAN APKs (`*-local.apk`) unless the user explicitly asks.
 
-## 2. WiFi debugging → update phone
+## Do NOT do (unless user asks)
 
-Wireless debugging is **always on** for this user's phone. ADB: `D:\Android\Sdk\platform-tools\adb.exe` (or `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe` if present).
+- Localhost / web-server preview
+- Cursor IDE browser refresh / screenshots
+- Passenger APK when only driver changed (and vice versa)
+- Local API APKs (`CANGO_API_BASE=http://…`)
 
-1. Run `adb devices -l`.
-2. If a device is listed (USB or WiFi `IP:port`), **always install the live release APKs** for the apps you changed:
-   - Passenger: `adb -s <serial> install -r mobile/apks/can-go-passenger-release.apk`
-   - Driver: `adb -s <serial> install -r mobile/apks/can-go-driver-release.apk`
-3. **Default = release (live API).** Do **not** install `*-local.apk` on the phone unless the user explicitly asks for local/LAN testing.
-4. If no device: note that and still produce the 4 APKs.
+## Build + install
 
-## 3. Always build 4 release APKs
+ADB: `D:\Android\Sdk\platform-tools\adb.exe` (or `$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe`).
 
-Build **one APK at a time** (never parallel passenger+driver or local+live). Do not run `gradlew --stop` or kill Java/Dart while a build is running.
-
-Copy into `mobile/apks/`:
-
-| File | App | `CANGO_API_BASE` |
-|------|-----|------------------|
-| `can-go-passenger-local.apk` | passenger | `http://<LAN_IP>:4000/api` |
-| `can-go-passenger-release.apk` | passenger | `https://www.can-rides.ca/api` |
-| `can-go-driver-local.apk` | driver | `http://<LAN_IP>:4000/api` |
-| `can-go-driver-release.apk` | driver | `https://www.can-rides.ca/api` |
-
-**LAN IP for local APKs:** prefer the host IPv4 on the same subnet as the phone (often `192.168.100.x`). Never bake `127.0.0.1` into phone APKs — the device cannot reach the PC that way.
+Build **one APK at a time**. Do not run `gradlew --stop` or kill Java/Dart while a build is running.
 
 ```powershell
 $adb = "D:\Android\Sdk\platform-tools\adb.exe"
-$lan = (Get-NetIPAddress -AddressFamily IPv4 |
-  Where-Object { $_.IPAddress -like '192.168.*' -and $_.IPAddress -notlike '*.1' } |
-  Select-Object -First 1 -ExpandProperty IPAddress)
-if (-not $lan) { $lan = "192.168.100.5" }
-$localApi = "http://${lan}:4000/api"
+if (-not (Test-Path $adb)) { $adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" }
 $liveApi = "https://www.can-rides.ca/api"
 $apks = "d:\xampp\htdocs\get-transfer\mobile\apks"
 New-Item -ItemType Directory -Force -Path $apks | Out-Null
 
-# Passenger local + live
+# Driver release (only if driver or shared changed)
+cd "d:\xampp\htdocs\get-transfer\mobile\apps\driver"
+flutter build apk --release --dart-define=CANGO_API_BASE=$liveApi
+Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-driver-release.apk" -Force
+
+# Passenger release (only if passenger or shared changed)
 cd "d:\xampp\htdocs\get-transfer\mobile\apps\passenger"
-flutter build apk --release --dart-define=CANGO_API_BASE=$localApi
-Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-passenger-local.apk" -Force
 flutter build apk --release --dart-define=CANGO_API_BASE=$liveApi
 Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-passenger-release.apk" -Force
 
-# Driver local + live
-cd "d:\xampp\htdocs\get-transfer\mobile\apps\driver"
-flutter build apk --release --dart-define=CANGO_API_BASE=$localApi
-Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-driver-local.apk" -Force
-flutter build apk --release --dart-define=CANGO_API_BASE=$liveApi
-Copy-Item "build\app\outputs\flutter-apk\app-release.apk" "$apks\can-go-driver-release.apk" -Force
+# Install on phone if connected (release only)
+& $adb devices -l
+# adb -s <serial> install -r "$apks\can-go-driver-release.apk"
+# adb -s <serial> install -r "$apks\can-go-passenger-release.apk"
 ```
 
-Tell the user the four APK paths and which one was installed on the device (if any).
-
-## When this does NOT apply
-
-- Pure backend/admin/web-only changes with **no** `mobile/` edits — skip APKs unless the user asks.
-- User explicitly says skip builds / skip device install.
+Tell the user which release APK path(s) were built and whether install succeeded (or that no device was connected).
