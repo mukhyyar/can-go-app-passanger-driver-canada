@@ -1016,6 +1016,7 @@ export class AdminOpsService {
             vehicles: true,
             documents: { orderBy: { createdAt: 'desc' }, take: 12 },
             locationCurrent: true,
+            operatingZones: { orderBy: { updatedAt: 'desc' } },
           },
         },
         sessions: { orderBy: { lastSeenAt: 'desc' }, take: 20 },
@@ -3523,9 +3524,253 @@ export class AdminOpsService {
 
   listZones() {
     return this.prisma.operatingZone.findMany({
-      take: 200,
-      include: { driver: { select: { id: true, fullName: true } } },
+      take: 500,
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        zoneType: true,
+        geoJson: true,
+        radiusKm: true,
+        createdAt: true,
+        updatedAt: true,
+        driverId: true,
+        driver: {
+          select: {
+            id: true,
+            userId: true,
+            fullName: true,
+            baseLocation: true,
+            approvalStatus: true,
+          },
+        },
+      },
     });
+  }
+
+  async createZone(
+    actorId: string,
+    dto: {
+      driverId: string;
+      name: string;
+      zoneType: 'circle' | 'polygon';
+      geoJson: Record<string, unknown>;
+      radiusKm?: number;
+    },
+    ip?: string,
+  ) {
+    const driver = await this.prisma.driverProfile.findUnique({
+      where: { id: dto.driverId },
+      select: { id: true },
+    });
+    if (!driver) throw new NotFoundException('Driver not found');
+    this.validateZoneGeo(dto);
+
+    const zone = await this.prisma.operatingZone.create({
+      data: {
+        driverId: driver.id,
+        name: dto.name,
+        zoneType: dto.zoneType,
+        geoJson: dto.geoJson as Prisma.InputJsonValue,
+        radiusKm: dto.radiusKm ?? null,
+      },
+      select: {
+        id: true,
+        name: true,
+        zoneType: true,
+        geoJson: true,
+        radiusKm: true,
+        createdAt: true,
+        updatedAt: true,
+        driverId: true,
+        driver: {
+          select: {
+            id: true,
+            userId: true,
+            fullName: true,
+            baseLocation: true,
+            approvalStatus: true,
+          },
+        },
+      },
+    });
+    await this.syncZoneGeom(zone.id, dto);
+    await this.audit(actorId, 'OPERATING_ZONE_CREATED', 'OperatingZone', zone.id, {
+      ip,
+      meta: { source: 'ADMIN', driverId: driver.id },
+      after: { name: zone.name, zoneType: zone.zoneType, radiusKm: zone.radiusKm },
+    });
+    return zone;
+  }
+
+  async updateZone(
+    actorId: string,
+    zoneId: string,
+    dto: {
+      name: string;
+      zoneType: 'circle' | 'polygon';
+      geoJson: Record<string, unknown>;
+      radiusKm?: number;
+    },
+    ip?: string,
+  ) {
+    const existing = await this.prisma.operatingZone.findUnique({
+      where: { id: zoneId },
+      select: {
+        id: true,
+        name: true,
+        zoneType: true,
+        geoJson: true,
+        radiusKm: true,
+        driverId: true,
+      },
+    });
+    if (!existing) throw new NotFoundException('Zone not found');
+    this.validateZoneGeo(dto);
+
+    const zone = await this.prisma.operatingZone.update({
+      where: { id: zoneId },
+      data: {
+        name: dto.name,
+        zoneType: dto.zoneType,
+        geoJson: dto.geoJson as Prisma.InputJsonValue,
+        radiusKm: dto.radiusKm ?? null,
+      },
+      select: {
+        id: true,
+        name: true,
+        zoneType: true,
+        geoJson: true,
+        radiusKm: true,
+        createdAt: true,
+        updatedAt: true,
+        driverId: true,
+        driver: {
+          select: {
+            id: true,
+            userId: true,
+            fullName: true,
+            baseLocation: true,
+            approvalStatus: true,
+          },
+        },
+      },
+    });
+    await this.syncZoneGeom(zone.id, dto);
+    await this.audit(actorId, 'OPERATING_ZONE_UPDATED', 'OperatingZone', zone.id, {
+      ip,
+      meta: { source: 'ADMIN', driverId: existing.driverId },
+      before: {
+        name: existing.name,
+        zoneType: existing.zoneType,
+        radiusKm: existing.radiusKm,
+      },
+      after: { name: zone.name, zoneType: zone.zoneType, radiusKm: zone.radiusKm },
+    });
+    return zone;
+  }
+
+  async deleteZone(actorId: string, zoneId: string, ip?: string) {
+    const existing = await this.prisma.operatingZone.findUnique({
+      where: { id: zoneId },
+      select: { id: true, name: true, driverId: true },
+    });
+    if (!existing) throw new NotFoundException('Zone not found');
+    await this.prisma.operatingZone.delete({ where: { id: zoneId } });
+    await this.audit(actorId, 'OPERATING_ZONE_DELETED', 'OperatingZone', zoneId, {
+      ip,
+      meta: { source: 'ADMIN', driverId: existing.driverId },
+      before: { name: existing.name },
+    });
+    return { ok: true };
+  }
+
+  private validateZoneGeo(dto: {
+    zoneType: 'circle' | 'polygon';
+    geoJson: Record<string, unknown>;
+    radiusKm?: number;
+  }) {
+    if (!dto.geoJson || typeof dto.geoJson !== 'object') {
+      throw new BadRequestException('geoJson is required');
+    }
+    if (dto.zoneType === 'circle') {
+      const g = dto.geoJson as {
+        center?: number[];
+        radiusKm?: number;
+      };
+      const center = g.center;
+      const radius = dto.radiusKm ?? g.radiusKm;
+      if (!center || center.length !== 2 || !radius || radius <= 0) {
+        throw new BadRequestException(
+          'circle zones require center:[lng,lat] and radiusKm',
+        );
+      }
+    } else if (dto.zoneType === 'polygon') {
+      const g = dto.geoJson as { type?: string; coordinates?: unknown };
+      const geom =
+        g.type === 'Feature'
+          ? (dto.geoJson as { geometry?: { type?: string } }).geometry
+          : g;
+      if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
+        throw new BadRequestException(
+          'polygon zones require GeoJSON Polygon/MultiPolygon',
+        );
+      }
+    } else {
+      throw new BadRequestException('zoneType must be circle or polygon');
+    }
+  }
+
+  private async syncZoneGeom(
+    zoneId: string,
+    dto: {
+      zoneType: 'circle' | 'polygon';
+      geoJson: Record<string, unknown>;
+      radiusKm?: number;
+    },
+  ) {
+    try {
+      if (dto.zoneType === 'circle') {
+        const g = dto.geoJson as { center: number[]; radiusKm?: number };
+        const [lng, lat] = g.center;
+        const radiusKm = dto.radiusKm ?? g.radiusKm!;
+        const meters = radiusKm * 1000;
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE "OperatingZone"
+           SET geom = ST_Transform(
+             ST_Buffer(
+               ST_Transform(ST_SetSRID(ST_MakePoint($1, $2), 4326), 3857),
+               $3
+             ),
+             4326
+           )
+           WHERE id = $4`,
+          lng,
+          lat,
+          meters,
+          zoneId,
+        );
+      } else {
+        const raw =
+          (dto.geoJson as { type?: string }).type === 'Feature'
+            ? JSON.stringify((dto.geoJson as { geometry: unknown }).geometry)
+            : JSON.stringify(dto.geoJson);
+        await this.prisma.$executeRawUnsafe(
+          `UPDATE "OperatingZone"
+           SET geom = ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)
+           WHERE id = $2`,
+          raw,
+          zoneId,
+        );
+      }
+    } catch (err) {
+      // Column may not exist until SQL migration applied; non-fatal for JSON path.
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[AdminOpsService] PostGIS geom sync skipped/failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 }
 

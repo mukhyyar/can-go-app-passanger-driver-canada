@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsIn,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   MinLength,
@@ -316,4 +317,29 @@ export class BroadcastDto {
   @IsOptional()
   @IsBoolean()
   guestBanner?: boolean;
+}
+
+export class AdminUpdateZoneDto {
+  @IsString()
+  @MinLength(1)
+  name!: string;
+
+  @IsString()
+  @IsIn(['circle', 'polygon'])
+  zoneType!: 'circle' | 'polygon';
+
+  /** GeoJSON geometry/Feature, or circle { center:[lng,lat], radiusKm } */
+  @IsObject()
+  geoJson!: Record<string, unknown>;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  radiusKm?: number;
+}
+
+export class AdminCreateZoneDto extends AdminUpdateZoneDto {
+  @IsString()
+  @MinLength(1)
+  driverId!: string;
 }

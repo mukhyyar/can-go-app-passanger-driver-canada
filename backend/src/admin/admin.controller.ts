@@ -42,6 +42,8 @@ import {
   WalletAdjustDto,
   WalletBulkReleaseDto,
   WalletReleaseDto,
+  AdminCreateZoneDto,
+  AdminUpdateZoneDto,
 } from './admin.dto';
 
 @Controller('admin')
@@ -557,9 +559,40 @@ export class AdminOpsController {
   }
 
   @Get('zones')
-  @RequirePermission('pricing.view')
+  @RequirePermission('drivers.view')
   zones() {
     return this.ops.listZones();
+  }
+
+  @Post('zones')
+  @RequirePermission('kyc.edit')
+  createZone(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: AdminCreateZoneDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.createZone(user.id, dto, req.ip);
+  }
+
+  @Put('zones/:id')
+  @RequirePermission('kyc.edit')
+  updateZone(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: AdminUpdateZoneDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.updateZone(user.id, id, dto, req.ip);
+  }
+
+  @Delete('zones/:id')
+  @RequirePermission('kyc.edit')
+  deleteZone(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.deleteZone(user.id, id, req.ip);
   }
 
   @Get('referrals')

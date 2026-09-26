@@ -12,6 +12,8 @@ import { DangerZoneModal } from './danger-zone-modal';
 import { LoginLinkModal } from './login-link-modal';
 import { ResetPasswordModal } from './reset-password-modal';
 import { SuspendUserModal } from './suspend-modal';
+import { OperatingZonesWorkspace } from '../operating-zones-workspace';
+import type { OperatingZoneRow } from '../../lib/operating-zone-geo';
 import {
   AccountStatusBadge,
   KycBadge,
@@ -30,6 +32,7 @@ type TabId =
   | 'wallet'
   | 'kyc'
   | 'vehicles'
+  | 'zones'
   | 'devices'
   | 'sessions'
   | 'support'
@@ -105,6 +108,7 @@ export function User360Workspace() {
         'wallet',
         'kyc',
         'vehicles',
+        'zones',
         'devices',
         'sessions',
         'support',
@@ -161,6 +165,7 @@ export function User360Workspace() {
       { id: 'wallet', label: 'Wallet', show: isDriver },
       { id: 'kyc', label: 'KYC', show: isDriver },
       { id: 'vehicles', label: 'Vehicles', show: isDriver },
+      { id: 'zones', label: 'Zones', show: isDriver },
       { id: 'devices', label: 'Devices', show: true },
       { id: 'sessions', label: 'Sessions', show: true },
       { id: 'support', label: 'Support', show: true },
@@ -182,6 +187,7 @@ export function User360Workspace() {
   const canPayoutReview = hasPermission(me?.permissions, 'finance.payout_review');
   const canWalletView = hasPermission(me?.permissions, 'finance.view');
   const canWalletManage = hasPermission(me?.permissions, 'finance.wallet_manage');
+  const canEditZones = hasPermission(me?.permissions, 'kyc.edit');
   const tags = asArr(data?.tags).map((t) => asObj(asObj(t).tag));
   const isArchived = Boolean(user.archivedAt);
   const isAnonymized = Boolean(user.anonymizedAt);
@@ -523,6 +529,14 @@ export function User360Workspace() {
         )}
         {tab === 'kyc' && <KycTab drv={drv} documents={documents} driverId={String(drv.id || '')} />}
         {tab === 'vehicles' && <VehiclesTab vehicles={vehicles} />}
+        {tab === 'zones' && (
+          <ZonesTab
+            drv={drv}
+            userId={String(id)}
+            canEdit={canEditZones}
+            onChanged={() => void load()}
+          />
+        )}
         {tab === 'devices' && <DevicesTab sessions={sessions} />}
         {tab === 'sessions' && <SessionsTab sessions={sessions} />}
         {tab === 'support' && <SupportTab cases={data.cases} />}
@@ -761,6 +775,32 @@ function OverviewTab(props: {
           ) : null}
         </Card>
       )}
+
+      {isDriver && drv.id ? (
+        <Card title="Operating zones">
+          <p className="muted" style={{ marginTop: 0 }}>
+            {asArr(drv.operatingZones).length
+              ? `${asArr(drv.operatingZones).length} zone(s) — map and edit on the Zones tab.`
+              : 'No operating zone set yet.'}
+          </p>
+          {asArr(drv.operatingZones).length > 0 ? (
+            <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+              {asArr(drv.operatingZones).slice(0, 5).map((z) => {
+                const row = asObj(z);
+                return (
+                  <li key={String(row.id)}>
+                    {String(row.name || 'Zone')} · {String(row.zoneType || '—')}
+                    {row.radiusKm != null ? ` · ${Number(row.radiusKm).toFixed(1)} km` : ''}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          <Link className="btn ghost sm" href="?tab=zones">
+            Open zones map
+          </Link>
+        </Card>
+      ) : null}
 
       {canDanger && (
         <Card title="Danger zone">
@@ -1305,6 +1345,80 @@ function VehiclesTab({ vehicles }: { vehicles: Array<Record<string, unknown>> })
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function driverZonesFromProfile(
+  drv: Record<string, unknown>,
+  userId: string,
+): OperatingZoneRow[] {
+  const driverId = String(drv.id || '');
+  if (!driverId) return [];
+  return asArr(drv.operatingZones).map((z) => {
+    const row = asObj(z);
+    return {
+      id: String(row.id),
+      name: String(row.name || 'Zone'),
+      zoneType: String(row.zoneType || 'polygon'),
+      geoJson: (row.geoJson as Record<string, unknown> | null) ?? null,
+      radiusKm: typeof row.radiusKm === 'number' ? row.radiusKm : null,
+      driverId,
+      createdAt: row.createdAt ? String(row.createdAt) : undefined,
+      updatedAt: row.updatedAt ? String(row.updatedAt) : undefined,
+      driver: {
+        id: driverId,
+        userId,
+        fullName: String(drv.fullName || 'Driver'),
+        baseLocation: String(drv.baseLocation || ''),
+        approvalStatus: String(drv.approvalStatus || ''),
+      },
+    };
+  });
+}
+
+function ZonesTab({
+  drv,
+  userId,
+  canEdit,
+  onChanged,
+}: {
+  drv: Record<string, unknown>;
+  userId: string;
+  canEdit: boolean;
+  onChanged: () => void;
+}) {
+  const driverId = String(drv.id || '');
+  const zones = driverZonesFromProfile(drv, userId);
+
+  if (!driverId) {
+    return (
+      <div className="panel">
+        <EmptyState title="No driver profile" description="Operating zones require a driver profile." />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <h3 style={{ margin: 0 }}>Operating zones</h3>
+          <p className="muted" style={{ margin: 0 }}>
+            Coverage area used for ride matching — where this driver operates.
+          </p>
+        </div>
+        <Link className="btn ghost sm" href="/zones">
+          All zones
+        </Link>
+      </div>
+      <OperatingZonesWorkspace
+        zones={zones}
+        canEdit={canEdit}
+        driverId={driverId}
+        compact
+        onChanged={onChanged}
+      />
     </div>
   );
 }

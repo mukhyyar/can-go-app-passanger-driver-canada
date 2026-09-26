@@ -7,6 +7,7 @@ export type GMap = {
   setZoom: (z: number) => void;
   fitBounds: (b: GLatLngBounds, padding?: number | object) => void;
   panTo: (ll: GLatLng) => void;
+  getCenter: () => { lat: () => number; lng: () => number };
   getDiv: () => HTMLElement;
 };
 
@@ -25,11 +26,40 @@ export type GMapsNS = {
     addListener: (ev: string, fn: () => void) => { remove: () => void };
   };
   Polyline: new (opts: object) => GOverlay;
-  Circle: new (opts: object) => GOverlay;
+  Circle: new (opts: object) => GCircle;
+  Polygon: new (opts: object) => GPolygon;
   LatLngBounds: new () => GLatLngBounds;
+  LatLng: new (lat: number, lng: number) => GLatLng;
   SymbolPath: { CIRCLE: number; FORWARD_CLOSED_ARROW: number };
   // OverlayView is subclassed at runtime; keep the constructor loose for prototype assignment.
   OverlayView: new () => object;
+  event: {
+    addListener: (
+      target: object,
+      ev: string,
+      fn: (...args: unknown[]) => void,
+    ) => { remove: () => void };
+    clearInstanceListeners: (target: object) => void;
+  };
+};
+
+export type GCircle = GOverlay & {
+  getCenter: () => { lat: () => number; lng: () => number } | null;
+  getRadius: () => number;
+  setEditable: (v: boolean) => void;
+  setOptions: (opts: object) => void;
+  addListener: (ev: string, fn: () => void) => { remove: () => void };
+};
+
+export type GPolygon = GOverlay & {
+  getPath: () => {
+    getLength: () => number;
+    getAt: (i: number) => { lat: () => number; lng: () => number };
+    forEach: (fn: (ll: { lat: () => number; lng: () => number }, i: number) => void) => void;
+  };
+  setEditable: (v: boolean) => void;
+  setOptions: (opts: object) => void;
+  addListener: (ev: string, fn: () => void) => { remove: () => void };
 };
 
 declare global {
