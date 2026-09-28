@@ -47,6 +47,9 @@ export class StripePaymentProvider implements PaymentProvider {
     body.set('amount', String(amountCents));
     body.set('currency', input.currency.toLowerCase());
     body.set('confirm', 'false');
+    // Let Stripe PaymentSheet / mobile SDK offer card + region wallets (GPay, etc.).
+    body.set('automatic_payment_methods[enabled]', 'true');
+    body.set('automatic_payment_methods[allow_redirects]', 'never');
     body.set('metadata[rideId]', input.rideId);
     body.set('metadata[idempotencyKey]', input.idempotencyKey);
     if (input.metadata) {

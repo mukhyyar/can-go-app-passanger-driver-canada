@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:passenger/services/stripe_payment_service.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:provider/provider.dart';
 
@@ -26,13 +27,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _paying = false;
   bool _termsAccepted = false;
   String _paymentMode = 'FULL';
-  String _paymentMethod = 'CARD';
+  /// Backend label only — Stripe PaymentSheet chooses card / wallets.
+  static const String _paymentMethod = 'CARD';
   String? _error;
   Map<String, dynamic>? _quote;
-  final _card = TextEditingController();
-  final _expiry = TextEditingController();
-  final _cvc = TextEditingController();
-  final _name = TextEditingController();
   String? _idempotencyKey;
 
   @override
@@ -44,22 +42,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       app.clearPendingOfferAlert();
       app.clearPendingRideStatusAlert();
       ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
-
-      final name = app.me?['fullName']?.toString().trim();
-      if (name != null && name.isNotEmpty) {
-        _name.text = name;
-      }
       _loadQuote();
     });
-  }
-
-  @override
-  void dispose() {
-    _card.dispose();
-    _expiry.dispose();
-    _cvc.dispose();
-    _name.dispose();
-    super.dispose();
   }
 
   Future<void> _loadQuote({String? mode}) async {
@@ -87,17 +71,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         platform: kIsWeb ? 'web' : defaultTargetPlatform.name,
       );
       if (!mounted) return;
-      final methods = _methodsFromQuote(quote);
-      var method = _paymentMethod;
-      if (!methods.contains(method)) {
-        method = methods.contains('CARD')
-            ? 'CARD'
-            : (methods.isNotEmpty ? methods.first : 'CARD');
-      }
       setState(() {
         _quote = quote;
         _paymentMode = quote['paymentMode']?.toString() ?? _paymentMode;
-        _paymentMethod = method;
         _loadingQuote = false;
       });
     } catch (e) {
@@ -107,21 +83,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _loadingQuote = false;
       });
     }
-  }
-
-  List<String> _methodsFromQuote(Map<String, dynamic> quote) {
-    final raw = quote['paymentMethods'];
-    var methods = <String>[];
-    if (raw is List) {
-      methods = raw.map((e) => e.toString().toUpperCase()).toList();
-    }
-    if (methods.isEmpty) methods = ['CARD'];
-    // On web prefer card-only UX (wallet buttons are platform-specific).
-    if (kIsWeb) {
-      methods = methods.where((m) => m == 'CARD').toList();
-      if (methods.isEmpty) methods = ['CARD'];
-    }
-    return methods;
   }
 
   bool get _partialEnabled {
@@ -179,7 +140,56 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return;
       }
 
-      // Provider may still be confirming (webhook delay).
+      final clientSecret = result['clientSecret']?.toString();
+      final provider = (result['paymentProvider'] ??
+              _quote?['paymentProvider'] ??
+              '')
+          .toString()
+          .toLowerCase();
+      final publishableKey = StripePaymentService.resolvePublishableKey(
+        result['stripePublishableKey']?.toString() ??
+            _quote?['stripePublishableKey']?.toString(),
+      );
+
+      // Stripe requires PaymentSheet so a payment method is attached + confirmed.
+      if (provider == 'stripe' ||
+          (clientSecret != null && clientSecret.isNotEmpty)) {
+        if (clientSecret == null || clientSecret.isEmpty) {
+          throw StateError(
+            'Payment setup incomplete (missing client secret). Please try again.',
+          );
+        }
+        if (publishableKey == null) {
+          throw StateError(
+            'Stripe is not configured for this app (missing publishable key).',
+          );
+        }
+        if (kIsWeb) {
+          throw StateError(
+            'Card payment on web is not available in this build. Please use the mobile app.',
+          );
+        }
+
+        final currency = _currency(_quote!, 'onlineCurrency');
+        try {
+          await StripePaymentService.presentPaymentSheet(
+            clientSecret: clientSecret,
+            publishableKey: publishableKey,
+            currency: currency,
+          );
+        } catch (e) {
+          if (StripePaymentService.isUserCancelled(e)) {
+            if (!mounted) return;
+            setState(() {
+              _paying = false;
+              _error = 'Payment cancelled. Your ride has not been booked.';
+            });
+            return;
+          }
+          rethrow;
+        }
+      }
+
       final confirmed = await _awaitPaymentConfirmation(app);
       if (!mounted) return;
       if (confirmed) {
@@ -218,7 +228,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<bool> _awaitPaymentConfirmation(AppState app) async {
-    for (var i = 0; i < 8; i++) {
+    for (var i = 0; i < 12; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 700));
       try {
         final status = await app.getPaymentStatus(widget.rideId);
@@ -350,340 +360,315 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final currency = quote != null
         ? _currency(quote, 'onlineCurrency', offer?.currency ?? 'CAD')
         : (offer?.currency ?? 'CAD');
-    final methods = quote != null ? _methodsFromQuote(quote) : const ['CARD'];
     final policy = quote?['cancellationPolicy'];
     final policyBody = policy is Map
         ? (policy['body']?.toString() ?? '')
         : (quote?['cancellationPolicy']?.toString() ??
             'The ride is not refundable in case of cancellation.');
 
-
     return ScaffoldMessenger(
       child: Scaffold(
         backgroundColor: GtColors.bgGrey,
-      appBar: AppBar(
-        title: const Text('Payment'),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
-        ),
-        actions: [
-          if (canCancel)
-            TextButton(
-              onPressed: _paying ? null : _confirmCancel,
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: GtColors.brand),
+        appBar: AppBar(
+          title: const Text('Payment'),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () =>
+                context.canPop() ? context.pop() : context.go('/'),
+          ),
+          actions: [
+            if (canCancel)
+              TextButton(
+                onPressed: _paying ? null : _confirmCancel,
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: GtColors.brand),
+                ),
               ),
-            ),
-        ],
-      ),
-      body: _loadingQuote
-          ? const Center(
-              child: CircularProgressIndicator(color: GtColors.brand),
-            )
-          : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: GtColors.brand,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(height: 1.4),
-                        ),
-                        const SizedBox(height: 20),
-                        GtGreenButton(
-                          label: _error!.contains('Confirming')
-                              ? 'Retry status'
-                              : 'Try again',
-                          onPressed: () async {
-                            final app = context.read<AppState>();
-                            if (_error!.contains('Confirming')) {
-                              setState(() => _paying = true);
-                              final ok = await _awaitPaymentConfirmation(app);
-                              if (!mounted) return;
-                              if (ok) {
-                                _goToConfirmed();
+          ],
+        ),
+        body: _loadingQuote
+            ? const Center(
+                child: CircularProgressIndicator(color: GtColors.brand),
+              )
+            : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: GtColors.brand,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(height: 1.4),
+                          ),
+                          const SizedBox(height: 20),
+                          GtGreenButton(
+                            label: _error!.contains('Confirming')
+                                ? 'Retry status'
+                                : 'Try again',
+                            onPressed: () async {
+                              final appState = context.read<AppState>();
+                              if (_error!.contains('Confirming')) {
+                                setState(() => _paying = true);
+                                final ok =
+                                    await _awaitPaymentConfirmation(appState);
+                                if (!mounted) return;
+                                if (ok) {
+                                  _goToConfirmed();
+                                  return;
+                                }
+                                setState(() => _paying = false);
                                 return;
                               }
-                              setState(() => _paying = false);
-                              return;
-                            }
-                            setState(() => _error = null);
-                            await _loadQuote();
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        TextButton(
-                          onPressed: () => context.go(
-                            '/offers/${widget.rideId}',
+                              setState(() => _error = null);
+                              await _loadQuote();
+                            },
                           ),
-                          child: const Text(
-                            'Back to offers',
-                            style: TextStyle(color: GtColors.textSecondary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    16,
-                    16,
-                    MediaQuery.paddingOf(context).bottom + 36,
-                  ),
-                  children: [
-                    if (offer != null)
-                      GtCard(
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: SizedBox(
-                                width: 72,
-                                height: 54,
-                                child: offer.imageUrl != null
-                                    ? AuthNetworkImage(
-                                        url: offer.imageUrl!,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) =>
-                                            const ColoredBox(
-                                          color: GtColors.bgGrey,
-                                          child: Icon(Icons.directions_car),
-                                        ),
-                                      )
-                                    : const ColoredBox(
-                                        color: GtColors.bgGrey,
-                                        child: Icon(Icons.directions_car),
-                                      ),
-                              ),
+                          const SizedBox(height: 10),
+                          TextButton(
+                            onPressed: () => context.go(
+                              '/offers/${widget.rideId}',
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    offer.displayName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  Text(
-                                    offer.vehicleClass,
-                                    style: const TextStyle(
-                                      color: GtColors.textSecondary,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            child: const Text(
+                              'Back to offers',
+                              style: TextStyle(color: GtColors.textSecondary),
                             ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                    Text(
-                      formatMoney(effectiveTotal, currency),
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const Text(
-                      'Total for this ride',
-                      style: TextStyle(color: GtColors.textSecondary),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Cost breakdown Card
-                    GtCard(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(
-                                Icons.receipt_long_rounded,
-                                size: 20,
-                                color: GtColors.brand,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Cost breakdown',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          _costRow('Ride fare', rideFare, currency),
-                          const SizedBox(height: 8),
-                          _costRow('Platform fee', platformFee, currency),
-                          if (taxes > 0) ...[
-                            const SizedBox(height: 8),
-                            _costRow('Taxes', taxes, currency),
-                          ],
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 10),
-                            child: Divider(height: 1),
-                          ),
-                          _costRow(
-                            'Total',
-                            effectiveTotal,
-                            currency,
-                            isTotal: true,
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    const Text(
-                      'How would you like to pay?',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                  )
+                : ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      16,
+                      16,
+                      MediaQuery.paddingOf(context).bottom + 36,
                     ),
-                    const SizedBox(height: 8),
-                    _modeTile(
-                      title: 'Pay in full',
-                      subtitle: formatMoney(effectiveTotal, currency),
-                      selected: _paymentMode == 'FULL',
-                      onTap: () => _setMode('FULL'),
-                    ),
-                    if (_partialEnabled)
-                      _modeTile(
-                        title: 'Part now, rest in cash',
-                        subtitle:
-                            'Pay ${formatMoney(onlineAmount, currency)} now · ${formatMoney(cashAmount, currency)} to driver',
-                        selected: _paymentMode == 'PARTIAL',
-                        onTap: () => _setMode('PARTIAL'),
-                      ),
-
-                    if (_paymentMode == 'PARTIAL' && cashAmount > 0) ...[
-                      const SizedBox(height: 8),
+                    children: [
+                      if (offer != null)
+                        GtCard(
+                          child: Row(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: SizedBox(
+                                  width: 72,
+                                  height: 54,
+                                  child: offer.imageUrl != null
+                                      ? AuthNetworkImage(
+                                          url: offer.imageUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              const ColoredBox(
+                                            color: GtColors.bgGrey,
+                                            child: Icon(Icons.directions_car),
+                                          ),
+                                        )
+                                      : const ColoredBox(
+                                          color: GtColors.bgGrey,
+                                          child: Icon(Icons.directions_car),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      offer.displayName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      offer.vehicleClass,
+                                      style: const TextStyle(
+                                        color: GtColors.textSecondary,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 16),
                       Text(
-                        'Remaining ${formatMoney(cashAmount, currency)} is paid in cash to the driver.',
+                        formatMoney(effectiveTotal, currency),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const Text(
+                        'Total for this ride',
+                        style: TextStyle(color: GtColors.textSecondary),
+                      ),
+                      const SizedBox(height: 16),
+                      GtCard(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(
+                                  Icons.receipt_long_rounded,
+                                  size: 20,
+                                  color: GtColors.brand,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Cost breakdown',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            _costRow('Ride fare', rideFare, currency),
+                            const SizedBox(height: 8),
+                            _costRow('Platform fee', platformFee, currency),
+                            if (taxes > 0) ...[
+                              const SizedBox(height: 8),
+                              _costRow('Taxes', taxes, currency),
+                            ],
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 10),
+                              child: Divider(height: 1),
+                            ),
+                            _costRow(
+                              'Total',
+                              effectiveTotal,
+                              currency,
+                              isTotal: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'How would you like to pay?',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      _modeTile(
+                        title: 'Pay in full',
+                        subtitle: formatMoney(effectiveTotal, currency),
+                        selected: _paymentMode == 'FULL',
+                        onTap: () => _setMode('FULL'),
+                      ),
+                      if (_partialEnabled)
+                        _modeTile(
+                          title: 'Part now, rest in cash',
+                          subtitle:
+                              'Pay ${formatMoney(onlineAmount, currency)} now · ${formatMoney(cashAmount, currency)} to driver',
+                          selected: _paymentMode == 'PARTIAL',
+                          onTap: () => _setMode('PARTIAL'),
+                        ),
+                      if (_paymentMode == 'PARTIAL' && cashAmount > 0) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Remaining ${formatMoney(cashAmount, currency)} is paid in cash to the driver.',
+                          style: const TextStyle(
+                            color: GtColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Secure payment',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      GtCard(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.lock_outline,
+                              color: GtColors.brand,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                kIsWeb
+                                    ? 'Use the CAN-RIDE mobile app to pay securely with card or wallets Stripe offers in your region.'
+                                    : 'Tap Pay to open Stripe’s secure form — card number with brand icon (Visa/Mastercard), expiry (MM/YY), CVC, plus Google Pay / Apple Pay when available on your device.',
+                                style: const TextStyle(
+                                  color: GtColors.textSecondary,
+                                  fontSize: 13,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Cancellation policy',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        policyBody,
                         style: const TextStyle(
                           color: GtColors.textSecondary,
                           fontSize: 13,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Payment method',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    ...methods.map((m) {
-                      final label = switch (m) {
-                        'GOOGLE_PAY' => 'Google Pay',
-                        'APPLE_PAY' => 'Apple Pay',
-                        _ => 'Card',
-                      };
-                      return RadioListTile<String>(
-                        value: m,
-                        groupValue: _paymentMethod,
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
                         activeColor: GtColors.brand,
-                        title: Text(label),
+                        value: _termsAccepted,
                         onChanged: _paying
                             ? null
-                            : (v) {
-                                if (v == null) return;
-                                setState(() => _paymentMethod = v);
-                              },
-                      );
-                    }),
-                    if (_paymentMethod == 'CARD') ...[
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Card details (dev — not charged)',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: GtColors.textMuted,
+                            : (v) =>
+                                setState(() => _termsAccepted = v ?? false),
+                        title: const Text(
+                          'I accept the terms of service and cancellation policy',
+                          style: TextStyle(fontSize: 14),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      _field('Card number', _card, TextInputType.number),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _field(
-                              'Expiry',
-                              _expiry,
-                              TextInputType.datetime,
+                      const SizedBox(height: 12),
+                      if (_paying)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: CircularProgressIndicator(
+                              color: GtColors.green,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _field('CVC', _cvc, TextInputType.number),
-                          ),
-                        ],
-                      ),
-                      _field('Name on card', _name, TextInputType.name),
-                    ],
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Cancellation policy',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      policyBody,
-                      style: const TextStyle(
-                        color: GtColors.textSecondary,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      activeColor: GtColors.brand,
-                      value: _termsAccepted,
-                      onChanged: _paying
-                          ? null
-                          : (v) =>
-                              setState(() => _termsAccepted = v ?? false),
-                      title: const Text(
-                        'I accept the terms of service and cancellation policy',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_paying)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(
-                            color: GtColors.green,
-                          ),
+                        )
+                      else ...[
+                        GtGreenButton(
+                          label:
+                              'Pay ${formatMoney(onlineAmount > 0 ? onlineAmount : effectiveTotal, currency)}',
+                          onPressed: _termsAccepted ? _pay : null,
                         ),
-                      )
-                    else ...[
-                      GtGreenButton(
-                        label:
-                            'Pay ${formatMoney(onlineAmount > 0 ? onlineAmount : effectiveTotal, currency)}',
-                        onPressed: _termsAccepted ? _pay : null,
-                      ),
-                      const SizedBox(height: 20),
+                        const SizedBox(height: 20),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
       ),
     );
   }
@@ -766,25 +751,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _field(String label, TextEditingController c, TextInputType type) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: c,
-        keyboardType: type,
-        enabled: !_paying,
-        decoration: InputDecoration(
-          labelText: label,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: GtColors.brand),
           ),
         ),
       ),

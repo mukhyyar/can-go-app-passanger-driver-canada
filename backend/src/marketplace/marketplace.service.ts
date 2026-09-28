@@ -7,6 +7,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   DocumentLifecycleStatus,
   DocumentReviewStatus,
@@ -75,9 +76,20 @@ export class MarketplaceService {
     private readonly lifecycle: RideLifecycleService,
     private readonly presentation: OfferPresentationService,
     private readonly storage: StorageService,
+    private readonly config: ConfigService,
     @Optional() private readonly tracking?: TrackingGateway,
   ) {
     this.payTtlMs = loadRideLifecycleConfig().paymentTtlMs;
+  }
+
+  /** Public Stripe pk_* for PaymentSheet — never the secret key. */
+  private stripeClientConfig() {
+    const publishableKey =
+      this.config.get<string>('stripe.publishableKey')?.trim() || null;
+    return {
+      paymentProvider: this.payments.name,
+      stripePublishableKey: publishableKey,
+    };
   }
 
   // ---------- Passenger rides ----------
@@ -1721,6 +1733,7 @@ export class MarketplaceService {
         paymentMode: 'FULL',
       }),
       paymentMethods: this.presentation.paymentMethodsAvailable(),
+      ...this.stripeClientConfig(),
     };
   }
 
@@ -1782,6 +1795,7 @@ export class MarketplaceService {
       }),
 
       paymentMethods: this.presentation.paymentMethodsAvailable(dto.platform),
+      ...this.stripeClientConfig(),
       terms: {
         termsOfServiceUrl: '/legal/terms',
         privacyPolicyUrl: '/legal/privacy',
@@ -2151,6 +2165,7 @@ export class MarketplaceService {
       paymentQuote,
       clientSecret: intent.clientSecret,
       ride: await this.getRideForActor(userId, ride.id),
+      ...this.stripeClientConfig(),
     };
   }
 

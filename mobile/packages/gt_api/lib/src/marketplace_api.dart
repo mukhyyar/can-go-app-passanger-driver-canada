@@ -163,6 +163,10 @@ class MarketplaceApi {
   Future<Map<String, dynamic>> paymentStatus(String rideId) =>
       client.get('/rides/$rideId/payment-status');
 
+  /// Public payment provider introspection (includes Stripe publishable key).
+  Future<Map<String, dynamic>> providersStatus() =>
+      client.get('/providers/status', auth: false);
+
   Future<Map<String, dynamic>> recordRideView(String rideId) =>
       client.post('/rides/$rideId/view', body: {});
 

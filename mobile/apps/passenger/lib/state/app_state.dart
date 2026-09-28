@@ -882,6 +882,10 @@ class AppState extends ChangeNotifier {
           'paymentMethods': raw['paymentMethods'],
         if (raw['partialEnabled'] != null)
           'partialEnabled': raw['partialEnabled'],
+        if (raw['stripePublishableKey'] != null)
+          'stripePublishableKey': raw['stripePublishableKey'],
+        if (raw['paymentProvider'] != null)
+          'paymentProvider': raw['paymentProvider'],
       };
     } else {
       quote = Map<String, dynamic>.from(raw);

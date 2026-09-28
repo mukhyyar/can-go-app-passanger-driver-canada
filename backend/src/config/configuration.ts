@@ -55,6 +55,8 @@ export default () => ({
   },
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY,
+    /** Public pk_test_ / pk_live_ — safe to expose to mobile/web clients. */
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   },
   twilio: {

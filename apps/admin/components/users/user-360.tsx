@@ -939,6 +939,7 @@ function PaymentsTab({
   payments: Array<Record<string, unknown>>;
   refunds: Array<Record<string, unknown>>;
 }) {
+  const router = useRouter();
   if (!payments.length && !refunds.length) {
     return (
       <div className="panel">
@@ -948,7 +949,7 @@ function PaymentsTab({
   }
   return (
     <div className="panel">
-      <h3>Transactions</h3>
+      <h3>Payments</h3>
       <table className="users-table">
         <thead>
           <tr>
@@ -960,8 +961,17 @@ function PaymentsTab({
         </thead>
         <tbody>
           {payments.slice(0, 40).map((p) => (
-            <tr key={String(p.id)}>
-              <td className="mono">{shortId(String(p.id))}</td>
+            <tr
+              key={String(p.id)}
+              onClick={() => {
+                if (p.id) router.push(`/payments/${String(p.id)}`);
+              }}
+            >
+              <td className="mono">
+                <Link href={`/payments/${String(p.id)}`} onClick={(e) => e.stopPropagation()}>
+                  {shortId(String(p.id))}
+                </Link>
+              </td>
               <td>{money(Number(p.amount), String(p.currency || 'CAD'))}</td>
               <td>
                 <Chip tone={String(p.status).toLowerCase().includes('fail') ? 'bad' : 'ok'}>
@@ -976,11 +986,21 @@ function PaymentsTab({
       {refunds.length > 0 && (
         <>
           <h3 style={{ marginTop: 16 }}>Refunds</h3>
-          {refunds.map((r) => (
-            <div key={String(r.id)}>
-              {money(Number(r.amount))} · {String(r.status)}
-            </div>
-          ))}
+          {refunds.map((r) => {
+            const paymentId = r.paymentId ? String(r.paymentId) : '';
+            return (
+              <div key={String(r.id)} className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+                <span>
+                  {money(Number(r.amount))} · {String(r.status)}
+                </span>
+                {paymentId ? (
+                  <Link className="btn ghost sm" href={`/payments/${paymentId}`}>
+                    Payment
+                  </Link>
+                ) : null}
+              </div>
+            );
+          })}
         </>
       )}
     </div>

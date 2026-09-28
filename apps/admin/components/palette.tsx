@@ -79,7 +79,7 @@ export function CommandPalette({
     }
     for (const p of data?.payments ?? []) {
       out.push({
-        href: `/payments?q=${p.id}`,
+        href: `/payments/${p.id}`,
         title: p.id,
         sub: `Payment · ${p.status}`,
       });

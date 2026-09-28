@@ -2336,15 +2336,113 @@ export class AdminOpsService {
   }
 
   async listPayments(status?: string) {
-    return this.prisma.payment.findMany({
+    const rows = await this.prisma.payment.findMany({
       where: status ? { status } : undefined,
       orderBy: { createdAt: 'desc' },
       take: 150,
       include: {
-        ride: { select: { id: true, status: true, fromLabel: true } },
+        ride: { select: { id: true, status: true, fromLabel: true, toLabel: true } },
         refunds: true,
       },
     });
+    return rows.map((p) => {
+      const refundedTotal = p.refunds
+        .filter((r) => r.status === 'succeeded')
+        .reduce((s, r) => s + asNum(r.amount), 0);
+      return {
+        ...p,
+        ride: p.ride
+          ? { ...p.ride, publicCode: ridePublicCode(p.ride.id) }
+          : null,
+        refundedTotal,
+        refundableRemaining: Math.max(0, asNum(p.amount) - refundedTotal),
+      };
+    });
+  }
+
+  async getPayment(id: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id },
+      include: {
+        refunds: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            requestedBy: { select: { id: true, email: true } },
+          },
+        },
+        supportCases: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            assignee: { select: { id: true, email: true } },
+          },
+        },
+        ride: {
+          include: {
+            passenger: {
+              select: {
+                id: true,
+                fullName: true,
+                userId: true,
+                isVip: true,
+                user: { select: { id: true, email: true, phoneE164: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    let assignedDriver: {
+      id: string;
+      fullName: string;
+      userId: string;
+      user: { id: string; email: string | null; phoneE164: string | null } | null;
+    } | null = null;
+    if (payment.ride?.assignedDriverId) {
+      assignedDriver = await this.prisma.driverProfile.findUnique({
+        where: { id: payment.ride.assignedDriverId },
+        select: {
+          id: true,
+          fullName: true,
+          userId: true,
+          user: { select: { id: true, email: true, phoneE164: true } },
+        },
+      });
+    }
+
+    const financial = payment.rideId
+      ? await this.prisma.rideFinancial.findUnique({ where: { rideId: payment.rideId } })
+      : null;
+
+    const auditLogs = await this.prisma.auditLog.findMany({
+      where: { resource: 'Payment', resourceId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: { actor: { select: { id: true, email: true } } },
+    });
+
+    const refundedTotal = payment.refunds
+      .filter((r) => r.status === 'succeeded')
+      .reduce((s, r) => s + asNum(r.amount), 0);
+    const amount = asNum(payment.amount);
+    const refundableRemaining = Math.max(0, amount - refundedTotal);
+
+    return {
+      ...payment,
+      ride: payment.ride
+        ? {
+            ...payment.ride,
+            publicCode: ridePublicCode(payment.ride.id),
+            assignedDriver,
+            financial,
+          }
+        : null,
+      refundedTotal,
+      refundableRemaining,
+      auditLogs,
+    };
   }
 
   async listRefunds() {

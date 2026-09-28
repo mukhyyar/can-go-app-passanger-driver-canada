@@ -95,16 +95,13 @@ export class OfferPresentationService {
     return { enabled, onlinePct };
   }
 
-  paymentMethodsAvailable(platform?: string) {
-    const methods: Array<'GOOGLE_PAY' | 'APPLE_PAY' | 'CARD'> = ['CARD'];
-    const p = (platform ?? '').toLowerCase();
-    if (p !== 'ios' && p !== 'apple') {
-      methods.unshift('GOOGLE_PAY');
-    }
-    if (p === 'ios' || p === 'apple' || p === 'all') {
-      if (!methods.includes('APPLE_PAY')) methods.unshift('APPLE_PAY');
-    }
-    return methods;
+  /**
+   * Catalog of app-level payment method radios.
+   * Wallets (Google Pay / Apple Pay / Link) are offered by Stripe PaymentSheet
+   * via automatic_payment_methods — not as fake radio options here.
+   */
+  paymentMethodsAvailable(_platform?: string) {
+    return ['CARD'] as Array<'CARD'>;
   }
 
   computePaymentQuote(input: {

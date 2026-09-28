@@ -4,7 +4,7 @@
 
 | Env | Values | Notes |
 |-----|--------|-------|
-| `PAYMENT_PROVIDER` | `dev` (local) / `stripe` | Stripe PaymentIntents via REST; needs `STRIPE_SECRET_KEY` |
+| `PAYMENT_PROVIDER` | `dev` (local) / `stripe` | Stripe PaymentIntents via REST; needs `STRIPE_SECRET_KEY` + `STRIPE_PUBLISHABLE_KEY` (pk_* for Flutter PaymentSheet) |
 | `PAYOUT_PROVIDER` | `dev` / `stripe` | Stripe Transfers; destination = connected account id |
 | `SMS_PROVIDER` | `mock` / `twilio` | Twilio Messages API |
 | `OTP_PROVIDER` | `prisma` (recommended) / `mock` | Prisma + active SMS provider |

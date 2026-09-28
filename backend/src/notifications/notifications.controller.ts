@@ -62,13 +62,20 @@ export class NotificationsController {
     const target = appRole.toUpperCase();
     const data = (r.dataJson ?? {}) as Record<string, unknown>;
     const assignedRole = (
-      (data.appRole as string) ||
-      (data.targetRole as string) ||
+      (typeof data.appRole === 'string' ? data.appRole : '') ||
+      (typeof data.targetRole === 'string' ? data.targetRole : '') ||
       ''
     ).toUpperCase();
+    const rawTargetRoles = data.targetRoles;
     const assignedRoles = (
-      (data.targetRoles as string) || ''
-    ).toUpperCase().split(',');
+      Array.isArray(rawTargetRoles)
+        ? rawTargetRoles.filter((v): v is string => typeof v === 'string')
+        : typeof rawTargetRoles === 'string'
+          ? rawTargetRoles.split(',')
+          : []
+    )
+      .map((v) => v.trim().toUpperCase())
+      .filter(Boolean);
 
     if (assignedRole) {
       if (target === 'PASSENGER') {

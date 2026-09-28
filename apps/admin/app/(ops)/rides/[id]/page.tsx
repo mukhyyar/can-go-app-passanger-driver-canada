@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api, hasPermission } from '../../../../lib/api';
 import { useAuth } from '../../../../lib/auth';
@@ -78,7 +79,14 @@ export default function RideDetail() {
           ))}
           <h3 style={{ marginTop: 16 }}>Payments</h3>
           {payments.map((p) => (
-            <div key={p.id}>{money(Number(p.amount), p.currency)} · {p.status}</div>
+            <div key={p.id} className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+              <Link href={`/payments/${p.id}`}>
+                {money(Number(p.amount), p.currency)} · {p.status}
+              </Link>
+              <Link className="btn ghost sm" href={`/payments/${p.id}`}>
+                Open
+              </Link>
+            </div>
           ))}
         </div>
       </div>

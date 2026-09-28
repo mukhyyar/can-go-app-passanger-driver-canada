@@ -376,6 +376,12 @@ export class AdminOpsController {
     return this.ops.listPayments(status);
   }
 
+  @Get('payments/:id')
+  @RequirePermission('payments.view')
+  payment(@Param('id') id: string) {
+    return this.ops.getPayment(id);
+  }
+
   @Post('payments/:id/refund')
   @RequirePermission('payments.refund')
   refund(

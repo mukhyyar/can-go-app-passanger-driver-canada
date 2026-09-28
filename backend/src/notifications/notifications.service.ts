@@ -257,7 +257,6 @@ export class NotificationsService {
         dataJson: {
           ...dataWithEvent,
           eventId: payload.eventId,
-          ...(targetRoles ? { targetRoles } : {}),
         },
         status: 'skipped_no_token',
       });
