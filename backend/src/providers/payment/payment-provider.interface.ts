@@ -11,6 +11,7 @@ export type PaymentIntentResult = {
   intentId: string;
   clientSecret?: string;
   status: 'requires_payment' | 'succeeded' | 'failed';
+  metadata?: Record<string, string>;
 };
 
 export type VerifiedWebhookEvent = {
@@ -30,6 +31,8 @@ export type RefundResult = {
 export interface PaymentProvider {
   readonly name: string;
   createIntent(input: PaymentIntentInput): Promise<PaymentIntentResult>;
+  /** Fetch current intent status from the provider (client reconcile / confirm). */
+  retrieveIntent(intentId: string): Promise<PaymentIntentResult>;
   parseWebhook(
     headers: Record<string, string | string[] | undefined>,
     rawBody: Buffer | string,

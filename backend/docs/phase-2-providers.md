@@ -9,7 +9,9 @@
 | `SMS_PROVIDER` | `mock` / `twilio` | Twilio Messages API |
 | `OTP_PROVIDER` | `prisma` (recommended) / `mock` | Prisma + active SMS provider |
 
-Webhook: `POST /api/payments/webhooks/stripe` (signature verified when `STRIPE_WEBHOOK_SECRET` set).
+Webhook: `POST /api/payments/webhooks/stripe` (signature verified when `STRIPE_WEBHOOK_SECRET` set). Nest must boot with `rawBody: true` so the signature matches Stripe’s exact request bytes.
+
+Client reconcile (does not wait for webhook): `POST /api/payments/confirm` `{ rideId, paymentIntentId? }` — passenger JWT; retrieves the PaymentIntent from Stripe and calls `markBooked` when `succeeded`.
 
 Local stays on Dev/Mock. Staging flips to stripe+twilio+prisma and re-runs E2E before prod.
 

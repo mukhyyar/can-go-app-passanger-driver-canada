@@ -25,6 +25,7 @@ import {
 import { MarketplaceService } from './marketplace.service';
 import { PricingService } from './pricing.service';
 import {
+  ConfirmPaymentDto,
   CreateChangeRequestDto,
   CreateOfferDto,
   CreatePaymentIntentDto,
@@ -316,6 +317,19 @@ export class MarketplaceController {
     @Req() req: { ip?: string },
   ) {
     return this.marketplace.createPaymentIntent(user.id, dto, req.ip);
+  }
+
+  /** Reconcile PaymentSheet success with provider (does not rely on webhook alone). */
+  @Post('payments/confirm')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  confirmPayment(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ConfirmPaymentDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.confirmPayment(user.id, dto, req.ip);
   }
 
   @Post('rides/:rideId/lost-item/respond')

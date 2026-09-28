@@ -948,6 +948,21 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> getPaymentStatus(String rideId) =>
       api.marketplace.paymentStatus(rideId);
 
+  /// Reconcile PaymentSheet success with the API (Stripe retrieve → BOOKED).
+  Future<Map<String, dynamic>> confirmPayment(
+    String rideId, {
+    String? paymentIntentId,
+  }) async {
+    final result = await api.marketplace.confirmPayment(
+      rideId,
+      paymentIntentId: paymentIntentId,
+    );
+    lastPaymentResult = result;
+    await refreshRide(rideId);
+    notifyListeners();
+    return result;
+  }
+
   Future<void> cancelRide(String rideId) async {
     final ride = rideById(rideId);
     final status = (ride?.serverStatus ?? '').toUpperCase();

@@ -27,6 +27,15 @@ export class DevPaymentProvider implements PaymentProvider {
     };
   }
 
+  async retrieveIntent(intentId: string): Promise<PaymentIntentResult> {
+    return {
+      provider: this.name,
+      intentId,
+      clientSecret: `dev_secret_${intentId}`,
+      status: 'succeeded',
+    };
+  }
+
   async parseWebhook(
     _headers: Record<string, string | string[] | undefined>,
     rawBody: Buffer | string,

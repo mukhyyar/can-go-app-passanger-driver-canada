@@ -89,6 +89,53 @@ export class StripePaymentProvider implements PaymentProvider {
     };
   }
 
+  async retrieveIntent(intentId: string): Promise<PaymentIntentResult> {
+    this.assertConfigured();
+    const res = await fetch(
+      `https://api.stripe.com/v1/payment_intents/${encodeURIComponent(intentId)}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${this.secret}` },
+      },
+    );
+    const data = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      this.logger.error(`Stripe retrieveIntent failed: ${JSON.stringify(data)}`);
+      throw new ServiceUnavailableException(
+        (data.error as { message?: string })?.message ?? 'Stripe retrieve failed',
+      );
+    }
+    const statusRaw = String(data.status ?? '');
+    const status: PaymentIntentResult['status'] =
+      statusRaw === 'succeeded'
+        ? 'succeeded'
+        : statusRaw === 'canceled'
+          ? 'failed'
+          : statusRaw === 'requires_payment_method' ||
+              statusRaw === 'requires_confirmation' ||
+              statusRaw === 'requires_action' ||
+              statusRaw === 'requires_capture' ||
+              statusRaw === 'processing'
+            ? 'requires_payment'
+            : statusRaw === 'payment_failed'
+              ? 'failed'
+              : 'requires_payment';
+    return {
+      provider: this.name,
+      intentId: String(data.id),
+      clientSecret: data.client_secret ? String(data.client_secret) : undefined,
+      status,
+      metadata:
+        data.metadata && typeof data.metadata === 'object'
+          ? Object.fromEntries(
+              Object.entries(data.metadata as Record<string, unknown>).map(
+                ([k, v]) => [k, String(v ?? '')],
+              ),
+            )
+          : undefined,
+    };
+  }
+
   async parseWebhook(
     headers: Record<string, string | string[] | undefined>,
     rawBody: Buffer | string,

@@ -2169,6 +2169,232 @@ export class MarketplaceService {
     };
   }
 
+  /**
+   * After client PaymentSheet / wallet confirms on Stripe, reconcile without
+   * waiting for the webhook (webhook remains the backup path).
+   * Also recovers rides reopened by payment TTL after Stripe already succeeded.
+   */
+  async confirmPayment(
+    userId: string,
+    dto: { rideId: string; paymentIntentId?: string },
+    ip?: string,
+  ) {
+    const passenger = await this.requirePassenger(userId);
+    const ride = await this.prisma.ride.findFirst({
+      where: { id: dto.rideId, passengerId: passenger.id },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    if (ride.status === RideStatus.BOOKED) {
+      return {
+        ok: true as const,
+        alreadyBooked: true,
+        ride: await this.getRideForActor(userId, ride.id),
+        paymentStatus: 'succeeded',
+      };
+    }
+
+    const candidates = await this.prisma.payment.findMany({
+      where: {
+        rideId: ride.id,
+        ...(dto.paymentIntentId
+          ? { providerRef: dto.paymentIntentId }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: dto.paymentIntentId ? 1 : 10,
+    });
+    if (!candidates.length) {
+      throw new NotFoundException('Payment not found for this ride');
+    }
+
+    let payment = candidates[0]!;
+    let intent = payment.providerRef
+      ? await this.payments.retrieveIntent(payment.providerRef)
+      : null;
+
+    if (!dto.paymentIntentId && intent?.status !== 'succeeded') {
+      for (const candidate of candidates.slice(1)) {
+        if (!candidate.providerRef) continue;
+        const probed = await this.payments.retrieveIntent(candidate.providerRef);
+        if (probed.status === 'succeeded') {
+          payment = candidate;
+          intent = probed;
+          break;
+        }
+      }
+    }
+
+    if (!payment.providerRef || !intent) {
+      throw new NotFoundException('Payment not found for this ride');
+    }
+
+    if (intent.status === 'succeeded') {
+      await this.restoreReservationAfterSucceededPayment({
+        rideId: ride.id,
+        paymentId: payment.id,
+        offerId:
+          intent.metadata?.offerId ??
+          this.offerIdFromIdempotency(payment.idempotencyKey),
+        userId,
+      });
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'succeeded' },
+      });
+      await this.markBooked(ride.id, payment.id, userId);
+      await this.audit(userId, 'payment.confirm', 'Payment', payment.id, ip);
+      return {
+        ok: true as const,
+        booked: true,
+        ride: await this.getRideForActor(userId, ride.id),
+        paymentStatus: 'succeeded',
+      };
+    }
+
+    if (ride.status !== RideStatus.PAYMENT_PENDING) {
+      throw new BadRequestException(
+        `Cannot confirm payment from ride status ${ride.status}`,
+      );
+    }
+
+    if (intent.status === 'failed') {
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'failed' },
+      });
+      await this.releasePaymentReservation(
+        ride.id,
+        'payment_failed',
+        RideStatus.OFFER_SELECTION,
+      );
+      await this.audit(userId, 'payment.confirm_failed', 'Payment', payment.id, ip);
+      return {
+        ok: true as const,
+        booked: false,
+        ride: await this.getRideForActor(userId, ride.id),
+        paymentStatus: 'failed',
+      };
+    }
+
+    return {
+      ok: true as const,
+      booked: false,
+      pending: true,
+      ride: await this.getRideForActor(userId, ride.id),
+      paymentStatus: intent.status,
+    };
+  }
+
+  /** Idempotency keys look like pay-{rideId}-{offerId}-{mode}_{amount} or pay-ride-offer-ts. */
+  private offerIdFromIdempotency(key: string | null | undefined): string | undefined {
+    if (!key) return undefined;
+    const parts = key.split('-');
+    // pay-<rideCuid>-<offerCuid>-...
+    if (parts.length >= 3 && parts[0] === 'pay') {
+      return parts[2] || undefined;
+    }
+    return undefined;
+  }
+
+  /**
+   * If payment TTL reopened the ride after Stripe already captured funds,
+   * re-attach the winning offer so markBooked can run.
+   */
+  private async restoreReservationAfterSucceededPayment(input: {
+    rideId: string;
+    paymentId: string;
+    offerId?: string;
+    userId?: string;
+  }) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: input.rideId },
+      select: {
+        id: true,
+        status: true,
+        selectedOfferId: true,
+        passengerId: true,
+      },
+    });
+    if (!ride) return;
+    if (ride.status === RideStatus.BOOKED) return;
+    if (
+      ride.status === RideStatus.PAYMENT_PENDING &&
+      ride.selectedOfferId
+    ) {
+      return;
+    }
+
+    const offerId = input.offerId ?? ride.selectedOfferId ?? undefined;
+    if (!offerId) {
+      throw new BadRequestException(
+        'Cannot restore booking: missing offerId on succeeded payment',
+      );
+    }
+
+    const offer = await this.prisma.offer.findFirst({
+      where: { id: offerId, rideId: input.rideId },
+    });
+    if (!offer) {
+      throw new NotFoundException('Offer not found for succeeded payment');
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.offer.updateMany({
+        where: {
+          id: offerId,
+          rideId: input.rideId,
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] },
+        },
+        data: { status: OfferStatus.SELECTED, acceptedAt: now },
+      });
+
+      const fromStatus = ride.status;
+      const rideLock = await tx.ride.updateMany({
+        where: {
+          id: input.rideId,
+          status: {
+            in: [
+              RideStatus.OFFER_SELECTION,
+              RideStatus.WAITING_FOR_OFFERS,
+              RideStatus.PAYMENT_PENDING,
+            ],
+          },
+        },
+        data: {
+          selectedOfferId: offerId,
+          assignedDriverId: offer.driverId,
+          priceSnapshot: offer.priceSnapshot as Prisma.InputJsonValue,
+          status: RideStatus.PAYMENT_PENDING,
+          paymentExpiresAt: new Date(Date.now() + this.payTtlMs),
+        },
+      });
+      if (rideLock.count !== 1) {
+        throw new BadRequestException(
+          `Cannot restore reservation from ${fromStatus}`,
+        );
+      }
+
+      if (fromStatus !== RideStatus.PAYMENT_PENDING) {
+        await tx.rideEvent.create({
+          data: {
+            rideId: input.rideId,
+            fromStatus,
+            toStatus: RideStatus.PAYMENT_PENDING,
+            actorType: input.userId ? 'passenger' : 'system',
+            actorId: input.userId,
+            payload: {
+              offerId,
+              action: 'restore_reservation_after_succeeded_payment',
+              paymentId: input.paymentId,
+            },
+          },
+        });
+      }
+    });
+  }
+
   async handlePaymentWebhook(
     provider: string,
     headers: Record<string, string | string[] | undefined>,
@@ -2246,6 +2472,15 @@ export class MarketplaceService {
     });
 
     if ((event.status ?? 'succeeded') === 'succeeded') {
+      const meta =
+        (event.raw as { data?: { object?: { metadata?: Record<string, string> } } })
+          ?.data?.object?.metadata ?? {};
+      await this.restoreReservationAfterSucceededPayment({
+        rideId: payment.rideId,
+        paymentId: payment.id,
+        offerId:
+          meta.offerId ?? this.offerIdFromIdempotency(payment.idempotencyKey),
+      });
       await this.markBooked(payment.rideId, payment.id, undefined);
     } else if (event.status === 'failed') {
       // Do not leave the ride stuck — release reservation so passenger can retry.

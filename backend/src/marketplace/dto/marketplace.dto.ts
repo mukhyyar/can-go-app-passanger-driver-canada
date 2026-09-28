@@ -607,6 +607,16 @@ export class SelectOfferDto {
   offerId!: string;
 }
 
+/** After PaymentSheet / wallet confirm — reconcile Stripe PI → BOOKED without waiting for webhook. */
+export class ConfirmPaymentDto {
+  @IsString()
+  rideId!: string;
+
+  @IsOptional()
+  @IsString()
+  paymentIntentId?: string;
+}
+
 export class PaymentQuoteDto {
   @IsString()
   rideId!: string;

@@ -143,6 +143,21 @@ class MarketplaceApi {
     );
   }
 
+  /// After PaymentSheet succeeds — ask API to reconcile Stripe PI → BOOKED.
+  Future<Map<String, dynamic>> confirmPayment(
+    String rideId, {
+    String? paymentIntentId,
+  }) {
+    return client.post(
+      '/payments/confirm',
+      body: {
+        'rideId': rideId,
+        if (paymentIntentId != null && paymentIntentId.isNotEmpty)
+          'paymentIntentId': paymentIntentId,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> getOffer(String rideId, String offerId) =>
       client.get('/rides/$rideId/offers/$offerId');
 

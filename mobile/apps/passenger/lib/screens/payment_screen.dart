@@ -152,6 +152,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
 
       // Stripe requires PaymentSheet so a payment method is attached + confirmed.
+      String? paymentIntentId;
+      if (payment is Map) {
+        paymentIntentId = payment['providerRef']?.toString();
+      }
       if (provider == 'stripe' ||
           (clientSecret != null && clientSecret.isNotEmpty)) {
         if (clientSecret == null || clientSecret.isEmpty) {
@@ -169,6 +173,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
             'Card payment on web is not available in this build. Please use the mobile app.',
           );
         }
+
+        paymentIntentId ??= clientSecret.contains('_secret')
+            ? clientSecret.split('_secret').first
+            : null;
 
         final currency = _currency(_quote!, 'onlineCurrency');
         try {
@@ -190,7 +198,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         }
       }
 
-      final confirmed = await _awaitPaymentConfirmation(app);
+      final confirmed = await _awaitPaymentConfirmation(
+        app,
+        paymentIntentId: paymentIntentId,
+      );
       if (!mounted) return;
       if (confirmed) {
         _goToConfirmed();
@@ -227,7 +238,33 @@ class _PaymentScreenState extends State<PaymentScreen> {
     GoRouter.of(context).go('/booking-confirmed/$rideId');
   }
 
-  Future<bool> _awaitPaymentConfirmation(AppState app) async {
+  Future<bool> _awaitPaymentConfirmation(
+    AppState app, {
+    String? paymentIntentId,
+  }) async {
+    // Prefer explicit Stripe reconcile — do not rely on webhook alone.
+    try {
+      final confirm = await app.confirmPayment(
+        widget.rideId,
+        paymentIntentId: paymentIntentId,
+      );
+      final ride = confirm['ride'];
+      final rideStatus = ride is Map ? ride['status']?.toString() : null;
+      final payStatus = confirm['paymentStatus']?.toString().toLowerCase();
+      if (confirm['booked'] == true ||
+          confirm['alreadyBooked'] == true ||
+          rideStatus == 'BOOKED' ||
+          payStatus == 'succeeded') {
+        await app.refreshRide(widget.rideId);
+        return true;
+      }
+      if (payStatus == 'failed') {
+        return false;
+      }
+    } catch (_) {
+      // Fall through to short status poll (webhook may still land).
+    }
+
     for (var i = 0; i < 12; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 700));
       try {
