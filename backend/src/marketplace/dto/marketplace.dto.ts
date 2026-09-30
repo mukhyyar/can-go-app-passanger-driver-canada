@@ -1,5 +1,5 @@
 import {
-
+  ArrayMinSize,
   IsArray,
 
   IsBoolean,
@@ -166,6 +166,15 @@ export class PricingQuoteDto {
 
   vip?: boolean;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  distanceKm?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  durationMin?: number;
 }
 
 
@@ -365,6 +374,16 @@ export class CreateRideDto {
   @IsOptional()
   @IsString()
   catalogItemId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  distanceKm?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  durationMin?: number;
 }
 
 /** Partial passenger edit while ride is still open for offers. */
@@ -439,9 +458,10 @@ export class UpdateRideDto {
   isRoundTrip?: boolean;
 
   @IsOptional()
+  @ValidateIf((o: UpdateRideDto) => Boolean(o.returnAt))
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}T/)
-  returnAt?: string;
+  returnAt?: string | null;
 
   @IsOptional()
   @Type(() => Number)
@@ -479,6 +499,16 @@ export class UpdateRideDto {
   @IsOptional()
   @IsString()
   catalogItemId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  distanceKm?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  durationMin?: number;
 }
 
 export class CreateOfferDto {
@@ -678,6 +708,10 @@ export class RespondLostItemDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }
 
 export class ResolveLostItemDto {
@@ -685,6 +719,58 @@ export class ResolveLostItemDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  handoverPhotoUrl?: string;
+}
+
+export class SetLostItemPickupLocationDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(500)
+  location!: string;
+}
+
+export class PayLostItemFeeDto {
+  @IsOptional()
+  @IsIn(['CARD', 'GOOGLE_PAY', 'APPLE_PAY'])
+  paymentMethod?: 'CARD' | 'GOOGLE_PAY' | 'APPLE_PAY';
+
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+}
+
+export class AddRideTipDto {
+  @IsNumber()
+  @Min(0.50)
+  @Max(1000)
+  amount!: number;
+
+  @IsOptional()
+  @IsIn(['CARD', 'GOOGLE_PAY', 'APPLE_PAY'])
+  paymentMethod?: 'CARD' | 'GOOGLE_PAY' | 'APPLE_PAY';
+
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+}
+
+export class ReportRideDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  reasons!: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  details?: string;
 }
 
 

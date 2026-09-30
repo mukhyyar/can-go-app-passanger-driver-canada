@@ -72,7 +72,9 @@ void main() {
       final mockHttpClient = MockClient((request) async {
         if (request.url.path.contains('/rating')) {
           return http.Response(
-            jsonEncode({'rated': true, 'stars': 5}),
+            jsonEncode([
+              {'fromUserId': 'test-user', 'stars': 5}
+            ]),
             200,
             headers: {'content-type': 'application/json'},
           );
@@ -84,7 +86,9 @@ void main() {
         );
       });
       final session = CanGoSession(client: ApiClient(httpClient: mockHttpClient));
-      return AppState(session: session);
+      final app = AppState(session: session);
+      app.me = {'id': 'test-user'};
+      return app;
     }
 
     testWidgets('shows "Find lost item" button on completed ride without active inquiry', (tester) async {
@@ -177,7 +181,15 @@ void main() {
       appState.repo.rides.add(ride);
       appState.repo.passenger.phone = '+15559876543';
       appState.notifyListeners();
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      // If rating prompt bottomsheet appears on completed ride, dismiss with 'Later'
+      if (find.text('Later').evaluate().isNotEmpty) {
+        await tester.ensureVisible(find.text('Later'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Later'));
+        await tester.pumpAndSettle();
+      }
 
       // Tap Find lost item button
       await tester.tap(find.text('Find lost item'));
@@ -188,13 +200,13 @@ void main() {
         find.textContaining('To protect your privacy, you don\'t need to describe personal items'),
         findsOneWidget,
       );
-      expect(find.text('Contact phone number'), findsOneWidget);
+      expect(
+        find.textContaining('Please keep checking your notifications for updates if driver found something'),
+        findsOneWidget,
+      );
+      expect(find.text('Contact phone number'), findsNothing);
       expect(find.text('Location in vehicle (optional)'), findsOneWidget);
       expect(find.text('Notify driver'), findsOneWidget);
-      final phoneField = tester.widget<TextField>(
-        find.widgetWithText(TextField, 'Contact phone number'),
-      );
-      expect(phoneField.controller?.text, equals('+15559876543'));
     });
   });
 }

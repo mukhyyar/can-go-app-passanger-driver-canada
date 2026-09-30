@@ -14,10 +14,10 @@ import '../services/marketplace_realtime.dart';
 import 'driver_settings_mappers.dart';
 
 class AppState extends ChangeNotifier {
-  AppState();
+  AppState({CanGoSession? api}) : api = api ?? CanGoSession();
 
   final MockRepository repo = MockRepository.instance;
-  final CanGoSession api = CanGoSession();
+  final CanGoSession api;
   MarketplaceRealtime? _realtime;
 
   /// Latest inbound request alert for in-app banner (cleared by UI).
@@ -295,6 +295,7 @@ class AppState extends ChangeNotifier {
     String? type,
     String? status,
   }) {
+    if (!drivingEnabled) return;
     if (type == 'chat') {
       pendingChatRideId = rideId;
       pendingRequestAlert = title ?? 'New message';
@@ -306,7 +307,11 @@ class AppState extends ChangeNotifier {
     pendingRequestRideId = rideId;
     pendingAlertType = type;
     pendingAlertStatus = status;
-    if (type == 'ride.status') {
+    if (type == 'driver.tip_received' || type == 'tip') {
+      pendingRequestAlert = title ?? 'Tip received!';
+      pendingAlertStatus = 'COMPLETED';
+      unawaited(loadWallet().catchError((_) => <String, dynamic>{}));
+    } else if (type == 'ride.status') {
       pendingRequestAlert = title ?? 'Trip updated';
     } else {
       pendingRequestAlert = title ?? 'New ride request';
@@ -327,7 +332,12 @@ class AppState extends ChangeNotifier {
 
   static bool _isTripLifecycleType(String? type, String? status) {
     final t = (type ?? '').toLowerCase();
-    if (t == 'ride.status' || t == 'ride_status') return true;
+    if (t == 'ride.status' ||
+        t == 'ride_status' ||
+        t == 'driver.tip_received' ||
+        t == 'tip') {
+      return true;
+    }
     const tripStatuses = {
       'BOOKED',
       'DRIVER_EN_ROUTE',
@@ -366,6 +376,20 @@ class AppState extends ChangeNotifier {
     String? comment,
   }) =>
       api.marketplace.rateRide(rideId, stars: stars, comment: comment);
+
+  Future<Map<String, dynamic>> reportRide(
+    String rideId, {
+    required List<String> reasons,
+    String? details,
+  }) async {
+    final res = await api.marketplace.reportRide(
+      rideId,
+      reasons: reasons,
+      details: details,
+    );
+    notifyListeners();
+    return res;
+  }
 
   Future<List<Map<String, dynamic>>> listRideRatings(String rideId) async {
     final raw = await api.marketplace.listRideRatings(rideId);
@@ -435,14 +459,39 @@ class AppState extends ChangeNotifier {
     unawaited(refreshUnreadNotificationCount());
   }
 
+  bool get isOnline => drivingEnabled;
+  bool get isOffline => !drivingEnabled;
+
   Future<void> setDrivingMode(bool enabled) async {
     if (enabled && hasExpiredDocuments) {
       throw Exception(
         'Cannot go online: you have expired documents. Please re-upload updated documents.',
       );
     }
+    if (enabled && isProfileOnHold) {
+      throw Exception(
+        'Cannot go online: your profile is currently on hold while documents are under review.',
+      );
+    }
+    if (enabled && hasReuploadRequest) {
+      throw Exception(
+        'Cannot go online: document re-upload is requested. Please check your documents.',
+      );
+    }
+    if (enabled && !isActivated) {
+      throw Exception(
+        'Cannot go online: complete activation to offer prices. Please contact partner@can-go.ca',
+      );
+    }
     final res = await api.driver.setAvailability(enabled: enabled);
     drivingEnabled = res['enabled'] == true;
+    if (drivingEnabled) {
+      unawaited(refreshOpenRequests(fromPush: true));
+      unawaited(refreshMyRides());
+    } else {
+      clearPendingRequestAlert();
+      pendingChatRideId = null;
+    }
     notifyListeners();
   }
 
@@ -455,7 +504,11 @@ class AppState extends ChangeNotifier {
   bool avatarUploading = false;
   int _avatarLoadGen = 0;
   String? _avatarOwnerUserId;
-  int unreadNotificationCount = 0;
+  int _unreadNotificationCount = 0;
+  int get unreadNotificationCount => drivingEnabled ? _unreadNotificationCount : 0;
+  set unreadNotificationCount(int count) {
+    _unreadNotificationCount = count;
+  }
 
   bool get hasAvatar =>
       (avatarStorageKey != null && avatarStorageKey!.isNotEmpty) ||
@@ -1579,7 +1632,7 @@ class AppState extends ChangeNotifier {
         }
       }
       openRequests = parsed;
-      if (fromPush || previousIds.isNotEmpty) {
+      if ((fromPush || previousIds.isNotEmpty) && drivingEnabled) {
         DriverRequest? newest;
         for (final r in openRequests) {
           if (!previousIds.contains(r.id) && !r.hasOffer) {
@@ -1653,6 +1706,7 @@ class AppState extends ChangeNotifier {
     _realtime ??= MarketplaceRealtime(
       session: api,
       onNewRequest: (payload) {
+        if (!drivingEnabled) return;
         final rideId = payload['rideId']?.toString();
         final from = payload['fromLabel']?.toString();
         final to = payload['toLabel']?.toString();
@@ -1668,8 +1722,43 @@ class AppState extends ChangeNotifier {
         }
         unawaited(refreshOpenRequests(fromPush: true));
       },
+      onRideStatusChanged: (payload) {
+        final rideId = payload['rideId']?.toString();
+        final status = payload['status']?.toString();
+        debugPrint('MarketplaceRealtime ride.status.changed: $rideId -> $status');
+        unawaited(refreshOpenRequests(fromPush: true));
+        unawaited(refreshMyRides());
+        if (rideId != null) {
+          unawaited(() async {
+            try {
+              await loadRequestDetail(rideId);
+            } catch (_) {}
+            notifyListeners();
+          }());
+        }
+        notifyListeners();
+      },
+      onRideEvent: (payload) {
+        unawaited(refreshOpenRequests(fromPush: true));
+        unawaited(refreshMyRides());
+        final rideId = payload['rideId']?.toString();
+        if (rideId != null) {
+          unawaited(() async {
+            try {
+              await loadRequestDetail(rideId);
+            } catch (_) {}
+            notifyListeners();
+          }());
+        }
+        unawaited(loadWallet().catchError((_) => <String, dynamic>{}));
+        notifyListeners();
+      },
     );
     await _realtime!.connect();
+  }
+
+  void subscribeRide(String rideId) {
+    _realtime?.subscribeRide(rideId);
   }
 
   void stopMarketplaceRealtime() {
@@ -2403,8 +2492,8 @@ class AppState extends ChangeNotifier {
     return res;
   }
 
-  Future<Map<String, dynamic>> tripStart(String rideId) async {
-    final res = await api.driver.startTrip(rideId);
+  Future<Map<String, dynamic>> tripStart(String rideId, {String? pin}) async {
+    final res = await api.driver.startTrip(rideId, pin: pin);
     await refreshMyRides();
     notifyListeners();
     return res;
@@ -2480,11 +2569,13 @@ class AppState extends ChangeNotifier {
     required String rideId,
     required String action,
     String? note,
+    String? photoUrl,
   }) async {
     final res = await api.driver.respondLostItem(
       rideId,
       action: action,
       note: note,
+      photoUrl: photoUrl,
     );
     await refreshMyRides();
     notifyListeners();
@@ -2494,10 +2585,12 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> markLostItemReturned({
     required String rideId,
     String? note,
+    String? handoverPhotoUrl,
   }) async {
     final res = await api.driver.markLostItemReturned(
       rideId,
       note: note,
+      handoverPhotoUrl: handoverPhotoUrl,
     );
     await refreshMyRides();
     notifyListeners();

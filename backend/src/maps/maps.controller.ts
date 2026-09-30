@@ -97,6 +97,7 @@ export class MapsController {
     @Query('placeId') placeId: string,
     @Query('sessionToken') sessionToken?: string,
     @Query('languageCode') languageCode?: string,
+    @Query('label') label?: string,
   ) {
     if (!placeId?.trim()) {
       throw new NotFoundException('placeId required');
@@ -105,6 +106,7 @@ export class MapsController {
       const detail = await this.maps.placeDetails(placeId.trim(), {
         sessionToken: sessionToken?.trim() || undefined,
         languageCode: languageCode?.trim() || undefined,
+        label: label?.trim() || undefined,
       });
       if (!detail) throw new NotFoundException('Place not found');
       return detail;

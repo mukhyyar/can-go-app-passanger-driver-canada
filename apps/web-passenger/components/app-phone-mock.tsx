@@ -21,11 +21,11 @@ const OFFERS = [
     img: '/vehicles/comfort.png',
   },
   {
-    id: 'business',
-    name: 'Business',
+    id: 'premium',
+    name: 'Premium',
     driver: 'Daniel · 4.8',
     price: 'US$79',
-    img: '/vehicles/business.png',
+    img: '/vehicles/premium.png',
   },
 ];
 
@@ -135,7 +135,7 @@ function ScreenBook({ active }: { active: boolean }) {
       </div>
 
       <div className="phone-class-row">
-        {['economy', 'comfort', 'business'].map((id, i) => (
+        {['economy', 'comfort', 'premium'].map((id, i) => (
           <div key={id} className={`phone-class${i === 0 ? ' on' : ''}`}>
             <img src={`/vehicles/${id}.png`} alt="" />
             <strong>{id[0].toUpperCase() + id.slice(1)}</strong>

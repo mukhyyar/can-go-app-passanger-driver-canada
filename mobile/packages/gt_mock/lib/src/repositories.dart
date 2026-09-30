@@ -79,6 +79,7 @@ class MockRepository {
     if (ride == null) return;
     ride.selectedOfferId = offerId;
     ride.status = RideStatus.booked;
+    ride.startPin ??= (1000 + (ride.id.hashCode.abs() % 9000)).toString();
   }
 
   void submitDriverOffer(String requestId, double price) {
@@ -125,7 +126,15 @@ class MockRepository {
       );
       if (remote.isNotEmpty) return remote;
     } catch (_) {
-      // Fall through to local filter.
+      // Fall through to geocode fallback
+    }
+
+    // Try direct geocoding before local mock places
+    try {
+      final geocoded = await PlacesSearch.geocode(query);
+      if (geocoded.isNotEmpty) return geocoded;
+    } catch (_) {
+      // Fall through to local filter
     }
 
     final lower = query.toLowerCase();
@@ -140,21 +149,48 @@ class MockRepository {
     ];
   }
 
-  /// Resolve coords for an autocomplete prediction (Google placeId).
+  /// Resolve coords for an autocomplete prediction (Google placeId) or free-text address.
   Future<Place?> resolvePlaceDetails(
     Place place, {
     String? sessionToken,
   }) async {
-    final placeId = place.placeId;
-    if (placeId == null || placeId.isEmpty) {
-      return place.hasCoords ? place : null;
-    }
     if (place.hasCoords) return place;
-    return PlacesSearch.details(
-      placeId,
-      sessionToken: sessionToken,
-      label: place.label,
-      subtitle: place.subtitle,
-    );
+
+    final placeId = place.placeId;
+    if (placeId != null && placeId.isNotEmpty) {
+      final detailed = await PlacesSearch.details(
+        placeId,
+        sessionToken: sessionToken,
+        label: place.label,
+        subtitle: place.subtitle,
+      );
+      if (detailed != null && detailed.hasCoords) return detailed;
+    }
+
+    // Geocode fallback by full address text
+    final query = place.subtitle.isNotEmpty
+        ? '${place.label}, ${place.subtitle}'
+        : place.label;
+    if (query.trim().isNotEmpty) {
+      try {
+        final geos = await PlacesSearch.geocode(query);
+        if (geos.isNotEmpty && geos.first.hasCoords) {
+          final g = geos.first;
+          return Place(
+            id: g.id,
+            label: place.label,
+            subtitle:
+                place.subtitle.isNotEmpty ? place.subtitle : g.subtitle,
+            lat: g.lat,
+            lng: g.lng,
+            placeId: g.placeId ?? placeId,
+          );
+        }
+      } catch (_) {
+        // Fall through
+      }
+    }
+
+    return null;
   }
 }

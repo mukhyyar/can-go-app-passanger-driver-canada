@@ -9,6 +9,9 @@ void main() {
     test('formats CAD without hardcoding amounts', () {
       expect(MoneyFormat.format(95, 'CAD'), 'CA\$95');
       expect(MoneyFormat.formatFlexible(12.5, 'CAD'), 'CA\$12.50');
+      expect(MoneyFormat.format(-10, 'CAD'), '-CA\$10');
+      expect(MoneyFormat.formatFlexible(-10, 'CAD'), '-CA\$10');
+      expect(MoneyFormat.formatFlexible(-10.5, 'CAD'), '-CA\$10.50');
     });
   });
 
@@ -31,30 +34,31 @@ void main() {
       expect(d.selectedOptions.contains('water'), isFalse);
     });
 
-    test('computes totalPrice, customerRidePrice, platformFee, and customerTotal correctly', () {
+    test('computes totalPrice, 20% platformFee, and driverReceives correctly', () {
+      final userExample50 = OfferDraft(outboundPrice: 50);
+      expect(userExample50.totalPrice, 50.0);
+      expect(userExample50.platformFee, 10.0);
+      expect(userExample50.driverReceives, 40.0);
+
       final userExample = OfferDraft(outboundPrice: 17);
       expect(userExample.totalPrice, 17.0);
-      expect(userExample.customerRidePrice, 20.40);
-      expect(userExample.platformFee, 4.08);
-      expect(userExample.customerTotal, 24.48);
+      expect(userExample.platformFee, 3.40);
+      expect(userExample.driverReceives, 13.60);
 
       final oneWay = OfferDraft(outboundPrice: 100);
       expect(oneWay.totalPrice, 100.0);
-      expect(oneWay.customerRidePrice, 120.0);
-      expect(oneWay.platformFee, 24.0);
-      expect(oneWay.customerTotal, 144.0);
+      expect(oneWay.platformFee, 20.0);
+      expect(oneWay.driverReceives, 80.0);
 
       final roundTrip = OfferDraft(outboundPrice: 150, returnPrice: 150);
       expect(roundTrip.totalPrice, 300.0);
-      expect(roundTrip.customerRidePrice, 360.0);
-      expect(roundTrip.platformFee, 72.0);
-      expect(roundTrip.customerTotal, 432.0);
+      expect(roundTrip.platformFee, 60.0);
+      expect(roundTrip.driverReceives, 240.0);
 
       final withDecimals = OfferDraft(outboundPrice: 55.50);
       expect(withDecimals.totalPrice, 55.50);
-      expect(withDecimals.customerRidePrice, 66.60);
-      expect(withDecimals.platformFee, 13.32);
-      expect(withDecimals.customerTotal, 79.92);
+      expect(withDecimals.platformFee, 11.10);
+      expect(withDecimals.driverReceives, 44.40);
     });
   });
 

@@ -30,6 +30,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (mounted) context.go('/auth');
       return;
     }
+    if (app.isOffline) {
+      setState(() {
+        _items = const [];
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -125,7 +133,57 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final unread = context.watch<AppState>().unreadNotificationCount;
+    final app = context.watch<AppState>();
+    if (app.isOffline) {
+      return Scaffold(
+        backgroundColor: GtColors.bgGrey,
+        appBar: AppBar(
+          title: const Text('Notifications'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.notifications_off_outlined,
+                    size: 36,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "You're Offline",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: GtColors.text,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Notifications and live alerts are paused while you are offline. Go online to view notifications.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    final unread = app.unreadNotificationCount;
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,

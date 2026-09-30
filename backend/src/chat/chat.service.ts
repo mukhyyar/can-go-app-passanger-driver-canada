@@ -39,7 +39,6 @@ export class ChatService {
         passenger: true,
         selectedOffer: { include: { driver: true } },
         supportCases: {
-          where: { title: 'Lost item inquiry' },
           select: { id: true, status: true },
         },
       },
@@ -60,13 +59,13 @@ export class ChatService {
     if (!isAdmin && !isPassenger && !isDriver) {
       throw new ForbiddenException('Not a chat participant');
     }
-    const hasActiveLostItem = ride.supportCases.some(
+    const hasActiveSupport = ride.supportCases.some(
       (c) => c.status !== SupportCaseStatus.RESOLVED,
     );
     if (
       !isAdmin &&
       !ALLOWED_STATUSES.includes(ride.status) &&
-      !(ride.status === RideStatus.COMPLETED && hasActiveLostItem)
+      !hasActiveSupport
     ) {
       throw new BadRequestException('Chat unavailable for this ride status');
     }
@@ -169,36 +168,90 @@ export class ChatService {
       });
       driverUserId = assigned?.userId ?? null;
     }
-    const recipientId =
-      userId === passengerUserId
-        ? driverUserId
-        : userId === driverUserId
-          ? passengerUserId
-          : null;
-    if (recipientId) {
-      const isPassengerRecipient = recipientId === passengerUserId;
-      const preview = body.length > 120 ? `${body.slice(0, 117)}…` : body;
-      void this.notifications
-        .sendToUser({
-          userId: recipientId,
-          title: 'New message',
-          body: preview,
-          templateKey: 'chat_message',
-          eventId: `chat.message.${msg.id}`,
-          targetRole: isPassengerRecipient
-            ? ['PASSENGER', 'PASSENGER_WEB']
-            : 'DRIVER',
-          data: {
-            type: 'chat',
-            rideId,
-            messageId: msg.id,
-            deepLink:
-              isPassengerRecipient
-                ? `/ride/${rideId}/chat`
-                : `/chat/${rideId}`,
-          },
-        })
-        .catch(() => undefined);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const isAdmin =
+      user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+    const preview = body.length > 120 ? `${body.slice(0, 117)}…` : body;
+
+    if (isAdmin) {
+      // Admin sent message: notify ride participants
+      const targets = [passengerUserId, driverUserId].filter(Boolean) as string[];
+      for (const tId of targets) {
+        const isPass = tId === passengerUserId;
+        void this.notifications
+          .sendToUser({
+            userId: tId,
+            title: 'Support message from Can-Ride',
+            body: preview,
+            templateKey: 'chat_support_message',
+            eventId: `chat.support.${msg.id}.${tId}`,
+            targetRole: isPass ? ['PASSENGER', 'PASSENGER_WEB'] : 'DRIVER',
+            data: {
+              type: 'chat',
+              rideId,
+              messageId: msg.id,
+              deepLink: isPass ? `/ride/${rideId}/chat` : `/chat/${rideId}`,
+            },
+          })
+          .catch(() => undefined);
+      }
+    } else {
+      // Customer sent message: notify the other ride participant
+      const recipientId =
+        userId === passengerUserId
+          ? driverUserId
+          : userId === driverUserId
+            ? passengerUserId
+            : null;
+      if (recipientId) {
+        const isPassengerRecipient = recipientId === passengerUserId;
+        void this.notifications
+          .sendToUser({
+            userId: recipientId,
+            title: 'New message',
+            body: preview,
+            templateKey: 'chat_message',
+            eventId: `chat.message.${msg.id}`,
+            targetRole: isPassengerRecipient
+              ? ['PASSENGER', 'PASSENGER_WEB']
+              : 'DRIVER',
+            data: {
+              type: 'chat',
+              rideId,
+              messageId: msg.id,
+              deepLink:
+                isPassengerRecipient
+                  ? `/ride/${rideId}/chat`
+                  : `/chat/${rideId}`,
+            },
+          })
+          .catch(() => undefined);
+      }
+
+      // If active support case exists on ride, also notify admins of customer message
+      const activeCases = await this.prisma.supportCase.findMany({
+        where: { rideId, status: { not: SupportCaseStatus.RESOLVED } },
+        select: { id: true },
+      });
+      if (activeCases.length > 0) {
+        const rideCode =
+          rideId.replace(/\D/g, '').slice(-8) || rideId.slice(-8);
+        void this.notifications
+          .notifyAdmins({
+            title: `New chat on Ride #${rideCode}`,
+            body: preview,
+            templateKey: 'admin.chat_message',
+            eventId: `admin.chat.${msg.id}`,
+            data: {
+              type: 'admin_chat',
+              rideId,
+              messageId: msg.id,
+              senderId: userId,
+              deepLink: `/admin/rides/${rideId}`,
+            },
+          })
+          .catch(() => undefined);
+      }
     }
 
     return msg;

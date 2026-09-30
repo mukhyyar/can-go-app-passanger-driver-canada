@@ -25,16 +25,20 @@ import {
 import { MarketplaceService } from './marketplace.service';
 import { PricingService } from './pricing.service';
 import {
+  AddRideTipDto,
   ConfirmPaymentDto,
   CreateChangeRequestDto,
   CreateOfferDto,
   CreatePaymentIntentDto,
   CreateRideDto,
   PaymentQuoteDto,
+  PayLostItemFeeDto,
   PricingQuoteDto,
+  ReportRideDto,
   ResolveLostItemDto,
   RespondLostItemDto,
   SelectOfferDto,
+  SetLostItemPickupLocationDto,
   UpdateOfferDto,
   UpdateRideDto,
   ValidateBookDto,
@@ -123,6 +127,18 @@ export class MarketplaceController {
     @Req() req: { ip?: string },
   ) {
     return this.marketplace.createChangeRequest(user.id, id, dto, req.ip);
+  }
+
+  @Post('rides/:id/reports')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  reportRide(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: ReportRideDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.reportRide(user.id, id, dto, req.ip);
   }
 
   @Post('rides/:id/select-offer')
@@ -332,6 +348,19 @@ export class MarketplaceController {
     return this.marketplace.confirmPayment(user.id, dto, req.ip);
   }
 
+  @Post('rides/:id/tip')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  addTip(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: AddRideTipDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.addTipToRide(user.id, id, dto, req.ip);
+  }
+
   @Post('rides/:rideId/lost-item/respond')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.DRIVER)
@@ -353,6 +382,29 @@ export class MarketplaceController {
     @Req() req: { ip?: string },
   ) {
     return this.marketplace.markLostItemReturned(user.id, rideId, dto, req.ip);
+  }
+
+  @Post('rides/:rideId/lost-item/pickup-location')
+  @UseGuards(JwtAuthGuard)
+  setLostItemPickupLocation(
+    @CurrentUser() user: AuthUser,
+    @Param('rideId') rideId: string,
+    @Body() dto: SetLostItemPickupLocationDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.setLostItemPickupLocation(user.id, rideId, dto, req.ip);
+  }
+
+  @Post('rides/:rideId/lost-item/pay-fee')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  payLostItemFee(
+    @CurrentUser() user: AuthUser,
+    @Param('rideId') rideId: string,
+    @Body() dto: PayLostItemFeeDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.payLostItemReturnFee(user.id, rideId, dto, req.ip);
   }
 
   @Post('payments/webhooks/:provider')

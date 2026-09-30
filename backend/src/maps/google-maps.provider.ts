@@ -34,16 +34,31 @@ export class GoogleMapsProvider implements MapsProvider {
     }
   }
 
-  async geocode(query: string): Promise<GeocodeResult[]> {
+  async geocode(
+    query: string,
+    opts?: { lat?: number; lng?: number },
+  ): Promise<GeocodeResult[]> {
     this.assertKey();
     const q = query.trim();
     if (!q) return [];
     const uri = new URL('https://maps.googleapis.com/maps/api/geocode/json');
     uri.searchParams.set('address', q);
     uri.searchParams.set('key', this.key!);
-    uri.searchParams.set('region', 'ca');
+    if (
+      opts?.lat != null &&
+      opts?.lng != null &&
+      Number.isFinite(opts.lat) &&
+      Number.isFinite(opts.lng)
+    ) {
+      const lat = opts.lat;
+      const lng = opts.lng;
+      uri.searchParams.set(
+        'bounds',
+        `${lat - 1.0},${lng - 1.0}|${lat + 1.0},${lng + 1.0}`,
+      );
+    }
     try {
-      const res = await fetch(uri);
+      const res = await fetch(uri.toString());
       const data = (await res.json()) as {
         status?: string;
         results?: Array<{
@@ -57,6 +72,7 @@ export class GoogleMapsProvider implements MapsProvider {
           label: r.formatted_address,
           lat: r.geometry.location.lat,
           lng: r.geometry.location.lng,
+          placeId: r.place_id,
           provider: this.name,
         }));
       }
@@ -199,8 +215,8 @@ export class GoogleMapsProvider implements MapsProvider {
   }
 
   /**
-   * Places Autocomplete (New) — predictions only (no Place Details per row).
-   * Falls back to Geocoding if Places is unavailable.
+   * Places search: hybrid Places Autocomplete (New) + Google Geocoding.
+   * Ensures addresses, intersections, postal codes, airports, and POIs are all suggested and resolved.
    */
   async places(
     query: string,
@@ -212,23 +228,41 @@ export class GoogleMapsProvider implements MapsProvider {
     if (q.length < 2) return [];
     const max = Math.min(Math.max(limit, 1), 12);
     const languageCode = opts?.languageCode?.trim() || 'en';
-    const biasLat =
-      opts?.lat != null && Number.isFinite(opts.lat) ? opts.lat : DEFAULT_BIAS.lat;
-    const biasLng =
-      opts?.lng != null && Number.isFinite(opts.lng) ? opts.lng : DEFAULT_BIAS.lng;
+    const hasClientCoords =
+      opts?.lat != null &&
+      Number.isFinite(opts.lat) &&
+      opts?.lng != null &&
+      Number.isFinite(opts.lng);
 
+    const suggestions: PlaceSuggestion[] = [];
+    const seenPlaceIds = new Set<string>();
+    const seenLabels = new Set<string>();
+
+    const addSuggestion = (s: PlaceSuggestion) => {
+      const placeKey = s.placeId?.trim().toLowerCase();
+      const labelKey = s.label.trim().toLowerCase();
+      if (placeKey && seenPlaceIds.has(placeKey)) return;
+      if (seenLabels.has(labelKey)) return;
+      if (placeKey) seenPlaceIds.add(placeKey);
+      seenLabels.add(labelKey);
+      suggestions.push(s);
+    };
+
+    // 1. Google Places Autocomplete (New)
     try {
       const body: Record<string, unknown> = {
         input: q,
         languageCode,
-        includedRegionCodes: ['ca'],
-        locationBias: {
-          circle: {
-            center: { latitude: biasLat, longitude: biasLng },
-            radius: DEFAULT_BIAS.radiusMeters,
-          },
-        },
+        includedRegionCodes: ['ca', 'us'],
       };
+      if (hasClientCoords) {
+        body.locationBias = {
+          circle: {
+            center: { latitude: opts!.lat!, longitude: opts!.lng! },
+            radius: 120_000,
+          },
+        };
+      }
       const token = opts?.sessionToken?.trim();
       if (token) body.sessionToken = token;
 
@@ -243,47 +277,40 @@ export class GoogleMapsProvider implements MapsProvider {
           body: JSON.stringify(body),
         },
       );
-      if (!autoRes.ok) {
-        return this.geocodeAsPlaces(q, max);
-      }
-      const autoData = (await autoRes.json()) as {
-        suggestions?: Array<{
-          placePrediction?: {
-            placeId?: string;
-            text?: { text?: string };
-            structuredFormat?: {
-              mainText?: { text?: string };
-              secondaryText?: { text?: string };
+
+      if (autoRes.ok) {
+        const autoData = (await autoRes.json()) as {
+          suggestions?: Array<{
+            placePrediction?: {
+              placeId?: string;
+              text?: { text?: string };
+              structuredFormat?: {
+                mainText?: { text?: string };
+                secondaryText?: { text?: string };
+              };
             };
+          }>;
+        };
+        const preds = (autoData.suggestions ?? [])
+          .map((s) => s.placePrediction)
+          .filter(Boolean) as Array<{
+          placeId?: string;
+          text?: { text?: string };
+          structuredFormat?: {
+            mainText?: { text?: string };
+            secondaryText?: { text?: string };
           };
         }>;
-      };
-      const preds = (autoData.suggestions ?? [])
-        .map((s) => s.placePrediction)
-        .filter(Boolean)
-        .slice(0, max) as Array<{
-        placeId?: string;
-        text?: { text?: string };
-        structuredFormat?: {
-          mainText?: { text?: string };
-          secondaryText?: { text?: string };
-        };
-      }>;
 
-      if (!preds.length) {
-        return this.geocodeAsPlaces(q, max);
-      }
-
-      return preds
-        .filter((p) => !!p.placeId)
-        .map((p) => {
-          const placeId = p.placeId!;
+        for (const p of preds) {
+          if (!p.placeId) continue;
+          const placeId = p.placeId;
           const label =
             p.structuredFormat?.mainText?.text ||
             p.text?.text ||
             placeId;
           const subtitle = p.structuredFormat?.secondaryText?.text;
-          return {
+          addSuggestion({
             id: `gplace-${placeId}`,
             label,
             subtitle,
@@ -291,20 +318,50 @@ export class GoogleMapsProvider implements MapsProvider {
             lng: 0,
             placeId,
             provider: this.name,
-          } satisfies PlaceSuggestion;
-        });
+          });
+          if (suggestions.length >= max) break;
+        }
+      }
     } catch {
-      return this.geocodeAsPlaces(q, max);
+      // Fall through to geocoding
     }
+
+    // 2. Supplement or fallback with Google Geocoding API
+    // Addresses with numbers, postal codes, or when autocomplete returns few/zero results
+    const looksLikeAddress =
+      /\d|[A-Za-z]\d[A-Za-z]|,|st|ave|rd|blvd|dr|way|cres|lane|highway|hwy/i.test(
+        q,
+      );
+    if (suggestions.length < max || looksLikeAddress) {
+      try {
+        const remaining = max - suggestions.length;
+        const geoPlaces = await this.geocodeAsPlaces(
+          q,
+          Math.max(remaining, 4),
+          opts,
+        );
+        for (const gp of geoPlaces) {
+          addSuggestion(gp);
+          if (suggestions.length >= max) break;
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    return suggestions.slice(0, max);
   }
 
   /**
-   * Resolve lat/lng (+ formatted address) for a selected autocomplete place.
-   * Pass the same sessionToken used during autocomplete for billing sessions.
+   * Resolve lat/lng (+ formatted address) for a selected place.
+   * Multi-tier resolution:
+   * 1) Places API (New) Place Details
+   * 2) Geocoding API by place_id (100% Google place ID support)
+   * 3) Geocoding API by address label fallback
    */
   async placeDetails(
     placeId: string,
-    opts?: { sessionToken?: string; languageCode?: string },
+    opts?: { sessionToken?: string; languageCode?: string; label?: string },
   ): Promise<PlaceSuggestion | null> {
     this.assertKey();
     const id = placeId.trim();
@@ -313,6 +370,7 @@ export class GoogleMapsProvider implements MapsProvider {
     const loc = await this.placeLocation(id, {
       sessionToken: opts?.sessionToken,
       languageCode,
+      label: opts?.label,
     });
     if (!loc) return null;
     return {
@@ -328,57 +386,146 @@ export class GoogleMapsProvider implements MapsProvider {
 
   private async placeLocation(
     placeId: string,
-    opts?: { sessionToken?: string; languageCode?: string },
+    opts?: { sessionToken?: string; languageCode?: string; label?: string },
   ): Promise<{
     lat: number;
     lng: number;
     formattedAddress?: string;
     displayName?: string;
   } | null> {
-    const uri = new URL(
-      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
-    );
-    if (opts?.languageCode) {
-      uri.searchParams.set('languageCode', opts.languageCode);
+    // 1. Try Google Places (New) Place Details
+    try {
+      const uri = new URL(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+      );
+      if (opts?.languageCode) {
+        uri.searchParams.set('languageCode', opts.languageCode);
+      }
+      if (opts?.sessionToken?.trim()) {
+        uri.searchParams.set('sessionToken', opts.sessionToken.trim());
+      }
+      const res = await fetch(uri.toString(), {
+        headers: {
+          'X-Goog-Api-Key': this.key!,
+          'X-Goog-FieldMask': 'location,formattedAddress,displayName',
+        },
+      });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          location?: { latitude?: number; longitude?: number };
+          formattedAddress?: string;
+          displayName?: { text?: string };
+        };
+        const lat = data.location?.latitude;
+        const lng = data.location?.longitude;
+        if (lat != null && lng != null) {
+          return {
+            lat,
+            lng,
+            formattedAddress: data.formattedAddress,
+            displayName: data.displayName?.text,
+          };
+        }
+      }
+    } catch {
+      // Fall through to geocoding fallback
     }
-    if (opts?.sessionToken?.trim()) {
-      uri.searchParams.set('sessionToken', opts.sessionToken.trim());
+
+    // 2. Fall back to Google Geocoding API by place_id (supports 100% of Google place IDs)
+    try {
+      const geoUri = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+      geoUri.searchParams.set('place_id', placeId);
+      geoUri.searchParams.set('key', this.key!);
+      if (opts?.languageCode) {
+        geoUri.searchParams.set('language', opts.languageCode);
+      }
+      const geoRes = await fetch(geoUri.toString());
+      if (geoRes.ok) {
+        const geoData = (await geoRes.json()) as {
+          status?: string;
+          results?: Array<{
+            formatted_address: string;
+            geometry: { location: { lat: number; lng: number } };
+          }>;
+        };
+        if (
+          geoData.status === 'OK' &&
+          geoData.results &&
+          geoData.results.length > 0
+        ) {
+          const r = geoData.results[0];
+          return {
+            lat: r.geometry.location.lat,
+            lng: r.geometry.location.lng,
+            formattedAddress: r.formatted_address,
+            displayName: r.formatted_address,
+          };
+        }
+      }
+    } catch {
+      // Fall through
     }
-    const res = await fetch(uri.toString(), {
-      headers: {
-        'X-Goog-Api-Key': this.key!,
-        'X-Goog-FieldMask': 'location,formattedAddress,displayName',
-      },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      location?: { latitude?: number; longitude?: number };
-      formattedAddress?: string;
-      displayName?: { text?: string };
-    };
-    const lat = data.location?.latitude;
-    const lng = data.location?.longitude;
-    if (lat == null || lng == null) return null;
-    return {
-      lat,
-      lng,
-      formattedAddress: data.formattedAddress,
-      displayName: data.displayName?.text,
-    };
+
+    // 3. Fall back to Google Geocoding API by address label if provided
+    if (opts?.label?.trim()) {
+      try {
+        const geoUri = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+        geoUri.searchParams.set('address', opts.label.trim());
+        geoUri.searchParams.set('key', this.key!);
+        if (opts?.languageCode) {
+          geoUri.searchParams.set('language', opts.languageCode);
+        }
+        const geoRes = await fetch(geoUri.toString());
+        if (geoRes.ok) {
+          const geoData = (await geoRes.json()) as {
+            status?: string;
+            results?: Array<{
+              formatted_address: string;
+              geometry: { location: { lat: number; lng: number } };
+            }>;
+          };
+          if (
+            geoData.status === 'OK' &&
+            geoData.results &&
+            geoData.results.length > 0
+          ) {
+            const r = geoData.results[0];
+            return {
+              lat: r.geometry.location.lat,
+              lng: r.geometry.location.lng,
+              formattedAddress: r.formatted_address,
+              displayName: r.formatted_address,
+            };
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    return null;
   }
 
   private async geocodeAsPlaces(
     q: string,
     max: number,
+    opts?: PlacesSearchOpts,
   ): Promise<PlaceSuggestion[]> {
-    const geo = await this.geocode(q);
-    return geo.slice(0, max).map((g, i) => ({
-      id: `geo-${g.lat}-${g.lng}-${i}`,
-      label: g.label,
-      lat: g.lat,
-      lng: g.lng,
-      provider: this.name,
-    }));
+    const geo = await this.geocode(q, opts);
+    return geo.slice(0, max).map((g, i) => {
+      const parts = g.label.split(',');
+      const title = parts[0]?.trim() || g.label;
+      const subtitle = parts.slice(1).join(',').trim();
+      return {
+        id: g.placeId ? `gplace-${g.placeId}` : `geo-${g.lat}-${g.lng}-${i}`,
+        label: title,
+        subtitle: subtitle || undefined,
+        lat: g.lat,
+        lng: g.lng,
+        placeId: g.placeId,
+        provider: this.name,
+      };
+    });
   }
 
   async route(

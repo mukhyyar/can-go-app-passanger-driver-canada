@@ -30,8 +30,26 @@ export class RatingsService {
       throw new BadRequestException('Ride must be COMPLETED to rate');
     }
 
-    const isPassenger = ride.passenger.userId === userId;
-    const isDriver = ride.selectedOffer?.driver.userId === userId;
+    const userDriverProfile = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    let driverUserId = ride.selectedOffer?.driver?.userId;
+    if (!driverUserId && ride.assignedDriverId) {
+      const dp = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      driverUserId = dp?.userId;
+    }
+
+    const isPassenger = ride.passenger?.userId === userId;
+    const isDriver =
+      (driverUserId != null && driverUserId === userId) ||
+      (ride.selectedOffer?.driver?.userId === userId) ||
+      (!!userDriverProfile && ride.assignedDriverId === userDriverProfile.id);
+
     if (!isPassenger && !isDriver) {
       throw new ForbiddenException('Only ride participants can rate');
     }
@@ -49,10 +67,19 @@ export class RatingsService {
     }
 
     const toUserId = isPassenger
-      ? ride.selectedOffer!.driver.userId
-      : ride.passenger.userId;
+      ? (driverUserId ?? (isDriver ? userId : undefined))
+      : ride.passenger?.userId;
 
-    const hasComment = !!(dto.comment && dto.comment.trim());
+    if (!toUserId) {
+      throw new BadRequestException(
+        isPassenger
+          ? 'Driver not found for this ride'
+          : 'Passenger not found for this ride',
+      );
+    }
+
+    const trimmedComment = dto.comment?.trim() ? dto.comment.trim() : null;
+    const hasComment = !!trimmedComment;
     const moderationStatus = hasComment
       ? RatingModerationStatus.PENDING_REVIEW
       : RatingModerationStatus.VISIBLE;
@@ -67,7 +94,7 @@ export class RatingsService {
           communicationStars: isPassenger ? dto.communicationStars! : null,
           driverStars: isPassenger ? dto.driverStars! : null,
           vehicleStars: isPassenger ? dto.vehicleStars! : null,
-          comment: dto.comment,
+          comment: trimmedComment,
           moderationStatus,
         },
       });
@@ -88,8 +115,14 @@ export class RatingsService {
         },
       });
       return rating;
-    } catch {
-      throw new BadRequestException('You already rated this ride');
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new BadRequestException('You already rated this ride');
+      }
+      throw err;
     }
   }
 
@@ -102,13 +135,17 @@ export class RatingsService {
       },
     });
     if (!ride) throw new NotFoundException('Ride not found');
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { driverProfile: true },
+    });
     const isAdmin =
       user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
-    const allowed =
-      ride.passenger.userId === userId ||
-      ride.selectedOffer?.driver.userId === userId ||
-      isAdmin;
+    const isPassenger = ride.passenger?.userId === userId;
+    const isDriver =
+      ride.selectedOffer?.driver?.userId === userId ||
+      (!!user?.driverProfile && ride.assignedDriverId === user.driverProfile.id);
+    const allowed = isPassenger || isDriver || isAdmin;
     if (!allowed) throw new ForbiddenException();
 
     return this.prisma.rating.findMany({

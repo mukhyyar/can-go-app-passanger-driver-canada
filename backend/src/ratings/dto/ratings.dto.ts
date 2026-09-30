@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -39,6 +39,9 @@ export class CreateRatingDto {
   vehicleStars?: number;
 
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim().length === 0 ? undefined : value,
+  )
   @IsString()
   @MinLength(1)
   comment?: string;

@@ -88,37 +88,6 @@ String friendlyLocalRideStatus(RideStatus status) {
 }
 
 RideRequest rideFromServer(Map<String, dynamic> json) {
-  final snap = json['priceSnapshot'];
-  String? distance;
-  String? duration;
-  if (snap is Map) {
-    final km = snap['distanceKm'];
-    final mins = snap['durationMin'];
-    if (km != null) {
-      final v = km is num ? km : num.tryParse(km.toString());
-      if (v != null) {
-        distance = v == v.roundToDouble()
-            ? '${v.round()} km'
-            : '${v.toStringAsFixed(1)} km';
-      }
-    }
-    if (mins != null) {
-      final mNum = mins is num ? mins : num.tryParse(mins.toString());
-      if (mNum != null) {
-        final m = mNum.round();
-        duration = m >= 60 ? '~ ${m ~/ 60} h ${m % 60} min' : '~ $m min';
-      }
-    }
-  }
-  final offers = json['offers'];
-  final offerCount = offers is List
-      ? offers.length
-      : (() {
-          final raw = json['offerCount'];
-          if (raw is num) return raw.toInt();
-          return int.tryParse('$raw') ?? 0;
-        })();
-
   bool parseBool(dynamic v) {
     if (v == null) return false;
     if (v is bool) return v;
@@ -126,6 +95,7 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     return s == 'true' || s == '1';
   }
 
+  final snap = json['priceSnapshot'];
   final snapGuidance = json['pricingGuidance'];
   final snapMap =
       snap is Map ? snap : (snapGuidance is Map ? snapGuidance : null);
@@ -135,6 +105,45 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
       (json['returnAt'] != null &&
           json['returnAt'].toString().trim().isNotEmpty) ||
       (snapMap != null && (_asInt(snapMap['legs'], fallback: 1)) > 1);
+  final legs = snapMap != null
+      ? _asInt(snapMap['legs'], fallback: isRoundTrip ? 2 : 1)
+      : (isRoundTrip ? 2 : 1);
+
+  String? distance;
+  String? duration;
+  if (snapMap != null) {
+    final km = snapMap['distanceKm'];
+    final mins = snapMap['durationMin'];
+    if (km != null) {
+      final v = km is num ? km.toDouble() : double.tryParse(km.toString());
+      if (v != null) {
+        final oneWay = v / (legs > 0 ? legs : 1);
+        final oneWayStr = oneWay == oneWay.roundToDouble()
+            ? '${oneWay.round()} km'
+            : '${oneWay.toStringAsFixed(1)} km';
+        distance = legs > 1 ? '$oneWayStr × $legs' : oneWayStr;
+      }
+    }
+    if (mins != null) {
+      final mNum =
+          mins is num ? mins.toDouble() : double.tryParse(mins.toString());
+      if (mNum != null) {
+        final oneWayMins = mNum / (legs > 0 ? legs : 1);
+        duration = legs > 1
+            ? '${_formatDuration(oneWayMins)} × $legs'
+            : _formatDuration(mNum);
+      }
+    }
+  }
+
+  final offers = json['offers'];
+  final offerCount = offers is List
+      ? offers.length
+      : (() {
+          final raw = json['offerCount'];
+          if (raw is num) return raw.toInt();
+          return int.tryParse('$raw') ?? 0;
+        })();
 
   final pickupLabel = _formatPickup(json['pickupAt']);
   final returnLabel =
@@ -181,7 +190,17 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
         int.tryParse('${json['viewCount'] ?? ''}'),
     currency: json['currency']?.toString(),
     hasLostItemRequest: json['hasLostItemRequest'] == true,
+    hasReportedRide: json['hasReportedRide'] == true || json['hasActiveSupport'] == true,
+    hasActiveSupport: json['hasActiveSupport'] == true,
     lostItem: _parseLostItem(json['lostItem']),
+    startPin: json['startPin']?.toString() ??
+        json['pin']?.toString() ??
+        (snapMap != null ? snapMap['startPin']?.toString() : null),
+    tipAmount: _asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip']) > 0
+        ? _asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip'])
+        : null,
+    shareToken: json['shareToken']?.toString(),
+    shareUrl: json['shareUrl']?.toString(),
   );
 }
 
@@ -681,9 +700,12 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     final mins = asDouble(snapMap['durationMin']);
     if (km != null) {
       final oneWay = km / (legs > 0 ? legs : 1);
+      final oneWayStr = oneWay == oneWay.roundToDouble()
+          ? '${oneWay.round()} km'
+          : '${oneWay.toStringAsFixed(1)} km';
       distance = legs > 1
-          ? '${oneWay.toStringAsFixed(0)} km × $legs'
-          : '$km km';
+          ? '$oneWayStr × $legs'
+          : oneWayStr;
     }
     if (mins != null) {
       final oneWayMins = mins / (legs > 0 ? legs : 1);
@@ -708,8 +730,8 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
         try {
           final o =
               DriverOfferSummary.fromJson(Map<String, dynamic>.from(raw));
-          if (o.isActive || myOffer == null) myOffer = o;
-          if (o.isActive) break;
+          if (o.isAccepted || o.isActive || myOffer == null) myOffer = o;
+          if (o.isAccepted || o.isActive) break;
         } catch (_) {
           // Skip malformed offer rows; still show the request.
         }
@@ -787,7 +809,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     flightWait: pickupWait != null
         ? '$pickupWait min'
         : (flight != null && flight.isNotEmpty ? '60 min' : null),
-    hasOffer: myOffer != null && myOffer.isActive,
+    hasOffer: myOffer != null && (myOffer.isActive || myOffer.isAccepted),
     offerPrice: myOffer?.bidAmount ?? asDouble(snapMap?['bidAmount']),
     driverEarning:
         myOffer?.driverEarning ?? asDouble(snapMap?['driverEarning']),
@@ -814,7 +836,16 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     pickupAt: pickupAt,
     passengerName: passengerName,
     hasLostItemRequest: json['hasLostItemRequest'] == true,
+    hasReportedRide: json['hasReportedRide'] == true || json['hasActiveSupport'] == true,
+    hasActiveSupport: json['hasActiveSupport'] == true,
     lostItem: _parseLostItem(json['lostItem']),
+    startPin: json['startPin']?.toString() ??
+        json['pin']?.toString() ??
+        (snapMap != null ? snapMap['startPin']?.toString() : null),
+    tipAmount: asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip']) != null &&
+            asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip'])! > 0
+        ? asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip'])
+        : null,
   );
 }
 

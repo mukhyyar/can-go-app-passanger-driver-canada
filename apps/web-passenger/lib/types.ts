@@ -104,6 +104,7 @@ export type Ride = {
   shortId?: string;
   offers?: RideOffer[];
   selectedOfferId?: string | null;
+  startPin?: string | null;
   priceSnapshot?: {
     distanceKm?: number;
     durationMin?: number;
@@ -155,3 +156,51 @@ export function formatMoney(amount?: number | null, currency = 'CAD'): string {
         });
   return `${prefix}${text}`;
 }
+
+export type SharedTrip = {
+  rideId: string;
+  shareToken: string;
+  status: string;
+  passengerFirstName: string;
+  pickup: {
+    label: string;
+    lat: number;
+    lng: number;
+  };
+  dropoff?: {
+    label: string;
+    lat: number;
+    lng: number;
+  } | null;
+  driver?: {
+    firstName: string;
+    fullName: string;
+    avatarUrl?: string | null;
+    rating: number;
+    totalTrips: number;
+    vehicle?: {
+      makeModel: string;
+      color: string;
+      plate: string;
+      year?: number | null;
+      vehicleClass: string;
+    } | null;
+  } | null;
+  live?: {
+    lat: number;
+    lng: number;
+    heading?: number;
+    speedMps?: number;
+    recordedAt?: string;
+  } | null;
+  eta?: {
+    minutes: number;
+    target: 'PICKUP' | 'DROPOFF';
+    distanceKm: number;
+    updatedAt: string;
+  } | null;
+  isCompleted: boolean;
+  isCancelled: boolean;
+  pickupAt: string;
+  updatedAt: string;
+};

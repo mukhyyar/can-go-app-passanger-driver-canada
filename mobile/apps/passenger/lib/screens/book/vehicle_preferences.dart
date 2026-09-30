@@ -111,14 +111,62 @@ class VehiclePreferences extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        vc.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
+                      Row(
+                        mainAxisAlignment: showFromPrice
+                            ? MainAxisAlignment.start
+                            : MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              vc.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Tooltip(
+                            message:
+                                '${vc.name} Capacity:\n• Up to ${vc.passengerSeats} passenger seats\n• Up to ${vc.luggagePlaces} standard bags',
+                            triggerMode: TooltipTriggerMode.tap,
+                            showDuration: const Duration(seconds: 4),
+                            preferBelow: false,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            margin: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B),
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            textStyle: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              height: 1.3,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.all(2.0),
+                              child: Icon(
+                                Icons.info_outline,
+                                size: 13,
+                                color: GtColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       if (priceValue != null) ...[
                         const SizedBox(height: 2),

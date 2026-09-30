@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AppRole, Prisma } from '@prisma/client';
+import { AppRole, Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FirebaseService } from '../firebase/firebase.service';
 
@@ -493,6 +493,50 @@ export class NotificationsService {
             toLabel: input.toLabel,
             pickupAt: input.pickupAt ?? '',
             deepLink: `/request/${input.rideId}`,
+          },
+        }),
+      );
+    }
+    return results;
+  }
+
+  /** Notify all active platform admins and super admins. */
+  async notifyAdmins(input: {
+    title: string;
+    body: string;
+    templateKey?: string;
+    eventId?: string;
+    data?: Record<string, string>;
+  }) {
+    if (!(await this.prisma.isReady())) {
+      this.logger.warn('DB not ready — skipping admin notifications');
+      return [];
+    }
+
+    const admins = await this.prisma.user.findMany({
+      where: {
+        role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+      },
+      select: { id: true, email: true },
+    });
+
+    if (!admins.length) {
+      this.logger.log('No admins found for notification');
+      return [];
+    }
+
+    const results = [];
+    for (const admin of admins) {
+      results.push(
+        await this.sendToUser({
+          userId: admin.id,
+          title: input.title,
+          body: input.body,
+          templateKey: input.templateKey ?? 'admin.notification',
+          eventId: input.eventId ? `${input.eventId}.${admin.id}` : undefined,
+          data: {
+            type: 'admin_notification',
+            ...(input.data ?? {}),
           },
         }),
       );

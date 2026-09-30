@@ -111,37 +111,116 @@ class PlacesSearch {
     if (sessionToken != null && sessionToken.isNotEmpty) {
       params['sessionToken'] = sessionToken;
     }
+    if (label != null && label.trim().isNotEmpty) {
+      params['label'] = label.trim();
+    }
 
-    final uri = _maps('/maps/place-details', params);
-    final res = await _client.get(
-      uri,
-      headers: const {'Accept': 'application/json'},
-    );
-    if (res.statusCode < 200 || res.statusCode >= 300) return null;
+    try {
+      final uri = _maps('/maps/place-details', params);
+      final res = await _client.get(
+        uri,
+        headers: const {'Accept': 'application/json'},
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final body = jsonDecode(res.body);
+        if (body is Map) {
+          final lat = (body['lat'] as num?)?.toDouble();
+          final lng = (body['lng'] as num?)?.toDouble();
+          if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+            final resolvedLabel = (label != null && label.trim().isNotEmpty)
+                ? label.trim()
+                : '${body['label'] ?? ''}'.trim();
+            final resolvedSubtitle =
+                (subtitle != null && subtitle.trim().isNotEmpty)
+                    ? subtitle.trim()
+                    : '${body['subtitle'] ?? ''}'.trim();
+            final resolvedPlaceId = body['placeId']?.toString() ?? id;
+            return Place(
+              id: '${body['id'] ?? 'gplace-$resolvedPlaceId'}',
+              label: resolvedLabel.isNotEmpty ? resolvedLabel : id,
+              subtitle: resolvedSubtitle,
+              lat: lat,
+              lng: lng,
+              placeId: resolvedPlaceId,
+            );
+          }
+        }
+      }
+    } catch (_) {
+      // Fall through to geocode fallback
+    }
 
-    final body = jsonDecode(res.body);
-    if (body is! Map) return null;
-    final lat = (body['lat'] as num?)?.toDouble();
-    final lng = (body['lng'] as num?)?.toDouble();
-    if (lat == null || lng == null) return null;
-    final resolvedLabel =
-        (label != null && label.trim().isNotEmpty)
-            ? label.trim()
-            : '${body['label'] ?? ''}'.trim();
-    if (resolvedLabel.isEmpty) return null;
-    final resolvedSubtitle =
-        (subtitle != null && subtitle.trim().isNotEmpty)
-            ? subtitle.trim()
-            : '${body['subtitle'] ?? ''}'.trim();
-    final resolvedPlaceId = body['placeId']?.toString() ?? id;
-    return Place(
-      id: '${body['id'] ?? 'gplace-$resolvedPlaceId'}',
-      label: resolvedLabel,
-      subtitle: resolvedSubtitle,
-      lat: lat,
-      lng: lng,
-      placeId: resolvedPlaceId,
-    );
+    // Fallback: Geocode the address/place query
+    final query = (subtitle != null && subtitle.trim().isNotEmpty)
+        ? '${label ?? id}, ${subtitle.trim()}'
+        : (label ?? id);
+    if (query.trim().isNotEmpty) {
+      try {
+        final geos = await geocode(query);
+        if (geos.isNotEmpty && geos.first.hasCoords) {
+          final g = geos.first;
+          return Place(
+            id: g.id,
+            label: label?.trim().isNotEmpty == true ? label!.trim() : g.label,
+            subtitle: subtitle?.trim().isNotEmpty == true
+                ? subtitle!.trim()
+                : g.subtitle,
+            lat: g.lat,
+            lng: g.lng,
+            placeId: g.placeId ?? id,
+          );
+        }
+      } catch (_) {
+        // Fall through
+      }
+    }
+
+    return null;
+  }
+
+  /// Geocode full street address or search query directly.
+  static Future<List<Place>> geocode(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    try {
+      final uri = _maps('/maps/geocode', {'q': q});
+      final res = await _client.get(
+        uri,
+        headers: const {'Accept': 'application/json'},
+      );
+      if (res.statusCode < 200 || res.statusCode >= 300) return const [];
+      final body = jsonDecode(res.body);
+      if (body is! List) return const [];
+      final out = <Place>[];
+      for (final item in body) {
+        if (item is! Map) continue;
+        final rawLabel = '${item['label'] ?? ''}'.trim();
+        if (rawLabel.isEmpty) continue;
+        final latVal = (item['lat'] as num?)?.toDouble() ?? 0;
+        final lngVal = (item['lng'] as num?)?.toDouble() ?? 0;
+        if (latVal == 0 && lngVal == 0) continue;
+        final placeId = item['placeId']?.toString();
+        final parts = rawLabel.split(',');
+        final title = parts.first.trim();
+        final sub =
+            parts.length > 1 ? parts.sublist(1).join(',').trim() : '';
+        out.add(
+          Place(
+            id: placeId != null && placeId.isNotEmpty
+                ? 'gplace-$placeId'
+                : 'geo-$latVal-$lngVal',
+            label: title,
+            subtitle: sub,
+            lat: latVal,
+            lng: lngVal,
+            placeId: placeId,
+          ),
+        );
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Reverse-geocode lat/lng into a Place (for current location / map pick).

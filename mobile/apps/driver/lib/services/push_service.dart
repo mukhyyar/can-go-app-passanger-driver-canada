@@ -114,6 +114,10 @@ class PushService with WidgetsBindingObserver {
   }
 
   void _handleMessage(RemoteMessage message) {
+    if (!app.drivingEnabled) {
+      // Driver is offline: suppress notification alerts
+      return;
+    }
     final data = message.data;
     final targetRoles = (data['targetRoles']?.toString() ?? '')
         .split(',')

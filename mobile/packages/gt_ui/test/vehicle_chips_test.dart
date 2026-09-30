@@ -7,7 +7,7 @@ void main() {
     test('formatLabel capitalizes words and preserves acronyms like SUV and VIP', () {
       expect(GtVehicleChips.formatLabel('economy'), equals('Economy'));
       expect(GtVehicleChips.formatLabel('comfort'), equals('Comfort'));
-      expect(GtVehicleChips.formatLabel('suv'), equals('SUV'));
+      expect(GtVehicleChips.formatLabel('suv'), equals('Black SUV'));
       expect(GtVehicleChips.formatLabel('vip'), equals('VIP'));
       expect(GtVehicleChips.formatLabel('business_class'), equals('Business Class'));
       expect(GtVehicleChips.formatLabel('minibus'), equals('Minibus'));
@@ -39,7 +39,7 @@ void main() {
       expect(find.text('Business'), findsOneWidget);
       expect(find.text('Premium'), findsOneWidget);
       expect(find.text('VIP'), findsOneWidget);
-      expect(find.text('SUV'), findsOneWidget);
+      expect(find.text('Black SUV'), findsOneWidget);
       expect(find.text('Van'), findsOneWidget);
       expect(find.text('Minibus'), findsOneWidget);
       expect(find.text('Bus'), findsOneWidget);

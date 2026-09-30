@@ -58,54 +58,63 @@ class MockData {
       name: 'Economy',
       fromPrice: 'from CA\$22',
       imageAsset: 'assets/vehicles/economy.png',
+      passengerSeats: 4,
+      luggagePlaces: 2,
+      capacityInfo: 'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 2 standard bags',
     ),
     VehicleClass(
       id: 'comfort',
       name: 'Comfort',
       fromPrice: 'from CA\$35',
       imageAsset: 'assets/vehicles/comfort.png',
-    ),
-    VehicleClass(
-      id: 'business',
-      name: 'Business',
-      fromPrice: 'from CA\$61',
-      imageAsset: 'assets/vehicles/business.png',
+      passengerSeats: 4,
+      luggagePlaces: 2,
+      capacityInfo: 'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 2 standard bags',
     ),
     VehicleClass(
       id: 'premium',
       name: 'Premium',
       fromPrice: 'from CA\$95',
       imageAsset: 'assets/vehicles/premium.png',
-    ),
-    VehicleClass(
-      id: 'vip',
-      name: 'VIP',
-      fromPrice: 'from CA\$140',
-      imageAsset: 'assets/vehicles/vip.png',
+      passengerSeats: 4,
+      luggagePlaces: 2,
+      capacityInfo: 'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 2 standard bags',
     ),
     VehicleClass(
       id: 'suv',
-      name: 'SUV',
+      name: 'Black SUV',
       fromPrice: 'from CA\$75',
       imageAsset: 'assets/vehicles/suv.png',
+      passengerSeats: 6,
+      luggagePlaces: 4,
+      capacityInfo: 'Seating capacity: Up to 6 passengers\nLuggage capacity: Up to 4 standard bags',
     ),
     VehicleClass(
       id: 'van',
       name: 'Van',
       fromPrice: 'from CA\$85',
       imageAsset: 'assets/vehicles/van.png',
+      passengerSeats: 7,
+      luggagePlaces: 6,
+      capacityInfo: 'Seating capacity: Up to 7 passengers\nLuggage capacity: Up to 6 standard bags',
     ),
     VehicleClass(
       id: 'minibus',
       name: 'Minibus',
       fromPrice: 'from CA\$110',
       imageAsset: 'assets/vehicles/minibus.png',
+      passengerSeats: 16,
+      luggagePlaces: 10,
+      capacityInfo: 'Seating capacity: Up to 16 passengers\nLuggage capacity: Up to 10 standard bags',
     ),
     VehicleClass(
       id: 'bus',
       name: 'Bus',
       fromPrice: 'from CA\$160',
       imageAsset: 'assets/vehicles/bus.png',
+      passengerSeats: 30,
+      luggagePlaces: 20,
+      capacityInfo: 'Seating capacity: Up to 30+ passengers\nLuggage capacity: Up to 20+ standard bags',
     ),
   ];
 
@@ -120,6 +129,8 @@ class MockData {
     for (final vc in vehicleClasses) {
       if (vc.id == key || vc.name.toLowerCase() == key) return vc.imageAsset;
     }
+    if (key == 'business') return 'assets/vehicles/business.png';
+    if (key == 'vip') return 'assets/vehicles/vip.png';
     return null;
   }
 

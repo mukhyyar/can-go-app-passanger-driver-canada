@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "RideFinancial" ADD COLUMN IF NOT EXISTS "tipAmount" DECIMAL(12, 2) DEFAULT 0;

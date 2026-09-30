@@ -10,6 +10,8 @@ class MarketplaceApi {
     required double fromLng,
     double? toLat,
     double? toLng,
+    double? distanceKm,
+    double? durationMin,
     String? vehicleClass,
     String? currency,
     double? hours,
@@ -23,6 +25,8 @@ class MarketplaceApi {
         'fromLng': fromLng,
         if (toLat != null) 'toLat': toLat,
         if (toLng != null) 'toLng': toLng,
+        if (distanceKm != null) 'distanceKm': distanceKm,
+        if (durationMin != null) 'durationMin': durationMin,
         if (vehicleClass != null) 'vehicleClass': vehicleClass,
         if (currency != null) 'currency': currency,
         if (hours != null) 'hours': hours,
@@ -39,6 +43,8 @@ class MarketplaceApi {
     required double fromLng,
     double? toLat,
     double? toLng,
+    double? distanceKm,
+    double? durationMin,
     required String pickupAt,
     required List<String> vehicleClassIds,
     int? adults,
@@ -66,6 +72,8 @@ class MarketplaceApi {
         'fromLng': fromLng,
         if (toLat != null) 'toLat': toLat,
         if (toLng != null) 'toLng': toLng,
+        if (distanceKm != null) 'distanceKm': distanceKm,
+        if (durationMin != null) 'durationMin': durationMin,
         'pickupAt': pickupAt,
         'vehicleClassIds': vehicleClassIds,
         if (adults != null) 'adults': adults,
@@ -158,6 +166,23 @@ class MarketplaceApi {
     );
   }
 
+  Future<Map<String, dynamic>> tipRide(
+    String rideId, {
+    required double amount,
+    String? paymentMethod,
+    String? idempotencyKey,
+  }) {
+    return client.post(
+      '/rides/$rideId/tip',
+      idempotencyKey: idempotencyKey,
+      body: {
+        'amount': amount,
+        if (paymentMethod != null) 'paymentMethod': paymentMethod,
+        if (idempotencyKey != null) 'idempotencyKey': idempotencyKey,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> getOffer(String rideId, String offerId) =>
       client.get('/rides/$rideId/offers/$offerId');
 
@@ -231,6 +256,7 @@ class MarketplaceApi {
     String? returnAt,
     int? pickupWaitMin,
     int? returnWaitMin,
+    List<String>? requiredOptions,
     double? hours,
     double? days,
   }) {
@@ -255,6 +281,7 @@ class MarketplaceApi {
         if (returnAt != null) 'returnAt': returnAt,
         if (pickupWaitMin != null) 'pickupWaitMin': pickupWaitMin,
         if (returnWaitMin != null) 'returnWaitMin': returnWaitMin,
+        if (requiredOptions != null) 'requiredOptions': requiredOptions,
         if (hours != null) 'hours': hours,
         if (days != null) 'days': days,
       },
@@ -296,23 +323,51 @@ class MarketplaceApi {
     String rideId, {
     required String action,
     String? note,
+    String? photoUrl,
   }) =>
       client.post(
         '/rides/$rideId/lost-item/respond',
         body: {
           'action': action,
           if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+          if (photoUrl != null && photoUrl.trim().isNotEmpty)
+            'photoUrl': photoUrl.trim(),
         },
       );
 
   Future<Map<String, dynamic>> markLostItemReturned(
     String rideId, {
     String? note,
+    String? handoverPhotoUrl,
   }) =>
       client.post(
         '/rides/$rideId/lost-item/returned',
         body: {
           if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+          if (handoverPhotoUrl != null && handoverPhotoUrl.trim().isNotEmpty)
+            'handoverPhotoUrl': handoverPhotoUrl.trim(),
+        },
+      );
+
+  Future<Map<String, dynamic>> setLostItemPickupLocation(
+    String rideId, {
+    required String location,
+  }) =>
+      client.post(
+        '/rides/$rideId/lost-item/pickup-location',
+        body: {
+          'location': location.trim(),
+        },
+      );
+
+  Future<Map<String, dynamic>> payLostItemReturnFee(
+    String rideId, {
+    String? paymentMethod,
+  }) =>
+      client.post(
+        '/rides/$rideId/lost-item/pay-fee',
+        body: {
+          if (paymentMethod != null) 'paymentMethod': paymentMethod,
         },
       );
 
@@ -336,7 +391,31 @@ class MarketplaceApi {
         },
       );
 
+  Future<Map<String, dynamic>> reportRide(
+    String rideId, {
+    required List<String> reasons,
+    String? details,
+  }) =>
+      client.post(
+        '/rides/$rideId/reports',
+        body: {
+          'reasons': reasons,
+          if (details != null && details.trim().isNotEmpty)
+            'details': details.trim(),
+        },
+      );
+
+  Future<Map<String, dynamic>> createRideShareLink(String rideId) =>
+      client.post('/rides/$rideId/share-link');
+
+  Future<Map<String, dynamic>> revokeRideShareLink(String rideId) =>
+      client.delete('/rides/$rideId/share-link');
+
+  Future<Map<String, dynamic>> getPublicSharedRide(String token) =>
+      client.get('/rides/shared/$token', auth: false);
+
   Future<List<dynamic>> listRideRatings(String rideId) async {
+
     final data = await client.get('/rides/$rideId/ratings');
     final list = data['_list'] ?? data['ratings'] ?? data['items'];
     if (list is List) return list;

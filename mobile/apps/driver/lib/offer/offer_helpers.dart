@@ -8,6 +8,9 @@ class MoneyFormat {
 
   static String format(num amount, [String currency = 'CAD', int decimals = 0]) {
     final sym = symbolFor(currency);
+    if (amount < 0) {
+      return '-$sym${(-amount).toStringAsFixed(decimals)}';
+    }
     return '$sym${amount.toStringAsFixed(decimals)}';
   }
 
@@ -88,14 +91,19 @@ class OfferDraft {
 
   double get totalPrice => (outboundPrice ?? 0) + (returnPrice ?? 0);
 
-  double get customerRidePrice =>
-      ((totalPrice * 1.20) * 100).roundToDouble() / 100.0;
-
+  /// 20% marketplace fee deducted from driver's offer
   double get platformFee =>
-      ((customerRidePrice * 0.20) * 100).roundToDouble() / 100.0;
+      ((totalPrice * 0.20) * 100).roundToDouble() / 100.0;
 
-  double get customerTotal =>
-      ((customerRidePrice + platformFee) * 100).roundToDouble() / 100.0;
+  /// Net driver payout: offer minus 20% marketplace fee
+  double get driverReceives =>
+      ((totalPrice - platformFee) * 100).roundToDouble() / 100.0;
+
+  @Deprecated('Use totalPrice')
+  double get customerRidePrice => totalPrice;
+
+  @Deprecated('Use driverReceives')
+  double get customerTotal => driverReceives;
 }
 
 /// Translation provider abstraction — no fake translations.

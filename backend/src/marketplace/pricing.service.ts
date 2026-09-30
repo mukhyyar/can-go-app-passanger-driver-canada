@@ -1,6 +1,13 @@
-import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MAPS_PROVIDER, type MapsProvider } from '../maps/maps-provider.interface';
 
 export type PriceSnapshot = {
   currency: string;
@@ -47,7 +54,12 @@ const PHASE3_TYPES = new Set([
 
 @Injectable()
 export class PricingService implements OnModuleInit {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    @Inject(MAPS_PROVIDER)
+    private readonly maps?: MapsProvider,
+  ) {}
 
   async onModuleInit() {
     await this.ensureDefaultRules();
@@ -209,6 +221,8 @@ export class PricingService implements OnModuleInit {
     fromLng: number;
     toLat?: number;
     toLng?: number;
+    distanceKm?: number;
+    durationMin?: number;
     vehicleClass?: string;
     currency?: string;
     hours?: number;
@@ -249,13 +263,38 @@ export class PricingService implements OnModuleInit {
           `toLat/toLng required for ${input.serviceType}`,
         );
       }
-      distanceKm = this.haversineKm(
-        input.fromLat,
-        input.fromLng,
-        input.toLat,
-        input.toLng,
-      );
-      durationMin = Math.max(8, (distanceKm / 30) * 60);
+      if (input.distanceKm != null && Number(input.distanceKm) > 0) {
+        distanceKm = Math.round(Number(input.distanceKm) * 10) / 10;
+        durationMin =
+          input.durationMin != null && Number(input.durationMin) > 0
+            ? Math.round(Number(input.durationMin))
+            : Math.max(5, Math.round((distanceKm / 45) * 60));
+      } else if (this.maps?.route) {
+        try {
+          const route = await this.maps.route(
+            { lat: input.fromLat, lng: input.fromLng },
+            { lat: input.toLat, lng: input.toLng },
+          );
+          if (route && route.distanceKm > 0) {
+            distanceKm = Math.round(route.distanceKm * 10) / 10;
+            durationMin = Math.round(route.durationMin);
+          }
+        } catch (_) {
+          // fallback to haversine below
+        }
+      }
+      if (distanceKm === 0) {
+        distanceKm =
+          Math.round(
+            this.haversineKm(
+              input.fromLat,
+              input.fromLng,
+              input.toLat,
+              input.toLng,
+            ) * 10,
+          ) / 10;
+        durationMin = Math.max(8, Math.round((distanceKm / 30) * 60));
+      }
       guidance = base + distanceKm * perKm + durationMin * perMinute;
     } else if (input.serviceType === 'PER_HOUR') {
       hours = Math.max(1, hours);

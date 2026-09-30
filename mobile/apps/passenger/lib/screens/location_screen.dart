@@ -140,7 +140,14 @@ class _LocationScreenState extends State<LocationScreen> {
       _loading = false;
       _showingHistory = false;
     });
-    if (results.isNotEmpty) await _pick(results.first);
+    if (results.isNotEmpty) {
+      await _pick(results.first);
+    } else {
+      final geos = await PlacesSearch.geocode(q);
+      if (geos.isNotEmpty && mounted) {
+        await _pick(geos.first);
+      }
+    }
   }
 
   Future<void> _pick(Place place) async {
@@ -149,9 +156,7 @@ class _LocationScreenState extends State<LocationScreen> {
     final field = state.locationField;
 
     Place resolved = place;
-    if (!place.hasCoords &&
-        place.placeId != null &&
-        place.placeId!.isNotEmpty) {
+    if (!place.hasCoords) {
       setState(() {
         _resolvingPick = true;
         _pickingId = place.id;
@@ -163,18 +168,36 @@ class _LocationScreenState extends State<LocationScreen> {
         );
         if (!mounted) return;
         if (detail == null || !detail.hasCoords) {
-          setState(() {
-            _resolvingPick = false;
-            _pickingId = null;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not resolve that place. Try another.'),
-            ),
-          );
-          return;
+          final query = place.subtitle.isNotEmpty
+              ? '${place.label}, ${place.subtitle}'
+              : place.label;
+          final geos = await PlacesSearch.geocode(query);
+          if (geos.isNotEmpty && geos.first.hasCoords) {
+            resolved = Place(
+              id: geos.first.id,
+              label: place.label,
+              subtitle: place.subtitle.isNotEmpty
+                  ? place.subtitle
+                  : geos.first.subtitle,
+              lat: geos.first.lat,
+              lng: geos.first.lng,
+              placeId: geos.first.placeId ?? place.placeId,
+            );
+          } else {
+            setState(() {
+              _resolvingPick = false;
+              _pickingId = null;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not resolve that place. Try another.'),
+              ),
+            );
+            return;
+          }
+        } else {
+          resolved = detail;
         }
-        resolved = detail;
       } catch (_) {
         if (!mounted) return;
         setState(() {

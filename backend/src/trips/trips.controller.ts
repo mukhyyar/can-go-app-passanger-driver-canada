@@ -6,7 +6,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { IsIn, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 import { RideStatus, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -31,6 +31,10 @@ class TripTransitionDto {
     'ADMIN_CANCELLED',
   ])
   status!: RideStatus;
+
+  @IsOptional()
+  @IsString()
+  pin?: string;
 }
 
 @Controller('rides')
@@ -45,7 +49,7 @@ export class TripsController {
     @Body() dto: TripTransitionDto,
     @Req() req: { ip?: string },
   ) {
-    return this.trips.transition(user.id, id, dto.status, req.ip);
+    return this.trips.transition(user.id, id, dto.status, req.ip, dto.pin);
   }
 }
 
@@ -88,9 +92,16 @@ export class DriverTripController {
   start(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Body() body: { pin?: string },
     @Req() req: { ip?: string },
   ) {
-    return this.trips.transition(user.id, id, RideStatus.TRIP_STARTED, req.ip);
+    return this.trips.transition(
+      user.id,
+      id,
+      RideStatus.TRIP_STARTED,
+      req.ip,
+      body?.pin,
+    );
   }
 
   @Post(':id/complete')

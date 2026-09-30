@@ -87,7 +87,7 @@ export class OfferPresentationService {
 
   partialPaymentConfig() {
     const enabled =
-      (process.env.PARTIAL_PAYMENT_ENABLED ?? 'true').toLowerCase() !== 'false';
+      (process.env.PARTIAL_PAYMENT_ENABLED ?? 'false').toLowerCase() === 'true';
     const onlinePct = clampPct(
       parseFloat(process.env.PARTIAL_PAYMENT_ONLINE_PCT ?? '20'),
       20,
@@ -325,7 +325,9 @@ export class OfferPresentationService {
       unknown
     >;
     const passengers =
-      numOr(amenities.passengers, amenities.seats, amenities.capacity) ?? 4;
+      vehicleRow?.passengerSeats ??
+      numOr(amenities.passengers, amenities.seats, amenities.capacity) ??
+      4;
     const baggage =
       numOr(amenities.baggage, amenities.bags, amenities.luggage) ?? 2;
     const year =

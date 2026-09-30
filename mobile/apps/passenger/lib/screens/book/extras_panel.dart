@@ -3,20 +3,10 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/screens/book/bound_field.dart';
 import 'package:passenger/state/app_state.dart';
 
-class ExtrasPanel extends StatefulWidget {
+class ExtrasPanel extends StatelessWidget {
   const ExtrasPanel({super.key, required this.state});
 
   final AppState state;
-
-  @override
-  State<ExtrasPanel> createState() => _ExtrasPanelState();
-}
-
-class _ExtrasPanelState extends State<ExtrasPanel>
-    with SingleTickerProviderStateMixin {
-  bool _open = false;
-
-  AppState get state => widget.state;
 
   @override
   Widget build(BuildContext context) {
@@ -32,42 +22,26 @@ class _ExtrasPanelState extends State<ExtrasPanel>
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          InkWell(
-            onTap: () => setState(() => _open = !_open),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Text.rich(
+              TextSpan(
                 children: [
-                  const Expanded(
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: 'Extras ',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: GtColors.text,
-                            ),
-                          ),
-                          TextSpan(
-                            text: 'optional',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: GtColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
+                  TextSpan(
+                    text: 'Extras ',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: GtColors.text,
                     ),
                   ),
-                  AnimatedRotation(
-                    turns: _open ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 200),
-                    child: const Icon(
-                      Icons.keyboard_arrow_down,
+                  TextSpan(
+                    text: 'optional',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
                       color: GtColors.textMuted,
                     ),
                   ),
@@ -75,136 +49,129 @@ class _ExtrasPanelState extends State<ExtrasPanel>
               ),
             ),
           ),
-          AnimatedCrossFade(
-            firstChild: const SizedBox(width: double.infinity),
-            secondChild: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: Column(
-                children: [
-                  const Divider(height: 1, color: GtColors.border),
-                  const SizedBox(height: 12),
-                  if (showFlightSignage) ...[
-                    _ExtraField(
-                      icon: Icons.flight,
-                      child: BoundField(
-                        fieldKey: const ValueKey('flight'),
-                        initial: state.flight,
-                        hint: 'Arrival flight number',
-                        onChanged: state.setFlight,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _ExtraField(
-                      icon: Icons.badge_outlined,
-                      child: BoundField(
-                        fieldKey: const ValueKey('signage'),
-                        initial: state.signage,
-                        hint: "Name on a sign the driver'll hold",
-                        onChanged: state.setSignage,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  if (mode == ServiceType.ride && state.returnEnabled) ...[
-                    _ReturnDateField(state: state),
-                    const SizedBox(height: 8),
-                    _ExtraField(
-                      icon: Icons.flight,
-                      child: BoundField(
-                        fieldKey: const ValueKey('returnFlight'),
-                        initial: state.returnFlight,
-                        hint: 'Return arrival flight number',
-                        onChanged: state.setReturnFlight,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+          const Divider(height: 1, color: GtColors.border),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (showFlightSignage) ...[
                   _ExtraField(
-                    icon: Icons.chat_bubble_outline,
+                    icon: Icons.flight,
                     child: BoundField(
-                      fieldKey: const ValueKey('comment'),
-                      initial: state.comment,
-                      hint:
-                          'Comment: Luggage, special needs or tasks for the driver',
-                      maxLines: 3,
-                      onChanged: state.setComment,
+                      fieldKey: const ValueKey('flight'),
+                      initial: state.flight,
+                      hint: 'Arrival flight number',
+                      onChanged: state.setFlight,
                     ),
                   ),
-                  if (mode == ServiceType.perHour) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ActionChip(
-                          label: const Text(
-                            'My route has several stops',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                          onPressed: () => state
-                              .appendCommentChip('My route has several stops'),
-                          backgroundColor: GtColors.bgGrey,
-                          side: BorderSide.none,
-                        ),
-                      ],
-                    ),
-                  ] else if (mode != ServiceType.delivery) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final c in const [
-                          'I need Wi-Fi',
-                          'I need an English-speaking driver',
-                        ])
-                          ActionChip(
-                            label: Text(c, style: const TextStyle(fontSize: 12)),
-                            onPressed: () => state.appendCommentChip(c),
-                            backgroundColor: GtColors.bgGrey,
-                            side: BorderSide.none,
-                          ),
-                      ],
-                    ),
-                  ],
                   const SizedBox(height: 8),
-                  Row(
+                  _ExtraField(
+                    icon: Icons.badge_outlined,
+                    child: BoundField(
+                      fieldKey: const ValueKey('signage'),
+                      initial: state.signage,
+                      hint: "Name on a sign the driver'll hold",
+                      onChanged: state.setSignage,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (mode == ServiceType.ride && state.returnEnabled) ...[
+                  _ReturnDateField(state: state),
+                  const SizedBox(height: 8),
+                  _ExtraField(
+                    icon: Icons.flight,
+                    child: BoundField(
+                      fieldKey: const ValueKey('returnFlight'),
+                      initial: state.returnFlight,
+                      hint: 'Return arrival flight number',
+                      onChanged: state.setReturnFlight,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _ExtraField(
+                  icon: Icons.chat_bubble_outline,
+                  child: BoundField(
+                    fieldKey: const ValueKey('comment'),
+                    initial: state.comment,
+                    hint:
+                        'Comment: Luggage, special needs or tasks for the driver',
+                    maxLines: 3,
+                    onChanged: state.setComment,
+                  ),
+                ),
+                if (mode == ServiceType.perHour) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      const Expanded(
-                        child: Text(
-                          'I have a promo code',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
+                      ActionChip(
+                        label: const Text(
+                          'My route has several stops',
+                          style: TextStyle(fontSize: 12),
                         ),
-                      ),
-                      Switch.adaptive(
-                        value: state.promoEnabled,
-                        activeTrackColor: GtColors.brand,
-                        onChanged: state.setPromoEnabled,
+                        onPressed: () => state
+                            .appendCommentChip('My route has several stops'),
+                        backgroundColor: GtColors.bgGrey,
+                        side: BorderSide.none,
                       ),
                     ],
                   ),
-                  if (state.promoEnabled) ...[
-                    const SizedBox(height: 4),
-                    _ExtraField(
-                      icon: Icons.local_offer_outlined,
-                      child: BoundField(
-                        fieldKey: const ValueKey('promo'),
-                        initial: state.promoCode,
-                        hint: 'Enter promo code',
-                        onChanged: state.setPromoCode,
+                ] else if (mode != ServiceType.delivery) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final c in const [
+                        'I need Wi-Fi',
+                        'I need an English-speaking driver',
+                      ])
+                        ActionChip(
+                          label: Text(c, style: const TextStyle(fontSize: 12)),
+                          onPressed: () => state.appendCommentChip(c),
+                          backgroundColor: GtColors.bgGrey,
+                          side: BorderSide.none,
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'I have a promo code',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
+                    Switch.adaptive(
+                      value: state.promoEnabled,
+                      activeTrackColor: GtColors.brand,
+                      onChanged: state.setPromoEnabled,
+                    ),
                   ],
+                ),
+                if (state.promoEnabled) ...[
+                  const SizedBox(height: 4),
+                  _ExtraField(
+                    icon: Icons.local_offer_outlined,
+                    child: BoundField(
+                      fieldKey: const ValueKey('promo'),
+                      initial: state.promoCode,
+                      hint: 'Enter promo code',
+                      onChanged: state.setPromoCode,
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
-            crossFadeState:
-                _open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 220),
-            sizeCurve: Curves.easeOutCubic,
           ),
         ],
       ),

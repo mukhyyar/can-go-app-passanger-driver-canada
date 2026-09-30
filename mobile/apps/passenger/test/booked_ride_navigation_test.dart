@@ -168,9 +168,18 @@ void main() {
 
       expect(find.text('Booking confirmed'), findsOneWidget);
       expect(find.text("You're booked"), findsOneWidget);
-      expect(find.text('View ride'), findsOneWidget);
+      expect(find.text('RIDE START PIN'), findsOneWidget);
+      expect(
+        find.text('Share this PIN with your driver to start your ride'),
+        findsOneWidget,
+      );
 
-      await tester.tap(find.text('View ride'));
+      final viewRideBtn = find.text('View ride');
+      await tester.ensureVisible(viewRideBtn);
+      await tester.pumpAndSettle();
+      expect(viewRideBtn, findsOneWidget);
+
+      await tester.tap(viewRideBtn);
       await tester.pumpAndSettle();
 
       expect(navigatedPath, equals('/ride/test-ride-123'));
@@ -211,7 +220,12 @@ void main() {
 
       await tester.pumpAndSettle();
 
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+
       final supportBtn = find.text('Contact support');
+      await tester.ensureVisible(supportBtn);
+      await tester.pumpAndSettle();
       expect(supportBtn, findsOneWidget);
 
       await tester.tap(supportBtn);

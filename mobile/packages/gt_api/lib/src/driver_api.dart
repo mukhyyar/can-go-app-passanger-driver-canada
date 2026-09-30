@@ -308,8 +308,11 @@ class DriverApi {
   Future<Map<String, dynamic>> arrived(String rideId) =>
       client.post('/driver/rides/$rideId/arrived', body: {});
 
-  Future<Map<String, dynamic>> startTrip(String rideId) =>
-      client.post('/driver/rides/$rideId/start', body: {});
+  Future<Map<String, dynamic>> startTrip(String rideId, {String? pin}) =>
+      client.post(
+        '/driver/rides/$rideId/start',
+        body: pin != null && pin.isNotEmpty ? {'pin': pin} : {},
+      );
 
   Future<Map<String, dynamic>> completeTrip(String rideId) =>
       client.post('/driver/rides/$rideId/complete', body: {});
@@ -349,23 +352,40 @@ class DriverApi {
     String rideId, {
     required String action,
     String? note,
+    String? photoUrl,
   }) =>
       client.post(
         '/rides/$rideId/lost-item/respond',
         body: {
           'action': action,
           if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+          if (photoUrl != null && photoUrl.trim().isNotEmpty)
+            'photoUrl': photoUrl.trim(),
         },
       );
 
   Future<Map<String, dynamic>> markLostItemReturned(
     String rideId, {
     String? note,
+    String? handoverPhotoUrl,
   }) =>
       client.post(
         '/rides/$rideId/lost-item/returned',
         body: {
           if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+          if (handoverPhotoUrl != null && handoverPhotoUrl.trim().isNotEmpty)
+            'handoverPhotoUrl': handoverPhotoUrl.trim(),
+        },
+      );
+
+  Future<Map<String, dynamic>> setLostItemPickupLocation(
+    String rideId, {
+    required String location,
+  }) =>
+      client.post(
+        '/rides/$rideId/lost-item/pickup-location',
+        body: {
+          'location': location.trim(),
         },
       );
 }

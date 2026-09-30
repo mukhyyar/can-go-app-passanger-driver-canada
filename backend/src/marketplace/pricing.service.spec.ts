@@ -152,6 +152,74 @@ describe('PricingService (unit)', () => {
     };
     expect(() => pricing.freezeBid(guidance, 0)).toThrow(BadRequestException);
   });
+
+  it('quote respects client-provided distanceKm and durationMin', async () => {
+    const mockPrisma = {
+      fareRule: {
+        findFirst: jest.fn().mockResolvedValue({
+          baseFare: 10,
+          perKm: 2,
+          perMinute: 0.5,
+          perHour: 0,
+          minFare: 15,
+          platformCommissionPct: 15,
+          taxPct: 5,
+        }),
+      },
+    };
+    const svc = new PricingService(mockPrisma as never);
+    const snap = await svc.quote({
+      serviceType: 'RIDE',
+      fromLat: 50.90,
+      fromLng: -113.93,
+      toLat: 51.11,
+      toLng: -114.01,
+      distanceKm: 36.5,
+      durationMin: 33,
+    });
+    expect(snap.distanceKm).toBe(36.5);
+    expect(snap.durationMin).toBe(33);
+    // base (10) + 36.5*2 (73) + 33*0.5 (16.5) = 99.5
+    expect(snap.guidanceAmount).toBe(99.5);
+  });
+
+  it('quote uses maps provider road route when client distance not provided', async () => {
+    const mockPrisma = {
+      fareRule: {
+        findFirst: jest.fn().mockResolvedValue({
+          baseFare: 10,
+          perKm: 2,
+          perMinute: 0.5,
+          perHour: 0,
+          minFare: 15,
+          platformCommissionPct: 15,
+          taxPct: 5,
+        }),
+      },
+    };
+    const mockMaps = {
+      name: 'google',
+      geocode: jest.fn(),
+      reverseGeocode: jest.fn(),
+      route: jest.fn().mockResolvedValue({
+        distanceKm: 36.5,
+        durationMin: 33,
+        provider: 'google',
+      }),
+    };
+    const svc = new PricingService(mockPrisma as never, mockMaps as never);
+    const snap = await svc.quote({
+      serviceType: 'RIDE',
+      fromLat: 50.90,
+      fromLng: -113.93,
+      toLat: 51.11,
+      toLng: -114.01,
+    });
+    expect(mockMaps.route).toHaveBeenCalled();
+    expect(snap.distanceKm).toBe(36.5);
+    expect(snap.durationMin).toBe(33);
+    expect(snap.guidanceAmount).toBe(99.5);
+  });
 });
 
 describe('offer validity options', () => {

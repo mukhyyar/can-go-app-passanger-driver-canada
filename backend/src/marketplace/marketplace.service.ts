@@ -19,12 +19,16 @@ import {
   SupportCaseStatus,
   SupportCaseType,
   UserRole,
+  WalletDirection,
+  WalletEntryStatus,
+  WalletEntryType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   PAYMENT_PROVIDER,
   type PaymentProvider,
 } from '../providers/payment/payment-provider.interface';
+import { StripeConnectService } from '../providers/stripe/stripe-connect.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PromoService } from '../cms/cms.service';
 import {
@@ -34,13 +38,17 @@ import {
   type PriceSnapshot,
 } from './pricing.service';
 import type {
+  AddRideTipDto,
   CreateChangeRequestDto,
   CreateOfferDto,
   CreatePaymentIntentDto,
   CreateRideDto,
   PaymentQuoteDto,
+  PayLostItemFeeDto,
+  ReportRideDto,
   ResolveLostItemDto,
   RespondLostItemDto,
+  SetLostItemPickupLocationDto,
   UpdateOfferDto,
   UpdateRideDto,
 } from './dto/marketplace.dto';
@@ -78,6 +86,7 @@ export class MarketplaceService {
     private readonly storage: StorageService,
     private readonly config: ConfigService,
     @Optional() private readonly tracking?: TrackingGateway,
+    @Optional() private readonly stripeConnect?: StripeConnectService,
   ) {
     this.payTtlMs = loadRideLifecycleConfig().paymentTtlMs;
   }
@@ -122,6 +131,8 @@ export class MarketplaceService {
       fromLng: dto.fromLng,
       toLat: dto.toLat,
       toLng: dto.toLng,
+      distanceKm: dto.distanceKm,
+      durationMin: dto.durationMin,
       vehicleClass,
       currency,
       hours: dto.hours,
@@ -272,18 +283,16 @@ export class MarketplaceService {
     if (Number.isNaN(pickupAt.getTime())) {
       throw new BadRequestException('Invalid pickupAt');
     }
-    const returnAtRaw =
-      dto.returnAt !== undefined
-        ? dto.returnAt
-          ? new Date(dto.returnAt)
-          : null
-        : ride.returnAt;
     const isRoundTrip =
       dto.isRoundTrip !== undefined
         ? (dto.isRoundTrip === true ||
-            String(dto.isRoundTrip).toLowerCase() === 'true' ||
-            Boolean(dto.returnAt ?? returnAtRaw))
+            String(dto.isRoundTrip).toLowerCase() === 'true')
         : (Boolean(ride.isRoundTrip) || Boolean(ride.returnAt));
+    const returnAtRaw = isRoundTrip
+      ? (dto.returnAt !== undefined
+          ? (dto.returnAt ? new Date(dto.returnAt) : null)
+          : ride.returnAt)
+      : null;
     if (isRoundTrip && !returnAtRaw) {
       throw new BadRequestException('returnAt required for round-trip rides');
     }
@@ -354,6 +363,8 @@ export class MarketplaceService {
       fromLng,
       toLat: toLat ?? undefined,
       toLng: toLng ?? undefined,
+      distanceKm: dto.distanceKm,
+      durationMin: dto.durationMin,
       vehicleClass,
       currency,
       hours,
@@ -442,7 +453,7 @@ export class MarketplaceService {
         toLat,
         toLng,
         pickupAt,
-        returnAt: returnAtRaw ?? undefined,
+        returnAt: isRoundTrip ? (returnAtRaw ?? undefined) : null,
         isRoundTrip,
         pickupWaitMin,
         returnWaitMin,
@@ -450,7 +461,7 @@ export class MarketplaceService {
         adults,
         childSeatsJson: childSeatsJson as Prisma.InputJsonValue,
         flight,
-        returnFlight,
+        returnFlight: isRoundTrip ? returnFlight : null,
         signage,
         comment,
         requiredOptions: requiredOptions as Prisma.InputJsonValue,
@@ -645,7 +656,7 @@ export class MarketplaceService {
       },
     });
     return Promise.all(
-      rides.map((r) => this.serializeRide(r, { enrichOffers: true })),
+      rides.map((r) => this.serializeRide(r, { enrichOffers: true, showPin: true })),
     );
   }
 
@@ -745,6 +756,7 @@ export class MarketplaceService {
     return this.serializeRide(ride, {
       includeEvents: true,
       enrichOffers: isPassenger || isAdmin,
+      showPin: isPassenger || isAdmin,
     });
   }
 
@@ -889,6 +901,43 @@ export class MarketplaceService {
 
     await this.audit(userId, 'ride.change_request', 'SupportCase', row.id, ip);
 
+    // Ensure ChatThread exists and link to support case
+    const thread = await this.prisma.chatThread.upsert({
+      where: { rideId },
+      create: { rideId },
+      update: {},
+    });
+
+    await this.prisma.supportCase.update({
+      where: { id: row.id },
+      data: { chatThreadId: thread.id },
+    });
+
+    // Add initial message to chat thread
+    await this.prisma.chatMessage.create({
+      data: {
+        threadId: thread.id,
+        senderId: userId,
+        body: `[Help Request: ${titles[dto.type]}]${dto.note ? ' ' + dto.note : ''}. Support team notified.`,
+      },
+    });
+
+    // Notify Admins
+    const code = shortIdFrom(ride.id);
+    void this.notifications.notifyAdmins({
+      title: `Ride Help Request: ${titles[dto.type]}`,
+      body: `Ride #${code}: Passenger requested help (${titles[dto.type]}). Tap to view and chat with customer.`,
+      templateKey: 'admin.ride_help',
+      eventId: `admin.help.${row.id}`,
+      data: {
+        type: 'ride_help_request',
+        caseId: row.id,
+        rideId,
+        helpType: dto.type,
+        deepLink: `/admin/rides/${rideId}`,
+      },
+    });
+
     const driverUserId = ride.selectedOffer?.driver.userId;
     const notifyDriver =
       driverUserId &&
@@ -917,7 +966,148 @@ export class MarketplaceService {
       });
     }
 
-    return { id: row.id, status: 'OPEN' as const };
+    return { id: row.id, status: 'OPEN' as const, chatThreadId: thread.id };
+  }
+
+  async reportRide(
+    userId: string,
+    rideId: string,
+    dto: ReportRideDto,
+    ip?: string,
+  ) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: true,
+        selectedOffer: { include: { driver: true } },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const userDriverProfile = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    let driverUserId = ride.selectedOffer?.driver?.userId;
+    if (!driverUserId && ride.assignedDriverId) {
+      const dp = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      driverUserId = dp?.userId;
+    }
+
+    const isPassenger = ride.passenger?.userId === userId;
+    const isDriver =
+      (driverUserId != null && driverUserId === userId) ||
+      (ride.selectedOffer?.driver?.userId === userId) ||
+      (!!userDriverProfile && ride.assignedDriverId === userDriverProfile.id);
+
+    if (!isPassenger && !isDriver) {
+      throw new ForbiddenException('Only ride participants can report a ride');
+    }
+
+    const actorRole = isPassenger ? 'PASSENGER' : 'DRIVER';
+    const primaryReason = dto.reasons[0] || 'Unspecified issue';
+
+    const isSafety = dto.reasons.some((r) =>
+      /safety|reckless|speeding|threat|unsafe|assault|harass|intoxicated|aggressive|weapon|injury/i.test(
+        r,
+      ),
+    );
+    const caseType = isSafety ? SupportCaseType.SAFETY : SupportCaseType.DISPUTE;
+
+    const noteLines = [
+      `Reporter: ${actorRole}`,
+      `Selected reasons: ${dto.reasons.join(', ')}`,
+      dto.details ? `Additional details: ${dto.details}` : null,
+    ].filter(Boolean) as string[];
+
+    const row = await this.prisma.supportCase.create({
+      data: {
+        title: `Ride report (${actorRole}): ${primaryReason}`,
+        type: caseType,
+        createdById: userId,
+        passengerProfileId: ride.passengerId,
+        driverProfileId: ride.assignedDriverId ?? undefined,
+        rideId,
+        slaDueAt: new Date(Date.now() + 24 * 3600_000),
+        notes: {
+          create: {
+            authorId: userId,
+            body: noteLines.join('\n'),
+            internal: false,
+          },
+        },
+      },
+    });
+
+    // Ensure ChatThread exists and link to support case
+    const reportThread = await this.prisma.chatThread.upsert({
+      where: { rideId },
+      create: { rideId },
+      update: {},
+    });
+
+    await this.prisma.supportCase.update({
+      where: { id: row.id },
+      data: { chatThreadId: reportThread.id },
+    });
+
+    // Add initial message to chat thread
+    await this.prisma.chatMessage.create({
+      data: {
+        threadId: reportThread.id,
+        senderId: userId,
+        body: `[Ride Report Filed] ${primaryReason}${dto.details ? ': ' + dto.details : ''}. Support team has been notified and chat is enabled.`,
+      },
+    });
+
+    // Notify Admins
+    const reportCode = shortIdFrom(rideId);
+    void this.notifications.notifyAdmins({
+      title: `Ride Report: ${primaryReason}`,
+      body: `Ride #${reportCode} reported by ${actorRole}. Priority: ${isSafety ? 'HIGH (Safety)' : 'Normal (Dispute)'}. Tap to review and chat.`,
+      templateKey: 'admin.ride_report',
+      eventId: `admin.report.${row.id}`,
+      data: {
+        type: 'ride_report',
+        caseId: row.id,
+        rideId,
+        actorRole,
+        isSafety: String(isSafety),
+        deepLink: `/admin/rides/${rideId}`,
+      },
+    });
+
+    await this.prisma.rideEvent.create({
+      data: {
+        rideId,
+        fromStatus: ride.status,
+        toStatus: ride.status,
+        actorType: isPassenger ? 'passenger' : 'driver',
+        actorId: userId,
+        payload: {
+          action: 'ride_reported',
+          role: actorRole,
+          reasons: dto.reasons,
+          details: dto.details,
+          caseId: row.id,
+        },
+      },
+    });
+
+    await this.audit(userId, 'ride.reported', 'SupportCase', row.id, ip);
+
+    return {
+      ok: true,
+      caseId: row.id,
+      chatThreadId: reportThread.id,
+      title: row.title,
+      type: row.type,
+      status: row.status,
+    };
   }
 
   async selectOffer(
@@ -972,6 +1162,13 @@ export class MarketplaceService {
         throw new BadRequestException('Offer not available');
       }
 
+      const startPin = String(Math.floor(1000 + Math.random() * 9000));
+      const snapObj = (offer.priceSnapshot as Record<string, unknown>) ?? {};
+      const priceSnapshotWithPin = {
+        ...snapObj,
+        startPin,
+      };
+
       const rideLock = await tx.ride.updateMany({
         where: {
           id: rideId,
@@ -983,7 +1180,8 @@ export class MarketplaceService {
         data: {
           selectedOfferId: offerId,
           assignedDriverId: offer.driverId,
-          priceSnapshot: offer.priceSnapshot as Prisma.InputJsonValue,
+          priceSnapshot: priceSnapshotWithPin as Prisma.InputJsonValue,
+          startPin,
           status: RideStatus.PAYMENT_PENDING,
           paymentExpiresAt: new Date(Date.now() + this.payTtlMs),
         },
@@ -2395,6 +2593,252 @@ export class MarketplaceService {
     });
   }
 
+  async addTipToRide(
+    userId: string,
+    rideId: string,
+    dto: AddRideTipDto,
+    ip?: string,
+  ) {
+    const passenger = await this.requirePassenger(userId);
+    const ride = await this.prisma.ride.findFirst({
+      where: { id: rideId, passengerId: passenger.id },
+      include: {
+        selectedOffer: { include: { driver: true } },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+    if (ride.status !== RideStatus.COMPLETED) {
+      throw new BadRequestException(
+        `Tip can only be added to completed rides (current status: ${ride.status})`,
+      );
+    }
+    const driverId = ride.assignedDriverId ?? ride.selectedOffer?.driverId;
+    if (!driverId) {
+      throw new BadRequestException('No assigned driver for this ride');
+    }
+
+    const amount = Number(Number(dto.amount).toFixed(2));
+    if (isNaN(amount) || amount < 0.50) {
+      throw new BadRequestException('Tip amount must be at least CAD 0.50');
+    }
+    if (amount > 1000) {
+      throw new BadRequestException('Tip amount exceeds maximum allowed (CAD 1000.00)');
+    }
+
+    const idem = dto.idempotencyKey ?? `tip_${ride.id}_${amount}`;
+    const prior = await this.prisma.payment.findUnique({
+      where: { idempotencyKey: idem },
+    });
+    if (prior && prior.status === 'succeeded') {
+      return {
+        success: true,
+        payment: prior,
+        tipAmount: Number(prior.amount),
+        ride: await this.getRideForActor(userId, ride.id),
+      };
+    }
+
+    const intent = await this.payments.createIntent({
+      amount,
+      currency: ride.currency || 'CAD',
+      rideId: ride.id,
+      idempotencyKey: idem,
+      metadata: {
+        type: 'TIP',
+        rideId: ride.id,
+        driverId,
+        passengerId: passenger.id,
+        onlineAmount: String(amount),
+      },
+    });
+
+    const payment = await this.prisma.payment.upsert({
+      where: { idempotencyKey: idem },
+      create: {
+        rideId: ride.id,
+        provider: intent.provider,
+        providerRef: intent.intentId,
+        amount: new Prisma.Decimal(amount),
+        currency: ride.currency || 'CAD',
+        status: intent.status,
+        idempotencyKey: idem,
+        paymentMode: 'FULL',
+        onlineAmount: new Prisma.Decimal(amount),
+        paymentMethod: dto.paymentMethod ?? 'CARD',
+        metaJson: {
+          type: 'TIP',
+          driverId,
+          tipAmount: amount,
+        },
+      },
+      update: {
+        providerRef: intent.intentId,
+        status: intent.status,
+        amount: new Prisma.Decimal(amount),
+        onlineAmount: new Prisma.Decimal(amount),
+        paymentMethod: dto.paymentMethod ?? undefined,
+      },
+    });
+
+    if (intent.status === 'succeeded') {
+      await this.finalizeTipPayment(payment.id);
+    }
+
+    await this.audit(userId, 'ride.tip', 'Ride', ride.id, ip);
+
+    return {
+      success: true,
+      payment: {
+        id: payment.id,
+        provider: payment.provider,
+        providerRef: payment.providerRef,
+        amount: Number(payment.amount),
+        currency: payment.currency,
+        status: payment.status,
+      },
+      clientSecret: intent.clientSecret,
+      tipAmount: amount,
+      ride: await this.getRideForActor(userId, ride.id),
+    };
+  }
+
+  async finalizeTipPayment(paymentId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: {
+        ride: {
+          include: {
+            selectedOffer: { include: { driver: true } },
+          },
+        },
+      },
+    });
+    if (!payment || !payment.ride) return;
+    const ride = payment.ride;
+    const amount = Number(payment.amount);
+    const driverId = ride.assignedDriverId ?? ride.selectedOffer?.driverId;
+    if (!driverId) return;
+
+    // 1. Update priceSnapshot on ride
+    const currentSnap =
+      ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
+        ? (ride.priceSnapshot as Record<string, unknown>)
+        : {};
+    const currentPassengerTotal = Number(currentSnap.passengerTotal ?? 0);
+    const currentDriverEarning = Number(currentSnap.driverEarning ?? currentSnap.bidAmount ?? 0);
+    const newPassengerTotal =
+      currentPassengerTotal > 0
+        ? parseFloat((currentPassengerTotal + amount).toFixed(2))
+        : currentPassengerTotal;
+    const newDriverEarning =
+      currentDriverEarning > 0
+        ? parseFloat((currentDriverEarning + amount).toFixed(2))
+        : currentDriverEarning;
+
+    const updatedSnap = {
+      ...currentSnap,
+      tip: amount,
+      tipAmount: amount,
+      passengerTotal: newPassengerTotal > 0 ? newPassengerTotal : undefined,
+      driverEarning: newDriverEarning > 0 ? newDriverEarning : undefined,
+      tipPaymentId: payment.id,
+      tipPaymentRef: payment.providerRef,
+      tippedAt: new Date().toISOString(),
+    };
+
+    await this.prisma.ride.update({
+      where: { id: ride.id },
+      data: { priceSnapshot: updatedSnap as Prisma.InputJsonValue },
+    });
+
+    // 2. Update RideFinancial
+    await this.recordRideFinancial(ride.id, {
+      paymentId: payment.id,
+      paymentRef: payment.providerRef ?? undefined,
+      priceSnapshot: updatedSnap,
+    });
+
+    // 3. Credit Driver Wallet
+    const existingEntry = await this.prisma.driverWalletEntry.findFirst({
+      where: {
+        driverId,
+        rideId: ride.id,
+        type: WalletEntryType.ADJUSTMENT,
+        direction: WalletDirection.CREDIT,
+      },
+    });
+    if (!existingEntry) {
+      await this.prisma.driverWalletEntry.create({
+        data: {
+          driverId,
+          type: WalletEntryType.ADJUSTMENT,
+          direction: WalletDirection.CREDIT,
+          amount: new Prisma.Decimal(amount),
+          currency: (ride.currency || 'CAD').toUpperCase(),
+          status: WalletEntryStatus.POSTED,
+          rideId: ride.id,
+          availableAt: null,
+          description: `Tip from passenger · ${ride.fromLabel}${ride.toLabel ? ` → ${ride.toLabel}` : ''}`,
+          metaJson: {
+            isTip: true,
+            tipAmount: amount,
+            bookingRef: ride.id,
+            fromLabel: ride.fromLabel,
+            toLabel: ride.toLabel ?? null,
+            tippedAt: new Date().toISOString(),
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    // 4. Stripe Connect Transfer (if driver has payouts enabled and connect is configured)
+    const driver = ride.selectedOffer?.driver;
+    if (
+      driver?.stripeAccountId &&
+      driver?.stripePayoutsEnabled &&
+      this.stripeConnect?.isConfigured()
+    ) {
+      try {
+        await this.stripeConnect.transferToDriver({
+          amount,
+          currency: ride.currency || 'CAD',
+          destinationAccountId: driver.stripeAccountId,
+          transferGroup: `group_${ride.id}`,
+          rideId: ride.id,
+          driverId: driver.id,
+        });
+      } catch (err) {
+        this.logger.warn(`Stripe Connect tip transfer failed: ${err}`);
+      }
+    }
+
+    // 5. Notify Driver
+    const driverUser = await this.prisma.user.findFirst({
+      where: { driverProfile: { id: driverId } },
+    });
+    if (driverUser) {
+      void this.notifications.sendToUser({
+        userId: driverUser.id,
+        title: 'You received a tip!',
+        body: `Passenger tipped you CAD ${amount.toFixed(2)} for your trip.`,
+        templateKey: 'driver.tip_received',
+        targetRole: 'DRIVER',
+        data: {
+          rideId: ride.id,
+          tipAmount: String(amount),
+          type: 'TIP',
+        },
+      });
+    }
+    if (this.tracking) {
+      this.tracking.broadcastToRide(ride.id, 'ride.tip', {
+        rideId: ride.id,
+        tipAmount: amount,
+        currency: ride.currency || 'CAD',
+      });
+    }
+  }
+
   async handlePaymentWebhook(
     provider: string,
     headers: Record<string, string | string[] | undefined>,
@@ -2471,18 +2915,23 @@ export class MarketplaceService {
       },
     });
 
+    const isTip = (payment.metaJson as Record<string, unknown> | null)?.type === 'TIP';
     if ((event.status ?? 'succeeded') === 'succeeded') {
-      const meta =
-        (event.raw as { data?: { object?: { metadata?: Record<string, string> } } })
-          ?.data?.object?.metadata ?? {};
-      await this.restoreReservationAfterSucceededPayment({
-        rideId: payment.rideId,
-        paymentId: payment.id,
-        offerId:
-          meta.offerId ?? this.offerIdFromIdempotency(payment.idempotencyKey),
-      });
-      await this.markBooked(payment.rideId, payment.id, undefined);
-    } else if (event.status === 'failed') {
+      if (isTip) {
+        await this.finalizeTipPayment(payment.id);
+      } else {
+        const meta =
+          (event.raw as { data?: { object?: { metadata?: Record<string, string> } } })
+            ?.data?.object?.metadata ?? {};
+        await this.restoreReservationAfterSucceededPayment({
+          rideId: payment.rideId,
+          paymentId: payment.id,
+          offerId:
+            meta.offerId ?? this.offerIdFromIdempotency(payment.idempotencyKey),
+        });
+        await this.markBooked(payment.rideId, payment.id, undefined);
+      }
+    } else if (event.status === 'failed' && !isTip) {
       // Do not leave the ride stuck — release reservation so passenger can retry.
       await this.releasePaymentReservation(
         payment.rideId,
@@ -2553,9 +3002,15 @@ export class MarketplaceService {
 
     const now = new Date();
     const booked = await this.prisma.$transaction(async (tx) => {
+      const pinFallback =
+        ride.startPin ?? String(Math.floor(1000 + Math.random() * 9000));
       const rideLock = await tx.ride.updateMany({
         where: { id: rideId, status: RideStatus.PAYMENT_PENDING },
-        data: { status: RideStatus.BOOKED, paymentExpiresAt: null },
+        data: {
+          status: RideStatus.BOOKED,
+          paymentExpiresAt: null,
+          startPin: pinFallback,
+        },
       });
       if (rideLock.count !== 1) {
         return false;
@@ -2698,7 +3153,12 @@ export class MarketplaceService {
    */
   async recordRideFinancial(
     rideId: string,
-    opts?: { tx?: Prisma.TransactionClient; paymentId?: string; paymentRef?: string },
+    opts?: {
+      tx?: Prisma.TransactionClient;
+      paymentId?: string;
+      paymentRef?: string;
+      priceSnapshot?: Record<string, unknown>;
+    },
   ) {
     const client = opts?.tx || this.prisma;
     const ride = await client.ride.findUnique({
@@ -2707,9 +3167,10 @@ export class MarketplaceService {
     if (!ride) return null;
 
     const snap =
-      ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
+      opts?.priceSnapshot ??
+      (ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
         ? (ride.priceSnapshot as Record<string, unknown>)
-        : {};
+        : {});
 
     const rawFare = snap.subtotal ?? snap.bidAmount ?? snap.driverEarning ?? 0;
     const rideFare = typeof rawFare === 'number' ? rawFare : parseFloat(String(rawFare) || '0');
@@ -2720,13 +3181,16 @@ export class MarketplaceService {
     const rawTax = snap.taxAmount ?? 0;
     const taxes = typeof rawTax === 'number' ? rawTax : parseFloat(String(rawTax) || '0');
 
-    const rawTotal = snap.passengerTotal ?? (rideFare + marketplaceFee + taxes);
+    const rawTip = snap.tipAmount ?? snap.tip ?? 0;
+    const tipAmount = typeof rawTip === 'number' ? rawTip : parseFloat(String(rawTip) || '0');
+
+    const rawTotal = snap.passengerTotal ?? (rideFare + marketplaceFee + taxes + tipAmount);
     const passengerTotalCharged = typeof rawTotal === 'number' ? rawTotal : parseFloat(String(rawTotal) || '0');
 
     // CAN-RIDE Driver Commission standard is 20%
     const commissionRate = 0.2000;
     const driverCommission = parseFloat((rideFare * commissionRate).toFixed(2));
-    const rawDriverEarning = snap.driverEarning ?? snap.bidAmount ?? (rideFare - driverCommission);
+    const rawDriverEarning = snap.driverEarning ?? (rideFare - driverCommission + tipAmount);
     const driverNetEarning = typeof rawDriverEarning === 'number' ? rawDriverEarning : parseFloat(String(rawDriverEarning) || '0');
 
     const canRideGrossRevenue = parseFloat((marketplaceFee + driverCommission).toFixed(2));
@@ -2752,6 +3216,7 @@ export class MarketplaceService {
         driverCommissionRate: new Prisma.Decimal(commissionRate),
         driverNetEarning: new Prisma.Decimal(driverNetEarning),
         taxes: new Prisma.Decimal(taxes),
+        tipAmount: new Prisma.Decimal(tipAmount),
         canRideGrossRevenue: new Prisma.Decimal(canRideGrossRevenue),
         currency: (ride.currency || 'CAD').toUpperCase(),
         driverPayoutStatus: DriverPayoutStatus.REQUESTED,
@@ -2765,6 +3230,7 @@ export class MarketplaceService {
         driverCommission: new Prisma.Decimal(driverCommission),
         driverNetEarning: new Prisma.Decimal(driverNetEarning),
         taxes: new Prisma.Decimal(taxes),
+        tipAmount: new Prisma.Decimal(tipAmount),
         canRideGrossRevenue: new Prisma.Decimal(canRideGrossRevenue),
         ...(paymentRef ? { stripePaymentIntentId: paymentRef } : {}),
       },
@@ -2941,7 +3407,7 @@ export class MarketplaceService {
 
   private async serializeRide(
     ride: Record<string, unknown>,
-    opts?: { includeEvents?: boolean; enrichOffers?: boolean },
+    opts?: { includeEvents?: boolean; enrichOffers?: boolean; showPin?: boolean },
   ) {
     const snap = ride.priceSnapshot as PriceSnapshot | null | undefined;
     const status = ride.status as RideStatus;
@@ -2985,11 +3451,41 @@ export class MarketplaceService {
       (c) => c.title === 'Lost item inquiry',
     );
     const hasLostItemRequest = !!lostItemCase;
+    const reportCase = supportCases.find(
+      (c) =>
+        c.title?.startsWith('Ride report') ||
+        (c as unknown as { type?: string }).type === SupportCaseType.DISPUTE ||
+        (c as unknown as { type?: string }).type === SupportCaseType.SAFETY,
+    );
+    const hasReportedRide = !!reportCase;
+    const activeSupportCase = supportCases.find(
+      (c) => c.status !== SupportCaseStatus.RESOLVED,
+    );
+    const hasActiveSupport = !!activeSupportCase;
     const id = String(ride.id ?? '');
+    const snapObj = snap as Record<string, unknown> | null | undefined;
+    const computedPin =
+      (ride.startPin as string | null | undefined) ??
+      (snapObj?.startPin as string | undefined) ??
+      (ride.selectedOfferId
+        ? String(
+            1000 +
+              Math.abs(
+                id.split('').reduce(
+                  (acc, char) => ((acc << 5) - acc) + char.charCodeAt(0),
+                  0,
+                ) % 9000,
+              ),
+          )
+        : null);
+    const showPin = opts?.showPin ?? (opts?.enrichOffers ? true : false);
+    const startPin = showPin ? computedPin : null;
+
     const base = {
       id: ride.id,
       shortId: shortIdFrom(id),
       status: ride.status,
+      startPin,
       serviceType: ride.serviceType,
       fromLabel: ride.fromLabel,
       toLabel: ride.toLabel,
@@ -3012,6 +3508,7 @@ export class MarketplaceService {
       requiredOptions: ride.requiredOptions ?? [],
       currency: ride.currency,
       priceSnapshot: ride.priceSnapshot,
+      tipAmount: (snapObj?.tip ?? snapObj?.tipAmount ?? null) as number | null,
       pricingGuidance: snap
         ? {
             guidanceAmount: snap.guidanceAmount,
@@ -3096,6 +3593,8 @@ export class MarketplaceService {
             : null)
         : ride.passenger,
       hasLostItemRequest,
+      hasReportedRide,
+      hasActiveSupport,
       lostItemCase: lostItemCase
         ? {
             id: lostItemCase.id,
@@ -3275,8 +3774,9 @@ export class MarketplaceService {
   private async requireEligibleVehicle(
     driverId: string,
     vehicleId: string | undefined,
-    ride: { vehicleClassIds: string[] },
+    ride: { vehicleClassIds: string[]; adults?: number },
   ) {
+    let vehicle;
     if (!vehicleId) {
       const fallback = await this.prisma.vehicle.findFirst({
         where: { driverId, isActive: true },
@@ -3287,18 +3787,29 @@ export class MarketplaceService {
           'No eligible vehicle — add and activate a vehicle before offering',
         );
       }
-      return this.assertVehicleClass(fallback, ride);
+      vehicle = this.assertVehicleClass(fallback, ride);
+    } else {
+      const v = await this.prisma.vehicle.findFirst({
+        where: { id: vehicleId, driverId },
+      });
+      if (!v) {
+        throw new ForbiddenException('Vehicle not found for this driver');
+      }
+      if (!v.isActive) {
+        throw new BadRequestException('Vehicle is not active');
+      }
+      vehicle = this.assertVehicleClass(v, ride);
     }
-    const vehicle = await this.prisma.vehicle.findFirst({
-      where: { id: vehicleId, driverId },
-    });
-    if (!vehicle) {
-      throw new ForbiddenException('Vehicle not found for this driver');
+
+    const vehicleSeats = vehicle.passengerSeats ?? 4;
+    const requestedPassengers = ride.adults ?? 1;
+    if (vehicleSeats < requestedPassengers) {
+      throw new BadRequestException(
+        `Vehicle seating capacity (${vehicleSeats} seat${vehicleSeats === 1 ? '' : 's'}) is insufficient for the requested passenger count (${requestedPassengers} passenger${requestedPassengers === 1 ? '' : 's'})`,
+      );
     }
-    if (!vehicle.isActive) {
-      throw new BadRequestException('Vehicle is not active');
-    }
-    return this.assertVehicleClass(vehicle, ride);
+
+    return vehicle;
   }
 
   private assertVehicleClass<T extends { vehicleClass: string; name: string }>(
@@ -3587,6 +4098,12 @@ export class MarketplaceService {
     contactPhone?: string | null;
     itemDescription?: string | null;
     driverNote?: string | null;
+    photoUrl?: string | null;
+    handoverPhotoUrl?: string | null;
+    pickupLocation?: string | null;
+    returnFeeAmount: number;
+    returnFeePaid: boolean;
+    returnFeePaymentId?: string | null;
     reportedAt: Date | string;
     updatedAt?: Date | string;
   } | null {
@@ -3605,6 +4122,12 @@ export class MarketplaceService {
     let contactPhone: string | null = null;
     let itemDescription: string | null = null;
     let driverNote: string | null = null;
+    let photoUrl: string | null = null;
+    let handoverPhotoUrl: string | null = null;
+    let pickupLocation: string | null = null;
+    let returnFeePaid = false;
+    let returnFeePaymentId: string | null = null;
+    const returnFeeAmount = 20.0;
     let status: 'REPORTED' | 'FOUND' | 'NOT_FOUND' | 'RETURNED' = 'REPORTED';
 
     for (const n of notes) {
@@ -3613,13 +4136,41 @@ export class MarketplaceService {
         const phoneMatch = body.match(/Passenger contact phone:\s*([^\n\r]+)/i);
         if (phoneMatch) contactPhone = phoneMatch[1].trim();
       }
+      if (!photoUrl) {
+        const pMatch =
+          body.match(/\[LOST_ITEM_PHOTO\]\s*([^\n\r]+)/i) ||
+          body.match(/Item Photo:\s*([^\n\r]+)/i);
+        if (pMatch) photoUrl = pMatch[1].trim();
+      }
+      if (!handoverPhotoUrl) {
+        const hMatch =
+          body.match(/\[HANDOVER_PHOTO\]\s*([^\n\r]+)/i) ||
+          body.match(/Handover Photo:\s*([^\n\r]+)/i);
+        if (hMatch) handoverPhotoUrl = hMatch[1].trim();
+      }
+      if (!pickupLocation) {
+        const locMatch = body.match(
+          /\[LOST_ITEM_PICKUP_LOCATION\](?:\s*Location:\s*)?([^\n\r]+)/i,
+        );
+        if (locMatch) pickupLocation = locMatch[1].trim();
+      }
+      if (body.includes('[LOST_ITEM_FEE_PAID]')) {
+        returnFeePaid = true;
+        const payIdMatch = body.match(/PaymentId:\s*([^\n\r]+)/i);
+        if (payIdMatch) returnFeePaymentId = payIdMatch[1].trim();
+      }
       if (!itemDescription) {
         const descMatch = body.match(/Note:\s*([^\n\r]+)/i);
-        if (descMatch && !body.includes('[LOST_ITEM_')) {
+        if (
+          descMatch &&
+          !body.includes('[LOST_ITEM_') &&
+          !body.includes('[HANDOVER_PHOTO]')
+        ) {
           itemDescription = descMatch[1].trim();
         } else if (
           !body.startsWith('Passenger contact phone:') &&
           !body.includes('[LOST_ITEM_') &&
+          !body.includes('[HANDOVER_PHOTO]') &&
           body.trim().length > 0
         ) {
           itemDescription = body.trim();
@@ -3628,14 +4179,31 @@ export class MarketplaceService {
       if (body.includes('[LOST_ITEM_RETURNED]')) {
         status = 'RETURNED';
         const match = body.match(/\[LOST_ITEM_RETURNED\](?:\s*Note:\s*)?(.*)/i);
-        if (match && match[1]?.trim()) driverNote = match[1].trim();
+        if (
+          match &&
+          match[1]?.trim() &&
+          !match[1].startsWith('[HANDOVER_PHOTO]')
+        ) {
+          driverNote = match[1].trim();
+        }
       } else if (body.includes('[LOST_ITEM_FOUND]') && status !== 'RETURNED') {
         status = 'FOUND';
         const match = body.match(/\[LOST_ITEM_FOUND\](?:\s*Note:\s*)?(.*)/i);
-        if (match && match[1]?.trim()) driverNote = match[1].trim();
-      } else if (body.includes('[LOST_ITEM_NOT_FOUND]') && status !== 'RETURNED') {
+        if (
+          match &&
+          match[1]?.trim() &&
+          !match[1].startsWith('[LOST_ITEM_PHOTO]')
+        ) {
+          driverNote = match[1].trim();
+        }
+      } else if (
+        body.includes('[LOST_ITEM_NOT_FOUND]') &&
+        status !== 'RETURNED'
+      ) {
         status = 'NOT_FOUND';
-        const match = body.match(/\[LOST_ITEM_NOT_FOUND\](?:\s*Note:\s*)?(.*)/i);
+        const match = body.match(
+          /\[LOST_ITEM_NOT_FOUND\](?:\s*Note:\s*)?(.*)/i,
+        );
         if (match && match[1]?.trim()) driverNote = match[1].trim();
       }
     }
@@ -3653,6 +4221,12 @@ export class MarketplaceService {
       contactPhone,
       itemDescription,
       driverNote,
+      photoUrl,
+      handoverPhotoUrl,
+      pickupLocation,
+      returnFeeAmount,
+      returnFeePaid,
+      returnFeePaymentId,
       reportedAt: lostItemCase.createdAt,
       updatedAt: lostItemCase.updatedAt ?? lostItemCase.createdAt,
     };
@@ -3693,16 +4267,32 @@ export class MarketplaceService {
       );
     }
 
-    const lostItemCase = ride.supportCases[0];
+    const isFound = dto.action === 'FOUND';
+    let lostItemCase = ride.supportCases[0];
     if (!lostItemCase) {
-      throw new NotFoundException('No active lost item inquiry found for this ride');
+      lostItemCase = await this.prisma.supportCase.create({
+        data: {
+          title: 'Lost item inquiry',
+          type: SupportCaseType.GENERAL,
+          status: isFound ? SupportCaseStatus.ASSIGNED : SupportCaseStatus.RESOLVED,
+          createdById: userId,
+          passengerProfileId: ride.passengerId,
+          driverProfileId: ride.assignedDriverId ?? ride.selectedOffer?.driverId,
+          rideId,
+          slaDueAt: new Date(Date.now() + 24 * 3600_000),
+        },
+      });
     }
 
-    const isFound = dto.action === 'FOUND';
     const tag = isFound ? '[LOST_ITEM_FOUND]' : '[LOST_ITEM_NOT_FOUND]';
-    const noteBody = dto.note?.trim()
-      ? `${tag} Note: ${dto.note.trim()}`
-      : tag;
+    const noteLines: string[] = [tag];
+    if (dto.photoUrl?.trim()) {
+      noteLines.push(`[LOST_ITEM_PHOTO] ${dto.photoUrl.trim()}`);
+    }
+    if (dto.note?.trim()) {
+      noteLines.push(`Note: ${dto.note.trim()}`);
+    }
+    const noteBody = noteLines.join('\n');
 
     await this.prisma.supportCaseNote.create({
       data: {
@@ -3731,6 +4321,7 @@ export class MarketplaceService {
           action: isFound ? 'lost_item_found' : 'lost_item_not_found',
           caseId: lostItemCase.id,
           note: dto.note?.trim() || null,
+          photoUrl: dto.photoUrl?.trim() || null,
         },
       },
     });
@@ -3747,8 +4338,8 @@ export class MarketplaceService {
     if (passengerUserId) {
       const title = isFound ? 'Lost item found!' : 'Lost item update';
       const body = isFound
-        ? `Great news! Your driver confirmed finding your item on ride #${shortIdFrom(ride.id)}.${dto.note?.trim() ? ` Driver: "${dto.note.trim()}"` : ' You can now contact your driver to coordinate pickup.'}`
-        : `Your driver checked their vehicle for ride #${shortIdFrom(ride.id)} and did not locate the item.${dto.note?.trim() ? ` Note: "${dto.note.trim()}"` : ' Please contact support if you need further help.'}`;
+        ? `Great news! Your driver confirmed finding an item on ride #${shortIdFrom(ride.id)}.${dto.note?.trim() ? ` Driver: "${dto.note.trim()}"` : ' You can now coordinate pickup location and chat.'}`
+        : `Your driver checked their vehicle for ride #${shortIdFrom(ride.id)} and did not locate any item.${dto.note?.trim() ? ` Note: "${dto.note.trim()}"` : ''}`;
 
       void this.notifications.notifyRideStatus({
         userIds: [passengerUserId],
@@ -3782,6 +4373,255 @@ export class MarketplaceService {
       success: true,
       caseId: lostItemCase.id,
       status: isFound ? 'FOUND' : 'NOT_FOUND',
+    };
+  }
+
+  async setLostItemPickupLocation(
+    userId: string,
+    rideId: string,
+    dto: SetLostItemPickupLocationDto,
+    ip?: string,
+  ) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: true,
+        selectedOffer: { include: { driver: true } },
+        supportCases: {
+          where: { title: 'Lost item inquiry' },
+          include: { notes: { orderBy: { createdAt: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const isPassenger = ride.passenger?.userId === userId;
+    const driverUserId = ride.selectedOffer?.driver.userId;
+    let isDriver = driverUserId === userId;
+    if (!isDriver && ride.assignedDriverId) {
+      const dp = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      if (dp?.userId === userId) isDriver = true;
+    }
+    if (!isPassenger && !isDriver) {
+      throw new ForbiddenException(
+        'Not authorized to update lost item pickup location',
+      );
+    }
+
+    let lostItemCase = ride.supportCases[0];
+    if (!lostItemCase) {
+      lostItemCase = await this.prisma.supportCase.create({
+        data: {
+          title: 'Lost item inquiry',
+          type: SupportCaseType.GENERAL,
+          status: SupportCaseStatus.ASSIGNED,
+          createdById: userId,
+          passengerProfileId: ride.passengerId,
+          driverProfileId: ride.assignedDriverId ?? ride.selectedOffer?.driverId,
+          rideId,
+          slaDueAt: new Date(Date.now() + 24 * 3600_000),
+        },
+      });
+    }
+
+    const noteBody = `[LOST_ITEM_PICKUP_LOCATION] Location: ${dto.location.trim()}`;
+    await this.prisma.supportCaseNote.create({
+      data: {
+        caseId: lostItemCase.id,
+        authorId: userId,
+        body: noteBody,
+        internal: false,
+      },
+    });
+
+    const targetUserId = isPassenger ? driverUserId : ride.passenger?.userId;
+    if (targetUserId) {
+      void this.notifications.notifyRideStatus({
+        userIds: [targetUserId],
+        rideId,
+        status: 'LOST_ITEM_PICKUP_LOCATION',
+        title: 'Lost Item Pickup Location',
+        body: `Customer provided return pickup location: "${dto.location.trim()}"`,
+        targetRole: isPassenger ? 'DRIVER' : 'PASSENGER',
+        data: {
+          rideId,
+          caseId: lostItemCase.id,
+          location: dto.location.trim(),
+        },
+      });
+      this.tracking?.emitToPassengers([targetUserId], 'ride.status.changed', {
+        rideId,
+        lostItemPickupLocation: dto.location.trim(),
+      });
+    }
+
+    this.tracking?.emitRideEvent(rideId, {
+      event: 'ride.lost_item.pickup_location',
+      rideId,
+      location: dto.location.trim(),
+    });
+
+    await this.audit(
+      userId,
+      'ride.lost_item_pickup_location',
+      'SupportCase',
+      lostItemCase.id,
+      ip,
+    );
+
+    return {
+      success: true,
+      caseId: lostItemCase.id,
+      location: dto.location.trim(),
+    };
+  }
+
+  async payLostItemReturnFee(
+    userId: string,
+    rideId: string,
+    dto: PayLostItemFeeDto,
+    ip?: string,
+  ) {
+    const passenger = await this.requirePassenger(userId);
+    const ride = await this.prisma.ride.findFirst({
+      where: { id: rideId, passengerId: passenger.id },
+      include: {
+        selectedOffer: { include: { driver: true } },
+        supportCases: {
+          where: { title: 'Lost item inquiry' },
+          include: { notes: { orderBy: { createdAt: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+    const driverId = ride.assignedDriverId ?? ride.selectedOffer?.driverId;
+    if (!driverId) {
+      throw new BadRequestException('No assigned driver for this ride');
+    }
+
+    const lostItemCase = ride.supportCases[0];
+    if (!lostItemCase) {
+      throw new NotFoundException('No active lost item inquiry for this ride');
+    }
+
+    const amount = 20.0;
+    const idem = dto.idempotencyKey ?? `lost_item_fee_${ride.id}`;
+
+    const intent = await this.payments.createIntent({
+      amount,
+      currency: ride.currency || 'CAD',
+      rideId: ride.id,
+      idempotencyKey: idem,
+      metadata: {
+        type: 'LOST_ITEM_FEE',
+        rideId: ride.id,
+        driverId,
+        passengerId: passenger.id,
+        onlineAmount: String(amount),
+      },
+    });
+
+    const payment = await this.prisma.payment.upsert({
+      where: { idempotencyKey: idem },
+      create: {
+        rideId: ride.id,
+        provider: intent.provider,
+        providerRef: intent.intentId,
+        amount: new Prisma.Decimal(amount),
+        currency: ride.currency || 'CAD',
+        status: intent.status,
+        idempotencyKey: idem,
+        paymentMode: 'FULL',
+        onlineAmount: new Prisma.Decimal(amount),
+        paymentMethod: dto.paymentMethod ?? 'CARD',
+        metaJson: {
+          type: 'LOST_ITEM_FEE',
+          driverId,
+          feeAmount: amount,
+        },
+      },
+      update: {
+        providerRef: intent.intentId,
+        status: intent.status,
+        amount: new Prisma.Decimal(amount),
+        onlineAmount: new Prisma.Decimal(amount),
+        paymentMethod: dto.paymentMethod ?? undefined,
+      },
+    });
+
+    const existingWalletEntry = await this.prisma.driverWalletEntry.findFirst({
+      where: {
+        driverId,
+        rideId: ride.id,
+        type: WalletEntryType.ADJUSTMENT,
+        description: { contains: 'Lost item return fee' },
+      },
+    });
+    if (!existingWalletEntry) {
+      await this.prisma.driverWalletEntry.create({
+        data: {
+          driverId,
+          type: WalletEntryType.ADJUSTMENT,
+          direction: WalletDirection.CREDIT,
+          amount: new Prisma.Decimal(amount),
+          currency: (ride.currency || 'CAD').toUpperCase(),
+          status: WalletEntryStatus.POSTED,
+          rideId: ride.id,
+          availableAt: null,
+          description: `Lost item return fee · Ride #${shortIdFrom(ride.id)}`,
+          metaJson: {
+            isLostItemFee: true,
+            amount,
+            bookingRef: ride.id,
+            paidAt: new Date().toISOString(),
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    await this.prisma.supportCaseNote.create({
+      data: {
+        caseId: lostItemCase.id,
+        authorId: userId,
+        body: `[LOST_ITEM_FEE_PAID] Amount: CAD ${amount.toFixed(2)}\nPaymentId: ${payment.id}`,
+        internal: false,
+      },
+    });
+
+    const driverUserId = ride.selectedOffer?.driver.userId;
+    if (driverUserId) {
+      void this.notifications.notifyRideStatus({
+        userIds: [driverUserId],
+        rideId,
+        status: 'LOST_ITEM_FEE_PAID',
+        title: 'Lost Item Return Fee Paid',
+        body: `Passenger paid the $${amount.toFixed(2)} return fee via Stripe. It has been credited to your wallet.`,
+        targetRole: 'DRIVER',
+        data: { rideId, caseId: lostItemCase.id, amount: String(amount) },
+      });
+    }
+
+    await this.audit(
+      userId,
+      'ride.lost_item_fee_paid',
+      'Payment',
+      payment.id,
+      ip,
+    );
+
+    return {
+      success: true,
+      amount,
+      clientSecret: intent.clientSecret,
+      payment: {
+        id: payment.id,
+        status: payment.status,
+      },
     };
   }
 
@@ -3822,14 +4662,31 @@ export class MarketplaceService {
       );
     }
 
-    const lostItemCase = ride.supportCases[0];
+    let lostItemCase = ride.supportCases[0];
     if (!lostItemCase) {
-      throw new NotFoundException('No active lost item inquiry found for this ride');
+      lostItemCase = await this.prisma.supportCase.create({
+        data: {
+          title: 'Lost item inquiry',
+          type: SupportCaseType.GENERAL,
+          status: SupportCaseStatus.RESOLVED,
+          createdById: userId,
+          passengerProfileId: ride.passengerId,
+          driverProfileId: ride.assignedDriverId ?? ride.selectedOffer?.driverId,
+          rideId,
+          slaDueAt: new Date(Date.now() + 24 * 3600_000),
+        },
+      });
     }
 
-    const noteBody = dto.note?.trim()
-      ? `[LOST_ITEM_RETURNED] Note: ${dto.note.trim()}`
-      : `[LOST_ITEM_RETURNED]`;
+    const handoverPhoto = dto.handoverPhotoUrl?.trim() || dto.photoUrl?.trim();
+    const noteLines = ['[LOST_ITEM_RETURNED]'];
+    if (handoverPhoto) {
+      noteLines.push(`[HANDOVER_PHOTO] ${handoverPhoto}`);
+    }
+    if (dto.note?.trim()) {
+      noteLines.push(`Note: ${dto.note.trim()}`);
+    }
+    const noteBody = noteLines.join('\n');
 
     await this.prisma.supportCaseNote.create({
       data: {
@@ -3847,6 +4704,40 @@ export class MarketplaceService {
       },
     });
 
+    const driverId = ride.assignedDriverId ?? ride.selectedOffer?.driverId;
+    if (driverId) {
+      const existingWalletEntry = await this.prisma.driverWalletEntry.findFirst({
+        where: {
+          driverId,
+          rideId: ride.id,
+          type: WalletEntryType.ADJUSTMENT,
+          description: { contains: 'Lost item return fee' },
+        },
+      });
+      if (!existingWalletEntry) {
+        await this.prisma.driverWalletEntry.create({
+          data: {
+            driverId,
+            type: WalletEntryType.ADJUSTMENT,
+            direction: WalletDirection.CREDIT,
+            amount: new Prisma.Decimal(20.0),
+            currency: (ride.currency || 'CAD').toUpperCase(),
+            status: WalletEntryStatus.POSTED,
+            rideId: ride.id,
+            availableAt: null,
+            description: `Lost item return fee · Ride #${shortIdFrom(ride.id)}`,
+            metaJson: {
+              isLostItemFee: true,
+              amount: 20.0,
+              bookingRef: ride.id,
+              handoverPhoto: handoverPhoto || null,
+              returnedAt: new Date().toISOString(),
+            } as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
+
     await this.prisma.rideEvent.create({
       data: {
         rideId,
@@ -3858,6 +4749,7 @@ export class MarketplaceService {
           action: 'lost_item_returned',
           caseId: lostItemCase.id,
           note: dto.note?.trim() || null,
+          handoverPhoto: handoverPhoto || null,
           resolvedBy: isDriver ? 'driver' : 'passenger',
         },
       },
@@ -3875,7 +4767,7 @@ export class MarketplaceService {
     if (targetUserId) {
       const title = isDriver ? 'Lost item returned' : 'Lost item received';
       const body = isDriver
-        ? `Driver marked your lost item on ride #${shortIdFrom(ride.id)} as returned to you.`
+        ? `Driver uploaded return proof and marked lost item on ride #${shortIdFrom(ride.id)} as returned.`
         : `Passenger confirmed receiving their lost item on ride #${shortIdFrom(ride.id)}.`;
 
       void this.notifications.notifyRideStatus({
@@ -3891,7 +4783,6 @@ export class MarketplaceService {
           deepLink: isDriver ? `/passenger/ride/${rideId}` : `/driver/trip/${rideId}`,
         },
       });
-
       if (isDriver) {
         this.tracking?.emitToPassengers([targetUserId], 'ride.status.changed', {
           rideId,

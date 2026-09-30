@@ -142,7 +142,11 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
+                  _pinCard(
+                    ride?.startPin ??
+                        (1000 + (widget.rideId.hashCode.abs() % 9000)).toString(),
+                  ),
                   GtCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,6 +235,80 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+
+  Widget _pinCard(String pin) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: GtColors.brand.withValues(alpha: 0.35), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: GtColors.brand.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.shield_outlined, size: 18, color: GtColors.brand),
+              SizedBox(width: 8),
+              Text(
+                'RIDE START PIN',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: GtColors.brand,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: pin.split('').map((d) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+                width: 46,
+                height: 54,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: GtColors.bgGrey,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: GtColors.border, width: 1.5),
+                ),
+                child: Text(
+                  d,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                    color: GtColors.text,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Share this PIN with your driver to start your ride',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: GtColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

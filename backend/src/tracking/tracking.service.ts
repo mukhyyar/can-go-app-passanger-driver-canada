@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -210,6 +211,200 @@ export class TrackingService {
   /** GET /rides/:id/tracking — alias with ETA + endpoints for live map UI. */
   async getRideTracking(userId: string, rideId: string) {
     return this.getRideLocation(userId, rideId);
+  }
+
+  /** Generate or retrieve active trip share link for passenger */
+  async createOrGetShareLink(userId: string, rideId: string) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: { passenger: true },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+    if (ride.passenger.userId !== userId) {
+      throw new ForbiddenException('Only the ride passenger can share this trip');
+    }
+
+    const now = new Date();
+    let shareToken = ride.shareToken;
+    let shareExpiresAt = ride.shareExpiresAt;
+
+    if (!shareToken || !shareExpiresAt || shareExpiresAt < now) {
+      shareToken = randomBytes(16).toString('hex');
+      shareExpiresAt = new Date(Date.now() + 48 * 3600 * 1000);
+      await this.prisma.ride.update({
+        where: { id: rideId },
+        data: {
+          shareToken,
+          shareExpiresAt,
+        },
+      });
+    }
+
+    const webBase = process.env.WEB_PASSENGER_URL || 'https://can-ride.ca';
+    const shareUrl = `${webBase.replace(/\/$/, '')}/track/${shareToken}`;
+
+    return {
+      rideId,
+      shareToken,
+      shareUrl,
+      expiresAt: shareExpiresAt.toISOString(),
+    };
+  }
+
+  /** Revoke an existing trip share link */
+  async revokeShareLink(userId: string, rideId: string) {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: { passenger: true },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+    if (ride.passenger.userId !== userId) {
+      throw new ForbiddenException('Only the ride passenger can revoke this trip share link');
+    }
+
+    await this.prisma.ride.update({
+      where: { id: rideId },
+      data: {
+        shareToken: null,
+        shareExpiresAt: null,
+      },
+    });
+
+    return { success: true, revoked: true };
+  }
+
+  /** Public endpoint: Get live trip tracking details using share token */
+  async getPublicSharedTrip(shareToken: string) {
+    if (!shareToken || typeof shareToken !== 'string') {
+      throw new BadRequestException('Valid share token is required');
+    }
+
+    const ride = await this.prisma.ride.findUnique({
+      where: { shareToken },
+      include: {
+        passenger: { include: { user: true } },
+        selectedOffer: {
+          include: {
+            driver: { include: { user: true } },
+            vehicle: true,
+          },
+        },
+      },
+    });
+
+    if (!ride) {
+      throw new NotFoundException('Trip share link is invalid or has expired');
+    }
+
+    if (ride.shareExpiresAt && ride.shareExpiresAt < new Date()) {
+      throw new NotFoundException('Trip share link has expired');
+    }
+
+    const driverUser = ride.selectedOffer?.driver?.user;
+    const vehicle = ride.selectedOffer?.vehicle;
+    let driverInfo = null;
+    if (driverUser) {
+      const driverRatings = await this.prisma.rating.findMany({
+        where: {
+          toUserId: driverUser.id,
+          role: UserRole.DRIVER,
+        },
+        select: { stars: true },
+      });
+      const avgRating =
+        driverRatings.length > 0
+          ? Math.round(
+              (driverRatings.reduce((sum, r) => sum + r.stars, 0) /
+                driverRatings.length) *
+                10,
+            ) / 10
+          : 5.0;
+
+      driverInfo = {
+        firstName: driverUser.fullName?.split(' ')[0] ?? 'Driver',
+        fullName: driverUser.fullName ?? 'Driver',
+        avatarUrl: driverUser.avatarUrl ?? null,
+        rating: avgRating,
+        totalTrips: driverRatings.length,
+        vehicle: vehicle
+          ? {
+              makeModel: vehicle.name,
+              color: vehicle.color || 'Standard',
+              plate: vehicle.plate,
+              year: vehicle.year ?? null,
+              vehicleClass: vehicle.vehicleClass,
+            }
+          : null,
+      };
+    }
+
+    const live =
+      (await this.store.getRideDriver(ride.id)) ??
+      (ride.assignedDriverId
+        ? await this.store.getDriver(ride.assignedDriverId)
+        : null);
+
+    const current = ride.assignedDriverId
+      ? await this.prisma.driverLocationCurrent.findUnique({
+          where: { driverId: ride.assignedDriverId },
+        })
+      : null;
+
+    const liveLoc =
+      live ??
+      (current
+        ? {
+            lat: current.lat,
+            lng: current.lng,
+            heading: current.heading ?? undefined,
+            speedMps: current.speedMps ?? undefined,
+            accuracyM: current.accuracyM ?? undefined,
+            recordedAt: current.recordedAt.toISOString(),
+          }
+        : null);
+
+    const eta = this.computeEta(
+      ride,
+      liveLoc
+        ? {
+            lat: liveLoc.lat,
+            lng: liveLoc.lng,
+            speedMps: liveLoc.speedMps,
+          }
+        : null,
+    );
+
+    const passengerFirstName =
+      ride.passenger?.user?.fullName?.split(' ')[0] ?? 'Passenger';
+
+    return {
+      rideId: ride.id,
+      shareToken,
+      status: ride.status,
+      passengerFirstName,
+      pickup: {
+        label: ride.fromLabel,
+        lat: ride.fromLat,
+        lng: ride.fromLng,
+      },
+      dropoff:
+        ride.toLabel != null
+          ? {
+              label: ride.toLabel,
+              lat: ride.toLat,
+              lng: ride.toLng,
+            }
+          : null,
+      driver: driverInfo,
+      live: liveLoc,
+      eta,
+      isCompleted: ride.status === RideStatus.COMPLETED,
+      isCancelled:
+        ride.status === RideStatus.CANCELLED ||
+        ride.status === RideStatus.NO_SHOW,
+      pickupAt: ride.pickupAt.toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   private computeEta(

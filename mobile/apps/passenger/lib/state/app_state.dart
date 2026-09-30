@@ -746,6 +746,8 @@ class AppState extends ChangeNotifier {
           currency: raw['currency']?.toString() ?? existing?.currency ?? 'CAD',
           hasLostItemRequest: raw['hasLostItemRequest'] == true ||
               existing?.hasLostItemRequest == true,
+          hasReportedRide: raw['hasReportedRide'] == true ||
+              existing?.hasReportedRide == true,
           lostItem: raw['lostItem'] is Map
               ? LostItemDetails.fromJson(
                   Map<String, dynamic>.from(raw['lostItem'] as Map))
@@ -774,6 +776,7 @@ class AppState extends ChangeNotifier {
           viewCount: ride.viewCount,
           currency: ride.currency,
           hasLostItemRequest: ride.hasLostItemRequest,
+          hasReportedRide: ride.hasReportedRide,
           lostItem: ride.lostItem,
         );
       }
@@ -1000,6 +1003,7 @@ class AppState extends ChangeNotifier {
     String? returnAt,
     int? pickupWaitMin,
     int? returnWaitMin,
+    List<String>? requiredOptions,
     double? hours,
     double? days,
   }) async {
@@ -1023,6 +1027,7 @@ class AppState extends ChangeNotifier {
       returnAt: returnAt,
       pickupWaitMin: pickupWaitMin,
       returnWaitMin: returnWaitMin,
+      requiredOptions: requiredOptions,
       hours: hours,
       days: days,
     );
@@ -1046,6 +1051,64 @@ class AppState extends ChangeNotifier {
       driverStars: driverStars,
       vehicleStars: vehicleStars,
       comment: comment,
+    );
+    await refreshRide(rideId);
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> reportRide(
+    String rideId, {
+    required List<String> reasons,
+    String? details,
+  }) async {
+    final res = await api.marketplace.reportRide(
+      rideId,
+      reasons: reasons,
+      details: details,
+    );
+    await refreshRide(rideId);
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> createRideShareLink(String rideId) async {
+    final res = await api.marketplace.createRideShareLink(rideId);
+    final token = res['shareToken']?.toString();
+    final url = res['shareUrl']?.toString();
+    final idx = repo.rides.indexWhere((r) => r.id == rideId);
+    if (idx >= 0) {
+      final existing = repo.rides[idx];
+      existing.shareToken = token;
+      existing.shareUrl = url;
+    }
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> revokeRideShareLink(String rideId) async {
+    final res = await api.marketplace.revokeRideShareLink(rideId);
+    final idx = repo.rides.indexWhere((r) => r.id == rideId);
+    if (idx >= 0) {
+      final existing = repo.rides[idx];
+      existing.shareToken = null;
+      existing.shareUrl = null;
+    }
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> tipRide(
+    String rideId, {
+    required double amount,
+    String? paymentMethod,
+    String? idempotencyKey,
+  }) async {
+    final res = await api.marketplace.tipRide(
+      rideId,
+      amount: amount,
+      paymentMethod: paymentMethod,
+      idempotencyKey: idempotencyKey,
     );
     await refreshRide(rideId);
     notifyListeners();
@@ -1141,10 +1204,38 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> markLostItemReturned(
     String rideId, {
     String? note,
+    String? handoverPhotoUrl,
   }) async {
     final res = await api.marketplace.markLostItemReturned(
       rideId,
       note: note,
+      handoverPhotoUrl: handoverPhotoUrl,
+    );
+    await refreshRide(rideId);
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> setLostItemPickupLocation(
+    String rideId, {
+    required String location,
+  }) async {
+    final res = await api.marketplace.setLostItemPickupLocation(
+      rideId,
+      location: location,
+    );
+    await refreshRide(rideId);
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> payLostItemReturnFee(
+    String rideId, {
+    String? paymentMethod,
+  }) async {
+    final res = await api.marketplace.payLostItemReturnFee(
+      rideId,
+      paymentMethod: paymentMethod,
     );
     await refreshRide(rideId);
     notifyListeners();
@@ -1328,7 +1419,15 @@ class AppState extends ChangeNotifier {
       unawaited(refreshRidesFromServer());
     }
 
-    if (type == 'ride.status.changed') {
+    final isRideStatusEvent = type == 'ride.status' ||
+        type == 'ride.status.changed' ||
+        type == 'ride.completed' ||
+        type == 'ride.cancelled' ||
+        (!type.startsWith('offer.') &&
+            payload['status'] != null &&
+            payload['status'].toString().isNotEmpty);
+
+    if (isRideStatusEvent) {
       final newStatus =
           payload['status']?.toString() ?? payload['to']?.toString() ?? '';
       if (newStatus.isNotEmpty) {
@@ -1435,6 +1534,26 @@ class AppState extends ChangeNotifier {
   void _stopOpenRidePolling() {
     _openRidePoll?.cancel();
     _openRidePoll = null;
+  }
+
+  void stopOpenRidePolling() {
+    _stopOpenRidePolling();
+  }
+
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _stopOpenRidePolling();
+    stopRideRealtime();
+    super.dispose();
   }
 
   void setShellTab(int index) {
@@ -1846,12 +1965,18 @@ class AppState extends ChangeNotifier {
         .toUtc()
         .toIso8601String();
 
+    final selRoute = selectedRoute;
+    final routeDist = selRoute?.distanceKm;
+    final routeDur = selRoute?.durationMin.toDouble();
+
     await api.marketplace.quote(
       serviceType: service,
       fromLat: pickup.lat,
       fromLng: pickup.lng,
       toLat: needsDropoff ? dropoff.lat : null,
       toLng: needsDropoff ? dropoff.lng : null,
+      distanceKm: routeDist,
+      durationMin: routeDur,
       vehicleClass: vehicleClassIds.first,
       currency: 'CAD',
       hours: hours,
@@ -1879,6 +2004,8 @@ class AppState extends ChangeNotifier {
       fromLng: pickup.lng,
       toLat: needsDropoff ? dropoff.lat : null,
       toLng: needsDropoff ? dropoff.lng : null,
+      distanceKm: routeDist,
+      durationMin: routeDur,
       currency: 'CAD',
       pickupAt: pickupAt,
       vehicleClassIds: vehicleClassIds.toList(),

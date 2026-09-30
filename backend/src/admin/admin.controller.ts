@@ -636,6 +636,16 @@ export class AdminOpsController {
     return this.ops.getChatThreadByRide(rideId, user.id);
   }
 
+  @Post('chat/threads/:rideId/messages')
+  @RequirePermission('chat.send')
+  sendChatMessage(
+    @CurrentUser() user: AuthUser,
+    @Param('rideId') rideId: string,
+    @Body() dto: { body: string },
+  ) {
+    return this.ops.sendChatMessage(user.id, rideId, dto.body);
+  }
+
   @Get('risk/accounts')
   @RequirePermission('risk.view')
   risk() {

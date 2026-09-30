@@ -253,6 +253,73 @@ export default function RideDetailPage() {
               {ride.viewCount != null ? ` · ${ride.viewCount} views` : ''}
             </p>
           )}
+          {ride?.startPin &&
+            ['BOOKED', 'DRIVER_EN_ROUTE', 'DRIVER_ARRIVED'].includes(
+              (ride.status || '').toUpperCase(),
+            ) && (
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: '16px 20px',
+                  backgroundColor: '#ffffff',
+                  border: '1.5px solid rgba(229, 0, 0, 0.35)',
+                  borderRadius: 14,
+                  boxShadow: '0 4px 12px rgba(229, 0, 0, 0.08)',
+                  textAlign: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: '#e50000',
+                    letterSpacing: 1.2,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Ride Start PIN
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    gap: 10,
+                    margin: '12px 0 10px',
+                  }}
+                >
+                  {ride.startPin.split('').map((digit, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 44,
+                        height: 52,
+                        backgroundColor: '#f7f7f8',
+                        border: '1.5px solid #e6e6e6',
+                        borderRadius: 10,
+                        fontSize: 26,
+                        fontWeight: 900,
+                        color: '#1a1a1a',
+                      }}
+                    >
+                      {digit}
+                    </span>
+                  ))}
+                </div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    color: '#5c5c5c',
+                    fontWeight: 500,
+                  }}
+                >
+                  Share this PIN with your driver to start your ride
+                </p>
+              </div>
+            )}
           {error && <div className="error-banner">{error}</div>}
           {waiting && (
             <p className="muted">

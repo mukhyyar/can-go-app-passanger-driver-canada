@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -73,5 +74,25 @@ export class TrackingController {
   @UseGuards(JwtAuthGuard)
   rideTracking(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.tracking.getRideTracking(user.id, id);
+  }
+
+  /** Generate or retrieve trip share link (Passenger only) */
+  @Post('rides/:id/share-link')
+  @UseGuards(JwtAuthGuard)
+  createShareLink(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tracking.createOrGetShareLink(user.id, id);
+  }
+
+  /** Revoke active trip share link (Passenger only) */
+  @Delete('rides/:id/share-link')
+  @UseGuards(JwtAuthGuard)
+  revokeShareLink(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tracking.revokeShareLink(user.id, id);
+  }
+
+  /** Public endpoint: Follow live trip using secure share token (No auth required) */
+  @Get('rides/shared/:token')
+  publicSharedTrip(@Param('token') token: string) {
+    return this.tracking.getPublicSharedTrip(token);
   }
 }

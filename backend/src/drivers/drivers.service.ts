@@ -48,6 +48,8 @@ type PayoutSettings = {
   reviewNote?: string | null;
 };
 
+export { getDefaultSeatingCapacity } from './seating-capacity.util';
+
 @Injectable()
 export class DriversService {
   constructor(
@@ -754,7 +756,9 @@ export class DriversService {
           vehicleClass: dto.vehicleClass.trim(),
           color: dto.color?.trim() ?? '',
           year: dto.year ?? null,
-          passengerSeats: dto.passengerSeats ?? null,
+          passengerSeats:
+            dto.passengerSeats ??
+            getDefaultSeatingCapacity(dto.vehicleClass),
           luggagePlaces: dto.luggagePlaces ?? null,
           amenitiesJson: (dto.amenities ?? {}) as Prisma.InputJsonValue,
           autocancelBefore: dto.autocancelBefore ?? 10,

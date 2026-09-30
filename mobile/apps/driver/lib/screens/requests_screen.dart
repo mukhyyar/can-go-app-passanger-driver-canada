@@ -35,13 +35,16 @@ class _RequestsScreenState extends State<RequestsScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = context.read<AppState>();
       app.refreshOpenRequests();
+      app.refreshMyRides();
       app.startMarketplaceRealtime();
       _maybeShowAlert(app);
     });
     // Fallback if socket is down — keep dashboard fresh without manual refresh.
     _poll = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
-      context.read<AppState>().refreshOpenRequests();
+      final app = context.read<AppState>();
+      app.refreshOpenRequests();
+      app.refreshMyRides();
     });
   }
 
@@ -62,6 +65,7 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   void _maybeShowAlert(AppState app) {
+    if (app.isOffline) return;
     final alert = app.pendingRequestAlert;
     if (alert == null || alert.isEmpty || alert == _shownAlert) return;
     _shownAlert = alert;
@@ -97,51 +101,182 @@ class _RequestsScreenState extends State<RequestsScreen>
     );
   }
 
+  bool _isTogglingDrivingMode = false;
+
+  Future<void> _showProfileOnHoldDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Profile On Hold'),
+        content: const Text(
+          'Your driver profile is currently on hold while your documents are under review by our admin team. You cannot submit offers to passengers until verified.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK', style: TextStyle(color: GtColors.brand)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
+            onPressed: () {
+              Navigator.pop(context);
+              context.push('/onboarding/documents');
+            },
+            child: const Text('View Documents'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showExpiredDocsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Documents Expired'),
+        content: const Text(
+          'One or more of your documents have expired. Please re-upload updated documents to go online.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: GtColors.textSecondary)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
+            onPressed: () {
+              Navigator.pop(context);
+              context.push('/onboarding/documents');
+            },
+            child: const Text('View Documents'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showReuploadDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Document Review Required'),
+        content: const Text(
+          'Our admin team requested you to re-upload documents. Please update your documents to go online.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: GtColors.textSecondary)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
+            onPressed: () {
+              Navigator.pop(context);
+              context.push('/onboarding/documents');
+            },
+            child: const Text('View Documents'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showNotActivatedDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: const Text(
+          'You will be able to offer your price after activation. Please, fill in your profile and contact us: partner@can-go.ca',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK', style: TextStyle(color: GtColors.brand)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleToggleOnline(AppState s, bool targetOnline) async {
+    if (_isTogglingDrivingMode) return;
+    if (targetOnline) {
+      if (s.hasExpiredDocuments) {
+        await _showExpiredDocsDialog();
+        return;
+      }
+      if (s.isProfileOnHold) {
+        await _showProfileOnHoldDialog();
+        return;
+      }
+      if (s.hasReuploadRequest) {
+        await _showReuploadDialog();
+        return;
+      }
+      if (!s.isActivated) {
+        await _showNotActivatedDialog();
+        return;
+      }
+    }
+
+    setState(() => _isTogglingDrivingMode = true);
+    try {
+      await s.setDrivingMode(targetOnline);
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: targetOnline ? GtColors.green : Colors.grey.shade800,
+            content: Text(
+              targetOnline
+                  ? "You're now online and ready to receive requests."
+                  : "You're now offline. Requests and alerts are paused.",
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              e.toString().replaceFirst('ApiException: ', '').replaceFirst('Exception: ', ''),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTogglingDrivingMode = false);
+      }
+    }
+  }
+
   Future<void> _openRequest(DriverRequest req) async {
     final s = context.read<AppState>();
     if (s.isProfileOnHold) {
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Profile On Hold'),
-          content: const Text(
-            'Your driver profile is currently on hold while your documents are under review by our admin team. You cannot submit offers to passengers until verified.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK', style: TextStyle(color: GtColors.brand)),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
-              onPressed: () {
-                Navigator.pop(context);
-                context.push('/onboarding/documents');
-              },
-              child: const Text('View Documents'),
-            ),
-          ],
-        ),
-      );
+      await _showProfileOnHoldDialog();
       return;
     }
     if (!s.isActivated) {
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: const Text(
-            'You will be able to offer your price after activation. Please, fill in your profile and contact us: partner@can-go.ca',
+      await _showNotActivatedDialog();
+      return;
+    }
+    if (s.isOffline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'You are offline. Turn on the switch below to go online and view requests.',
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK', style: TextStyle(color: GtColors.brand)),
-            ),
-          ],
+          duration: Duration(seconds: 2),
         ),
       );
       return;
@@ -162,10 +297,229 @@ class _RequestsScreenState extends State<RequestsScreen>
         ? s.openRequests.where((r) => r.hasOffer).toList()
         : s.repo.myOffers;
 
+    final Widget mainContent = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: DriverBrandHeader(
+            subtitle: s.hasExpiredDocuments
+                ? 'Documents expired — account disabled'
+                : (s.hasReuploadRequest
+                    ? 'Document re-upload requested'
+                    : (s.isProfileOnHold
+                        ? 'Profile on hold — review in progress'
+                        : (s.isActivated ? null : 'Complete activation to offer prices'))),
+          ),
+        ),
+        if (s.hasExpiredDocuments)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: InkWell(
+              onTap: () => context.push('/onboarding/documents'),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  border: Border.all(color: Colors.red.shade200),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red.shade800, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Documents expired. Tap to re-upload and re-activate.',
+                        style: TextStyle(
+                          color: Colors.red.shade900,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: Colors.red.shade800, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (s.hasReuploadRequest)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: InkWell(
+              onTap: () => context.push('/onboarding/documents'),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  border: Border.all(color: Colors.amber.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.assignment_late_outlined, color: Colors.amber.shade900, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Document review: Re-upload requested. Tap to view and re-upload.',
+                        style: TextStyle(
+                          color: Colors.amber.shade900,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: Colors.amber.shade900, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (s.isProfileOnHold)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: InkWell(
+              onTap: () => context.push('/onboarding/documents'),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  border: Border.all(color: Colors.amber.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.pause_circle_outline, color: Colors.amber.shade900, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Profile on hold: Document under review. Offers are paused until verified.',
+                        style: TextStyle(
+                          color: Colors.amber.shade900,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: Colors.amber.shade900, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (s.isOffline)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5E7EB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFD1D5DB)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.cloud_off_rounded, color: Colors.grey.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'You are offline. Turn on the switch below to receive requests.',
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              DriverStatChip(
+                icon: Icons.alt_route,
+                label: 'New',
+                value: '${newReqs.length}',
+              ),
+              const SizedBox(width: 8),
+              DriverStatChip(
+                icon: Icons.local_offer_outlined,
+                label: 'My offers',
+                value: '${offers.length}',
+              ),
+              const SizedBox(width: 8),
+              DriverStatChip(
+                icon: Icons.verified_outlined,
+                label: 'Status',
+                value: s.hasExpiredDocuments
+                    ? 'Disabled'
+                    : (s.hasReuploadRequest
+                        ? 'Action req.'
+                        : (s.drivingEnabled ? 'Online' : 'Offline')),
+                valueColor: s.hasExpiredDocuments
+                    ? Colors.red.shade700
+                    : (s.hasReuploadRequest
+                        ? Colors.amber.shade900
+                        : (s.drivingEnabled
+                            ? GtColors.green
+                            : GtColors.textMuted)),
+                onTap: (!s.isActivated || s.hasExpiredDocuments || s.hasReuploadRequest)
+                    ? null
+                    : () => _handleToggleOnline(s, !s.drivingEnabled),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: GtColors.border),
+            ),
+            child: Row(
+              children: [
+                _Segment(
+                  label: 'New',
+                  selected: _tabs.index == 0,
+                  onTap: () => _tabs.animateTo(0),
+                ),
+                _Segment(
+                  label: 'With my offers',
+                  selected: _tabs.index == 1,
+                  onTap: () => _tabs.animateTo(1),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: [
+              _list(newReqs, empty: 'No new requests right now', isOffline: s.isOffline),
+              _list(offers, empty: 'No offers yet', showPrice: true, isOffline: s.isOffline),
+            ],
+          ),
+        ),
+      ],
+    );
+
     return Scaffold(
-      backgroundColor: GtColors.bgGrey,
+      backgroundColor: s.isOffline ? const Color(0xFFF1F2F4) : GtColors.bgGrey,
       floatingActionButton: FloatingActionButton(
-        backgroundColor: GtColors.brand,
+        backgroundColor: s.isOffline ? Colors.grey.shade600 : GtColors.brand,
         onPressed: () {
           if (_scroll.hasClients) {
             _scroll.animateTo(
@@ -178,209 +532,27 @@ class _RequestsScreenState extends State<RequestsScreen>
         child: const Icon(Icons.arrow_upward, color: Colors.white),
       ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: DriverBrandHeader(
-                subtitle: s.hasExpiredDocuments
-                    ? 'Documents expired — account disabled'
-                    : (s.hasReuploadRequest
-                        ? 'Document re-upload requested'
-                        : (s.isProfileOnHold
-                            ? 'Profile on hold — review in progress'
-                            : (s.isActivated ? null : 'Complete activation to offer prices'))),
-              ),
-            ),
-            if (s.hasExpiredDocuments)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: InkWell(
-                  onTap: () => context.push('/onboarding/documents'),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      border: Border.all(color: Colors.red.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.error_outline, color: Colors.red.shade800, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Documents expired. Tap to re-upload and re-activate.',
-                            style: TextStyle(
-                              color: Colors.red.shade900,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Icon(Icons.chevron_right, color: Colors.red.shade800, size: 18),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            else if (s.hasReuploadRequest)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: InkWell(
-                  onTap: () => context.push('/onboarding/documents'),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      border: Border.all(color: Colors.amber.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.assignment_late_outlined, color: Colors.amber.shade900, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Document review: Re-upload requested. Tap to view and re-upload.',
-                            style: TextStyle(
-                              color: Colors.amber.shade900,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Icon(Icons.chevron_right, color: Colors.amber.shade900, size: 18),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-            else if (s.isProfileOnHold)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: InkWell(
-                  onTap: () => context.push('/onboarding/documents'),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      border: Border.all(color: Colors.amber.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.pause_circle_outline, color: Colors.amber.shade900, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Profile on hold: Document under review. Offers are paused until verified.',
-                            style: TextStyle(
-                              color: Colors.amber.shade900,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Icon(Icons.chevron_right, color: Colors.amber.shade900, size: 18),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  DriverStatChip(
-                    icon: Icons.alt_route,
-                    label: 'New',
-                    value: '${newReqs.length}',
-                  ),
-                  const SizedBox(width: 8),
-                  DriverStatChip(
-                    icon: Icons.local_offer_outlined,
-                    label: 'My offers',
-                    value: '${offers.length}',
-                  ),
-                  const SizedBox(width: 8),
-                  DriverStatChip(
-                    icon: Icons.verified_outlined,
-                    label: 'Status',
-                    value: s.hasExpiredDocuments
-                        ? 'Disabled'
-                        : (s.hasReuploadRequest
-                            ? 'Action req.'
-                            : (s.drivingEnabled ? 'On' : 'Off')),
-                    valueColor: s.hasExpiredDocuments
-                        ? Colors.red.shade700
-                        : (s.hasReuploadRequest
-                            ? Colors.amber.shade900
-                            : (s.drivingEnabled
-                                ? GtColors.green
-                                : GtColors.textMuted)),
-                    onTap: (!s.isActivated || s.hasExpiredDocuments || s.hasReuploadRequest)
-                        ? null
-                        : () async {
-                            try {
-                              await s.setDrivingMode(!s.drivingEnabled);
-                            } catch (e) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    e.toString().replaceFirst(
-                                          'ApiException: ',
-                                          '',
-                                        ),
-                                  ),
-                                ),
-                              );
-                            }
-                          },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: GtColors.border),
-                ),
-                child: Row(
-                  children: [
-                    _Segment(
-                      label: 'New',
-                      selected: _tabs.index == 0,
-                      onTap: () => _tabs.animateTo(0),
-                    ),
-                    _Segment(
-                      label: 'With my offers',
-                      selected: _tabs.index == 1,
-                      onTap: () => _tabs.animateTo(1),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
             Expanded(
-              child: TabBarView(
-                controller: _tabs,
-                children: [
-                  _list(newReqs, empty: 'No new requests right now'),
-                  _list(offers, empty: 'No offers yet', showPrice: true),
-                ],
-              ),
+              child: s.isOffline
+                  ? ColorFiltered(
+                      colorFilter: const ColorFilter.matrix(<double>[
+                        0.2126, 0.7152, 0.0722, 0, 0,
+                        0.2126, 0.7152, 0.0722, 0, 0,
+                        0.2126, 0.7152, 0.0722, 0, 0,
+                        0,      0,      0,      1, 0,
+                      ]),
+                      child: mainContent,
+                    )
+                  : mainContent,
+            ),
+            _OnlineOfflineSwitchBar(
+              key: const ValueKey('online_offline_switch_bar'),
+              isOnline: s.isOnline,
+              isLoading: _isTogglingDrivingMode,
+              onToggle: () => _handleToggleOnline(s, !s.isOnline),
             ),
           ],
         ),
@@ -392,11 +564,21 @@ class _RequestsScreenState extends State<RequestsScreen>
     List<DriverRequest> items, {
     required String empty,
     bool showPrice = false,
+    bool isOffline = false,
   }) {
     if (items.isEmpty) {
+      final emptyText = isOffline
+          ? 'You are offline\nSwitch on below to view live requests'
+          : empty;
       return RefreshIndicator(
         color: GtColors.brand,
-        onRefresh: () => context.read<AppState>().refreshOpenRequests(),
+        onRefresh: () async {
+          final app = context.read<AppState>();
+          await Future.wait([
+            app.refreshOpenRequests(),
+            app.refreshMyRides(),
+          ]);
+        },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
@@ -412,24 +594,26 @@ class _RequestsScreenState extends State<RequestsScreen>
                         width: 72,
                         height: 72,
                         decoration: BoxDecoration(
-                          color: GtColors.soft,
+                          color: isOffline ? Colors.grey.shade200 : GtColors.soft,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: GtColors.brand.withValues(alpha: 0.16),
+                            color: isOffline
+                                ? Colors.grey.shade400
+                                : GtColors.brand.withValues(alpha: 0.16),
                           ),
                         ),
-                        child: const Icon(
-                          Icons.inbox_outlined,
-                          color: GtColors.brand,
+                        child: Icon(
+                          isOffline ? Icons.cloud_off_rounded : Icons.inbox_outlined,
+                          color: isOffline ? Colors.grey.shade600 : GtColors.brand,
                           size: 32,
                         ),
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        empty,
+                        emptyText,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: GtColors.textSecondary,
+                        style: TextStyle(
+                          color: isOffline ? Colors.grey.shade700 : GtColors.textSecondary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -444,7 +628,13 @@ class _RequestsScreenState extends State<RequestsScreen>
     }
     return RefreshIndicator(
       color: GtColors.brand,
-      onRefresh: () => context.read<AppState>().refreshOpenRequests(),
+      onRefresh: () async {
+        final app = context.read<AppState>();
+        await Future.wait([
+          app.refreshOpenRequests(),
+          app.refreshMyRides(),
+        ]);
+      },
       child: ListView.builder(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -708,10 +898,10 @@ class _RequestCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Customer: ${MoneyFormat.formatFlexible(request.offerPrice! * 1.44, request.currency)}',
+                      'You receive: ${MoneyFormat.formatFlexible(request.offerPrice! * 0.80, request.currency)}',
                       style: const TextStyle(
-                        color: GtColors.textSecondary,
-                        fontWeight: FontWeight.w600,
+                        color: GtColors.green,
+                        fontWeight: FontWeight.w700,
                         fontSize: 12,
                       ),
                     ),
@@ -954,3 +1144,154 @@ class _MetaChip extends StatelessWidget {
     );
   }
 }
+
+class _OnlineOfflineSwitchBar extends StatelessWidget {
+  const _OnlineOfflineSwitchBar({
+    super.key,
+    required this.isOnline,
+    required this.isLoading,
+    required this.onToggle,
+  });
+
+  final bool isOnline;
+  final bool isLoading;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.07),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
+        border: Border(
+          top: BorderSide(
+            color: isOnline
+                ? GtColors.green.withValues(alpha: 0.3)
+                : GtColors.border,
+            width: 1,
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Material(
+        color: isOnline ? const Color(0xFFF0FDF4) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          key: const ValueKey('online_offline_bar_tap'),
+          onTap: isLoading ? null : onToggle,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isOnline
+                    ? GtColors.green.withValues(alpha: 0.4)
+                    : Colors.grey.shade300,
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: isOnline
+                        ? GtColors.green.withValues(alpha: 0.15)
+                        : Colors.grey.shade300,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isOnline
+                        ? Icons.sensors_rounded
+                        : Icons.sensors_off_rounded,
+                    color: isOnline ? GtColors.green : Colors.grey.shade600,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            isOnline ? "YOU'RE ONLINE" : "YOU'RE OFFLINE",
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                              color: isOnline
+                                  ? const Color(0xFF15803D)
+                                  : Colors.grey.shade800,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: isOnline
+                                  ? GtColors.green
+                                  : Colors.grey.shade500,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isOnline
+                            ? 'Ready to receive ride requests'
+                            : 'Go online to receive requests',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isOnline
+                              ? const Color(0xFF166534)
+                              : Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isLoading)
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: GtColors.brand,
+                    ),
+                  )
+                else
+                  IgnorePointer(
+                    ignoring: true,
+                    child: Switch.adaptive(
+                      key: const ValueKey('online_offline_switch'),
+                      value: isOnline,
+                      activeThumbColor: GtColors.green,
+                      activeTrackColor: GtColors.green.withValues(alpha: 0.35),
+                      inactiveThumbColor: Colors.grey.shade400,
+                      inactiveTrackColor: Colors.grey.shade200,
+                      onChanged: null,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

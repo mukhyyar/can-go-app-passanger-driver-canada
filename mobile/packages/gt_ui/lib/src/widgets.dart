@@ -93,21 +93,23 @@ class GtCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final box = Container(
-      width: double.infinity,
-      padding: padding ?? const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    final card = Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: GtColors.border),
+        side: const BorderSide(color: GtColors.border),
       ),
-      child: child,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: padding ?? const EdgeInsets.all(14),
+        child: child,
+      ),
     );
-    if (onTap == null) return box;
+    if (onTap == null) return card;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
-      child: box,
+      child: card,
     );
   }
 }
@@ -592,12 +594,12 @@ class GtVehicleChips extends StatelessWidget {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return trimmed;
     final lower = trimmed.toLowerCase();
-    if (lower == 'suv') return 'SUV';
+    if (lower == 'suv' || lower == 'black suv' || lower == 'black_suv') return 'Black SUV';
     if (lower == 'vip') return 'VIP';
     final words = trimmed.replaceAll('_', ' ').split(' ');
     return words.map((w) {
       if (w.isEmpty) return w;
-      if (w.toLowerCase() == 'suv') return 'SUV';
+      if (w.toLowerCase() == 'suv') return 'Black SUV';
       if (w.toLowerCase() == 'vip') return 'VIP';
       return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
     }).join(' ');

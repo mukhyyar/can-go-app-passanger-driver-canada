@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
@@ -36,16 +38,26 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   final NoteTranslationService _translator = PassthroughNoteTranslation();
   String? _translatedNote;
   bool _translating = false;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _draft = OfferDraft();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      try {
+        context.read<AppState>().subscribeRide(widget.requestId);
+      } catch (_) {}
+    });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _loadQuietly();
+    });
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _outCtrl.dispose();
     _retCtrl.dispose();
     super.dispose();
@@ -61,6 +73,23 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       final detail = await s.loadRequestDetail(widget.requestId);
       final vehicles = await s.loadDriverVehicles();
       if (!mounted) return;
+
+      final statusUpper = (detail.status ?? '').toUpperCase();
+      final myOfferStatusUpper = (detail.myOffer?.status ?? '').toUpperCase();
+      final isMyOfferAccepted = myOfferStatusUpper == 'SELECTED' ||
+          myOfferStatusUpper == 'ACCEPTED' ||
+          s.myRides.any((r) => r.id == widget.requestId);
+      final isBooked = statusUpper == 'BOOKED' ||
+          statusUpper == 'IN_PROGRESS' ||
+          statusUpper == 'DRIVER_EN_ROUTE' ||
+          statusUpper == 'DRIVER_ARRIVED' ||
+          statusUpper == 'TRIP_STARTED';
+
+      if (isBooked && isMyOfferAccepted) {
+        context.go('/trip/${widget.requestId}');
+        return;
+      }
+
       setState(() {
         _request = detail;
         _vehicles = vehicles;
@@ -115,6 +144,38 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         _error = e.toString();
       });
     }
+  }
+
+  Future<void> _loadQuietly() async {
+    if (!mounted || _loading || _submitting || _withdrawing) return;
+    try {
+      final s = context.read<AppState>();
+      final detail = await s.loadRequestDetail(widget.requestId);
+      if (!mounted) return;
+
+      final statusUpper = (detail.status ?? '').toUpperCase();
+      final myOfferStatusUpper = (detail.myOffer?.status ?? '').toUpperCase();
+      final isMyOfferAccepted = myOfferStatusUpper == 'SELECTED' ||
+          myOfferStatusUpper == 'ACCEPTED' ||
+          s.myRides.any((r) => r.id == widget.requestId);
+      final isBooked = statusUpper == 'BOOKED' ||
+          statusUpper == 'IN_PROGRESS' ||
+          statusUpper == 'DRIVER_EN_ROUTE' ||
+          statusUpper == 'DRIVER_ARRIVED' ||
+          statusUpper == 'TRIP_STARTED';
+
+      if (isBooked && isMyOfferAccepted) {
+        context.go('/trip/${widget.requestId}');
+        return;
+      }
+
+      if (_request?.status != detail.status ||
+          _request?.myOffer?.status != detail.myOffer?.status) {
+        setState(() {
+          _request = detail;
+        });
+      }
+    } catch (_) {}
   }
 
   void _persistDraft() {
@@ -244,8 +305,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           ),
         ),
       );
-      if (submitted == true) {
-        await _load();
+      if (submitted == true && mounted) {
+        context.go('/');
+        return;
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -366,13 +428,44 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         statusUpper == 'EXPIRED' || offerStatusUpper == 'EXPIRED';
     final isClosed = isCompleted || isCancelled || isExpired;
 
+    final isMyOfferAccepted = offerStatusUpper == 'SELECTED' ||
+        offerStatusUpper == 'ACCEPTED' ||
+        s.myRides.any((r) => r.id == req.id);
+    final isBooked = statusUpper == 'BOOKED' ||
+        statusUpper == 'IN_PROGRESS' ||
+        statusUpper == 'DRIVER_EN_ROUTE' ||
+        statusUpper == 'DRIVER_ARRIVED' ||
+        statusUpper == 'TRIP_STARTED';
+    final isPaymentPending = statusUpper == 'PAYMENT_PENDING';
+
+    if (isBooked && isMyOfferAccepted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/trip/${req.id}');
+      });
+    }
+
     final selectedRoute = (_selectedRouteIndex >= 0 &&
             _selectedRouteIndex < _availableRoutes.length)
         ? _availableRoutes[_selectedRouteIndex]
         : null;
-    final currentDistanceLabel = selectedRoute != null
-        ? '${selectedRoute.distanceKm} km · ${selectedRoute.durationMin} min'
-        : '${req.distance} · ${req.duration}';
+    final String currentDistanceLabel;
+    if (selectedRoute != null) {
+      final km = selectedRoute.distanceKm;
+      final kmStr = km == km.roundToDouble()
+          ? '${km.round()} km'
+          : '${km.toStringAsFixed(1)} km';
+      final mins = selectedRoute.durationMin;
+      final durStr = mins >= 60
+          ? '~ ${mins ~/ 60} h ${mins % 60} min'
+          : '~ $mins min';
+      if (req.isRoundTrip) {
+        currentDistanceLabel = '$kmStr × 2 · $durStr × 2';
+      } else {
+        currentDistanceLabel = '$kmStr · $durStr';
+      }
+    } else {
+      currentDistanceLabel = '${req.distance} · ${req.duration}';
+    }
 
     if (_mapFullscreen && req.fromLat != null && req.fromLng != null) {
       return Scaffold(
@@ -447,7 +540,10 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       ],
                     ),
                   ),
-                  if (req.myOffer == null && !isClosed)
+                  if (req.myOffer == null &&
+                      !isClosed &&
+                      !isBooked &&
+                      !isPaymentPending)
                     Material(
                       color: GtColors.brand,
                       borderRadius: BorderRadius.circular(10),
@@ -479,12 +575,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                children: [
+              child: RefreshIndicator(
+                color: GtColors.brand,
+                onRefresh: _load,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
                   _TripSchedule(request: req),
                   const SizedBox(height: 14),
-                  _RouteBlock(request: req),
+                  _RouteBlock(
+                    request: req,
+                    selectedRoute: selectedRoute,
+                  ),
                   const SizedBox(height: 16),
                   const Text(
                     'Passenger information',
@@ -629,15 +732,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                         style: TextStyle(color: GtColors.textSecondary),
                       ),
                     ),
-                  if (hasActiveOffer) ...[
+                  if (hasActiveOffer && !isBooked && !isPaymentPending) ...[
                     const SizedBox(height: 16),
                     Builder(
                       builder: (_) {
                         final myOffer = req.myOffer!;
                         final offered = myOffer.bidAmount;
-                        final ridePrice = ((offered * 1.20) * 100).roundToDouble() / 100.0;
-                        final fee = ((ridePrice * 0.20) * 100).roundToDouble() / 100.0;
-                        final totalCust = ((ridePrice + fee) * 100).roundToDouble() / 100.0;
+                        final fee = ((offered * 0.20) * 100).roundToDouble() / 100.0;
+                        final driverReceives = ((offered - fee) * 100).roundToDouble() / 100.0;
 
                         return Container(
                           padding: const EdgeInsets.all(16),
@@ -702,19 +804,212 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                               const SizedBox(height: 12),
                               _offerCostRow('Your offered fare', offered, currency),
                               const SizedBox(height: 4),
-                              _offerCostRow('Platform fee (paid by passenger)', fee, currency),
+                              _offerCostRow(
+                                'Marketplace fee (20%)',
+                                -fee,
+                                currency,
+                                subtitle: 'Deducted from your offer',
+                              ),
                               const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 6),
                                 child: Divider(height: 1),
                               ),
-                              _offerCostRow('Total for customer', totalCust, currency, isTotal: true),
+                              _offerCostRow(
+                                'YOU WILL RECEIVE',
+                                driverReceives,
+                                currency,
+                                isTotal: true,
+                                totalColor: GtColors.green,
+                              ),
                             ],
                           ),
                         );
                       },
                     ),
                   ],
-                  if (!isClosed) ...[
+                  if (isBooked) ...[
+                    const SizedBox(height: 16),
+                    if (isMyOfferAccepted) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: GtColors.green, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: GtColors.green.withValues(alpha: 0.12),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: GtColors.green,
+                              size: 52,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Ride Booked & Payment Received!',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: GtColors.text,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'The passenger has completed payment and confirmed your offer. Tap below to view your scheduled trip.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: GtColors.textSecondary,
+                                height: 1.4,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            GtGreenButton(
+                              label: 'View Trip Details',
+                              onPressed: () => context.go('/trip/${req.id}'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: GtColors.border),
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              color: GtColors.textSecondary,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Ride No Longer Available',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: GtColors.text,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Another offer was selected and booked by the passenger for this ride.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: GtColors.textSecondary,
+                                height: 1.4,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            GtGreenButton(
+                              label: 'Back to Dashboard',
+                              onPressed: () => context.go('/'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ] else if (isPaymentPending) ...[
+                    const SizedBox(height: 16),
+                    if (offerStatusUpper == 'SELECTED') ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF9E6),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFFE6B800),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Column(
+                          children: [
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: Color(0xFFE6B800),
+                              ),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Offer Accepted — Payment Pending',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF6B5000),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'The passenger has selected your offer and is completing payment. This screen will update automatically as soon as payment is confirmed.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF8A6D00),
+                                height: 1.35,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: GtColors.border),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.hourglass_empty_rounded,
+                              color: GtColors.textSecondary,
+                              size: 40,
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'Payment in Progress',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              'The passenger is currently completing payment on another offer.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: GtColors.textSecondary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ] else if (!isClosed) ...[
                     const SizedBox(height: 16),
                     if (s.isProfileOnHold) ...[
                       Container(
@@ -917,7 +1212,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 ],
               ),
             ),
-          ],
+          ),
+        ],
         ),
       ),
     );
@@ -943,27 +1239,51 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     double amount,
     String currency, {
     bool isTotal = false,
+    String? subtitle,
+    Color? totalColor,
   }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isTotal ? 15 : 13,
-            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
-            color: isTotal ? GtColors.text : GtColors.textSecondary,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: isTotal ? 15 : 13,
+                    fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
+                    color: isTotal ? (totalColor ?? GtColors.text) : GtColors.textSecondary,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: GtColors.textMuted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
-        Text(
-          MoneyFormat.formatFlexible(amount, currency),
-          style: TextStyle(
-            fontSize: isTotal ? 16 : 13,
-            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w700,
-            color: isTotal ? GtColors.brand : GtColors.text,
+          Text(
+            MoneyFormat.formatFlexible(amount, currency),
+            style: TextStyle(
+              fontSize: isTotal ? 16 : 13,
+              fontWeight: isTotal ? FontWeight.w800 : FontWeight.w700,
+              color: isTotal
+                  ? (totalColor ?? GtColors.green)
+                  : (amount < 0 ? GtColors.textSecondary : GtColors.text),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1059,11 +1379,41 @@ class _WaitChip extends StatelessWidget {
 }
 
 class _RouteBlock extends StatelessWidget {
-  const _RouteBlock({required this.request});
+  const _RouteBlock({
+    required this.request,
+    this.selectedRoute,
+  });
   final DriverRequest request;
+  final GtRouteOption? selectedRoute;
 
   @override
   Widget build(BuildContext context) {
+    final routeDist = selectedRoute != null
+        ? (selectedRoute!.distanceKm == selectedRoute!.distanceKm.roundToDouble()
+            ? '${selectedRoute!.distanceKm.round()} km'
+            : '${selectedRoute!.distanceKm.toStringAsFixed(1)} km')
+        : null;
+    final routeDur = selectedRoute != null
+        ? (selectedRoute!.durationMin >= 60
+            ? '~ ${selectedRoute!.durationMin ~/ 60} h ${selectedRoute!.durationMin % 60} min'
+            : '~ ${selectedRoute!.durationMin} min')
+        : null;
+
+    final rawDistance = routeDist ?? request.distance;
+    final rawDuration = routeDur ?? request.duration;
+
+    final distanceLabel = (rawDistance.isNotEmpty && rawDistance != '—')
+        ? (request.isRoundTrip
+            ? (rawDistance.contains('×') ? rawDistance : '$rawDistance × 2')
+            : rawDistance)
+        : null;
+
+    final durationLabel = (rawDuration.isNotEmpty && rawDuration != '—')
+        ? (request.isRoundTrip
+            ? (rawDuration.contains('×') ? rawDuration : '$rawDuration × 2')
+            : rawDuration)
+        : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1171,22 +1521,14 @@ class _RouteBlock extends StatelessWidget {
                 textColor: const Color(0xFF6B5000),
                 borderColor: const Color(0xFFE6B800),
               ),
-            if (request.distance.isNotEmpty && request.distance != '—')
+            if (distanceLabel != null)
               _Chip(
-                label: request.isRoundTrip
-                    ? (request.distance.contains('×')
-                        ? request.distance
-                        : '${request.distance} × 2')
-                    : request.distance,
+                label: distanceLabel,
                 icon: Icons.straighten_rounded,
               ),
-            if (request.duration.isNotEmpty && request.duration != '—')
+            if (durationLabel != null)
               _Chip(
-                label: request.isRoundTrip
-                    ? (request.duration.contains('×')
-                        ? request.duration
-                        : '${request.duration} × 2')
-                    : request.duration,
+                label: durationLabel,
                 icon: Icons.schedule_rounded,
               ),
           ],

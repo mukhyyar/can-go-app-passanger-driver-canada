@@ -3,12 +3,15 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsISO8601,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   Matches,
+  Max,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -190,7 +193,9 @@ export class CreateVehicleDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(60)
   passengerSeats?: number;
 
   @IsOptional()
@@ -248,7 +253,9 @@ export class UpdateVehicleDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(60)
   passengerSeats?: number | null;
 
   @IsOptional()

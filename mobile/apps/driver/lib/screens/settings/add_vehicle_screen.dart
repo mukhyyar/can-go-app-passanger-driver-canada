@@ -167,7 +167,10 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                     ),
                     VehicleClassPicker(
                       value: _class,
-                      onChanged: (v) => setState(() => _class = v),
+                      onChanged: (v) => setState(() {
+                        _class = v;
+                        _seats = defaultSeatsForClass(v);
+                      }),
                     ),
                     const SizedBox(height: 20),
                     const VehicleSectionHeader('Identity'),

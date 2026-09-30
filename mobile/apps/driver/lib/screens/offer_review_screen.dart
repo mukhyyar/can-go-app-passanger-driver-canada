@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
@@ -31,14 +32,11 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
 
   double get _offeredFare => widget.draft.totalPrice;
 
-  double get _customerRidePrice =>
-      ((_offeredFare * 1.20) * 100).roundToDouble() / 100.0;
-
   double get _platformFee =>
-      ((_customerRidePrice * 0.20) * 100).roundToDouble() / 100.0;
+      ((_offeredFare * 0.20) * 100).roundToDouble() / 100.0;
 
-  double get _customerTotal =>
-      ((_customerRidePrice + _platformFee) * 100).roundToDouble() / 100.0;
+  double get _driverReceives =>
+      ((_offeredFare - _platformFee) * 100).roundToDouble() / 100.0;
 
   Future<void> _submit() async {
     if (_submitting) return;
@@ -52,10 +50,70 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
             widget.draft,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offer sent to customer')),
+      setState(() => _submitting = false);
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE8F5E9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  color: GtColors.green,
+                  size: 38,
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Offer Sent',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: GtColors.text,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Your offer has been successfully sent to the passenger.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: GtColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                child: GtGreenButton(
+                  label: 'OK',
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
-      Navigator.of(context).pop(true);
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      }
+      if (mounted) {
+        context.go('/');
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -73,6 +131,7 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
     double amount, {
     bool isTotal = false,
     String? subtitle,
+    Color? totalColor,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -88,7 +147,7 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
                   style: TextStyle(
                     fontSize: isTotal ? 16 : 14,
                     fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
-                    color: isTotal ? GtColors.text : GtColors.textSecondary,
+                    color: isTotal ? (totalColor ?? GtColors.text) : GtColors.textSecondary,
                   ),
                 ),
                 if (subtitle != null) ...[
@@ -109,7 +168,9 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
             style: TextStyle(
               fontSize: isTotal ? 18 : 14,
               fontWeight: isTotal ? FontWeight.w900 : FontWeight.w700,
-              color: isTotal ? GtColors.brand : GtColors.text,
+              color: isTotal
+                  ? (totalColor ?? GtColors.green)
+                  : (amount < 0 ? GtColors.textSecondary : GtColors.text),
             ),
           ),
         ],
@@ -309,15 +370,20 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
                 ],
                 _costRow('Your offered fare', _offeredFare),
                 const SizedBox(height: 4),
-                _costRow('Platform fee (paid by passenger)', _platformFee),
+                _costRow(
+                  'Marketplace fee (20%)',
+                  -_platformFee,
+                  subtitle: 'Deducted from your offer',
+                ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
                   child: Divider(height: 1),
                 ),
                 _costRow(
-                  'Total customer fare',
-                  _customerTotal,
+                  'YOU WILL RECEIVE',
+                  _driverReceives,
                   isTotal: true,
+                  totalColor: GtColors.green,
                 ),
               ],
             ),

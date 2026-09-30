@@ -46,12 +46,18 @@ class VehicleClass {
     required this.name,
     this.fromPrice,
     this.imageAsset,
+    this.passengerSeats = 4,
+    this.luggagePlaces = 2,
+    this.capacityInfo,
   });
   final String id;
   final String name;
   final String? fromPrice;
   /// Path under `gt_ui` package assets, e.g. `assets/vehicles/economy.png`.
   final String? imageAsset;
+  final int passengerSeats;
+  final int luggagePlaces;
+  final String? capacityInfo;
 }
 
 class ChildSeats {
@@ -392,6 +398,12 @@ class LostItemDetails {
     this.contactPhone,
     this.itemDescription,
     this.driverNote,
+    this.photoUrl,
+    this.handoverPhotoUrl,
+    this.pickupLocation,
+    this.returnFeeAmount = 20.0,
+    this.returnFeePaid = false,
+    this.returnFeePaymentId,
     this.reportedAt,
     this.updatedAt,
   });
@@ -401,6 +413,12 @@ class LostItemDetails {
   final String? contactPhone;
   final String? itemDescription;
   final String? driverNote;
+  final String? photoUrl;
+  final String? handoverPhotoUrl;
+  final String? pickupLocation;
+  final double returnFeeAmount;
+  final bool returnFeePaid;
+  final String? returnFeePaymentId;
   final DateTime? reportedAt;
   final DateTime? updatedAt;
 
@@ -408,6 +426,38 @@ class LostItemDetails {
   bool get isFound => status.toUpperCase() == 'FOUND';
   bool get isNotFound => status.toUpperCase() == 'NOT_FOUND';
   bool get isReturned => status.toUpperCase() == 'RETURNED';
+
+  LostItemDetails copyWith({
+    String? caseId,
+    String? status,
+    String? contactPhone,
+    String? itemDescription,
+    String? driverNote,
+    String? photoUrl,
+    String? handoverPhotoUrl,
+    String? pickupLocation,
+    double? returnFeeAmount,
+    bool? returnFeePaid,
+    String? returnFeePaymentId,
+    DateTime? reportedAt,
+    DateTime? updatedAt,
+  }) {
+    return LostItemDetails(
+      caseId: caseId ?? this.caseId,
+      status: status ?? this.status,
+      contactPhone: contactPhone ?? this.contactPhone,
+      itemDescription: itemDescription ?? this.itemDescription,
+      driverNote: driverNote ?? this.driverNote,
+      photoUrl: photoUrl ?? this.photoUrl,
+      handoverPhotoUrl: handoverPhotoUrl ?? this.handoverPhotoUrl,
+      pickupLocation: pickupLocation ?? this.pickupLocation,
+      returnFeeAmount: returnFeeAmount ?? this.returnFeeAmount,
+      returnFeePaid: returnFeePaid ?? this.returnFeePaid,
+      returnFeePaymentId: returnFeePaymentId ?? this.returnFeePaymentId,
+      reportedAt: reportedAt ?? this.reportedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 
   factory LostItemDetails.fromJson(Map<String, dynamic> json) {
     DateTime? parseDate(dynamic d) {
@@ -422,6 +472,12 @@ class LostItemDetails {
       contactPhone: json['contactPhone']?.toString(),
       itemDescription: json['itemDescription']?.toString(),
       driverNote: json['driverNote']?.toString(),
+      photoUrl: json['photoUrl']?.toString(),
+      handoverPhotoUrl: json['handoverPhotoUrl']?.toString(),
+      pickupLocation: json['pickupLocation']?.toString(),
+      returnFeeAmount: (json['returnFeeAmount'] as num?)?.toDouble() ?? 20.0,
+      returnFeePaid: json['returnFeePaid'] == true,
+      returnFeePaymentId: json['returnFeePaymentId']?.toString(),
       reportedAt: parseDate(json['reportedAt']),
       updatedAt: parseDate(json['updatedAt']),
     );
@@ -433,6 +489,12 @@ class LostItemDetails {
         'contactPhone': contactPhone,
         'itemDescription': itemDescription,
         'driverNote': driverNote,
+        'photoUrl': photoUrl,
+        'handoverPhotoUrl': handoverPhotoUrl,
+        'pickupLocation': pickupLocation,
+        'returnFeeAmount': returnFeeAmount,
+        'returnFeePaid': returnFeePaid,
+        'returnFeePaymentId': returnFeePaymentId,
         'reportedAt': reportedAt?.toIso8601String(),
         'updatedAt': updatedAt?.toIso8601String(),
       };
@@ -458,7 +520,13 @@ class RideRequest {
     this.viewCount,
     this.currency = 'CAD',
     this.hasLostItemRequest = false,
+    this.hasReportedRide = false,
+    this.hasActiveSupport = false,
     this.lostItem,
+    this.startPin,
+    this.tipAmount,
+    this.shareToken,
+    this.shareUrl,
   });
 
   final String id;
@@ -480,7 +548,13 @@ class RideRequest {
   final int? viewCount;
   final String? currency;
   final bool hasLostItemRequest;
+  final bool hasReportedRide;
+  final bool hasActiveSupport;
   final LostItemDetails? lostItem;
+  String? startPin;
+  final double? tipAmount;
+  String? shareToken;
+  String? shareUrl;
 
   bool get hasReturnTrip =>
       isRoundTrip ||
@@ -673,6 +747,8 @@ class DriverOfferSummary {
   final double? driverEarning;
 
   bool get isActive => status == 'ACTIVE';
+  bool get isSelected => status == 'SELECTED';
+  bool get isAccepted => status == 'ACCEPTED' || status == 'SELECTED';
 
   factory DriverOfferSummary.fromJson(Map<String, dynamic> json) {
     double? asDouble(dynamic v) {
@@ -760,7 +836,11 @@ class DriverRequest {
     this.pickupAt,
     this.passengerName,
     this.hasLostItemRequest = false,
+    this.hasReportedRide = false,
+    this.hasActiveSupport = false,
     this.lostItem,
+    this.startPin,
+    this.tipAmount,
   });
 
   final String id;
@@ -803,7 +883,11 @@ class DriverRequest {
   /// Booked passenger display name (from API `passengerName` / `passenger.fullName`).
   final String? passengerName;
   final bool hasLostItemRequest;
+  final bool hasReportedRide;
+  final bool hasActiveSupport;
   final LostItemDetails? lostItem;
+  final String? startPin;
+  final double? tipAmount;
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
@@ -820,7 +904,10 @@ class DriverRequest {
     DateTime? pickupAt,
     String? status,
     bool? hasLostItemRequest,
+    bool? hasReportedRide,
+    bool? hasActiveSupport,
     LostItemDetails? lostItem,
+    double? tipAmount,
   }) {
     return DriverRequest(
       id: id,
@@ -861,7 +948,11 @@ class DriverRequest {
       pickupAt: pickupAt ?? this.pickupAt,
       passengerName: passengerName,
       hasLostItemRequest: hasLostItemRequest ?? this.hasLostItemRequest,
+      hasReportedRide: hasReportedRide ?? this.hasReportedRide,
+      hasActiveSupport: hasActiveSupport ?? this.hasActiveSupport,
       lostItem: lostItem ?? this.lostItem,
+      startPin: startPin,
+      tipAmount: tipAmount ?? this.tipAmount,
     );
   }
 }

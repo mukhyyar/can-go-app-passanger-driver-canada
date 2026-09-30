@@ -2,6 +2,7 @@ export type GeocodeResult = {
   label: string;
   lat: number;
   lng: number;
+  placeId?: string;
   provider: string;
 };
 
@@ -59,7 +60,7 @@ export interface MapsProvider {
   ): Promise<PlaceSuggestion[]>;
   placeDetails?(
     placeId: string,
-    opts?: { sessionToken?: string; languageCode?: string },
+    opts?: { sessionToken?: string; languageCode?: string; label?: string },
   ): Promise<PlaceSuggestion | null>;
   route?(
     from: { lat: number; lng: number },

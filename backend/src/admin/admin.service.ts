@@ -3103,6 +3103,75 @@ export class AdminOpsService {
     };
   }
 
+  async sendChatMessage(adminId: string, rideId: string, rawBody: string) {
+    const body = (rawBody ?? '').trim();
+    if (!body) throw new BadRequestException('Message body required');
+
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: true,
+        selectedOffer: { include: { driver: true } },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const thread = await this.prisma.chatThread.upsert({
+      where: { rideId },
+      create: { rideId },
+      update: {},
+    });
+
+    const msg = await this.prisma.chatMessage.create({
+      data: { threadId: thread.id, senderId: adminId, body },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: adminId,
+        action: 'chat.admin.send',
+        resource: 'ChatMessage',
+        resourceId: msg.id,
+        meta: { rideId } as Prisma.InputJsonValue,
+      },
+    });
+
+    // Notify customer (passenger and/or driver)
+    const passengerUserId = ride.passenger.userId;
+    let driverUserId = ride.selectedOffer?.driver.userId ?? null;
+    if (!driverUserId && ride.assignedDriverId) {
+      const assigned = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      driverUserId = assigned?.userId ?? null;
+    }
+
+    const preview = body.length > 120 ? `${body.slice(0, 117)}…` : body;
+    const targets = [passengerUserId, driverUserId].filter(Boolean) as string[];
+    for (const tId of targets) {
+      const isPass = tId === passengerUserId;
+      void this.notifications
+        .sendToUser({
+          userId: tId,
+          title: 'Support message from Can-Ride',
+          body: preview,
+          templateKey: 'chat_support_message',
+          eventId: `chat.support.${msg.id}.${tId}`,
+          targetRole: isPass ? ['PASSENGER', 'PASSENGER_WEB'] : 'DRIVER',
+          data: {
+            type: 'chat',
+            rideId,
+            messageId: msg.id,
+            deepLink: isPass ? `/ride/${rideId}/chat` : `/chat/${rideId}`,
+          },
+        })
+        .catch(() => undefined);
+    }
+
+    return msg;
+  }
+
   async riskAccounts() {
     const users = await this.prisma.user.findMany({
       where: { role: { in: [UserRole.PASSENGER, UserRole.DRIVER] } },

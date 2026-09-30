@@ -81,21 +81,53 @@ export async function resolvePlaceDetails(
 ): Promise<Place | null> {
   if (placeHasCoords(place)) return place;
   const placeId = place.placeId?.trim();
-  if (!placeId) return null;
-  const url = new URL(`${API_BASE}/maps/place-details`);
-  url.searchParams.set('placeId', placeId);
-  if (opts?.sessionToken) url.searchParams.set('sessionToken', opts.sessionToken);
-  const res = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
-  if (!res.ok) return null;
-  const body = (await res.json()) as MapsPlace;
-  const mapped = mapPlace(body);
-  if (!mapped || !placeHasCoords(mapped)) return null;
-  // Prefer autocomplete main/secondary text when present.
-  return {
-    ...mapped,
-    label: place.label || mapped.label,
-    subtitle: place.subtitle ?? mapped.subtitle,
-  };
+  if (placeId) {
+    const url = new URL(`${API_BASE}/maps/place-details`);
+    url.searchParams.set('placeId', placeId);
+    if (place.label) url.searchParams.set('label', place.label);
+    if (opts?.sessionToken) url.searchParams.set('sessionToken', opts.sessionToken);
+    try {
+      const res = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+      if (res.ok) {
+        const body = (await res.json()) as MapsPlace;
+        const mapped = mapPlace(body);
+        if (mapped && placeHasCoords(mapped)) {
+          // Prefer autocomplete main/secondary text when present.
+          return {
+            ...mapped,
+            label: place.label || mapped.label,
+            subtitle: place.subtitle ?? mapped.subtitle,
+          };
+        }
+      }
+    } catch (_) {
+      // Fall through to geocoding fallback
+    }
+  }
+
+  // Fallback to geocoding
+  const query = place.subtitle ? `${place.label}, ${place.subtitle}` : place.label;
+  if (query.trim()) {
+    try {
+      const geoUrl = new URL(`${API_BASE}/maps/geocode`);
+      geoUrl.searchParams.set('q', query.trim());
+      const res = await fetch(geoUrl.toString(), { headers: { Accept: 'application/json' } });
+      if (res.ok) {
+        const body = await res.json();
+        if (Array.isArray(body) && body.length > 0 && body[0].lat && body[0].lng) {
+          return {
+            id: body[0].placeId ? `gplace-${body[0].placeId}` : `geo-${body[0].lat}-${body[0].lng}`,
+            label: place.label,
+            subtitle: place.subtitle,
+            lat: Number(body[0].lat),
+            lng: Number(body[0].lng),
+            placeId: body[0].placeId,
+          };
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
 }
 
 export function placeHasCoords(p: Place): boolean {

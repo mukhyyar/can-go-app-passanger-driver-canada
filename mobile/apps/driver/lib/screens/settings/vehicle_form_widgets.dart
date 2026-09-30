@@ -14,8 +14,27 @@ const kVehicleClasses = <String>[
   'minibus',
   'economy',
   'comfort',
-  'business',
 ];
+
+int defaultSeatsForClass(String vehicleClass) {
+  switch (vehicleClass.toLowerCase().trim()) {
+    case 'suv':
+      return 6;
+    case 'van':
+    case 'minivan':
+      return 7;
+    case 'minibus':
+    case 'bus':
+      return 16;
+    case 'sedan':
+    case 'economy':
+    case 'comfort':
+    case 'business':
+    case 'vip':
+    default:
+      return 4;
+  }
+}
 
 String vehicleClassAsset(String vehicleClass) {
   switch (vehicleClass.toLowerCase()) {
@@ -148,7 +167,9 @@ class VehicleClassPicker extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      c[0].toUpperCase() + c.substring(1),
+                      c == 'suv'
+                          ? 'Black SUV'
+                          : c[0].toUpperCase() + c.substring(1),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight:

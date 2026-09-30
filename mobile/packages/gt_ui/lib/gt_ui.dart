@@ -13,10 +13,12 @@ export 'src/money.dart';
 export 'src/notification_card.dart';
 export 'src/otp_input.dart';
 export 'src/profile_avatar.dart';
+export 'src/report_suggestions.dart';
 export 'src/review_suggestions.dart';
 export 'src/route_path.dart';
 export 'src/splash.dart';
 export 'src/theme.dart';
 export 'src/widgets.dart';
 export 'src/legal_document_view.dart';
+
 

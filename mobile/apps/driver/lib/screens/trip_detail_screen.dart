@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -85,29 +88,82 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
   void _maybeShowRating() {
     if (_ratingPromptShown || _alreadyRated || !mounted) return;
-    if ((_ride?.status ?? '').toUpperCase() != 'COMPLETED') return;
+    final isCompleted = _serverStatus.toUpperCase() == 'COMPLETED' ||
+        (_ride?.status ?? '').toUpperCase() == 'COMPLETED';
+    if (!isCompleted) return;
     _ratingPromptShown = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_alreadyRated) _showRatingDialog();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final s = context.read<AppState>();
+      if (!_alreadyRated) {
+        try {
+          final myRating = await s.myRideRating(widget.rideId);
+          if (!mounted) return;
+          if (myRating != null) {
+            setState(() {
+              _alreadyRated = true;
+              final stars = myRating['stars'];
+              _myRatingStars = stars is int ? stars : int.tryParse('$stars');
+            });
+            return;
+          }
+        } catch (_) {}
+      }
+      if (mounted && !_alreadyRated) {
+        await _showRatingSheet();
+      }
     });
   }
 
-  Future<void> _showRatingDialog() async {
+  Future<void> _showRatingSheet() async {
     if (_alreadyRated) return;
     var stars = 5;
     final commentCtrl = TextEditingController();
     final selectedSuggestions = <String>{};
-    final submitted = await showDialog<bool>(
+    final submitted = await showGtSheet<bool>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Rate your passenger'),
-          content: SingleChildScrollView(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          12,
+          20,
+          20 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setLocal) => SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: GtColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Rate your passenger',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Help keep our community safe and respectful.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: GtColors.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(5, (i) {
@@ -116,7 +172,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       icon: Icon(
                         filled ? Icons.star : Icons.star_border,
                         color: GtColors.warn,
-                        size: 32,
+                        size: 36,
                       ),
                       onPressed: () => setLocal(() {
                         final newStars = i + 1;
@@ -143,7 +199,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     commentCtrl.text = selectedSuggestions.join(', ');
                   }),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextField(
                   controller: commentCtrl,
                   maxLines: 3,
@@ -152,19 +208,18 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                const SizedBox(height: 16),
+                GtGreenButton(
+                  label: 'Submit rating',
+                  onPressed: () => Navigator.pop(ctx, true),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Later'),
+                ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Later'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Submit'),
-            ),
-          ],
         ),
       ),
     );
@@ -204,10 +259,50 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           const SnackBar(content: Text('You already rated this passenger')),
         );
       } else {
+        String displayMsg = 'Could not submit rating';
+        if (e is ApiException && e.message.trim().isNotEmpty) {
+          displayMsg = e.message.trim();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not submit rating')),
+          SnackBar(content: Text(displayMsg)),
         );
       }
+    }
+  }
+
+  Future<void> _showReportSheet() async {
+    final r = _ride;
+    if (r == null) return;
+    final app = context.read<AppState>();
+
+    final submitted = await showGtReportBottomSheet(
+      context: context,
+      target: ReportTarget.passenger,
+      onSubmit: (reasons, details) async {
+        await app.reportRide(
+          r.id,
+          reasons: reasons,
+          details: details,
+        );
+      },
+    );
+
+    if (submitted == true && mounted) {
+      await app.refreshMyRides();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Report submitted. Admin notified & support chat enabled.',
+          ),
+          backgroundColor: GtColors.brand,
+          action: SnackBarAction(
+            label: 'Open Chat',
+            textColor: Colors.white,
+            onPressed: () => context.push('/chat/${r.id}'),
+          ),
+        ),
+      );
+      setState(() {});
     }
   }
 
@@ -240,6 +335,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   Future<void> _primaryAction() async {
     if (_acting || _ride == null) return;
     final s = context.read<AppState>();
+
+    if (_serverStatus == 'DRIVER_ARRIVED') {
+      await _promptStartPin(s);
+      return;
+    }
+
     setState(() => _acting = true);
     try {
       switch (_serverStatus) {
@@ -247,8 +348,6 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           await s.tripGoEnRoute(widget.rideId);
         case 'DRIVER_EN_ROUTE':
           await s.tripArrived(widget.rideId);
-        case 'DRIVER_ARRIVED':
-          await s.tripStart(widget.rideId);
         case 'TRIP_STARTED':
         case 'IN_PROGRESS':
           await s.tripComplete(widget.rideId);
@@ -263,6 +362,22 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  Future<void> _promptStartPin(AppState s) async {
+    final started = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _StartPinSheet(
+        rideId: widget.rideId,
+        appState: s,
+      ),
+    );
+
+    if (started == true && mounted) {
+      await _load();
     }
   }
 
@@ -444,6 +559,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final r = _ride;
     final isCompleted = _serverStatus.toUpperCase() == 'COMPLETED' ||
         (r?.status ?? '').toUpperCase() == 'COMPLETED';
+    if (isCompleted && !_alreadyRated && !_ratingPromptShown) {
+      _maybeShowRating();
+    }
     final isTerminal = isCompleted ||
         _serverStatus.contains('CANCEL') ||
         (r?.status ?? '').toUpperCase().contains('CANCEL') ||
@@ -464,6 +582,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             icon: const Icon(Icons.arrow_back),
             onPressed: _onBack,
           ),
+          actions: [
+            if (r != null)
+              IconButton(
+                icon: const Icon(Icons.flag_outlined),
+                tooltip: 'Report trip',
+                onPressed: _showReportSheet,
+              ),
+          ],
         ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -489,9 +615,55 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                             children: [
-                              if (isCompleted &&
-                                  (r.hasLostItemRequest || r.lostItem != null))
+                              if (isCompleted)
                                 _buildLostItemCard(r),
+                              if (isCompleted && (r.tipAmount ?? 0) > 0)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE8F5E9),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: const Color(0xFFA5D6A7),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(
+                                        Icons.volunteer_activism_rounded,
+                                        color: Color(0xFF2E7D32),
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Passenger tipped you ${r.currency} ${r.tipAmount!.toStringAsFixed(2)}!',
+                                              style: const TextStyle(
+                                                color: Color(0xFF1B5E20),
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            const Text(
+                                              '100% of tips go directly to you. Processed securely via Stripe.',
+                                              style: TextStyle(
+                                                color: Color(0xFF2E7D32),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               GtCard(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,14 +745,82 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       ),
                                     ],
                                     if (r.driverEarning != null) ...[
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Your earning: ${r.currency} ${r.driverEarning!.toStringAsFixed(2)}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
+                                      const SizedBox(height: 8),
+                                      if ((r.tipAmount ?? 0) > 0) ...[
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Text(
+                                              'Trip fare',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: GtColors.textSecondary,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${r.currency} ${(r.driverEarning! - r.tipAmount!).clamp(0.0, double.infinity).toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Text(
+                                              'Passenger tip (Stripe)',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF2E7D32),
+                                              ),
+                                            ),
+                                            Text(
+                                              '+${r.currency} ${r.tipAmount!.toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF2E7D32),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const Divider(height: 14),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            const Text(
+                                              'Total earning',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            Text(
+                                              '${r.currency} ${r.driverEarning!.toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w800,
+                                                color: GtColors.brand,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ] else ...[
+                                        Text(
+                                          'Your earning: ${r.currency} ${r.driverEarning!.toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ],
                                 ),
@@ -753,6 +993,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   label: _acting ? 'Updating…' : _primaryLabel!,
                                   onPressed: _acting ? null : _primaryAction,
                                 ),
+                                const SizedBox(height: 8),
+                                OutlinedButton.icon(
+                                  onPressed: _showReportSheet,
+                                  icon: const Icon(Icons.flag_outlined, size: 18),
+                                  label: const Text('Report an issue'),
+                                ),
                               ],
                             ),
                           )
@@ -789,6 +1035,24 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       color: GtColors.textSecondary,
                                     ),
                                   ),
+                                  const SizedBox(height: 10),
+                                  OutlinedButton.icon(
+                                    onPressed: _showReportSheet,
+                                    icon: const Icon(Icons.flag_outlined, size: 18),
+                                    label: const Text('Report an issue'),
+                                  ),
+                                  if (r.hasReportedRide || r.hasActiveSupport) ...[
+                                    const SizedBox(height: 8),
+                                    OutlinedButton.icon(
+                                      onPressed: () => context.push('/chat/${r.id}'),
+                                      icon: const Icon(Icons.support_agent_outlined, size: 18),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: GtColors.brand,
+                                        side: const BorderSide(color: GtColors.brand),
+                                      ),
+                                      label: const Text('Chat with Support'),
+                                    ),
+                                  ],
                                   const SizedBox(height: 12),
                                   GtGreenButton(
                                     label: 'Back to main screen',
@@ -797,8 +1061,26 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                 ] else ...[
                                   GtGreenButton(
                                     label: 'Rate passenger',
-                                    onPressed: _showRatingDialog,
+                                    onPressed: _showRatingSheet,
                                   ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: _showReportSheet,
+                                    icon: const Icon(Icons.flag_outlined, size: 18),
+                                    label: const Text('Report an issue'),
+                                  ),
+                                  if (r.hasReportedRide || r.hasActiveSupport) ...[
+                                    const SizedBox(height: 8),
+                                    OutlinedButton.icon(
+                                      onPressed: () => context.push('/chat/${r.id}'),
+                                      icon: const Icon(Icons.support_agent_outlined, size: 18),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: GtColors.brand,
+                                        side: const BorderSide(color: GtColors.brand),
+                                      ),
+                                      label: const Text('Chat with Support'),
+                                    ),
+                                  ],
                                   const SizedBox(height: 8),
                                   TextButton(
                                     onPressed: _onBack,
@@ -839,11 +1121,169 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     return out;
   }
 
+  Widget _buildPhotoThumbnail(String? photoUrl, {String? label}) {
+    if (photoUrl == null || photoUrl.trim().isEmpty) return const SizedBox.shrink();
+    final trimmed = photoUrl.trim();
+    Widget imgWidget;
+    if (trimmed.startsWith('data:image')) {
+      final comma = trimmed.indexOf(',');
+      if (comma != -1) {
+        try {
+          final bytes = base64Decode(trimmed.substring(comma + 1));
+          imgWidget = Image.memory(bytes, height: 140, width: double.infinity, fit: BoxFit.cover);
+        } catch (_) {
+          imgWidget = const SizedBox.shrink();
+        }
+      } else {
+        imgWidget = const SizedBox.shrink();
+      }
+    } else {
+      imgWidget = Image.network(
+        trimmed,
+        height: 140,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          height: 140,
+          color: Colors.grey.shade100,
+          child: const Center(
+            child: Icon(Icons.broken_image, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (label != null) ...[
+            Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: imgWidget,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLostItemCard(DriverRequest r) {
     final lost = r.lostItem;
     final status = (lost?.status ?? (r.hasLostItemRequest ? 'REPORTED' : ''))
         .toUpperCase();
-    if (status.isEmpty) return const SizedBox.shrink();
+
+    if (status.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: GtColors.brand.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.inventory_2_outlined,
+                        color: GtColors.brand, size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Lost & Found',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'Did you find an item left behind in your vehicle, or do you want to report vehicle check?',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFF64748B),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _acting ? null : () => _showFoundDialog(r),
+                      icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                      label: const Text('I Found It'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF16A34A),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _acting ? null : () => _showNotFoundDialog(r),
+                      icon: const Icon(Icons.search_off, size: 18),
+                      label: const Text('Not found Anything'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF64748B),
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     final isReported = status == 'REPORTED';
     final isFound = status == 'FOUND';
@@ -877,7 +1317,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       iconColor = const Color(0xFF15803D);
       title = 'Item Found — Return Pending';
       subtitle =
-          'You confirmed locating the item in your vehicle. Coordinate return with the passenger.';
+          'You confirmed locating the item in your vehicle. Coordinate return pickup location and handover.';
     } else if (isNotFound) {
       bgColor = const Color(0xFFF8FAFC);
       borderColor = const Color(0xFFE2E8F0);
@@ -992,6 +1432,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 ),
               ),
             ],
+            if (lost?.photoUrl != null && lost!.photoUrl!.trim().isNotEmpty)
+              _buildPhotoThumbnail(lost.photoUrl, label: 'Found Item Photo:'),
+            if (lost?.handoverPhotoUrl != null &&
+                lost!.handoverPhotoUrl!.trim().isNotEmpty)
+              _buildPhotoThumbnail(lost.handoverPhotoUrl,
+                  label: 'Handover Proof Photo:'),
             if (lost?.driverNote != null &&
                 lost!.driverNote!.trim().isNotEmpty &&
                 (isFound || isNotFound || isReturned)) ...[
@@ -1028,68 +1474,168 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 ),
               ),
             ],
-            if ((isReported || isFound) &&
-                ((lost?.contactPhone != null &&
-                        lost!.contactPhone!.trim().isNotEmpty) ||
-                    r.passengerName != null)) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (lost?.contactPhone != null &&
-                      lost!.contactPhone!.trim().isNotEmpty) ...[
-                    ActionChip(
-                      avatar: const Icon(Icons.phone,
-                          size: 16, color: Color(0xFF1E40AF)),
-                      label: Text(
-                        'Call (${lost.contactPhone})',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1E40AF),
-                        ),
+            if (isFound || isReturned) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: borderColor.withOpacity(0.7)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on_outlined,
+                        color: GtColors.brand, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Customer Pickup Location:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11.5,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            (lost?.pickupLocation != null &&
+                                    lost!.pickupLocation!.trim().isNotEmpty)
+                                ? lost.pickupLocation!
+                                : 'Waiting for customer to provide pickup location in chat.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: (lost?.pickupLocation != null &&
+                                      lost!.pickupLocation!.trim().isNotEmpty)
+                                  ? Colors.black87
+                                  : Colors.black45,
+                            ),
+                          ),
+                        ],
                       ),
-                      backgroundColor: const Color(0xFFEFF6FF),
-                      side: const BorderSide(color: Color(0xFFBFDBFE)),
-                      onPressed: () =>
-                          launchUrl(Uri.parse('tel:${lost.contactPhone}')),
                     ),
-                    ActionChip(
-                      avatar: const Icon(Icons.sms_outlined,
-                          size: 16, color: Color(0xFF1E40AF)),
-                      label: const Text(
-                        'SMS',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1E40AF),
+                    if (lost?.pickupLocation != null &&
+                        lost!.pickupLocation!.trim().isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.navigation_outlined,
+                            size: 18, color: GtColors.brand),
+                        onPressed: () => launchUrl(
+                          Uri.parse(
+                            'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(lost!.pickupLocation!)}',
+                          ),
+                          mode: LaunchMode.externalApplication,
                         ),
                       ),
-                      backgroundColor: const Color(0xFFEFF6FF),
-                      side: const BorderSide(color: Color(0xFFBFDBFE)),
-                      onPressed: () =>
-                          launchUrl(Uri.parse('sms:${lost.contactPhone}')),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.payments_outlined,
+                        color: Color(0xFF16A34A), size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Standard Return Fee: CAD \$${(lost?.returnFeeAmount ?? 20.0).toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              color: Color(0xFF15803D),
+                            ),
+                          ),
+                          Text(
+                            isReturned
+                                ? '✓ Return fee credited to your driver wallet via Stripe.'
+                                : (lost?.returnFeePaid == true
+                                    ? '✓ Paid by customer via Stripe. Credited to your wallet.'
+                                    : 'Uber-style return fee compensated to you via Stripe upon return handover.'),
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: Color(0xFF166534),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (lost?.contactPhone != null &&
+                    lost!.contactPhone!.trim().isNotEmpty) ...[
                   ActionChip(
-                    avatar: const Icon(Icons.chat_outlined,
-                        size: 16, color: GtColors.brand),
+                    avatar: const Icon(Icons.phone,
+                        size: 16, color: Color(0xFF1E40AF)),
+                    label: Text(
+                      'Call (${lost.contactPhone})',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E40AF),
+                      ),
+                    ),
+                    backgroundColor: const Color(0xFFEFF6FF),
+                    side: const BorderSide(color: Color(0xFFBFDBFE)),
+                    onPressed: () =>
+                        launchUrl(Uri.parse('tel:${lost.contactPhone}')),
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.sms_outlined,
+                        size: 16, color: Color(0xFF1E40AF)),
                     label: const Text(
-                      'Chat in App',
+                      'SMS',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: GtColors.brand,
+                        color: Color(0xFF1E40AF),
                       ),
                     ),
-                    backgroundColor: const Color(0xFFECFDF5),
-                    side: const BorderSide(color: Color(0xFFA7F3D0)),
-                    onPressed: () => context.push('/chat/${r.id}'),
+                    backgroundColor: const Color(0xFFEFF6FF),
+                    side: const BorderSide(color: Color(0xFFBFDBFE)),
+                    onPressed: () =>
+                        launchUrl(Uri.parse('sms:${lost.contactPhone}')),
                   ),
                 ],
-              ),
-            ],
+                ActionChip(
+                  avatar: const Icon(Icons.chat_outlined,
+                      size: 16, color: GtColors.brand),
+                  label: const Text(
+                    'Chat in App',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: GtColors.brand,
+                    ),
+                  ),
+                  backgroundColor: const Color(0xFFECFDF5),
+                  side: const BorderSide(color: Color(0xFFA7F3D0)),
+                  onPressed: () => context.push('/chat/${r.id}'),
+                ),
+              ],
+            ),
             const SizedBox(height: 14),
             if (isReported) ...[
               Row(
@@ -1097,7 +1643,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: _acting ? null : () => _showFoundDialog(r),
-                      icon: const Icon(Icons.check_circle_outline, size: 18),
+                      icon: const Icon(Icons.add_a_photo_outlined, size: 18),
                       label: const Text('I Found It'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF16A34A),
@@ -1115,7 +1661,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _acting ? null : () => _showNotFoundDialog(r),
                       icon: const Icon(Icons.close, size: 18),
-                      label: const Text('Not in Vehicle'),
+                      label: const Text('Not found Anything'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF64748B),
                         side: const BorderSide(color: Color(0xFFCBD5E1)),
@@ -1132,7 +1678,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               ElevatedButton.icon(
                 onPressed: _acting ? null : () => _showReturnDialog(r),
                 icon: const Icon(Icons.handshake_outlined, size: 18),
-                label: const Text('Mark as Returned to Passenger'),
+                label: const Text('Hand Over Item (\$20 Return Fee)'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: GtColors.brand,
                   foregroundColor: Colors.white,
@@ -1163,61 +1709,149 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
   Future<void> _showFoundDialog(DriverRequest r) async {
     final noteCtrl = TextEditingController();
+    String? photoBase64;
+    Uint8List? previewBytes;
+
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          left: 20,
-          right: 20,
-          top: 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: const [
-                  Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 24),
-                  SizedBox(width: 8),
-                  Text(
-                    'I Found the Item',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          Future<void> pickPhoto(ImageSource source) async {
+            try {
+              final picker = ImagePicker();
+              final file = await picker.pickImage(
+                source: source,
+                imageQuality: 80,
+                maxWidth: 1024,
+              );
+              if (file == null) return;
+              final bytes = await file.readAsBytes();
+              setModalState(() {
+                previewBytes = bytes;
+                photoBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+              });
+            } catch (e) {
+              debugPrint('Error picking image: $e');
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 20,
+              right: 20,
+              top: 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 24),
+                      SizedBox(width: 8),
+                      Text(
+                        'Report Found Item',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Let the passenger know you found an item in your vehicle. Attach a photo and description to help identify it.',
+                    style: TextStyle(
+                        fontSize: 13, color: GtColors.textSecondary, height: 1.35),
+                  ),
+                  const SizedBox(height: 14),
+                  if (previewBytes != null) ...[
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            previewBytes!,
+                            height: 150,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: Colors.black54,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              iconSize: 16,
+                              icon: const Icon(Icons.close, color: Colors.white),
+                              onPressed: () {
+                                setModalState(() {
+                                  previewBytes = null;
+                                  photoBase64 = null;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => pickPhoto(ImageSource.camera),
+                            icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                            label: const Text('Take Photo'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => pickPhoto(ImageSource.gallery),
+                            icon: const Icon(Icons.photo_library_outlined, size: 18),
+                            label: const Text('Choose Photo'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  TextField(
+                    controller: noteCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Item description / note for passenger',
+                      hintText: 'e.g. Found black wallet on rear right seat floor',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  GtGreenButton(
+                    label: 'Confirm item found',
+                    onPressed: () => Navigator.pop(ctx, true),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(height: 12),
                 ],
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'Let the passenger know you found their item. You can add an optional note with details on where it was found or how to arrange return.',
-                style: TextStyle(
-                    fontSize: 13, color: GtColors.textSecondary, height: 1.35),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: noteCtrl,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Note for passenger (optional)',
-                  hintText: 'e.g. Found on rear right passenger floor',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 18),
-              GtGreenButton(
-                label: 'Confirm item found',
-                onPressed: () => Navigator.pop(ctx, true),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
 
@@ -1228,6 +1862,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           rideId: r.id,
           action: 'FOUND',
           note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+          photoUrl: photoBase64,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1346,62 +1981,194 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
   Future<void> _showReturnDialog(DriverRequest r) async {
     final noteCtrl = TextEditingController();
+    String? handoverPhotoBase64;
+    Uint8List? handoverPreviewBytes;
+
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom,
-          left: 20,
-          right: 20,
-          top: 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: const [
-                  Icon(Icons.handshake_outlined,
-                      color: GtColors.brand, size: 24),
-                  SizedBox(width: 8),
-                  Text(
-                    'Mark as Returned',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          Future<void> pickPhoto(ImageSource source) async {
+            try {
+              final picker = ImagePicker();
+              final file = await picker.pickImage(
+                source: source,
+                imageQuality: 80,
+                maxWidth: 1024,
+              );
+              if (file == null) return;
+              final bytes = await file.readAsBytes();
+              setModalState(() {
+                handoverPreviewBytes = bytes;
+                handoverPhotoBase64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+              });
+            } catch (e) {
+              debugPrint('Error picking image: $e');
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 20,
+              right: 20,
+              top: 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.handshake_outlined,
+                          color: GtColors.brand, size: 24),
+                      SizedBox(width: 8),
+                      Text(
+                        'Hand Over Item',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Upload a picture handing over the item as proof of return. A standard Uber-style return fee of \$20.00 CAD will be credited to your driver wallet.',
+                    style: TextStyle(
+                        fontSize: 13, color: GtColors.textSecondary, height: 1.35),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF86EFAC)),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.payments_outlined, color: Color(0xFF16A34A), size: 22),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Return Fee: CAD \$20.00 will be credited to your wallet via Stripe.',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12.5,
+                              color: Color(0xFF14532D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Handover Picture Proof (Required):',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (handoverPreviewBytes != null) ...[
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            handoverPreviewBytes!,
+                            height: 150,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: Colors.black54,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              iconSize: 16,
+                              icon: const Icon(Icons.close, color: Colors.white),
+                              onPressed: () {
+                                setModalState(() {
+                                  handoverPreviewBytes = null;
+                                  handoverPhotoBase64 = null;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => pickPhoto(ImageSource.camera),
+                            icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                            label: const Text('Take Picture'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => pickPhoto(ImageSource.gallery),
+                            icon: const Icon(Icons.photo_library_outlined, size: 18),
+                            label: const Text('Choose Picture'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  TextField(
+                    controller: noteCtrl,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Handover note (optional)',
+                      hintText: 'e.g. Handed to customer at airport terminal',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  GtGreenButton(
+                    label: 'Confirm Handover & Settle Fee',
+                    onPressed: () {
+                      if (handoverPhotoBase64 == null) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please upload a picture as handover proof.'),
+                          ),
+                        );
+                        return;
+                      }
+                      Navigator.pop(ctx, true);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(height: 12),
                 ],
               ),
-              const SizedBox(height: 10),
-              const Text(
-                'Confirm that the item has been safely returned to the passenger. This will close the inquiry.',
-                style: TextStyle(
-                    fontSize: 13, color: GtColors.textSecondary, height: 1.35),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: noteCtrl,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Delivery note (optional)',
-                  hintText: 'e.g. Handed to passenger at hotel front desk',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 18),
-              GtGreenButton(
-                label: 'Confirm item returned',
-                onPressed: () => Navigator.pop(ctx, true),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
 
@@ -1411,12 +2178,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         await _app?.markLostItemReturned(
           rideId: r.id,
           note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+          handoverPhotoUrl: handoverPhotoBase64,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content:
-                  Text('Item marked as returned! Lost item inquiry closed.'),
+              content: Text(
+                  'Item handed over! \$20.00 return fee has been credited to your wallet.'),
             ),
           );
           await _load();
@@ -1424,7 +2192,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error closing inquiry: $e')),
+            SnackBar(content: Text('Error completing return: $e')),
           );
         }
       } finally {
@@ -1546,6 +2314,171 @@ class TripTimeline extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+}
+
+class _StartPinSheet extends StatefulWidget {
+  const _StartPinSheet({
+    required this.rideId,
+    required this.appState,
+  });
+
+  final String rideId;
+  final AppState appState;
+
+  @override
+  State<_StartPinSheet> createState() => _StartPinSheetState();
+}
+
+class _StartPinSheetState extends State<_StartPinSheet> {
+  final TextEditingController _pinController = TextEditingController();
+  GtOtpStatus _status = GtOtpStatus.idle;
+  String? _errorMsg;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitPin(String pin) async {
+    if (_submitting || pin.trim().length != 4) return;
+    setState(() {
+      _submitting = true;
+      _errorMsg = null;
+      _status = GtOtpStatus.idle;
+    });
+
+    try {
+      await widget.appState.tripStart(widget.rideId, pin: pin.trim());
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e
+          .toString()
+          .replaceAll('Exception: ', '')
+          .replaceAll('BadRequestException: ', '');
+      setState(() {
+        _submitting = false;
+        _status = GtOtpStatus.error;
+        _errorMsg = msg.contains('Invalid ride PIN')
+            ? 'Incorrect PIN. Please ask the passenger for their 4-digit ride PIN.'
+            : msg;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 20, 24, bottomInset + 24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: GtColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: GtColors.soft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.pin_outlined,
+                  color: GtColors.brand,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Enter Ride PIN',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: GtColors.text,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Ask the passenger for their 4-digit PIN',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: GtColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: GtColors.textMuted),
+                onPressed: () => Navigator.of(context).pop(false),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          GtOtpInput(
+            length: 4,
+            controller: _pinController,
+            autofocus: true,
+            status: _status,
+            enabled: !_submitting,
+            onChanged: (val) {
+              if (_errorMsg != null) {
+                setState(() {
+                  _errorMsg = null;
+                  _status = GtOtpStatus.idle;
+                });
+              }
+            },
+            onCompleted: (val) => _submitPin(val),
+          ),
+          if (_errorMsg != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _errorMsg!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: GtColors.brand,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
+          GtGreenButton(
+            label: _submitting ? 'Verifying...' : 'Start ride',
+            onPressed: _submitting
+                ? null
+                : () => _submitPin(_pinController.text),
+          ),
+        ],
+      ),
     );
   }
 }

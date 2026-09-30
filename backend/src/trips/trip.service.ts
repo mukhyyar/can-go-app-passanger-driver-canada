@@ -29,6 +29,7 @@ export class TripService {
     rideId: string,
     toStatus: RideStatus,
     ip?: string,
+    pin?: string,
   ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -58,6 +59,30 @@ export class TripService {
       { isAssignedDriver, isPassenger, isAdmin },
     );
 
+    let verifiedPin: string | undefined;
+    if (toStatus === RideStatus.TRIP_STARTED && isAssignedDriver) {
+      const snap = ride.priceSnapshot as Record<string, unknown> | null | undefined;
+      const expectedPin =
+        (ride.startPin as string | null | undefined) ??
+        (snap?.startPin as string | undefined) ??
+        String(
+          1000 +
+            Math.abs(
+              ride.id.split('').reduce(
+                (acc, char) => ((acc << 5) - acc) + char.charCodeAt(0),
+                0,
+              ) % 9000,
+            ),
+        );
+      const cleanPin = (pin ?? '').trim();
+      if (!cleanPin || cleanPin !== expectedPin) {
+        throw new BadRequestException(
+          'Invalid ride PIN. Please ask the passenger for their 4-digit ride PIN.',
+        );
+      }
+      verifiedPin = expectedPin;
+    }
+
     const actorType = isAdmin
       ? 'admin'
       : isAssignedDriver
@@ -67,7 +92,10 @@ export class TripService {
     await this.prisma.$transaction(async (tx) => {
       await tx.ride.update({
         where: { id: rideId },
-        data: { status: toStatus },
+        data: {
+          status: toStatus,
+          ...(verifiedPin ? { startPin: verifiedPin } : {}),
+        },
       });
       await tx.rideEvent.create({
         data: {

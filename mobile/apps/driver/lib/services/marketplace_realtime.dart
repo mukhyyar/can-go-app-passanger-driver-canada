@@ -12,13 +12,18 @@ class MarketplaceRealtime {
   MarketplaceRealtime({
     required this.session,
     required this.onNewRequest,
+    this.onRideStatusChanged,
+    this.onRideEvent,
   });
 
   final CanGoSession session;
   final void Function(Map<String, dynamic> payload) onNewRequest;
+  final void Function(Map<String, dynamic> payload)? onRideStatusChanged;
+  final void Function(Map<String, dynamic> payload)? onRideEvent;
 
   io.Socket? _socket;
   bool _connecting = false;
+  final Set<String> _subscribedRides = <String>{};
 
   static String socketOriginFromApiBase(String apiBase) {
     final uri = Uri.parse(apiBase);
@@ -26,6 +31,15 @@ class MarketplaceRealtime {
         ? '${uri.scheme}://${uri.host}:${uri.port}'
         : '${uri.scheme}://${uri.host}';
     return origin;
+  }
+
+  void subscribeRide(String rideId) {
+    if (rideId.isEmpty) return;
+    _subscribedRides.add(rideId);
+    final socket = _socket;
+    if (socket != null && socket.connected) {
+      socket.emit('ride.subscribe', {'rideId': rideId});
+    }
   }
 
   Future<void> connect() async {
@@ -48,6 +62,9 @@ class MarketplaceRealtime {
 
       socket.onConnect((_) {
         socket.emit('driver.subscribe');
+        for (final rideId in _subscribedRides) {
+          socket.emit('ride.subscribe', {'rideId': rideId});
+        }
       });
 
       socket.on('marketplace.request', (data) {
@@ -55,6 +72,25 @@ class MarketplaceRealtime {
           onNewRequest(Map<String, dynamic>.from(data));
         } else {
           onNewRequest(const <String, dynamic>{});
+        }
+      });
+
+      void handleStatusChange(dynamic data) {
+        if (data is Map) {
+          onRideStatusChanged?.call(Map<String, dynamic>.from(data));
+        } else {
+          onRideStatusChanged?.call(const <String, dynamic>{});
+        }
+      }
+
+      socket.on('ride.status.changed', handleStatusChange);
+      socket.on('ride.booked', handleStatusChange);
+
+      socket.on('ride.event', (data) {
+        if (data is Map) {
+          onRideEvent?.call(Map<String, dynamic>.from(data));
+        } else {
+          onRideEvent?.call(const <String, dynamic>{});
         }
       });
 

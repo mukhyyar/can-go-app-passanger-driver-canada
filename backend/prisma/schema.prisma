@@ -474,6 +474,11 @@ model Ride {
   selectedOfferId String?    @unique
   selectedOffer   Offer?     @relation("SelectedOffer", fields: [selectedOfferId], references: [id])
   assignedDriverId String?
+  /// 4-digit ride start verification PIN provided to passenger upon booking.
+  startPin        String?
+  /// Secure token for live trip sharing with friends/family.
+  shareToken      String?    @unique
+  shareExpiresAt  DateTime?
   idempotencyKey  String?    @unique
   requestExpiresAt DateTime?
   paymentExpiresAt DateTime?
@@ -499,6 +504,7 @@ model Ride {
   @@index([passengerId, createdAt])
   @@index([assignedDriverId, createdAt])
   @@index([promoCode])
+  @@index([shareToken])
 }
 
 model RideEvent {
@@ -669,6 +675,9 @@ model RideFinancial {
   taxes                 Decimal            @default(0) @db.Decimal(12, 2)
   taxRate               Decimal            @default(0) @db.Decimal(6, 4)
   taxJurisdiction       String?            @default("CA")
+
+  // 7b. Driver Tip (100% credited to driver)
+  tipAmount             Decimal?           @default(0) @db.Decimal(12, 2)
   
   // 8. Refund / Adjustment
   refundAmount          Decimal            @default(0) @db.Decimal(12, 2)
