@@ -115,6 +115,10 @@ describe('MarketplaceService - Ride Tip Feature (Stripe Processing)', () => {
       transferToDriver: jest.fn().mockResolvedValue({ transferId: 'tr_test_tip_123' }),
     };
 
+    const mockConfig = {
+      get: jest.fn().mockReturnValue('pk_test_123'),
+    };
+
     service = new MarketplaceService(
       mockPrisma,
       mockPricing,
@@ -124,6 +128,7 @@ describe('MarketplaceService - Ride Tip Feature (Stripe Processing)', () => {
       mockLifecycle,
       mockPresentation,
       mockStorage,
+      mockConfig as any,
       mockTracking,
       mockStripeConnect,
     );

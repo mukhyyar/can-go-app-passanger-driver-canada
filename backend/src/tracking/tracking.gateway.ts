@@ -111,6 +111,14 @@ export class TrackingGateway implements OnGatewayConnection {
     this.server?.to(`ride:${rideId}`).emit('ride.event', event);
   }
 
+  broadcastToRide(
+    rideId: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ) {
+    this.server?.to(`ride:${rideId}`).emit(event, payload);
+  }
+
   /** Push a marketplace event to one or more driver user rooms. */
   emitToDrivers(userIds: string[], event: string, payload: Record<string, unknown>) {
     if (!this.server || !userIds.length) return;

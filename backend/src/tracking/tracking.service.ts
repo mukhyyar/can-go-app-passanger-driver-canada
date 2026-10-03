@@ -300,14 +300,14 @@ export class TrackingService {
       throw new NotFoundException('Trip share link has expired');
     }
 
-    const driverUser = ride.selectedOffer?.driver?.user;
+    const driverProfile = ride.selectedOffer?.driver;
+    const driverUser = driverProfile?.user;
     const vehicle = ride.selectedOffer?.vehicle;
     let driverInfo = null;
     if (driverUser) {
       const driverRatings = await this.prisma.rating.findMany({
         where: {
           toUserId: driverUser.id,
-          role: UserRole.DRIVER,
         },
         select: { stars: true },
       });
@@ -320,10 +320,15 @@ export class TrackingService {
             ) / 10
           : 5.0;
 
+      const fullName =
+        (driverUser as any)?.fullName ?? driverProfile?.fullName ?? 'Driver';
+      const avatarUrl =
+        (driverUser as any)?.avatarUrl ?? driverProfile?.avatarStorageKey ?? null;
+
       driverInfo = {
-        firstName: driverUser.fullName?.split(' ')[0] ?? 'Driver',
-        fullName: driverUser.fullName ?? 'Driver',
-        avatarUrl: driverUser.avatarUrl ?? null,
+        firstName: fullName.split(' ')[0] ?? 'Driver',
+        fullName,
+        avatarUrl,
         rating: avgRating,
         totalTrips: driverRatings.length,
         vehicle: vehicle
@@ -374,8 +379,12 @@ export class TrackingService {
         : null,
     );
 
+    const passengerFullName =
+      (ride.passenger?.user as any)?.fullName ??
+      ride.passenger?.fullName ??
+      'Passenger';
     const passengerFirstName =
-      ride.passenger?.user?.fullName?.split(' ')[0] ?? 'Passenger';
+      passengerFullName.split(' ')[0] ?? 'Passenger';
 
     return {
       rideId: ride.id,
@@ -400,7 +409,9 @@ export class TrackingService {
       eta,
       isCompleted: ride.status === RideStatus.COMPLETED,
       isCancelled:
-        ride.status === RideStatus.CANCELLED ||
+        ride.status === RideStatus.PASSENGER_CANCELLED ||
+        ride.status === RideStatus.DRIVER_CANCELLED ||
+        ride.status === RideStatus.ADMIN_CANCELLED ||
         ride.status === RideStatus.NO_SHOW,
       pickupAt: ride.pickupAt.toISOString(),
       updatedAt: new Date().toISOString(),

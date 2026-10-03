@@ -60,36 +60,54 @@ class MarketplaceApi {
     double? hours,
     double? days,
     String? idempotencyKey,
-  }) {
-    return client.post(
-      '/rides',
-      idempotencyKey: idempotencyKey,
-      body: {
-        'serviceType': serviceType,
-        'fromLabel': fromLabel,
-        if (toLabel != null) 'toLabel': toLabel,
-        'fromLat': fromLat,
-        'fromLng': fromLng,
-        if (toLat != null) 'toLat': toLat,
-        if (toLng != null) 'toLng': toLng,
-        if (distanceKm != null) 'distanceKm': distanceKm,
-        if (durationMin != null) 'durationMin': durationMin,
-        'pickupAt': pickupAt,
-        'vehicleClassIds': vehicleClassIds,
-        if (adults != null) 'adults': adults,
-        if (childSeatsJson != null) 'childSeatsJson': childSeatsJson,
-        if (flight != null) 'flight': flight,
-        if (signage != null) 'signage': signage,
-        if (comment != null) 'comment': comment,
-        if (isRoundTrip != null) 'isRoundTrip': isRoundTrip,
-        if (returnAt != null) 'returnAt': returnAt,
-        if (returnFlight != null) 'returnFlight': returnFlight,
-        if (promoCode != null) 'promoCode': promoCode,
-        if (currency != null) 'currency': currency,
-        if (hours != null) 'hours': hours,
-        if (days != null) 'days': days,
-      },
-    );
+  }) async {
+    final body = <String, dynamic>{
+      'serviceType': serviceType,
+      'fromLabel': fromLabel,
+      if (toLabel != null) 'toLabel': toLabel,
+      'fromLat': fromLat,
+      'fromLng': fromLng,
+      if (toLat != null) 'toLat': toLat,
+      if (toLng != null) 'toLng': toLng,
+      if (distanceKm != null) 'distanceKm': distanceKm,
+      if (durationMin != null) 'durationMin': durationMin,
+      'pickupAt': pickupAt,
+      'vehicleClassIds': vehicleClassIds,
+      if (adults != null) 'adults': adults,
+      if (childSeatsJson != null) 'childSeatsJson': childSeatsJson,
+      if (flight != null) 'flight': flight,
+      if (signage != null) 'signage': signage,
+      if (comment != null) 'comment': comment,
+      if (isRoundTrip != null) 'isRoundTrip': isRoundTrip,
+      if (returnAt != null) 'returnAt': returnAt,
+      if (returnFlight != null) 'returnFlight': returnFlight,
+      if (promoCode != null) 'promoCode': promoCode,
+      if (currency != null) 'currency': currency,
+      if (hours != null) 'hours': hours,
+      if (days != null) 'days': days,
+    };
+
+    try {
+      return await client.post(
+        '/rides',
+        idempotencyKey: idempotencyKey,
+        body: body,
+      );
+    } on ApiException catch (e) {
+      if (e.statusCode == 400 &&
+          (e.message.contains('distanceKm') ||
+              e.message.contains('durationMin'))) {
+        final legacyBody = Map<String, dynamic>.from(body)
+          ..remove('distanceKm')
+          ..remove('durationMin');
+        return await client.post(
+          '/rides',
+          idempotencyKey: idempotencyKey,
+          body: legacyBody,
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<List<dynamic>> listRides() async {

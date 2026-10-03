@@ -4281,6 +4281,7 @@ export class MarketplaceService {
           rideId,
           slaDueAt: new Date(Date.now() + 24 * 3600_000),
         },
+        include: { notes: { orderBy: { createdAt: 'asc' } } },
       });
     }
 
@@ -4425,6 +4426,7 @@ export class MarketplaceService {
           rideId,
           slaDueAt: new Date(Date.now() + 24 * 3600_000),
         },
+        include: { notes: { orderBy: { createdAt: 'asc' } } },
       });
     }
 
@@ -4675,6 +4677,7 @@ export class MarketplaceService {
           rideId,
           slaDueAt: new Date(Date.now() + 24 * 3600_000),
         },
+        include: { notes: { orderBy: { createdAt: 'asc' } } },
       });
     }
 

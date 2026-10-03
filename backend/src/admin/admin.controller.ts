@@ -637,7 +637,7 @@ export class AdminOpsController {
   }
 
   @Post('chat/threads/:rideId/messages')
-  @RequirePermission('chat.send')
+  @RequirePermission('chat.moderate')
   sendChatMessage(
     @CurrentUser() user: AuthUser,
     @Param('rideId') rideId: string,

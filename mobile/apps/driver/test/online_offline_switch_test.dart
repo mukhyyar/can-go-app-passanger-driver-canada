@@ -292,5 +292,30 @@ void main() {
       );
       expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
     });
+    testWidgets('Floating action button is positioned above and does not overlap online/offline switch bar',
+        (tester) async {
+      final app = MockSwitchAppState();
+      app.drivingEnabled = true;
+
+      await tester.pumpWidget(
+        buildTestApp(
+          appState: app,
+          child: const RequestsScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final fabFinder = find.byType(FloatingActionButton);
+      final switchBarFinder = find.byKey(const ValueKey('online_offline_switch_bar'));
+
+      expect(fabFinder, findsOneWidget);
+      expect(switchBarFinder, findsOneWidget);
+
+      final fabRect = tester.getRect(fabFinder);
+      final switchBarRect = tester.getRect(switchBarFinder);
+
+      // Verify that the bottom of the FAB is strictly above the top of the switch bar
+      expect(fabRect.bottom, lessThanOrEqualTo(switchBarRect.top));
+    });
   });
 }

@@ -283,6 +283,7 @@ export class OfferPresentationService {
             name: string;
             plate: string;
             vehicleClass: string;
+            passengerSeats?: number | null;
             amenitiesJson: unknown;
             isActive: boolean;
           }

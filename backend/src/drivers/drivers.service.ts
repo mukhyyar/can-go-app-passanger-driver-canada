@@ -21,6 +21,7 @@ import {
   REQUIRED_DOC_TYPES,
   type DriverDocType,
 } from './documents.constants';
+import { getDefaultSeatingCapacity } from './seating-capacity.util';
 import type {
   CreateVehicleDto,
   RejectKycDto,

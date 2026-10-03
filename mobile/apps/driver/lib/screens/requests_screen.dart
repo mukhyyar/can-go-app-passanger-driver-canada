@@ -518,7 +518,9 @@ class _RequestsScreenState extends State<RequestsScreen>
 
     return Scaffold(
       backgroundColor: s.isOffline ? const Color(0xFFF1F2F4) : GtColors.bgGrey,
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.small(
+        heroTag: 'requests_scroll_top_fab',
+        tooltip: 'Scroll to top',
         backgroundColor: s.isOffline ? Colors.grey.shade600 : GtColors.brand,
         onPressed: () {
           if (_scroll.hasClients) {
@@ -531,31 +533,25 @@ class _RequestsScreenState extends State<RequestsScreen>
         },
         child: const Icon(Icons.arrow_upward, color: Colors.white),
       ),
+      bottomNavigationBar: _OnlineOfflineSwitchBar(
+        key: const ValueKey('online_offline_switch_bar'),
+        isOnline: s.isOnline,
+        isLoading: _isTogglingDrivingMode,
+        onToggle: () => _handleToggleOnline(s, !s.isOnline),
+      ),
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: s.isOffline
-                  ? ColorFiltered(
-                      colorFilter: const ColorFilter.matrix(<double>[
-                        0.2126, 0.7152, 0.0722, 0, 0,
-                        0.2126, 0.7152, 0.0722, 0, 0,
-                        0.2126, 0.7152, 0.0722, 0, 0,
-                        0,      0,      0,      1, 0,
-                      ]),
-                      child: mainContent,
-                    )
-                  : mainContent,
-            ),
-            _OnlineOfflineSwitchBar(
-              key: const ValueKey('online_offline_switch_bar'),
-              isOnline: s.isOnline,
-              isLoading: _isTogglingDrivingMode,
-              onToggle: () => _handleToggleOnline(s, !s.isOnline),
-            ),
-          ],
-        ),
+        child: s.isOffline
+            ? ColorFiltered(
+                colorFilter: const ColorFilter.matrix(<double>[
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0,      0,      0,      1, 0,
+                ]),
+                child: mainContent,
+              )
+            : mainContent,
       ),
     );
   }
