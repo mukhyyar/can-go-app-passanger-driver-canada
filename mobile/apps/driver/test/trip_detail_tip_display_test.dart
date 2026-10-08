@@ -18,6 +18,7 @@ void main() {
   DriverRequest createTestTrip({
     required String id,
     required String status,
+    double? offerPrice,
     double? tipAmount,
     double driverEarning = 45.0,
   }) {
@@ -31,10 +32,12 @@ void main() {
       'adults': 1,
       'currency': 'CAD',
       'vehicleClassIds': ['Economy'],
+      'offerPrice': offerPrice, // just in case
       'priceSnapshot': {
         'distanceKm': 25,
         'durationMin': 30,
         'guidanceAmount': 50,
+        'bidAmount': offerPrice,
         'driverEarning': driverEarning,
         'tip': tipAmount,
       },
@@ -51,8 +54,9 @@ void main() {
         final trip = createTestTrip(
           id: 'trip-tip-1',
           status: 'COMPLETED',
+          offerPrice: 50.0,
           tipAmount: 5.0,
-          driverEarning: 45.0,
+          driverEarning: 45.0, // 50 - 10 (fee) + 5 (tip)
         );
         appState.openRequests = [trip];
 
@@ -92,8 +96,10 @@ void main() {
         );
 
         // Verify earnings breakdown with tip
-        expect(find.text('Trip fare'), findsOneWidget);
-        expect(find.text('CAD 40.00'), findsOneWidget);
+        expect(find.text('Ride fare'), findsOneWidget);
+        expect(find.text('CAD 50.00'), findsOneWidget);
+        expect(find.text('Marketplace fee (20%)'), findsOneWidget);
+        expect(find.text('-CAD 10.00'), findsOneWidget);
         expect(find.text('Passenger tip (Stripe)'), findsOneWidget);
         expect(find.text('+CAD 5.00'), findsOneWidget);
         expect(find.text('Total earning'), findsOneWidget);
@@ -110,6 +116,7 @@ void main() {
         final trip = createTestTrip(
           id: 'trip-no-tip',
           status: 'COMPLETED',
+          offerPrice: 50.0,
           tipAmount: null,
           driverEarning: 40.0,
         );
@@ -146,8 +153,9 @@ void main() {
         // Tip banner should NOT be shown
         expect(find.textContaining('Passenger tipped you'), findsNothing);
 
-        // Regular earnings row shown
-        expect(find.text('Your earning: CAD 40.00'), findsOneWidget);
+        // Regular earnings row shown (Breakdown UI)
+        expect(find.text('Total earning'), findsOneWidget);
+        expect(find.text('CAD 40.00'), findsWidgets); // it might find it twice, once in the breakdown and once in the total
       },
     );
 

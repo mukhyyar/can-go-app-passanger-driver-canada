@@ -2386,6 +2386,11 @@ class AppState extends ChangeNotifier {
     return next is String ? next : null;
   }
 
+  Future<void> cancelRide(String rideId) async {
+    await api.marketplace.driverCancelBookedRide(rideId);
+    await refreshMyRides();
+  }
+
   Future<void> submitOfferDraft(String requestId, OfferDraft draft) async {
     if (offerSubmitting) return;
     offerSubmitting = true;

@@ -240,7 +240,7 @@ export class TrackingService {
       });
     }
 
-    const webBase = process.env.WEB_PASSENGER_URL || 'https://can-ride.ca';
+    const webBase = process.env.PASSENGER_WEB_BASE || 'https://www.can-rides.ca';
     const shareUrl = `${webBase.replace(/\/$/, '')}/track/${shareToken}`;
 
     return {

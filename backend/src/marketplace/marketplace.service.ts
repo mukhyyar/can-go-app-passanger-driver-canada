@@ -2688,6 +2688,7 @@ export class MarketplaceService {
 
     return {
       success: true,
+      ...this.stripeClientConfig(),
       payment: {
         id: payment.id,
         provider: payment.provider,

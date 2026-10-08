@@ -53,6 +53,12 @@ export class TripService {
     const isAdmin =
       user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
 
+    if (isAssignedDriver && toStatus === RideStatus.DRIVER_EN_ROUTE) {
+      if (!user.driverProfile?.drivingEnabled) {
+        throw new BadRequestException('You must be online to start a ride');
+      }
+    }
+
     this.assertTransitionAllowed(
       ride.status,
       toStatus,

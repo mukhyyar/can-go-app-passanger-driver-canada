@@ -254,6 +254,13 @@ class MarketplaceApi {
         body: {'status': 'PASSENGER_CANCELLED'},
       );
 
+  Future<Map<String, dynamic>> driverCancelBookedRide(String rideId) =>
+      client.post(
+        '/rides/$rideId/transitions',
+        body: {'status': 'DRIVER_CANCELLED'},
+      );
+
+
   Future<Map<String, dynamic>> updateRide(
     String rideId, {
     String? fromLabel,

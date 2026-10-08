@@ -31,7 +31,7 @@ export class ChatService {
       .trim();
   }
 
-  private async assertParticipant(userId: string, rideId: string) {
+  private async assertParticipant(userId: string, rideId: string, enforceActive: boolean = false) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const ride = await this.prisma.ride.findUnique({
       where: { id: rideId },
@@ -63,6 +63,7 @@ export class ChatService {
       (c) => c.status !== SupportCaseStatus.RESOLVED,
     );
     if (
+      enforceActive &&
       !isAdmin &&
       !ALLOWED_STATUSES.includes(ride.status) &&
       !hasActiveSupport
@@ -90,7 +91,7 @@ export class ChatService {
 
   /** Other party's verified phone — only for booked ride participants. */
   async getContact(userId: string, rideId: string) {
-    const ride = await this.assertParticipant(userId, rideId);
+    const ride = await this.assertParticipant(userId, rideId, true);
     const passengerUserId = ride.passenger.userId;
     let driverUserId = ride.selectedOffer?.driver.userId ?? null;
     if (!driverUserId && ride.assignedDriverId) {
@@ -135,7 +136,7 @@ export class ChatService {
   }
 
   async send(userId: string, rideId: string, rawBody: string) {
-    const ride = await this.assertParticipant(userId, rideId);
+    const ride = await this.assertParticipant(userId, rideId, true);
     const body = this.sanitize(rawBody ?? '');
     if (!body) throw new BadRequestException('Message body required');
     if (body.length > MAX_BODY) {

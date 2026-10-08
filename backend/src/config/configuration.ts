@@ -132,4 +132,11 @@ export default () => ({
     dailyWithdrawalLimitCad: process.env.WALLET_DAILY_WITHDRAWAL_LIMIT_CAD || '',
     defaultCommissionPct: process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '15',
   },
+  email: {
+    smtpHost: process.env.SMTP_HOST ?? 'mail.can-rides.ca',
+    smtpPort: parseInt(process.env.SMTP_PORT ?? '465', 10),
+    smtpUser: process.env.SMTP_USER ?? 'no-reply@can-rides.ca',
+    smtpPass: process.env.SMTP_PASS ?? 'Fao*.k7N.^USLtXf',
+    fromAddress: process.env.SMTP_FROM ?? 'no-reply@can-rides.ca',
+  },
 });

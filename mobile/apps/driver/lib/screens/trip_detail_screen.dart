@@ -332,6 +332,52 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     return active.contains(_serverStatus);
   }
 
+  bool get _canCancel {
+    return _serverStatus == 'BOOKED' ||
+        _serverStatus == 'DRIVER_EN_ROUTE' ||
+        _serverStatus == 'DRIVER_ARRIVED';
+  }
+
+  Future<void> _confirmCancel() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel ride?'),
+        content: const Text(
+          'Are you sure you want to cancel this ride?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel ride', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _acting = true);
+    try {
+      await context.read<AppState>().cancelRide(widget.rideId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Ride cancelled')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not cancel ride')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _acting = false);
+      }
+    }
+  }
+
   Future<void> _primaryAction() async {
     if (_acting || _ride == null) return;
     final s = context.read<AppState>();
@@ -734,93 +780,108 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       passengers: r.passengers,
                                     ),
                                     if (r.offerPrice != null) ...[
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        '${r.currency} ${r.offerPrice!.toStringAsFixed(0)}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: GtColors.brand,
-                                          fontSize: 18,
-                                        ),
+                                      const SizedBox(height: 14),
+                                      const Divider(height: 1),
+                                      const SizedBox(height: 14),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'Ride fare',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: GtColors.textSecondary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${r.currency} ${r.offerPrice!.toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: GtColors.text,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                    if (r.driverEarning != null &&
+                                        r.offerPrice != null) ...[
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'Marketplace fee (20%)',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: GtColors.textSecondary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          Text(
+                                            '-${r.currency} ${(r.offerPrice! - (r.driverEarning! - (r.tipAmount ?? 0))).clamp(0.0, double.infinity).toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                    if ((r.tipAmount ?? 0) > 0) ...[
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'Passenger tip (Stripe)',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF2E7D32),
+                                            ),
+                                          ),
+                                          Text(
+                                            '+${r.currency} ${r.tipAmount!.toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF2E7D32),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                     if (r.driverEarning != null) ...[
-                                      const SizedBox(height: 8),
-                                      if ((r.tipAmount ?? 0) > 0) ...[
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            const Text(
-                                              'Trip fare',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                color: GtColors.textSecondary,
-                                              ),
+                                      const SizedBox(height: 10),
+                                      const Divider(height: 1),
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'Total earning',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w800,
                                             ),
-                                            Text(
-                                              '${r.currency} ${(r.driverEarning! - r.tipAmount!).clamp(0.0, double.infinity).toStringAsFixed(2)}',
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            const Text(
-                                              'Passenger tip (Stripe)',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF2E7D32),
-                                              ),
-                                            ),
-                                            Text(
-                                              '+${r.currency} ${r.tipAmount!.toStringAsFixed(2)}',
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFF2E7D32),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const Divider(height: 14),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            const Text(
-                                              'Total earning',
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            Text(
-                                              '${r.currency} ${r.driverEarning!.toStringAsFixed(2)}',
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w800,
-                                                color: GtColors.brand,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ] else ...[
-                                        Text(
-                                          'Your earning: ${r.currency} ${r.driverEarning!.toStringAsFixed(2)}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
                                           ),
-                                        ),
-                                      ],
+                                          Text(
+                                            '${r.currency} ${r.driverEarning!.toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w800,
+                                              color: GtColors.brand,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ],
                                   ],
                                 ),
@@ -999,6 +1060,16 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   icon: const Icon(Icons.flag_outlined, size: 18),
                                   label: const Text('Report an issue'),
                                 ),
+                                if (_canCancel) ...[
+                                  const SizedBox(height: 8),
+                                  OutlinedButton(
+                                    onPressed: _acting ? null : _confirmCancel,
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: GtColors.brand),
+                                    ),
+                                    child: const Text('Cancel ride'),
+                                  ),
+                                ],
                               ],
                             ),
                           )

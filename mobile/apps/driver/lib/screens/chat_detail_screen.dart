@@ -133,7 +133,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final app = context.watch<AppState>();
     final ride = app.myRides.cast<dynamic>().where((r) => r.id == _rideId);
     final isCompleted = ride.isNotEmpty &&
-        (ride.first.status?.toString() ?? '').toUpperCase() == 'COMPLETED';
+        ['COMPLETED', 'CANCELLED', 'NO_SHOW'].contains((ride.first.status?.toString() ?? '').toUpperCase());
     final title = ride.isNotEmpty
         ? (!isCompleted && ride.first.passengerName?.toString().isNotEmpty == true
             ? ride.first.passengerName as String
@@ -228,8 +228,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
           SafeArea(
             top: false,
-            child: _error != null &&
-                    _error!.toLowerCase().contains('locked')
+            child: (_error != null &&
+                    _error!.toLowerCase().contains('locked')) ||
+                    isCompleted
                 ? Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),

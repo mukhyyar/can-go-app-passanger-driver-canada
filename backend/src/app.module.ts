@@ -24,6 +24,8 @@ import { MapsModule } from './maps/maps.module';
 import { AdminModule } from './admin/admin.module';
 import { WalletModule } from './wallet/wallet.module';
 
+import { EmailModule } from './email/email.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -68,6 +70,7 @@ import { WalletModule } from './wallet/wallet.module';
     MapsModule,
     AuthModule,
     NotificationsModule,
+    EmailModule,
     StorageModule,
     DriversModule,
     MarketplaceModule,

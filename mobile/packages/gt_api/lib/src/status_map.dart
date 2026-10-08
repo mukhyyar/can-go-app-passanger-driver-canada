@@ -238,7 +238,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
   double price = priceBreakdown?.total ?? _asDouble(pres['passengerTotal']);
   if (price <= 0) price = _asDouble(snapMap?['passengerTotal']);
   if (price <= 0 && rawBid > 0) {
-    price = ((((rawBid * 1.20) * 1.20) * 100).roundToDouble() / 100.0);
+    price = (((rawBid * 1.20) * 100).roundToDouble() / 100.0);
   }
   if (price <= 0) price = rawBid;
 

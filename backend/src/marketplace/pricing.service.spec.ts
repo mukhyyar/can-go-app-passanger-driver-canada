@@ -65,15 +65,15 @@ describe('PricingService (unit)', () => {
     };
     const frozen = pricing.freezeBid(guidance, 100);
     expect(frozen.bidAmount).toBe(100);
-    expect(frozen.subtotal).toBe(120);
-    expect(frozen.platformFee).toBe(24);
-    expect(frozen.taxAmount).toBe(18.72);
-    expect(frozen.passengerTotal).toBe(162.72);
-    expect(frozen.driverEarning).toBe(100);
+    expect(frozen.subtotal).toBe(100);
+    expect(frozen.platformFee).toBe(20);
+    expect(frozen.taxAmount).toBe(13);
+    expect(frozen.passengerTotal).toBe(113);
+    expect(frozen.driverEarning).toBe(80);
     expect(frozen.frozenAt).toBeTruthy();
   });
 
-  it('freezeBid computes user example ($17 offer -> $20.40 ride price + $4.08 platform fee -> $24.48 total)', () => {
+  it('freezeBid computes user example ($17 offer -> $17 ride price + $3.40 platform fee -> $20.40 total)', () => {
     const guidance: PriceSnapshot = {
       currency: 'CAD',
       serviceType: 'RIDE',
@@ -93,10 +93,10 @@ describe('PricingService (unit)', () => {
     };
     const frozen = pricing.freezeBid(guidance, 17);
     expect(frozen.bidAmount).toBe(17);
-    expect(frozen.subtotal).toBe(20.4);
-    expect(frozen.platformFee).toBe(4.08);
-    expect(frozen.passengerTotal).toBe(24.48);
-    expect(frozen.driverEarning).toBe(17);
+    expect(frozen.subtotal).toBe(17);
+    expect(frozen.platformFee).toBe(3.4);
+    expect(frozen.passengerTotal).toBe(17);
+    expect(frozen.driverEarning).toBe(13.6);
   });
 
   it('freezeBid stores outbound/return and price band', () => {
@@ -125,10 +125,10 @@ describe('PricingService (unit)', () => {
     });
     expect(frozen.outboundPrice).toBe(120);
     expect(frozen.returnPrice).toBe(100);
-    expect(frozen.subtotal).toBe(264);
-    expect(frozen.platformFee).toBe(52.8);
-    expect(frozen.passengerTotal).toBe(316.8);
-    expect(frozen.driverEarning).toBe(220);
+    expect(frozen.subtotal).toBe(220);
+    expect(frozen.platformFee).toBe(44);
+    expect(frozen.passengerTotal).toBe(220);
+    expect(frozen.driverEarning).toBe(176);
     expect(frozen.priceBand).toBe('typical');
   });
 

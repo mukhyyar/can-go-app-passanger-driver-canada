@@ -127,6 +127,8 @@ class _RideChatScreenState extends State<RideChatScreen> {
     final title = offer != null
         ? '${offer.vehicleBrand} ${offer.vehicleModel}'.trim()
         : 'Ride chat';
+    final isCompleted = ride != null &&
+        ['COMPLETED', 'CANCELLED', 'NO_SHOW'].contains((ride.serverStatus ?? '').toUpperCase());
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
@@ -211,8 +213,9 @@ class _RideChatScreenState extends State<RideChatScreen> {
           ),
           SafeArea(
             top: false,
-            child: _error != null &&
-                    _error!.toLowerCase().contains('locked')
+            child: (_error != null &&
+                    _error!.toLowerCase().contains('locked')) ||
+                    isCompleted
                 ? Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),

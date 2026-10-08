@@ -22,16 +22,14 @@ class ReportSuggestionsData {
   ];
 
   static const List<String> passengerSuggestions = [
-    'Rude / Disrespectful behavior',
-    'Mess or spill in vehicle',
-    'Damage to vehicle',
-    'Demanded unsafe or illegal stop',
-    'Excessive wait time at pickup',
-    'Aggressive or threatening',
-    'Intoxicated or unruly',
-    'Extra unauthorized passengers',
-    'Disputed route or fare',
-    'Refused to wear seatbelt',
+    "Can't find the rider",
+    'Nowhere to stop',
+    "Rider's items don't fit",
+    'Too many riders',
+    'Unaccompanied minor',
+    'No car seat',
+    'Rider has an animal',
+    'Rider behaviour',
   ];
 
   static List<String> suggestionsFor({required ReportTarget target}) {
@@ -43,7 +41,7 @@ class ReportSuggestionsData {
   static String sectionTitleFor(ReportTarget target) {
     return target == ReportTarget.driver
         ? 'Select what went wrong:'
-        : 'Select the issue(s) encountered:';
+        : 'Something wrong? Choose an issue:';
   }
 }
 
@@ -61,6 +59,30 @@ class GtReportSuggestions extends StatelessWidget {
   final ValueChanged<String> onToggle;
   final String? title;
 
+  static IconData _iconFor(String suggestion) {
+    final s = suggestion.toLowerCase();
+    if (s.contains('find')) return Icons.help_outline_rounded;
+    if (s.contains('stop')) return Icons.do_not_disturb_alt_rounded;
+    if (s.contains('fit') || s.contains('luggage')) return Icons.luggage_rounded;
+    if (s.contains('many')) return Icons.groups_rounded;
+    if (s.contains('minor')) return Icons.family_restroom_rounded;
+    if (s.contains('seat')) return Icons.child_care_rounded;
+    if (s.contains('animal') || s.contains('pet')) return Icons.pets_rounded;
+    if (s.contains('behavio')) return Icons.warning_amber_rounded;
+    if (s.contains('mess') || s.contains('spill') || s.contains('dirty')) return Icons.cleaning_services_rounded;
+    if (s.contains('damage')) return Icons.car_crash_rounded;
+    if (s.contains('drive') || s.contains('reckless')) return Icons.warning_amber_rounded;
+    if (s.contains('phone')) return Icons.phone_android_rounded;
+    if (s.contains('unprofessional') || s.contains('rude')) return Icons.person_off_rounded;
+    if (s.contains('wrong vehicle')) return Icons.directions_car_rounded;
+    if (s.contains('detour') || s.contains('route')) return Icons.alt_route_rounded;
+    if (s.contains('cash') || s.contains('fare')) return Icons.money_off_rounded;
+    if (s.contains('late') || s.contains('delay') || s.contains('wait')) return Icons.schedule_rounded;
+    if (s.contains('conversation')) return Icons.chat_bubble_outline_rounded;
+    if (s.contains('ac') || s.contains('heating')) return Icons.ac_unit_rounded;
+    return Icons.info_outline_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = ReportSuggestionsData.suggestionsFor(target: target);
@@ -72,68 +94,71 @@ class GtReportSuggestions extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          heading,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: GtColors.text,
+        if (target == ReportTarget.passenger)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              heading,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: GtColors.textSecondary,
+              ),
+            ),
+          )
+        else ...[
+          Text(
+            heading,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: GtColors.text,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          const SizedBox(height: 8),
+        ],
+        Column(
           children: items.map((suggestion) {
             final isSelected = selectedSuggestions.contains(suggestion);
-            return Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => onToggle(suggestion),
-                borderRadius: BorderRadius.circular(20),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? GtColors.brand.withValues(alpha: 0.1)
-                        : GtColors.bgGrey,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected ? GtColors.brand : GtColors.border,
-                      width: isSelected ? 1.3 : 1.0,
+            return Column(
+              children: [
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onToggle(suggestion),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _iconFor(suggestion),
+                            color: GtColors.text,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Text(
+                              suggestion,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: GtColors.text,
+                              ),
+                            ),
+                          ),
+                          if (isSelected)
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: GtColors.brand,
+                              size: 24,
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isSelected ? Icons.check_rounded : Icons.add_rounded,
-                        size: 14,
-                        color: isSelected
-                            ? GtColors.brand
-                            : GtColors.textSecondary,
-                      ),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          suggestion,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: isSelected ? GtColors.brand : GtColors.text,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
+                const Divider(height: 1, color: GtColors.border),
+              ],
             );
           }).toList(),
         ),
@@ -185,70 +210,113 @@ Future<bool?> showGtReportBottomSheet({
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(10),
+                  if (target == ReportTarget.driver) ...[
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.flag_rounded,
+                            color: Colors.red.shade700,
+                            size: 22,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.flag_rounded,
-                          color: Colors.red.shade700,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sheetTitle,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: GtColors.text,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                sheetTitle,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: GtColors.text,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              sheetSubtitle,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                color: GtColors.textSecondary,
+                              const SizedBox(height: 2),
+                              Text(
+                                sheetSubtitle,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: GtColors.textSecondary,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  GtReportSuggestions(
-                    target: target,
-                    selectedSuggestions: selectedReasons,
-                    onToggle: (reason) {
-                      setLocal(() {
-                        if (selectedReasons.contains(reason)) {
-                          selectedReasons.remove(reason);
-                        } else {
-                          selectedReasons.add(reason);
-                        }
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: detailsCtrl,
-                    maxLines: 3,
-                    onChanged: (_) => setLocal(() {}),
-                    decoration: const InputDecoration(
-                      hintText: 'Additional details or context (optional)',
-                      border: OutlineInputBorder(),
+                      ],
                     ),
-                  ),
+                    const Divider(height: 24),
+                  ] else ...[
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(ctx, false),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (isSubmitting && target == ReportTarget.passenger)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else
+                    GtReportSuggestions(
+                      target: target,
+                      selectedSuggestions: selectedReasons,
+                      onToggle: (reason) async {
+                        if (target == ReportTarget.passenger) {
+                          setLocal(() {
+                            isSubmitting = true;
+                            errorMessage = null;
+                          });
+                          try {
+                            await onSubmit([reason], '');
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx, true);
+                            }
+                          } catch (e) {
+                            setLocal(() {
+                              isSubmitting = false;
+                              errorMessage = e.toString().replaceFirst(
+                                    'Exception: ',
+                                    '',
+                                  );
+                            });
+                          }
+                        } else {
+                          setLocal(() {
+                            if (selectedReasons.contains(reason)) {
+                              selectedReasons.remove(reason);
+                            } else {
+                              selectedReasons.add(reason);
+                            }
+                          });
+                        }
+                      },
+                    ),
+                  if (target == ReportTarget.driver) ...[
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: detailsCtrl,
+                      maxLines: 3,
+                      onChanged: (_) => setLocal(() {}),
+                      decoration: const InputDecoration(
+                        hintText: 'Additional details or context (optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                   if (errorMessage != null) ...[
                     const SizedBox(height: 10),
                     Text(
@@ -260,42 +328,44 @@ Future<bool?> showGtReportBottomSheet({
                       ),
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  GtGreenButton(
-                    label: isSubmitting ? 'Submitting…' : 'Submit report',
-                    onPressed: !canSubmit || isSubmitting
-                        ? null
-                        : () async {
-                            setLocal(() {
-                              isSubmitting = true;
-                              errorMessage = null;
-                            });
-                            try {
-                              await onSubmit(
-                                selectedReasons.toList(),
-                                detailsCtrl.text.trim(),
-                              );
-                              if (ctx.mounted) {
-                                Navigator.pop(ctx, true);
-                              }
-                            } catch (e) {
+                  if (target == ReportTarget.driver) ...[
+                    const SizedBox(height: 16),
+                    GtGreenButton(
+                      label: isSubmitting ? 'Submitting…' : 'Submit report',
+                      onPressed: !canSubmit || isSubmitting
+                          ? null
+                          : () async {
                               setLocal(() {
-                                isSubmitting = false;
-                                errorMessage = e.toString().replaceFirst(
-                                      'Exception: ',
-                                      '',
-                                    );
+                                isSubmitting = true;
+                                errorMessage = null;
                               });
-                            }
-                          },
-                  ),
-                  TextButton(
-                    onPressed: isSubmitting
-                        ? null
-                        : () => Navigator.pop(ctx, false),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(height: 10),
+                              try {
+                                await onSubmit(
+                                  selectedReasons.toList(),
+                                  detailsCtrl.text.trim(),
+                                );
+                                if (ctx.mounted) {
+                                  Navigator.pop(ctx, true);
+                                }
+                              } catch (e) {
+                                setLocal(() {
+                                  isSubmitting = false;
+                                  errorMessage = e.toString().replaceFirst(
+                                        'Exception: ',
+                                        '',
+                                      );
+                                });
+                              }
+                            },
+                    ),
+                    TextButton(
+                      onPressed: isSubmitting
+                          ? null
+                          : () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                 ],
               ),
             ),

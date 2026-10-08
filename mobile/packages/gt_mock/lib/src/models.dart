@@ -134,7 +134,7 @@ class OfferPriceBreakdown {
     String currency = 'CAD',
     double taxes = 0,
   }) {
-    final ridePrice = ((basePrice * 1.20) * 100).roundToDouble() / 100.0;
+    final ridePrice = basePrice;
     final fee = ((ridePrice * 0.20) * 100).roundToDouble() / 100.0;
     final total = ((ridePrice + fee + taxes) * 100).roundToDouble() / 100.0;
     return OfferPriceBreakdown(

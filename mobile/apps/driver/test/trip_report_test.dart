@@ -138,32 +138,22 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify report bottomsheet with passenger predefined options
-      expect(find.text('Report this trip'), findsOneWidget);
-      expect(find.text('Rude / Disrespectful behavior'), findsOneWidget);
-      expect(find.text('Mess or spill in vehicle'), findsOneWidget);
-      expect(find.text('Damage to vehicle'), findsOneWidget);
-      expect(find.text('Demanded unsafe or illegal stop'), findsOneWidget);
+      expect(find.text('Something wrong? Choose an issue:'), findsOneWidget);
+      expect(find.text('Can\'t find the rider'), findsOneWidget);
+      expect(find.text('Nowhere to stop'), findsOneWidget);
+      expect(find.text('Rider\'s items don\'t fit'), findsOneWidget);
+      expect(find.text('Too many riders'), findsOneWidget);
 
-      // Select predefined reason
-      await tester.tap(find.text('Rude / Disrespectful behavior'));
-      await tester.pumpAndSettle();
-
-      // Add details
-      final detailField = find.byType(TextField);
-      expect(detailField, findsOneWidget);
-      await tester.enterText(detailField, 'Passenger was verbally aggressive during trip');
+      // Select predefined reason (this now auto-submits for passengers)
+      await tester.tap(find.text('Rider behaviour'));
       await tester.pumpAndSettle();
 
-      // Submit
-      final submitBtn = find.text('Submit report');
-      await tester.ensureVisible(submitBtn);
-      await tester.pumpAndSettle();
-      await tester.tap(submitBtn);
-      await tester.pumpAndSettle();
+      // We don't have details text field or submit button anymore for passengers.
+      // After it auto-submits, the sheet should be gone.
 
       expect(reportEndpointCalled, isTrue);
-      expect(submittedReasons, contains('Rude / Disrespectful behavior'));
-      expect(submittedDetails, 'Passenger was verbally aggressive during trip');
+      expect(submittedReasons, contains('Rider behaviour'));
+      expect(submittedDetails == null || submittedDetails == '', isTrue);
       expect(find.textContaining('Report submitted'), findsOneWidget);
     },
   );

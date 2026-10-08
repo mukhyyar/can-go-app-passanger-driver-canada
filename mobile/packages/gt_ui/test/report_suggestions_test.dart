@@ -29,15 +29,15 @@ void main() {
 
     expect(
       passengerSuggestions,
-      contains('Rude / Disrespectful behavior'),
+      contains('Can\'t find the rider'),
     );
     expect(
       passengerSuggestions,
-      contains('Mess or spill in vehicle'),
+      contains('Nowhere to stop'),
     );
     expect(
       passengerSuggestions,
-      contains('Demanded unsafe or illegal stop'),
+      contains('Too many riders'),
     );
   });
 
@@ -88,7 +88,62 @@ void main() {
     expect(selected.contains('Dangerous / Reckless driving'), isFalse);
   });
 
-  testWidgets('showGtReportBottomSheet presents dialog and submits selections',
+  testWidgets('showGtReportBottomSheet presents dialog and submits selections for driver target',
+      (tester) async {
+    List<String>? submittedReasons;
+    String? submittedDetails;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () {
+                showGtReportBottomSheet(
+                  context: context,
+                  target: ReportTarget.driver,
+                  onSubmit: (reasons, details) async {
+                    submittedReasons = reasons;
+                    submittedDetails = details;
+                  },
+                );
+              },
+              child: const Text('Open Report'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open Report'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Report this ride'), findsOneWidget);
+    expect(find.text('Select what went wrong:'), findsOneWidget);
+    expect(find.text('Dangerous / Reckless driving'), findsOneWidget);
+
+    // Select chip
+    await tester.tap(find.text('Dangerous / Reckless driving'));
+    await tester.pumpAndSettle();
+
+    // Enter optional details
+    await tester.enterText(
+      find.byType(TextField),
+      'Driver was driving way too fast.',
+    );
+    await tester.pumpAndSettle();
+
+    // Submit report
+    await tester.ensureVisible(find.text('Submit report'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Submit report'));
+    await tester.pumpAndSettle();
+
+    expect(submittedReasons, contains('Dangerous / Reckless driving'));
+    expect(submittedDetails, 'Driver was driving way too fast.');
+  });
+
+  testWidgets('showGtReportBottomSheet auto-submits on chip tap for passenger target',
       (tester) async {
     List<String>? submittedReasons;
     String? submittedDetails;
@@ -118,28 +173,15 @@ void main() {
     await tester.tap(find.text('Open Report'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Report this trip'), findsOneWidget);
-    expect(find.text('Select the issue(s) encountered:'), findsOneWidget);
-    expect(find.text('Rude / Disrespectful behavior'), findsOneWidget);
+    expect(find.text('Something wrong? Choose an issue:'), findsOneWidget);
+    expect(find.text("Can't find the rider"), findsOneWidget);
 
-    // Select chip
-    await tester.tap(find.text('Rude / Disrespectful behavior'));
+    // Tapping chip auto-submits
+    await tester.tap(find.text("Can't find the rider"));
     await tester.pumpAndSettle();
 
-    // Enter optional details
-    await tester.enterText(
-      find.byType(TextField),
-      'Passenger refused to stop shouting.',
-    );
-    await tester.pumpAndSettle();
-
-    // Submit report
-    await tester.ensureVisible(find.text('Submit report'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Submit report'));
-    await tester.pumpAndSettle();
-
-    expect(submittedReasons, contains('Rude / Disrespectful behavior'));
-    expect(submittedDetails, 'Passenger refused to stop shouting.');
+    expect(submittedReasons, contains("Can't find the rider"));
+    expect(submittedDetails, '');
   });
 }
+

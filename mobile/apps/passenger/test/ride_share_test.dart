@@ -39,7 +39,7 @@ void main() {
                 jsonEncode({
                   'rideId': 'ride-share-test',
                   'shareToken': 'token-live-xyz-789',
-                  'shareUrl': 'https://can-ride.ca/track/token-live-xyz-789',
+                  'shareUrl': 'https://www.can-rides.ca/track/token-live-xyz-789',
                   'expiresAt': '2026-10-03T12:00:00.000Z',
                 }),
                 200,
@@ -138,7 +138,7 @@ void main() {
         // Verify bottom sheet content
         expect(find.text('Friends follow your ride live on the web'), findsOneWidget);
         expect(find.text('What your friend will see:'), findsOneWidget);
-        expect(find.text('https://can-ride.ca/track/token-live-xyz-789'), findsOneWidget);
+        expect(find.text('https://www.can-rides.ca/track/token-live-xyz-789'), findsOneWidget);
         expect(find.text('Copy & Share link'), findsOneWidget);
         expect(find.text('Stop sharing this trip'), findsOneWidget);
 

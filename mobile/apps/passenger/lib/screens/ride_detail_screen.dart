@@ -8,6 +8,7 @@ import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/services/stripe_payment_service.dart';
 import 'package:provider/provider.dart';
 
 class RideDetailScreen extends StatefulWidget {
@@ -85,7 +86,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       final ride = app.rideById(widget.rideId);
       final isCompleted =
           (ride?.serverStatus ?? '').toUpperCase() == 'COMPLETED' ||
-              ride?.status == RideStatus.past;
+          ride?.status == RideStatus.past;
       if (isCompleted) {
         myRating = await app.myRideRating(widget.rideId);
       }
@@ -104,13 +105,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     _maybeShowRating();
   }
 
-
   void _maybeShowRating() {
     if (_ratingPromptShown || _alreadyRated || !mounted) return;
     final ride = context.read<AppState>().rideById(widget.rideId);
     final isCompleted =
         (ride?.serverStatus ?? '').toUpperCase() == 'COMPLETED' ||
-            ride?.status == RideStatus.past;
+        ride?.status == RideStatus.past;
     if (!isCompleted) return;
     _ratingPromptShown = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -210,16 +210,16 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     try {
       await context.read<AppState>().cancelRide(widget.rideId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ride cancelled')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Ride cancelled')));
         await _load();
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not cancel ride')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not cancel ride')));
       }
     } finally {
       if (mounted) setState(() => _actionBusy = false);
@@ -304,10 +304,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   const Text(
                     'Rate your trip',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 4),
                   const Text(
@@ -404,19 +401,19 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final commentText = rawText.isNotEmpty
         ? rawText
         : (selectedSuggestions.isNotEmpty
-            ? selectedSuggestions.join(', ')
-            : null);
+              ? selectedSuggestions.join(', ')
+              : null);
     commentCtrl.dispose();
     if (submitted != true || !mounted) return;
     try {
       await context.read<AppState>().rateRide(
-            widget.rideId,
-            stars: overall,
-            communicationStars: communication,
-            driverStars: driver,
-            vehicleStars: vehicle,
-            comment: commentText,
-          );
+        widget.rideId,
+        stars: overall,
+        communicationStars: communication,
+        driverStars: driver,
+        vehicleStars: vehicle,
+        comment: commentText,
+      );
 
       if (mounted) {
         setState(() {
@@ -449,9 +446,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         if (e is ApiException && e.message.trim().isNotEmpty) {
           displayMsg = e.message.trim();
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(displayMsg)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(displayMsg)));
       }
     }
   }
@@ -465,11 +462,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       context: context,
       target: ReportTarget.driver,
       onSubmit: (reasons, details) async {
-        await app.reportRide(
-          ride.id,
-          reasons: reasons,
-          details: details,
-        );
+        await app.reportRide(ride.id, reasons: reasons, details: details);
       },
     );
 
@@ -602,7 +595,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.shield_outlined, size: 16, color: GtColors.brand),
+                            Icon(
+                              Icons.shield_outlined,
+                              size: 16,
+                              color: GtColors.brand,
+                            ),
                             SizedBox(width: 6),
                             Text(
                               'What your friend will see:',
@@ -631,7 +628,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   const SizedBox(height: 16),
                   if (shareUrl != null) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: GtColors.bgGrey,
                         borderRadius: BorderRadius.circular(12),
@@ -657,7 +657,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               Clipboard.setData(ClipboardData(text: shareUrl!));
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Trip share link copied to clipboard!'),
+                                  content: Text(
+                                    'Trip share link copied to clipboard!',
+                                  ),
                                   backgroundColor: GtColors.brand,
                                 ),
                               );
@@ -666,7 +668,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                             label: const Text('Copy'),
                             style: TextButton.styleFrom(
                               foregroundColor: GtColors.brand,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                             ),
                           ),
                         ],
@@ -677,11 +681,17 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       label: 'Copy & Share link',
                       icon: Icons.share_rounded,
                       onPressed: () {
-                        Clipboard.setData(ClipboardData(text: 'Follow my CAN-RIDE trip live: $shareUrl'));
+                        Clipboard.setData(
+                          ClipboardData(
+                            text: 'Follow my CAN-RIDE trip live: $shareUrl',
+                          ),
+                        );
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Tracking link copied! Share with your friend via SMS or chat.'),
+                            content: Text(
+                              'Tracking link copied! Share with your friend via SMS or chat.',
+                            ),
                             backgroundColor: GtColors.brand,
                           ),
                         );
@@ -705,7 +715,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Could not revoke link: $e')),
+                              SnackBar(
+                                content: Text('Could not revoke link: $e'),
+                              ),
                             );
                           }
                         }
@@ -776,7 +788,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         child: StatefulBuilder(
           builder: (ctx, setLocal) {
             Widget tipChip({required double amount, required String label}) {
-              final isSelected = !isCustom && (selectedPreset - amount).abs() < 0.01;
+              final isSelected =
+                  !isCustom && (selectedPreset - amount).abs() < 0.01;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -813,7 +826,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             }
 
             final currentAmount = isCustom
-                ? (double.tryParse(customCtrl.text.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0.0)
+                ? (double.tryParse(
+                        customCtrl.text.replaceAll(RegExp(r'[^0-9.]'), ''),
+                      ) ??
+                      0.0)
                 : selectedPreset;
 
             return SingleChildScrollView(
@@ -835,10 +851,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   const Text(
                     'Tip your driver',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 4),
                   const Text(
@@ -861,14 +874,19 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: customCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       prefixText: '\$ ',
                       hintText: 'Other custom amount',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                     ),
                     onChanged: (val) {
                       setLocal(() {
@@ -878,7 +896,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   ),
                   const SizedBox(height: 16),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: GtColors.bgGrey,
                       borderRadius: BorderRadius.circular(8),
@@ -886,7 +907,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.lock_outline, size: 16, color: GtColors.textSecondary),
+                        Icon(
+                          Icons.lock_outline,
+                          size: 16,
+                          color: GtColors.textSecondary,
+                        ),
                         SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -929,7 +954,29 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     setState(() => _actionBusy = true);
     try {
       final app = context.read<AppState>();
-      await app.tipRide(widget.rideId, amount: submitted, paymentMethod: 'CARD');
+      final result = await app.tipRide(
+        widget.rideId,
+        amount: submitted,
+        paymentMethod: 'CARD',
+      );
+
+      final clientSecret = result['clientSecret']?.toString();
+      if (clientSecret != null && clientSecret.isNotEmpty) {
+        final publishableKey = StripePaymentService.resolvePublishableKey(
+          result['stripePublishableKey']?.toString(),
+        );
+        if (publishableKey == null) {
+          throw Exception(
+            'Stripe is not configured for this app (missing publishable key).',
+          );
+        }
+        await StripePaymentService.presentPaymentSheet(
+          clientSecret: clientSecret,
+          publishableKey: publishableKey,
+          currency: currency,
+        );
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -938,12 +985,16 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             ),
           ),
         );
+        _load();
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to process tip: $e')),
-      );
+      if (StripePaymentService.isUserCancelled(e)) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to process tip: $e')));
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -959,13 +1010,13 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     setState(() => _actionBusy = true);
     try {
       await context.read<AppState>().createChangeRequest(
-            widget.rideId,
-            type: type,
-            proposedPickupAt: proposedPickupAt,
-            note: note,
-            flightNumber: flightNumber,
-            contactPhone: contactPhone,
-          );
+        widget.rideId,
+        type: type,
+        proposedPickupAt: proposedPickupAt,
+        note: note,
+        flightNumber: flightNumber,
+        contactPhone: contactPhone,
+      );
       if (mounted) {
         await context.read<AppState>().refreshRide(widget.rideId);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1229,7 +1280,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Icon(Icons.lock_outline, color: Color(0xFF16A34A), size: 20),
+                    Icon(
+                      Icons.lock_outline,
+                      color: Color(0xFF16A34A),
+                      size: 20,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1349,9 +1404,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       setState(() => _actionBusy = true);
       try {
         await context.read<AppState>().markLostItemReturned(
-              r.id,
-              note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
-            );
+          r.id,
+          note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1363,9 +1418,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not update case: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Could not update case: $e')));
         }
       } finally {
         if (mounted) setState(() => _actionBusy = false);
@@ -1375,7 +1430,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
   }
 
   Widget _buildPhotoThumbnail(String? photoUrl, {String? label}) {
-    if (photoUrl == null || photoUrl.trim().isEmpty) return const SizedBox.shrink();
+    if (photoUrl == null || photoUrl.trim().isEmpty)
+      return const SizedBox.shrink();
     final trimmed = photoUrl.trim();
     Widget imgWidget;
     if (trimmed.startsWith('data:image')) {
@@ -1383,7 +1439,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       if (comma != -1) {
         try {
           final bytes = base64Decode(trimmed.substring(comma + 1));
-          imgWidget = Image.memory(bytes, height: 140, width: double.infinity, fit: BoxFit.cover);
+          imgWidget = Image.memory(
+            bytes,
+            height: 140,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          );
         } catch (_) {
           imgWidget = const SizedBox.shrink();
         }
@@ -1422,10 +1483,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             ),
             const SizedBox(height: 4),
           ],
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: imgWidget,
-          ),
+          ClipRRect(borderRadius: BorderRadius.circular(8), child: imgWidget),
         ],
       ),
     );
@@ -1460,10 +1518,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 const Expanded(
                   child: Text(
                     'Set Pickup / Return Location',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
                 IconButton(
@@ -1498,7 +1553,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     child: OutlinedButton(
                       onPressed: () => ctrl.text = r.to!,
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         textStyle: const TextStyle(fontSize: 11),
                       ),
                       child: const Text('Use Drop-off'),
@@ -1508,7 +1566,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   OutlinedButton(
                     onPressed: () => ctrl.text = r.from,
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       textStyle: const TextStyle(fontSize: 11),
                     ),
                     child: const Text('Use Pickup'),
@@ -1537,14 +1598,13 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     if (ok == true && mounted && ctrl.text.trim().isNotEmpty) {
       setState(() => _actionBusy = true);
       try {
-        await context
-            .read<AppState>()
-            .setLostItemPickupLocation(r.id, location: ctrl.text.trim());
+        await context.read<AppState>().setLostItemPickupLocation(
+          r.id,
+          location: ctrl.text.trim(),
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Pickup location updated for driver'),
-            ),
+            const SnackBar(content: Text('Pickup location updated for driver')),
           );
           await context.read<AppState>().refreshRide(r.id);
           setState(() {});
@@ -1792,14 +1852,25 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             ),
           ],
           if (lost?.photoUrl != null && lost!.photoUrl!.isNotEmpty)
-            _buildPhotoThumbnail(lost.photoUrl, label: 'Driver Photo of Found Item:'),
-          if (lost?.handoverPhotoUrl != null && lost!.handoverPhotoUrl!.isNotEmpty)
-            _buildPhotoThumbnail(lost.handoverPhotoUrl, label: 'Handover Photo Proof:'),
+            _buildPhotoThumbnail(
+              lost.photoUrl,
+              label: 'Driver Photo of Found Item:',
+            ),
+          if (lost?.handoverPhotoUrl != null &&
+              lost!.handoverPhotoUrl!.isNotEmpty)
+            _buildPhotoThumbnail(
+              lost.handoverPhotoUrl,
+              label: 'Handover Photo Proof:',
+            ),
           if (isFound || isReported) ...[
-            if (lost?.pickupLocation != null && lost!.pickupLocation!.trim().isNotEmpty) ...[
+            if (lost?.pickupLocation != null &&
+                lost!.pickupLocation!.trim().isNotEmpty) ...[
               Container(
                 margin: const EdgeInsets.only(top: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -1807,7 +1878,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.location_on, size: 18, color: GtColors.brand),
+                    const Icon(
+                      Icons.location_on,
+                      size: 18,
+                      color: GtColors.brand,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -1833,8 +1908,13 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: _actionBusy ? null : () => _showSetPickupLocationDialog(r),
-                      child: const Text('Change', style: TextStyle(fontSize: 12)),
+                      onPressed: _actionBusy
+                          ? null
+                          : () => _showSetPickupLocationDialog(r),
+                      child: const Text(
+                        'Change',
+                        style: TextStyle(fontSize: 12),
+                      ),
                     ),
                   ],
                 ),
@@ -1844,13 +1924,18 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 margin: const EdgeInsets.only(top: 10),
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: _actionBusy ? null : () => _showSetPickupLocationDialog(r),
+                  onPressed: _actionBusy
+                      ? null
+                      : () => _showSetPickupLocationDialog(r),
                   icon: const Icon(Icons.add_location_alt_outlined, size: 16),
                   label: const Text('Set Meeting / Pickup Location for Driver'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: GtColors.brand,
                     side: const BorderSide(color: GtColors.brand),
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 12,
+                    ),
                   ),
                 ),
               ),
@@ -1868,7 +1953,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle, size: 18, color: Color(0xFF16A34A)),
+                    const Icon(
+                      Icons.check_circle,
+                      size: 18,
+                      color: Color(0xFF16A34A),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1897,7 +1986,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.payment, size: 18, color: Color(0xFF4F46E5)),
+                        const Icon(
+                          Icons.payment,
+                          size: 18,
+                          color: Color(0xFF4F46E5),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -1918,9 +2011,13 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     ),
                     const SizedBox(height: 8),
                     ElevatedButton.icon(
-                      onPressed: _actionBusy ? null : () => _payLostItemReturnFee(r),
+                      onPressed: _actionBusy
+                          ? null
+                          : () => _payLostItemReturnFee(r),
                       icon: const Icon(Icons.lock_outline, size: 15),
-                      label: Text('Pay \$${feeAmount.toStringAsFixed(2)} CAD via Stripe'),
+                      label: Text(
+                        'Pay \$${feeAmount.toStringAsFixed(2)} CAD via Stripe',
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF4F46E5),
                         foregroundColor: Colors.white,
@@ -1938,7 +2035,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => context.push('/chat/${r.id}'),
+                    onPressed: () => context.push('/ride/${r.id}/chat'),
                     icon: const Icon(Icons.chat_outlined, size: 16),
                     label: const Text('Chat with Driver'),
                     style: OutlinedButton.styleFrom(
@@ -1971,8 +2068,11 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             Row(
               children: [
                 ActionChip(
-                  avatar: const Icon(Icons.chat_outlined,
-                      size: 15, color: GtColors.brand),
+                  avatar: const Icon(
+                    Icons.chat_outlined,
+                    size: 15,
+                    color: GtColors.brand,
+                  ),
                   label: const Text(
                     'Chat with Driver',
                     style: TextStyle(
@@ -1983,7 +2083,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   ),
                   backgroundColor: Colors.white,
                   side: const BorderSide(color: Color(0xFFBFDBFE)),
-                  onPressed: () => context.push('/chat/${r.id}'),
+                  onPressed: () => context.push('/ride/${r.id}/chat'),
                 ),
               ],
             ),
@@ -1995,9 +2095,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 onPressed: _actionBusy
                     ? null
                     : () => _showHelpForm(
-                          'CURRENT_RIDE_HELP',
-                          'Lost item assistance',
-                        ),
+                        'CURRENT_RIDE_HELP',
+                        'Lost item assistance',
+                      ),
                 icon: const Icon(Icons.support_agent, size: 16),
                 label: const Text('Contact support for help'),
                 style: TextButton.styleFrom(
@@ -2038,39 +2138,40 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     // This prevents unrelated AppState changes (avatar load, notification
     // badge count, etc.) from triggering a rebuild of the entire screen
     // — which would force the Google Maps PlatformView to re-evaluate.
-    final (ride, offer) = context
-        .select<AppState, (RideRequest?, Offer?)>((s) {
+    final (ride, offer) = context.select<AppState, (RideRequest?, Offer?)>((s) {
       final r = s.rideById(widget.rideId);
       final oId = r?.selectedOfferId;
       return (r, oId != null ? s.offerByIds(widget.rideId, oId) : null);
     });
     final status = (ride?.serverStatus ?? '').toUpperCase();
-    final isCompleted = status == 'COMPLETED' || ride?.status == RideStatus.past;
+    final isCompleted =
+        status == 'COMPLETED' || ride?.status == RideStatus.past;
     if (isCompleted && !_alreadyRated && !_ratingPromptShown) {
       _maybeShowRating();
     }
     final statusLabel = friendlyRideStatus(ride?.serverStatus);
 
-    final currency = _paymentStatus?['onlineCurrency']?.toString() ??
+    final currency =
+        _paymentStatus?['onlineCurrency']?.toString() ??
         _paymentStatus?['totalCurrency']?.toString() ??
         offer?.currency ??
         ride?.currency ??
         'CAD';
-    final total = _num(
-      _paymentStatus?['totalAmount'] ?? offer?.price,
-    );
+    final total = _num(_paymentStatus?['totalAmount'] ?? offer?.price);
     final breakdown = offer?.priceBreakdown;
     final breakdownPayment = _paymentStatus?['priceBreakdown'];
     final rideFare = breakdown != null && breakdown.ridePrice > 0
         ? breakdown.ridePrice
         : (breakdownPayment is Map && _num(breakdownPayment['ridePrice']) > 0
-            ? _num(breakdownPayment['ridePrice'])
-            : (total > 0 ? (((total / 1.2) * 100).roundToDouble() / 100.0) : 0.0));
+              ? _num(breakdownPayment['ridePrice'])
+              : (total > 0
+                    ? (((total / 1.2) * 100).roundToDouble() / 100.0)
+                    : 0.0));
     final platformFee = breakdown != null && breakdown.platformFee > 0
         ? breakdown.platformFee
         : (breakdownPayment is Map && _num(breakdownPayment['platformFee']) > 0
-            ? _num(breakdownPayment['platformFee'])
-            : (((rideFare * 0.2) * 100).roundToDouble() / 100.0));
+              ? _num(breakdownPayment['platformFee'])
+              : (((rideFare * 0.2) * 100).roundToDouble() / 100.0));
 
     return PopScope(
       canPop: false,
@@ -2100,11 +2201,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           ),
           actions: [
             if (ride != null) ...[
-              IconButton(
-                icon: const Icon(Icons.share_outlined),
-                tooltip: 'Share trip with friend',
-                onPressed: _actionBusy ? null : () => _showShareSheet(ride),
-              ),
+              if (!isCompleted)
+                IconButton(
+                  icon: const Icon(Icons.share_outlined),
+                  tooltip: 'Share trip with friend',
+                  onPressed: _actionBusy ? null : () => _showShareSheet(ride),
+                ),
               IconButton(
                 icon: const Icon(Icons.flag_outlined),
                 tooltip: 'Report ride',
@@ -2114,479 +2216,289 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           ],
         ),
         body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: GtColors.brand),
-            )
-          : ride == null
-              ? const Center(child: Text('Ride not found'))
-              : ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _bannerColor(status),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        statusLabel,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
+            ? const Center(
+                child: CircularProgressIndicator(color: GtColors.brand),
+              )
+            : ride == null
+            ? const Center(child: Text('Ride not found'))
+            : ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _bannerColor(status),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      statusLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
                       ),
                     ),
-                    if (_isLiveTrackStatus(status)) ...[
-                      const SizedBox(height: 12),
-                      _Section(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Text(
-                                  'Live tracking',
-                                  style: TextStyle(fontWeight: FontWeight.w800),
-                                ),
-                                const Spacer(),
-                                if (_tracking?['eta'] is Map)
-                                  Text(
-                                    'ETA ~${(_tracking!['eta'] as Map)['minutes']} min',
-                                    style: const TextStyle(
-                                      color: GtColors.brand,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Builder(
-                              builder: (_) {
-                                final live = _tracking?['live'];
-                                final pickup = _tracking?['pickup'];
-                                final dropoff = _tracking?['dropoff'];
-                                final eta = _tracking?['eta'];
-                                if (live is! Map || pickup is! Map) {
-                                  return const Text(
-                                    'Waiting for driver location…',
-                                    style: TextStyle(
-                                      color: GtColors.textSecondary,
-                                    ),
-                                  );
-                                }
-                                final toDrop =
-                                    eta is Map &&
-                                    eta['target']?.toString() == 'DROPOFF' &&
-                                    dropoff is Map;
-                                final toLat = toDrop
-                                    ? (dropoff['lat'] as num?)?.toDouble()
-                                    : (pickup['lat'] as num?)?.toDouble();
-                                final toLng = toDrop
-                                    ? (dropoff['lng'] as num?)?.toDouble()
-                                    : (pickup['lng'] as num?)?.toDouble();
-                                // Fixed-height SizedBox prevents the ListView
-                                // from remeasuring the PlatformView on every
-                                // scroll frame.
-                                return SizedBox(
-                                  height: 200,
-                                  child: GtGoogleRouteMap(
-                                    fromLat:
-                                        (live['lat'] as num).toDouble(),
-                                    fromLng:
-                                        (live['lng'] as num).toDouble(),
-                                    fromLabel: 'Driver',
-                                    toLat: toLat,
-                                    toLng: toLng,
-                                    toLabel: toDrop ? 'Dropoff' : 'Pickup',
-                                    distanceLabel: eta is Map
-                                        ? '${eta['distanceKm']} km'
-                                        : null,
-                                    height: 200,
-                                    canExpand: false,
-                                    interactive: false,
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (status == 'BOOKED' ||
-                        status == 'DRIVER_EN_ROUTE' ||
-                        status == 'DRIVER_ARRIVED') ...[
-                      const SizedBox(height: 16),
-                      _buildPinCard(
-                        ride.startPin ??
-                            (1000 + (ride.id.hashCode.abs() % 9000)).toString(),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
+                  ),
+                  if (_isLiveTrackStatus(status)) ...[
+                    const SizedBox(height: 12),
                     _Section(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (ride.hasReturnTrip) ...[
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF3CD),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                    color: const Color(0xFFE6B800), width: 0.8),
+                          Row(
+                            children: [
+                              const Text(
+                                'Live tracking',
+                                style: TextStyle(fontWeight: FontWeight.w800),
                               ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.swap_vert_rounded,
-                                      size: 15, color: Color(0xFF8A6900)),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      ride.returnLabel != null &&
-                                              ride.returnLabel!.isNotEmpty
-                                          ? 'Return: ${ride.returnLabel!}'
-                                          : 'Return trip (Round trip)',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 12.5,
-                                        color: Color(0xFF6B5000),
-                                      ),
-                                    ),
+                              const Spacer(),
+                              if (_tracking?['eta'] is Map)
+                                Text(
+                                  'ETA ~${(_tracking!['eta'] as Map)['minutes']} min',
+                                  style: const TextStyle(
+                                    color: GtColors.brand,
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          GtRouteRow(
-                            from: ride.from,
-                            to: ride.to ?? '',
-                            distance: ride.distance,
-                            duration: ride.duration,
-                            timeBadge: ride.timeBadge,
-                            isRoundTrip: ride.hasReturnTrip,
-                            returnLabel: ride.returnLabel,
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            ride.datetimeLabel,
-                            style: const TextStyle(
-                              color: GtColors.textMuted,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Builder(
+                            builder: (_) {
+                              final live = _tracking?['live'];
+                              final pickup = _tracking?['pickup'];
+                              final dropoff = _tracking?['dropoff'];
+                              final eta = _tracking?['eta'];
+                              if (live is! Map || pickup is! Map) {
+                                return const Text(
+                                  'Waiting for driver location…',
+                                  style: TextStyle(
+                                    color: GtColors.textSecondary,
+                                  ),
+                                );
+                              }
+                              final toDrop =
+                                  eta is Map &&
+                                  eta['target']?.toString() == 'DROPOFF' &&
+                                  dropoff is Map;
+                              final toLat = toDrop
+                                  ? (dropoff['lat'] as num?)?.toDouble()
+                                  : (pickup['lat'] as num?)?.toDouble();
+                              final toLng = toDrop
+                                  ? (dropoff['lng'] as num?)?.toDouble()
+                                  : (pickup['lng'] as num?)?.toDouble();
+                              // Fixed-height SizedBox prevents the ListView
+                              // from remeasuring the PlatformView on every
+                              // scroll frame.
+                              return SizedBox(
+                                height: 200,
+                                child: GtGoogleRouteMap(
+                                  fromLat: (live['lat'] as num).toDouble(),
+                                  fromLng: (live['lng'] as num).toDouble(),
+                                  fromLabel: 'Driver',
+                                  toLat: toLat,
+                                  toLng: toLng,
+                                  toLabel: toDrop ? 'Dropoff' : 'Pickup',
+                                  distanceLabel: eta is Map
+                                      ? '${eta['distanceKm']} km'
+                                      : null,
+                                  height: 200,
+                                  canExpand: false,
+                                  interactive: false,
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
                     ),
-                    if (offer != null) ...[
-                      const SizedBox(height: 12),
-                      _Section(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Your driver',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
+                  ],
+                  if (status == 'BOOKED' ||
+                      status == 'DRIVER_EN_ROUTE' ||
+                      status == 'DRIVER_ARRIVED') ...[
+                    const SizedBox(height: 16),
+                    _buildPinCard(
+                      ride.startPin ??
+                          (1000 + (ride.id.hashCode.abs() % 9000)).toString(),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  _Section(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (ride.hasReturnTrip) ...[
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3CD),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFE6B800),
+                                width: 0.8,
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                if (offer.imageUrl != null)
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: AuthNetworkImage(
-                                      url: offer.imageUrl!,
-                                      width: 72,
-                                      height: 72,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) =>
-                                          const Icon(
-                                        Icons.directions_car,
-                                        size: 48,
-                                        color: GtColors.textMuted,
-                                      ),
-                                    ),
-                                  )
-                                else
-                                  Container(
-                                    width: 72,
-                                    height: 72,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: GtColors.bgGrey,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: const Icon(
-                                      Icons.directions_car,
-                                      size: 40,
-                                      color: GtColors.textMuted,
-                                    ),
-                                  ),
-                                const SizedBox(width: 14),
+                                const Icon(
+                                  Icons.swap_vert_rounded,
+                                  size: 15,
+                                  color: Color(0xFF8A6900),
+                                ),
+                                const SizedBox(width: 6),
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if ((offer.driverName ?? '')
-                                          .trim()
-                                          .isNotEmpty)
-                                        Text(
-                                          offer.driverName!.trim(),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 17,
-                                          ),
-                                        )
-                                      else
-                                        Text(
-                                          offer.displayName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 17,
-                                          ),
-                                        ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.star,
-                                            size: 16,
-                                            color: GtColors.warn,
-                                          ),
-                                          Text(
-                                            ' ${offer.rating.toStringAsFixed(1)}'
-                                            '${offer.ratingCount > 0 ? ' (${offer.ratingCount})' : ''}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      if ((offer.driverName ?? '')
-                                          .trim()
-                                          .isNotEmpty) ...[
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          offer.displayName,
-                                          style: const TextStyle(
-                                            color: GtColors.textSecondary,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                      Text(
-                                        [
-                                          offer.vehicleClass,
-                                          if ((offer.color ?? '')
-                                              .trim()
-                                              .isNotEmpty)
-                                            offer.color!.trim(),
-                                        ].join(' · '),
-                                        style: const TextStyle(
-                                          color: GtColors.textSecondary,
-                                        ),
-                                      ),
-                                    ],
+                                  child: Text(
+                                    ride.returnLabel != null &&
+                                            ride.returnLabel!.isNotEmpty
+                                        ? 'Return: ${ride.returnLabel!}'
+                                        : 'Return trip (Round trip)',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                      color: Color(0xFF6B5000),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                            if (offer.plate != null &&
-                                offer.plate!.trim().isNotEmpty) ...[
-                              const SizedBox(height: 14),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: GtColors.bgGrey,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border:
-                                      Border.all(color: GtColors.border),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'License plate',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: GtColors.textMuted,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      offer.plate!.trim().toUpperCase(),
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.2,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (offer.languages.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                'Languages: ${offer.languages.join(', ')}',
-                                style: const TextStyle(
-                                  color: GtColors.textSecondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 12),
-                            Text(
-                              formatMoney(offer.price, offer.currency),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 18,
-                                color: GtColors.brand,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (isCompleted && total > 0) ...[
-                      const SizedBox(height: 12),
-                      _Section(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Payment summary',
-                              style: TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 8),
-                            if (rideFare > 0 && platformFee > 0) ...[
-                              _row('Ride fare', formatMoney(rideFare, currency)),
-                              _row('Platform fee', formatMoney(platformFee, currency)),
-                            ],
-                            if ((ride.tipAmount ?? 0) > 0)
-                              _row('Tip (to driver)', formatMoney(ride.tipAmount!, currency)),
-                            _row('Total paid', formatMoney(total + (ride.tipAmount ?? 0), currency)),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    if (_canChat) ...[
-                      GtGreenButton(
-                        label: 'Chat with driver',
-                        fullWidth: true,
-                        onPressed: _actionBusy
-                            ? null
-                            : () => context.push(
-                                  '/ride/${widget.rideId}/chat',
-                                ),
-                      ),
-                    ],
-                    if (_canEdit) ...[
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _actionBusy
-                            ? null
-                            : () => context.push('/edit-ride/${widget.rideId}'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        child: const Text('Edit ride'),
-                      ),
-                    ],
-                    if (_canCancel) ...[
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _actionBusy ? null : _confirmCancel,
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                          side: const BorderSide(color: GtColors.brand),
-                        ),
-                        child: const Text('Cancel ride'),
-                      ),
-                    ],
-                    if (_isOngoing || _serverStatus == 'BOOKED') ...[
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _actionBusy
-                            ? null
-                            : () => _showHelpForm(
-                                  'CURRENT_RIDE_HELP',
-                                  'Help with this ride',
-                                ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        child: const Text('Help with this ride'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _actionBusy ? null : () => _showShareSheet(ride),
-                        icon: const Icon(Icons.share_outlined, size: 18),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        label: const Text('Share trip with friend'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _actionBusy ? null : _showReportSheet,
-                        icon: const Icon(Icons.flag_outlined, size: 18),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        label: const Text('Report an issue'),
-                      ),
-                    ],
-                    if (isCompleted) ...[
-                      const SizedBox(height: 10),
-                      if ((ride.tipAmount ?? 0) > 0)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: GtColors.brand.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: GtColors.brand.withOpacity(0.3)),
                           ),
-                          child: Row(
+                        ],
+                        GtRouteRow(
+                          from: ride.from,
+                          to: ride.to ?? '',
+                          distance: ride.distance,
+                          duration: ride.duration,
+                          timeBadge: ride.timeBadge,
+                          isRoundTrip: ride.hasReturnTrip,
+                          returnLabel: ride.returnLabel,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          ride.datetimeLabel,
+                          style: const TextStyle(
+                            color: GtColors.textMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (offer != null) ...[
+                    const SizedBox(height: 12),
+                    _Section(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Your driver',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.favorite, color: GtColors.brand, size: 24),
-                              const SizedBox(width: 12),
+                              if (offer.imageUrl != null)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: AuthNetworkImage(
+                                    url: offer.imageUrl!,
+                                    width: 72,
+                                    height: 72,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.directions_car,
+                                      size: 48,
+                                      color: GtColors.textMuted,
+                                    ),
+                                  ),
+                                )
+                              else
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: GtColors.bgGrey,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.directions_car,
+                                    size: 40,
+                                    color: GtColors.textMuted,
+                                  ),
+                                ),
+                              const SizedBox(width: 14),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      'You tipped \$${ride.tipAmount!.toStringAsFixed(2)} $currency',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
-                                        color: GtColors.brand,
+                                    if ((offer.driverName ?? '')
+                                        .trim()
+                                        .isNotEmpty)
+                                      Text(
+                                        offer.driverName!.trim(),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 17,
+                                        ),
+                                      )
+                                    else
+                                      Text(
+                                        offer.displayName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 17,
+                                        ),
                                       ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.star,
+                                          size: 16,
+                                          color: GtColors.warn,
+                                        ),
+                                        Text(
+                                          ' ${offer.rating.toStringAsFixed(1)}'
+                                          '${offer.ratingCount > 0 ? ' (${offer.ratingCount})' : ''}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 2),
-                                    const Text(
-                                      '100% of your tip goes to your driver.',
-                                      style: TextStyle(
-                                        fontSize: 12,
+                                    if ((offer.driverName ?? '')
+                                        .trim()
+                                        .isNotEmpty) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        offer.displayName,
+                                        style: const TextStyle(
+                                          color: GtColors.textSecondary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                    Text(
+                                      [
+                                        offer.vehicleClass,
+                                        if ((offer.color ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          offer.color!.trim(),
+                                      ].join(' · '),
+                                      style: const TextStyle(
                                         color: GtColors.textSecondary,
                                       ),
                                     ),
@@ -2595,139 +2507,354 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               ),
                             ],
                           ),
-                        )
-                      else ...[
-                        GtGreenButton(
-                          label: 'Tip driver',
-                          fullWidth: true,
-                          onPressed: _actionBusy ? null : _showTipSheet,
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                      if (ride.hasLostItemRequest || ride.lostItem != null)
-                        _buildPassengerLostItemCard(ride)
-                      else
-                        OutlinedButton.icon(
-                          onPressed: _actionBusy ? null : _showLostItemSheet,
-                          icon: const Icon(Icons.search, size: 18),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
-                          ),
-                          label: const Text('Find lost item'),
-                        ),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _actionBusy
-                            ? null
-                            : () => _showHelpForm(
-                                  'BILLING_HELP',
-                                  'Help with billing',
-                                ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        child: const Text('Help with billing'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _actionBusy
-                            ? null
-                            : () => _showHelpForm(
-                                  'REFUND_REQUEST',
-                                  'Request refund',
-                                ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        child: const Text('Request refund'),
-                      ),
-                      const SizedBox(height: 10),
-                      if (_alreadyRated)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Text(
-                            _myRatingStars != null
-                                ? 'You rated ★$_myRatingStars'
-                                : 'You already rated this ride',
-                            textAlign: TextAlign.center,
+                          if (offer.plate != null &&
+                              offer.plate!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: GtColors.bgGrey,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: GtColors.border),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'License plate',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: GtColors.textMuted,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    offer.plate!.trim().toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          if (offer.languages.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Languages: ${offer.languages.join(', ')}',
+                              style: const TextStyle(
+                                color: GtColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Text(
+                            formatMoney(offer.price, offer.currency),
                             style: const TextStyle(
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
                               color: GtColors.brand,
                             ),
                           ),
-                        )
-                      else
-                        TextButton(
-                          onPressed: _showRatingSheet,
-                          child: const Text('Rate this ride'),
-                        ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _actionBusy ? null : () => _showShareSheet(ride),
-                        icon: const Icon(Icons.share_outlined, size: 18),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        label: const Text('Share trip with friend'),
+                        ],
                       ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _actionBusy ? null : _showReportSheet,
-                        icon: const Icon(Icons.flag_outlined, size: 18),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        label: const Text('Report an issue'),
-                      ),
-                      if (ride.hasReportedRide == true ||
-                          ride.hasActiveSupport == true) ...[
-                        const SizedBox(height: 10),
-                        OutlinedButton.icon(
-                          onPressed: _actionBusy
-                              ? null
-                              : () => context.push('/ride/${widget.rideId}/chat'),
-                          icon: const Icon(Icons.support_agent_outlined, size: 18),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
-                            foregroundColor: GtColors.brand,
-                            side: const BorderSide(color: GtColors.brand),
-                          ),
-                          label: const Text('Chat with Support'),
-                        ),
-                      ],
-                    ],
-                    if (status == 'BOOKED' ||
-                        status == 'DRIVER_EN_ROUTE' ||
-                        status == 'DRIVER_ARRIVED') ...[
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed:
-                            _actionBusy ? null : _showFlightDelayForm,
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        child: const Text('Report flight delay'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _actionBusy ? null : _showRescheduleForm,
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                        ),
-                        child: const Text('Request reschedule'),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
+                    ),
                   ],
-                ),
+                  if (isCompleted && total > 0) ...[
+                    const SizedBox(height: 12),
+                    _Section(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Payment summary',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 8),
+                          if (rideFare > 0 && platformFee > 0) ...[
+                            _row('Ride fare', formatMoney(rideFare, currency)),
+                            _row(
+                              'Platform fee',
+                              formatMoney(platformFee, currency),
+                            ),
+                          ],
+                          if ((ride.tipAmount ?? 0) > 0)
+                            _row(
+                              'Tip (to driver)',
+                              formatMoney(ride.tipAmount!, currency),
+                            ),
+                          _row(
+                            'Total paid',
+                            formatMoney(
+                              total + (ride.tipAmount ?? 0),
+                              currency,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  if (_canChat) ...[
+                    GtGreenButton(
+                      label: 'Chat with driver',
+                      fullWidth: true,
+                      onPressed: _actionBusy
+                          ? null
+                          : () => context.push('/ride/${widget.rideId}/chat'),
+                    ),
+                  ],
+                  if (_canEdit) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _actionBusy
+                          ? null
+                          : () => context.push('/edit-ride/${widget.rideId}'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Edit ride'),
+                    ),
+                  ],
+                  if (_canCancel) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _actionBusy ? null : _confirmCancel,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                        side: const BorderSide(color: GtColors.brand),
+                      ),
+                      child: const Text('Cancel ride'),
+                    ),
+                  ],
+                  if (_isOngoing || _serverStatus == 'BOOKED') ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _actionBusy
+                          ? null
+                          : () => _showHelpForm(
+                              'CURRENT_RIDE_HELP',
+                              'Help with this ride',
+                            ),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Help with this ride'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _actionBusy
+                          ? null
+                          : () => _showShareSheet(ride),
+                      icon: const Icon(Icons.share_outlined, size: 18),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      label: const Text('Share trip with friend'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _actionBusy ? null : _showReportSheet,
+                      icon: const Icon(Icons.flag_outlined, size: 18),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      label: const Text('Report an issue'),
+                    ),
+                  ],
+                  if (isCompleted) ...[
+                    const SizedBox(height: 10),
+                    if ((ride.tipAmount ?? 0) > 0)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: GtColors.brand.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: GtColors.brand.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.favorite,
+                              color: GtColors.brand,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'You tipped \$${ride.tipAmount!.toStringAsFixed(2)} $currency',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: GtColors.brand,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    '100% of your tip goes to your driver.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: GtColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else ...[
+                      GtGreenButton(
+                        label: 'Tip driver',
+                        fullWidth: true,
+                        onPressed: _actionBusy ? null : _showTipSheet,
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (ride.hasLostItemRequest || ride.lostItem != null)
+                      _buildPassengerLostItemCard(ride)
+                    else
+                      OutlinedButton.icon(
+                        onPressed: _actionBusy ? null : _showLostItemSheet,
+                        icon: const Icon(Icons.search, size: 18),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                        label: const Text('Find lost item'),
+                      ),
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _actionBusy
+                          ? null
+                          : () => _showHelpForm(
+                              'BILLING_HELP',
+                              'Help with billing',
+                            ),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Help with billing'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _actionBusy
+                          ? null
+                          : () => _showHelpForm(
+                              'REFUND_REQUEST',
+                              'Request refund',
+                            ),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Request refund'),
+                    ),
+                    const SizedBox(height: 10),
+                    if (_alreadyRated)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          _myRatingStars != null
+                              ? 'You rated ★$_myRatingStars'
+                              : 'You already rated this ride',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: GtColors.brand,
+                          ),
+                        ),
+                      )
+                    else
+                      TextButton(
+                        onPressed: _showRatingSheet,
+                        child: const Text('Rate this ride'),
+                      ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _actionBusy ? null : _showReportSheet,
+                      icon: const Icon(Icons.flag_outlined, size: 18),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      label: const Text('Report an issue'),
+                    ),
+                    if (ride.hasReportedRide == true ||
+                        ride.hasActiveSupport == true) ...[
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _actionBusy
+                            ? null
+                            : () => context.push('/ride/${widget.rideId}/chat'),
+                        icon: const Icon(
+                          Icons.support_agent_outlined,
+                          size: 18,
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                          foregroundColor: GtColors.brand,
+                          side: const BorderSide(color: GtColors.brand),
+                        ),
+                        label: const Text('Chat with Support'),
+                      ),
+                    ],
+                  ],
+                  if (status == 'BOOKED' ||
+                      status == 'DRIVER_EN_ROUTE' ||
+                      status == 'DRIVER_ARRIVED') ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _actionBusy ? null : _showFlightDelayForm,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Report flight delay'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton(
+                      onPressed: _actionBusy ? null : _showRescheduleForm,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                      child: const Text('Request reschedule'),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                ],
+              ),
       ),
     );
   }
 
   String _formatPickup(DateTime d) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sept',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final day = days[d.weekday - 1];
@@ -2743,10 +2870,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(color: GtColors.textSecondary),
-          ),
+          Text(label, style: const TextStyle(color: GtColors.textSecondary)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
@@ -2760,7 +2884,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: GtColors.brand.withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+          color: GtColors.brand.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: GtColors.brand.withValues(alpha: 0.08),

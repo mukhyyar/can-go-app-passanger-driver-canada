@@ -386,13 +386,13 @@ export class PricingService implements OnModuleInit {
     }
 
     const driverBid = round2(bidAmount);
-    const ridePrice = round2(driverBid * 1.2);
+    const ridePrice = driverBid;
     const platformFee = round2(ridePrice * 0.2);
     const taxAmount = round2(
-      (ridePrice + platformFee) * (guidance.taxPct / 100),
+      (ridePrice) * (guidance.taxPct / 100),
     );
-    const passengerTotal = round2(ridePrice + platformFee + taxAmount);
-    const driverEarning = driverBid;
+    const passengerTotal = round2(ridePrice + taxAmount);
+    const driverEarning = round2(ridePrice - platformFee);
     const outbound =
       opts?.outboundPrice != null ? round2(opts.outboundPrice) : driverBid;
     const returnPrice =
