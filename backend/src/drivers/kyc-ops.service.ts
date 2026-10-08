@@ -5,7 +5,9 @@ import {
   GoneException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { EmailEventsService } from '../email/email-events.service';
 import {
   DocumentLifecycleStatus,
   DocumentReviewStatus,
@@ -100,6 +102,7 @@ export class KycOpsService {
     private readonly storage: StorageService,
     private readonly notifications: NotificationsService,
     private readonly kycDocs: KycDocumentsService,
+    @Optional() private readonly emailEvents?: EmailEventsService,
   ) {}
 
   async listQueue(query: KycListQuery) {
@@ -523,6 +526,7 @@ export class KycOpsService {
       driver.userId,
       'Action required on your documents',
       customer,
+      DOC_TYPE_LABELS[doc.docType as DriverDocType] ?? doc.docType,
     );
     return this.getWorkspace(doc.driverId);
   }
@@ -571,7 +575,7 @@ export class KycOpsService {
       documentIds: ids,
       message,
     });
-    await this.notifyDriver(driver.userId, 'Action required on your documents', message);
+    await this.notifyDriver(driver.userId, 'Action required on your documents', message, 'Multiple Documents');
     return this.getWorkspace(driverId);
   }
 
@@ -696,6 +700,7 @@ export class KycOpsService {
         driver.userId,
         'Your driver verification was not approved',
         dto.customerMessage.trim(),
+        'Application Rejected'
       );
     }
     return {
@@ -773,6 +778,13 @@ export class KycOpsService {
         note: dto.note ?? null,
       },
     );
+    if (!driver.isActivated) {
+      await this.notifyDriver(
+        driver.userId,
+        'Your driver profile is approved!',
+        'Admin activated your account. You can now receive transfer requests.'
+      );
+    }
     return {
       id: updated.id,
       approvalStatus: updated.approvalStatus,
@@ -835,12 +847,24 @@ export class KycOpsService {
   async afterDriverUpload(driverId: string) {
     const driver = await this.prisma.driverProfile.findUnique({
       where: { id: driverId },
-      include: { documents: true },
+      include: { documents: true, user: true },
     });
     if (!driver) return;
     const current = activeDocs(driver.documents);
     const data: Prisma.DriverProfileUpdateInput = {};
     if (!driver.kycSubmittedAt) data.kycSubmittedAt = new Date();
+
+    const latest = pickLatestByType(current);
+    const requiredDocs = REQUIRED_DOC_TYPES.map(t => latest[t]);
+    const hasAllRequired = requiredDocs.every(d => d != null) && latest.vehicle_photo != null;
+    if (hasAllRequired && !driver.kycSubmissionCompletedAt) {
+      data.kycSubmissionCompletedAt = new Date();
+      if (driver.user?.email) {
+        void this.emailEvents?.sendKycUnderReview(driver.userId, driver.fullName, driver.user.email);
+        void this.emailEvents?.sendAdminNewDriverAlert(driver.userId, driver.fullName, driver.user.email);
+      }
+    }
+
     const hasPendingReview = current.some(
       (d) => d.status === DocumentReviewStatus.PENDING,
     );
@@ -1173,6 +1197,10 @@ export class KycOpsService {
       reason: dto.reason,
       note: dto.note ?? null,
     });
+    
+    if (driver.user.email) {
+      void this.emailEvents?.sendAccountSuspended(driver.userId, driver.fullName, driver.user.email, dto.reason);
+    }
     return this.getWorkspace(driverId);
   }
 
@@ -1639,6 +1667,7 @@ export class KycOpsService {
   private async requireDriver(driverId: string) {
     const driver = await this.prisma.driverProfile.findUnique({
       where: { id: driverId },
+      include: { user: true },
     });
     if (!driver) throw new NotFoundException('Driver not found');
     return driver;
@@ -2059,7 +2088,7 @@ export class KycOpsService {
     throw new ForbiddenException('Missing permission drivers.activate');
   }
 
-  private async notifyDriver(userId: string, title: string, body: string) {
+  private async notifyDriver(userId: string, title: string, body: string, documentLabel?: string) {
     try {
       await this.notifications.sendToUser({
         userId,
@@ -2068,6 +2097,17 @@ export class KycOpsService {
         templateKey: 'kyc_action_required',
         data: { type: 'kyc' },
       });
+      const driver = await this.prisma.driverProfile.findUnique({
+        where: { userId },
+        include: { user: true },
+      });
+      if (driver && driver.user.email) {
+        if (title.toLowerCase().includes('approved')) {
+          void this.emailEvents?.sendKycApproved(userId, driver.fullName, driver.user.email);
+        } else {
+          void this.emailEvents?.sendKycActionRequired(userId, driver.fullName, driver.user.email, documentLabel || 'Driver Profile', body);
+        }
+      }
     } catch {
       // notification delivery is non-fatal
     }

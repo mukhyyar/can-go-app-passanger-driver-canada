@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { OfferStatus, Prisma, RideStatus } from '@prisma/client';
+import { EmailEventsService } from '../email/email-events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 import {
@@ -33,6 +34,7 @@ export class RideLifecycleService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly tracking?: TrackingGateway,
+    @Optional() private readonly emailEvents?: EmailEventsService,
   ) {
     this.config = loadRideLifecycleConfig();
   }
@@ -111,6 +113,31 @@ export class RideLifecycleService {
           status: to,
           actorType,
         });
+
+        const preBookingStatuses: RideStatus[] = [
+          RideStatus.WAITING_FOR_OFFERS,
+          RideStatus.OFFER_SELECTION,
+          RideStatus.PAYMENT_PENDING
+        ];
+        if (!(actorType === 'passenger' && preBookingStatuses.includes(from))) {
+          const r = await this.prisma.ride.findUnique({
+            where: { id: rideId },
+            include: { passenger: { include: { user: true } } }
+          });
+          if (r?.passenger?.user?.email) {
+            let by = 'the driver';
+            if (actorType === 'passenger') by = 'you';
+            if (actorType === 'admin') by = 'Can-Ride Support';
+            void this.emailEvents?.sendRideCancelled(
+              r.passenger.userId,
+              r.passenger.user.email,
+              r.id.slice(0, 8).toUpperCase(),
+              by,
+              'CAD 0.00',
+              5
+            );
+          }
+        }
       }
     }
 

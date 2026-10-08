@@ -6,8 +6,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EmailEventsService } from '../email/email-events.service';
 import {
   DriverApprovalStatus,
   DriverPayoutStatus,
@@ -72,6 +74,7 @@ export class DriverWalletService {
     private readonly config: ConfigService,
     private readonly notifications: NotificationsService,
     @Inject(PAYOUT_PROVIDER) private readonly payoutProvider: PayoutProvider,
+    @Optional() private readonly emailEvents?: EmailEventsService,
   ) {}
 
   walletCurrency(): string {
@@ -715,6 +718,31 @@ export class DriverWalletService {
       },
     });
 
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.email) {
+      const prefs = this.parsePayout(driver.payoutSettingsJson);
+      const mask = prefs.accountMask || '****';
+      void this.emailEvents?.sendWalletPayoutRequested(
+        userId,
+        driver.fullName,
+        user.email,
+        moneyToString(d(payout.amount), payout.currency),
+        payout.currency,
+        mask
+      );
+
+      const reviewThreshold = this.config.get<string>('wallet.manualReviewAlertCad') || '1000';
+      if (d(amount).gte(normalizeMoney(reviewThreshold, walletCurrency))) {
+        void this.emailEvents?.sendAdminLargeWithdrawalAlert(
+          userId,
+          driver.fullName,
+          user.email,
+          moneyToString(d(payout.amount), payout.currency),
+          payout.currency
+        );
+      }
+    }
+
     // Provider call OUTSIDE DB transaction
     await this.executeProviderPayout(payout.id);
 
@@ -930,7 +958,7 @@ export class DriverWalletService {
 
     const payout = await this.prisma.driverPayout.findUnique({
       where: { id: payoutId },
-      include: { driver: true },
+      include: { driver: { include: { user: true } } },
     });
     if (payout?.driver?.userId) {
       void this.notifications.sendToUser({
@@ -946,6 +974,16 @@ export class DriverWalletService {
           deepLink: '/wallet',
         },
       });
+
+      if (payout.driver.user?.email) {
+        void this.emailEvents?.sendWalletPayoutFailed(
+          payout.driver.userId,
+          payout.driver.fullName,
+          payout.driver.user.email,
+          moneyToString(d(payout.amount), payout.currency),
+          payout.currency
+        );
+      }
     }
   }
 

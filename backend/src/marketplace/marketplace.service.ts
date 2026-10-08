@@ -8,6 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EmailEventsService } from '../email/email-events.service';
 import {
   DocumentLifecycleStatus,
   DocumentReviewStatus,
@@ -87,6 +88,7 @@ export class MarketplaceService {
     private readonly config: ConfigService,
     @Optional() private readonly tracking?: TrackingGateway,
     @Optional() private readonly stripeConnect?: StripeConnectService,
+    @Optional() private readonly emailEvents?: EmailEventsService,
   ) {
     this.payTtlMs = loadRideLifecycleConfig().paymentTtlMs;
   }
@@ -922,6 +924,11 @@ export class MarketplaceService {
       },
     });
 
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.email) {
+      void this.emailEvents?.sendSupportReceived(userId, user.email, shortIdFrom(row.id), passenger.fullName);
+    }
+
     // Notify Admins
     const code = shortIdFrom(ride.id);
     void this.notifications.notifyAdmins({
@@ -1080,6 +1087,23 @@ export class MarketplaceService {
         deepLink: `/admin/rides/${rideId}`,
       },
     });
+
+    const reportUser = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (reportUser?.email) {
+      const pName = isPassenger ? ride.passenger.fullName : ((userDriverProfile as any)?.fullName) || 'User';
+      void this.emailEvents?.sendSupportReceived(userId, reportUser.email, shortIdFrom(row.id), pName);
+    }
+
+    if (isSafety) {
+      const reporterName = isPassenger ? ride.passenger.fullName : ((userDriverProfile as any)?.fullName) || 'User';
+      void this.emailEvents?.sendAdminCriticalIssueAlert(
+        rideId,
+        reportCode,
+        reporterName,
+        actorRole,
+        primaryReason
+      );
+    }
 
     await this.prisma.rideEvent.create({
       data: {
@@ -3090,6 +3114,23 @@ export class MarketplaceService {
       targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       data: bookingData,
     });
+
+    const user = await this.prisma.user.findUnique({ where: { id: ride.passenger.userId } });
+    if (user?.email) {
+      const financial = await this.prisma.rideFinancial.findUnique({ where: { rideId } });
+      const fare = financial ? `${financial.rideFare} ${financial.currency}` : 'TBD';
+      const whenStr = ride.pickupAt instanceof Date ? ride.pickupAt.toISOString() : String(ride.pickupAt);
+      void this.emailEvents?.sendRideScheduled(
+        ride.passenger.userId,
+        user.email,
+        ride.id.slice(0, 8).toUpperCase(),
+        whenStr,
+        ride.fromLabel,
+        ride.toLabel || '',
+        fare
+      );
+    }
+
     const driverUserId = ride.selectedOffer?.driver.userId;
     if (driverUserId) {
       const pickupLabel = ride.fromLabel;

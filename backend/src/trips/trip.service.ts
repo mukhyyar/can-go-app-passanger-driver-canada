@@ -5,7 +5,9 @@ import {
   Injectable,
   NotFoundException,
   forwardRef,
+  Optional,
 } from '@nestjs/common';
+import { EmailEventsService } from '../email/email-events.service';
 import { DriverPayoutStatus, RideStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -21,7 +23,8 @@ export class TripService {
     @Inject(forwardRef(() => TrackingGateway))
     private readonly tracking: TrackingGateway,
     private readonly wallet: DriverWalletService,
-    private readonly stripeConnect?: StripeConnectService,
+    @Optional() private readonly stripeConnect?: StripeConnectService,
+    @Optional() private readonly emailEvents?: EmailEventsService,
   ) {}
 
   async transition(
@@ -210,6 +213,29 @@ export class TripService {
         body: this.bodyFor(notifyStatus, ride.fromLabel),
         targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       });
+
+      if (notifyStatus === RideStatus.COMPLETED) {
+        const user = await this.prisma.user.findUnique({ where: { id: ride.passenger.userId } });
+        if (user?.email) {
+          const financial = await this.prisma.rideFinancial.findUnique({ where: { rideId } });
+          if (financial) {
+            const fareStr = `${financial.rideFare} ${financial.currency}`;
+            const feeStr = `${financial.marketplaceFee} ${financial.currency}`;
+            const tipStr = `${financial.tipAmount || 0} ${financial.currency}`;
+            const totalStr = `${financial.passengerTotalCharged} ${financial.currency}`;
+            void this.emailEvents?.sendRideReceipt(
+              ride.passenger.userId,
+              user.email,
+              ride.id.slice(0, 8).toUpperCase(),
+              ride.selectedOffer?.driver?.fullName || 'Driver',
+              fareStr,
+              feeStr,
+              tipStr,
+              totalStr
+            );
+          }
+        }
+      }
     }
 
     if (driverUserId) {

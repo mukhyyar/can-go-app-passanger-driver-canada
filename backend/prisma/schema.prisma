@@ -273,6 +273,7 @@ model DriverProfile {
   kycAssignedAt        DateTime?
   kycReviewStartedAt   DateTime?
   kycSubmittedAt       DateTime?
+  kycSubmissionCompletedAt DateTime?
   kycDecidedAt         DateTime?
   kycDecisionNote      String?
   kycDecisionReason    String?

@@ -73,6 +73,10 @@ export default () => ({
       process.env.IMPERSONATION_TTL_MINUTES ?? '12',
       10,
     ),
+    alertEmails: (process.env.ADMIN_ALERT_EMAILS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   },
   maps: {
     provider: process.env.MAPS_PROVIDER ?? 'google',
@@ -128,15 +132,19 @@ export default () => ({
     currency: (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase(),
     minWithdrawalCad: process.env.WALLET_MIN_WITHDRAWAL_CAD ?? '10',
     maxWithdrawalCad: process.env.WALLET_MAX_WITHDRAWAL_CAD ?? '5000',
+    manualReviewAlertCad: process.env.WALLET_MANUAL_REVIEW_ALERT_CAD ?? '5000',
     holdDays: parseInt(process.env.WALLET_HOLD_DAYS ?? '3', 10),
     dailyWithdrawalLimitCad: process.env.WALLET_DAILY_WITHDRAWAL_LIMIT_CAD || '',
     defaultCommissionPct: process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '15',
   },
   email: {
+    enabled: process.env.EMAIL_ENABLED === 'true',
     smtpHost: process.env.SMTP_HOST ?? 'mail.can-rides.ca',
     smtpPort: parseInt(process.env.SMTP_PORT ?? '465', 10),
     smtpUser: process.env.SMTP_USER ?? 'no-reply@can-rides.ca',
-    smtpPass: process.env.SMTP_PASS ?? 'Fao*.k7N.^USLtXf',
+    smtpPass: process.env.SMTP_PASS,
     fromAddress: process.env.SMTP_FROM ?? 'no-reply@can-rides.ca',
+    assetBaseUrl: process.env.EMAIL_ASSET_BASE_URL ?? 'https://can-rides.ca/assets',
+    appDeeplinkBaseUrl: process.env.APP_DEEPLINK_BASE_URL ?? 'canride://',
   },
 });

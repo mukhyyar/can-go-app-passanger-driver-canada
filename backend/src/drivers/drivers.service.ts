@@ -4,7 +4,9 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { EmailEventsService } from '../email/email-events.service';
 import {
   DocumentReviewStatus,
   DriverApprovalStatus,
@@ -58,7 +60,8 @@ export class DriversService {
     private readonly storage: StorageService,
     private readonly kycOps: KycOpsService,
     private readonly kycDocs: KycDocumentsService,
-    private readonly stripeConnect?: StripeConnectService,
+    @Optional() private readonly stripeConnect?: StripeConnectService,
+    @Optional() private readonly emailEvents?: EmailEventsService,
   ) {}
 
   private async requireDriverProfile(userId: string) {
@@ -1416,6 +1419,13 @@ export class DriversService {
         approvalStatus: DriverApprovalStatus.APPROVED,
       },
     });
+
+    if (!driver.isActivated) {
+      const user = await this.prisma.user.findUnique({ where: { id: driver.userId } });
+      if (user?.email) {
+        void this.emailEvents?.sendKycApproved(driver.userId, driver.fullName, user.email);
+      }
+    }
 
     await this.audit(adminUserId, 'admin.driver.activate', 'DriverProfile', driverId, ip);
     return {

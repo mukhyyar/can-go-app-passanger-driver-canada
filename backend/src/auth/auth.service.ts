@@ -8,7 +8,8 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Inject } from '@nestjs/common';
+import { Inject, Optional } from '@nestjs/common';
+import { EmailEventsService } from '../email/email-events.service';
 import { ConfigService } from '@nestjs/config';
 import { DriverApprovalStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -50,6 +51,7 @@ export class AuthService {
     private readonly oauthVerify: OAuthVerifyService,
     private readonly storage: StorageService,
     @Inject(OTP_PROVIDER) private readonly otp: OtpProvider,
+    @Optional() private readonly emailEvents?: EmailEventsService,
   ) {}
 
   private async requireDb() {
@@ -178,6 +180,14 @@ export class AuthService {
 
       await this.ensureProfileForRole(existing, dto.role, dto.fullName);
 
+      if (dto.role === UserRole.DRIVER) {
+        void this.emailEvents?.sendDriverAppReceived(
+          existing.id,
+          dto.fullName?.trim() ?? '',
+          existing.email ?? email,
+        );
+      }
+
       const challenge = await this.otp.issue(phoneE164, 'verify_phone');
       await this.audit(
         existing.id,
@@ -225,6 +235,10 @@ export class AuthService {
             }),
       },
     });
+
+    if (dto.role === UserRole.DRIVER) {
+      void this.emailEvents?.sendDriverAppReceived(user.id, fullName, email);
+    }
 
     const challenge = await this.otp.issue(phoneE164, 'verify_phone');
 
