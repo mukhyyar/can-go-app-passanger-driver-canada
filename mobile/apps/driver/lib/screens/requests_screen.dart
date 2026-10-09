@@ -106,7 +106,7 @@ class _RequestsScreenState extends State<RequestsScreen>
   Future<void> _showProfileOnHoldDialog() async {
     await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Profile On Hold'),
         content: const Text(
@@ -114,13 +114,13 @@ class _RequestsScreenState extends State<RequestsScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('OK', style: TextStyle(color: GtColors.brand)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(ctx);
               context.push('/onboarding/documents');
             },
             child: const Text('View Documents'),
@@ -133,7 +133,7 @@ class _RequestsScreenState extends State<RequestsScreen>
   Future<void> _showExpiredDocsDialog() async {
     await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Documents Expired'),
         content: const Text(
@@ -141,13 +141,13 @@ class _RequestsScreenState extends State<RequestsScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancel', style: TextStyle(color: GtColors.textSecondary)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(ctx);
               context.push('/onboarding/documents');
             },
             child: const Text('View Documents'),
@@ -160,7 +160,7 @@ class _RequestsScreenState extends State<RequestsScreen>
   Future<void> _showReuploadDialog() async {
     await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Document Review Required'),
         content: const Text(
@@ -168,13 +168,13 @@ class _RequestsScreenState extends State<RequestsScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('Cancel', style: TextStyle(color: GtColors.textSecondary)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(ctx);
               context.push('/onboarding/documents');
             },
             child: const Text('View Documents'),
@@ -187,14 +187,14 @@ class _RequestsScreenState extends State<RequestsScreen>
   Future<void> _showNotActivatedDialog() async {
     await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         content: const Text(
           'You will be able to offer your price after activation. Please, fill in your profile and contact us: partner@can-go.ca',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('OK', style: TextStyle(color: GtColors.brand)),
           ),
         ],
@@ -1237,7 +1237,7 @@ class _OnlineOfflineSwitchBar extends StatelessWidget {
                             height: 8,
                             decoration: BoxDecoration(
                               color: isOnline
-                                  ? GtColors.green
+                                  ? const Color(0xFF15803D)
                                   : Colors.grey.shade500,
                               shape: BoxShape.circle,
                             ),

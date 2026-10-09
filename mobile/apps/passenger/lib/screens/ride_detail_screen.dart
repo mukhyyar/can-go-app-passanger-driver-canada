@@ -2146,6 +2146,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final status = (ride?.serverStatus ?? '').toUpperCase();
     final isCompleted =
         status == 'COMPLETED' || ride?.status == RideStatus.past;
+    final isCancelled = status.contains('CANCELLED');
     if (isCompleted && !_alreadyRated && !_ratingPromptShown) {
       _maybeShowRating();
     }
@@ -2201,7 +2202,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           ),
           actions: [
             if (ride != null) ...[
-              if (!isCompleted)
+              if (!isCompleted && !isCancelled)
                 IconButton(
                   icon: const Icon(Icons.share_outlined),
                   tooltip: 'Share trip with friend',
