@@ -112,6 +112,164 @@ class _LocationScreenState extends State<LocationScreen> {
     await _search(q);
   }
 
+  /// Expand/collapse common CA street abbreviations for geocode fallback.
+  static String _expandStreetAbbrevs(String q) {
+    const pairs = <String, String>{
+      'dr': 'Drive',
+      'drive': 'Dr',
+      'st': 'Street',
+      'street': 'St',
+      'ave': 'Avenue',
+      'avenue': 'Ave',
+      'rd': 'Road',
+      'road': 'Rd',
+      'blvd': 'Boulevard',
+      'boulevard': 'Blvd',
+      'cres': 'Crescent',
+      'crescent': 'Cres',
+      'mr': 'Manor',
+      'manor': 'Mr',
+      'hwy': 'Highway',
+      'highway': 'Hwy',
+    };
+    final parts = q.split(RegExp(r'(\s+|,\s*)'));
+    var changed = false;
+    final out = parts.map((tok) {
+      if (tok.isEmpty || RegExp(r'^\s+$').hasMatch(tok) || tok.startsWith(',')) {
+        return tok;
+      }
+      final bare = tok.replaceAll('.', '');
+      final repl = pairs[bare.toLowerCase()];
+      if (repl != null) {
+        changed = true;
+        return repl;
+      }
+      return tok;
+    }).join();
+    if (!changed) return q;
+    return out.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  bool _looksLikeFullAddress(String q) {
+    final t = q.trim();
+    if (t.length < 8) return false;
+    final hasNumber = RegExp(r'\d').hasMatch(t);
+    final hasStreet = RegExp(
+      r'\b(st|street|ave|avenue|rd|road|blvd|dr|drive|way|cres|crescent|lane|hwy|manor|mr)\b',
+      caseSensitive: false,
+    ).hasMatch(t);
+    return hasNumber && (hasStreet || t.contains(','));
+  }
+
+  bool _isHighConfidenceMatch(String query, Place p) {
+    // Ignore free-text stubs with no provider coords/placeId.
+    if (!p.hasCoords && (p.placeId == null || p.placeId!.isEmpty)) {
+      return false;
+    }
+    final hay = '${p.label} ${p.subtitle}'.toLowerCase();
+    final q = query.toLowerCase().trim();
+    final house = RegExp(r'^(\d+)\b').firstMatch(q)?.group(1);
+    if (house != null && !RegExp('\\b$house\\b').hasMatch(hay)) return false;
+    final postal = RegExp(r'\b([a-z]\d[a-z])\s*(\d[a-z]\d)\b', caseSensitive: false)
+        .firstMatch(q);
+    if (postal != null) {
+      final compact = '${postal.group(1)}${postal.group(2)}'.toLowerCase();
+      if (!hay.replaceAll(RegExp(r'\s+'), '').contains(compact)) return false;
+    }
+    // Street-type family agreement when user specified one.
+    const families = <List<String>>[
+      ['dr', 'drive'],
+      ['st', 'street'],
+      ['ave', 'avenue'],
+      ['rd', 'road'],
+      ['mr', 'manor'],
+      ['blvd', 'boulevard'],
+      ['cres', 'crescent'],
+    ];
+    for (final family in families) {
+      final qHas = family.any((t) => RegExp('\\b$t\\b').hasMatch(q));
+      if (!qHas) continue;
+      final rHas = family.any((t) => RegExp('\\b$t\\b').hasMatch(hay));
+      return rHas;
+    }
+    return house != null;
+  }
+
+  bool get _showUseTypedAddress {
+    if (_showingHistory || _loading || _resolvingPick) return false;
+    final q = _controller.text.trim();
+    if (!_looksLikeFullAddress(q)) return false;
+    if (_results.isEmpty) return true;
+    return !_results.any((p) => _isHighConfidenceMatch(q, p));
+  }
+
+  Future<void> _useTypedAddress() async {
+    final typed = _controller.text.trim();
+    if (typed.isEmpty || _resolvingPick) return;
+    setState(() {
+      _resolvingPick = true;
+      _pickingId = 'typed-address';
+    });
+    try {
+      final expanded = _expandStreetAbbrevs(typed);
+      Place? best;
+      for (final q in {typed, expanded}) {
+        final geos = await PlacesSearch.geocode(q);
+        if (geos.isNotEmpty && geos.first.hasCoords) {
+          best = geos.first;
+          break;
+        }
+      }
+      if (!mounted) return;
+      if (best == null || !best.hasCoords) {
+        setState(() {
+          _resolvingPick = false;
+          _pickingId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not place that address. Try Choose on map.',
+            ),
+          ),
+        );
+        return;
+      }
+      // Keep the user's typed label; use provider coordinates only.
+      final parts = typed.split(',');
+      final label = parts.first.trim();
+      final subtitle = parts.length > 1
+          ? parts.sublist(1).join(',').trim()
+          : best.subtitle;
+      // Clear gate so _pick can run (it early-returns when resolving).
+      setState(() {
+        _resolvingPick = false;
+        _pickingId = null;
+      });
+      await _pick(
+        Place(
+          id: best.id,
+          label: label.isNotEmpty ? label : best.label,
+          subtitle: subtitle,
+          lat: best.lat,
+          lng: best.lng,
+          placeId: best.placeId,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _resolvingPick = false;
+        _pickingId = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not place that address. Try Choose on map.'),
+        ),
+      );
+    }
+  }
+
   Future<void> _submitTyped() async {
     final q = _controller.text.trim();
     if (q.isEmpty) return;
@@ -426,9 +584,42 @@ class _LocationScreenState extends State<LocationScreen> {
                     ),
                   )
                 : ListView.separated(
-                    itemCount: _results.length,
+                    itemCount:
+                        _results.length + (_showUseTypedAddress ? 1 : 0),
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
+                      if (_showUseTypedAddress && i == _results.length) {
+                        final typed = _controller.text.trim();
+                        final picking =
+                            _pickingId == 'typed-address' && _resolvingPick;
+                        return ListTile(
+                          leading: picking
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.edit_location_alt_outlined,
+                                  color: GtColors.orange,
+                                ),
+                          title: const Text(
+                            'Use typed address',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            typed,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: GtColors.textSecondary,
+                            ),
+                          ),
+                          onTap: _resolvingPick ? null : _useTypedAddress,
+                        );
+                      }
                       final p = _results[i];
                       final title = p.label.trim();
                       final subtitle = (p.subtitle.trim().isNotEmpty)

@@ -60,4 +60,23 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+      'LocationScreen shows Use typed address for full unmatched query',
+      (tester) async {
+    final state = AppState();
+    await tester.pumpWidget(wrap(const LocationScreen(), state));
+    await tester.pump();
+
+    await tester.enterText(
+      find.byType(TextField),
+      '35 Masters Dr SE, Calgary, AB T3M 2T7, Canada',
+    );
+    await tester.pump();
+    // After debounce + search (may be empty/mock), typed-address row for full query.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(find.text('Use typed address'), findsOneWidget);
+  });
 }

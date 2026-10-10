@@ -14,8 +14,54 @@ import type {
 } from './maps-provider.interface';
 import { decodeGooglePolyline } from './polyline';
 
-/** Slots reserved for geocode hits on address-like queries. */
+/** Slots reserved for geocode / text-search hits on address-like queries. */
 const ADDRESS_GEOCODE_RESERVED = 3;
+
+/** Canadian street-type abbreviation pairs (short ↔ long). */
+const STREET_ABBREV_PAIRS: Array<[string, string]> = [
+  ['dr', 'drive'],
+  ['st', 'street'],
+  ['ave', 'avenue'],
+  ['rd', 'road'],
+  ['blvd', 'boulevard'],
+  ['cres', 'crescent'],
+  ['cr', 'crescent'],
+  ['mr', 'manor'],
+  ['hwy', 'highway'],
+  ['crt', 'court'],
+  ['ct', 'court'],
+  ['pl', 'place'],
+  ['pkwy', 'parkway'],
+  ['ter', 'terrace'],
+  ['tr', 'trail'],
+  ['gdn', 'garden'],
+  ['gdns', 'gardens'],
+];
+
+/** Canonical street-type families for ranking (typed type vs result type). */
+const STREET_TYPE_FAMILIES: string[][] = [
+  ['dr', 'drive'],
+  ['st', 'street'],
+  ['ave', 'avenue'],
+  ['rd', 'road'],
+  ['blvd', 'boulevard'],
+  ['cres', 'crescent', 'cr'],
+  ['mr', 'manor'],
+  ['hwy', 'highway'],
+  ['crt', 'court', 'ct'],
+  ['pl', 'place'],
+  ['pkwy', 'parkway'],
+  ['ter', 'terrace'],
+  ['tr', 'trail'],
+  ['way', 'way'],
+  ['lane', 'ln'],
+  ['green', 'green'],
+  ['point', 'pt'],
+  ['square', 'sq'],
+  ['heights', 'hts'],
+  ['rise', 'rise'],
+  ['row', 'row'],
+];
 
 type GeocodeOpts = {
   lat?: number;
@@ -217,9 +263,58 @@ export class GoogleMapsProvider implements MapsProvider {
   }
 
   private looksLikeAddressQuery(q: string): boolean {
-    return /\d|[A-Za-z]\d[A-Za-z]|,|st|ave|rd|blvd|dr|way|cres|lane|highway|hwy/i.test(
+    return /\d|[A-Za-z]\d[A-Za-z]|,|st|ave|rd|blvd|dr|way|cres|lane|highway|hwy|manor|mr/i.test(
       q,
     );
+  }
+
+  /**
+   * Up to 2 query variants: original + one street-abbrev expand/collapse.
+   * Example: "35 Masters Dr SE" → also "35 Masters Drive SE".
+   */
+  private addressQueryVariants(q: string): string[] {
+    const original = q.trim();
+    if (!original) return [];
+    const variants = [original];
+    const tokens = original.split(/(\s+|,\s*)/);
+    let changed = false;
+    const next = tokens.map((tok) => {
+      if (!tok || /^\s+$/.test(tok) || tok.startsWith(',')) return tok;
+      const bare = tok.replace(/\./g, '');
+      const lower = bare.toLowerCase();
+      for (const [short, long] of STREET_ABBREV_PAIRS) {
+        if (lower === short) {
+          changed = true;
+          return long.replace(/\b\w/g, (c) => c.toUpperCase());
+        }
+        if (lower === long) {
+          changed = true;
+          return short.replace(/\b\w/g, (c) => c.toUpperCase());
+        }
+      }
+      return tok;
+    });
+    if (changed) {
+      const alt = next.join('').replace(/\s+/g, ' ').trim();
+      if (alt && alt.toLowerCase() !== original.toLowerCase()) {
+        variants.push(alt);
+      }
+    }
+    return variants.slice(0, 2);
+  }
+
+  private detectStreetTypeFamily(text: string): string[] | null {
+    const tokens = text
+      .toLowerCase()
+      .replace(/[.,]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+    for (const tok of tokens) {
+      for (const family of STREET_TYPE_FAMILIES) {
+        if (family.includes(tok)) return family;
+      }
+    }
+    return null;
   }
 
   /** Text relevance only — never distance-to-device. */
@@ -230,25 +325,110 @@ export class GoogleMapsProvider implements MapsProvider {
     if (hay.includes(query)) score += 100;
     const house = query.match(/^(\d+)\b/);
     if (house) {
-      if (hay.startsWith(house[1]) || new RegExp(`\\b${house[1]}\\b`).test(hay)) {
+      if (
+        hay.startsWith(house[1]) ||
+        new RegExp(`\\b${house[1]}\\b`).test(hay)
+      ) {
         score += 50;
       }
     }
     const postal = query.match(/\b([a-z]\d[a-z])\s*(\d[a-z]\d)\b/i);
     if (postal) {
       const compact = `${postal[1]}${postal[2]}`.toLowerCase();
-      if (hay.replace(/\s+/g, '').includes(compact)) score += 40;
+      if (hay.replace(/\s+/g, '').includes(compact)) score += 80;
     }
-    for (const token of query.split(/\s+/).filter((t) => t.length > 1)) {
-      if (hay.includes(token)) score += 10;
+    const queryFamily = this.detectStreetTypeFamily(query);
+    const resultFamily = this.detectStreetTypeFamily(hay);
+    if (queryFamily && resultFamily) {
+      const same = queryFamily.some((t) => resultFamily.includes(t));
+      if (same) score += 70;
+      else score -= 45;
     }
-    // Prefer resolved street rows (geocode) slightly when equally matched.
+    for (const token of query.split(/[\s,]+/).filter((t) => t.length > 1)) {
+      // Skip bare street-type tokens already handled above (avoids Marine DR false boost).
+      if (queryFamily?.includes(token.toLowerCase())) continue;
+      if (hay.includes(token.toLowerCase())) score += 10;
+    }
+    if (s.placeId) score += 3;
     if (s.lat !== 0 || s.lng !== 0) score += 5;
     return score;
   }
 
+  private async textSearchAsPlaces(
+    q: string,
+    max: number,
+    languageCode: string,
+  ): Promise<PlaceSuggestion[]> {
+    try {
+      const res = await fetch(
+        'https://places.googleapis.com/v1/places:searchText',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': this.key!,
+            'X-Goog-FieldMask':
+              'places.id,places.formattedAddress,places.location,places.displayName',
+          },
+          body: JSON.stringify({
+            textQuery: q,
+            languageCode,
+            regionCode: 'CA',
+            maxResultCount: Math.min(Math.max(max, 1), 8),
+          }),
+        },
+      );
+      if (!res.ok) {
+        this.logger.warn(
+          `Places Text Search HTTP ${res.status} (key/quota/API config)`,
+        );
+        return [];
+      }
+      const data = (await res.json()) as {
+        places?: Array<{
+          id?: string;
+          formattedAddress?: string;
+          displayName?: { text?: string };
+          location?: { latitude?: number; longitude?: number };
+        }>;
+      };
+      const out: PlaceSuggestion[] = [];
+      for (const p of data.places ?? []) {
+        const formatted = p.formattedAddress?.trim() || '';
+        const display = p.displayName?.text?.trim() || '';
+        const label =
+          display && formatted && !formatted.toLowerCase().startsWith(display.toLowerCase())
+            ? display
+            : formatted.split(',')[0]?.trim() || display;
+        if (!label) continue;
+        const subtitle =
+          formatted && label !== formatted
+            ? formatted.includes(',')
+              ? formatted.split(',').slice(1).join(',').trim()
+              : formatted
+            : undefined;
+        const placeId = p.id?.replace(/^places\//, '') || undefined;
+        const lat = p.location?.latitude ?? 0;
+        const lng = p.location?.longitude ?? 0;
+        out.push({
+          id: placeId ? `gplace-${placeId}` : `text-${lat}-${lng}-${out.length}`,
+          label,
+          subtitle,
+          lat,
+          lng,
+          placeId,
+          provider: this.name,
+        });
+        if (out.length >= max) break;
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
   /**
-   * Places search: hybrid Places Autocomplete (New) + Google Geocoding.
+   * Places search: Autocomplete + Geocoding + Text Search (New).
    * Canada-wide, no GPS/viewport bias. Query-relevance ranking only.
    */
   async places(
@@ -268,6 +448,7 @@ export class GoogleMapsProvider implements MapsProvider {
     const addressLike = this.looksLikeAddressQuery(q);
     const reserved = addressLike ? ADDRESS_GEOCODE_RESERVED : 0;
     const autoCap = Math.max(1, max - reserved);
+    const variants = addressLike ? this.addressQueryVariants(q) : [q];
 
     const suggestions: PlaceSuggestion[] = [];
     const seenPlaceIds = new Set<string>();
@@ -360,19 +541,35 @@ export class GoogleMapsProvider implements MapsProvider {
         );
       }
     } catch {
-      // Fall through to geocoding
+      // Fall through to geocoding / text search
     }
 
-    // 2. Supplement with Geocoding (Canada only, no viewport bounds)
+    // 2. Geocoding + Text Search on abbreviation variants (Canada only)
     if (suggestions.length < max || addressLike) {
-      try {
-        const remaining = Math.max(max - suggestions.length, reserved, 4);
-        const geoPlaces = await this.geocodeAsPlaces(q, remaining);
-        for (const gp of geoPlaces) {
-          addSuggestion(gp);
+      const perVariant = Math.max(
+        max - suggestions.length,
+        reserved,
+        4,
+      );
+      for (const variant of variants) {
+        try {
+          const geoPlaces = await this.geocodeAsPlaces(variant, perVariant);
+          for (const gp of geoPlaces) addSuggestion(gp);
+        } catch {
+          // continue
         }
-      } catch {
-        // Fall through
+        if (addressLike) {
+          try {
+            const textPlaces = await this.textSearchAsPlaces(
+              variant,
+              perVariant,
+              languageCode,
+            );
+            for (const tp of textPlaces) addSuggestion(tp);
+          } catch {
+            // continue
+          }
+        }
       }
     }
 

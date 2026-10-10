@@ -349,4 +349,184 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
     expect(detail!.lat).toBeCloseTo(51.1646);
     expect(detail!.lng).toBeCloseTo(-115.5621);
   });
+
+  it('places Text Search uses regionCode CA and no locationBias for address queries', async () => {
+    let textBody: Record<string, unknown> | null = null;
+    global.fetch = jest.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('places:autocomplete')) {
+        return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('places:searchText')) {
+        textBody = JSON.parse(init?.body as string);
+        return {
+          ok: true,
+          json: async () => ({
+            places: [
+              {
+                id: 'places/text-masters-drive',
+                formattedAddress: 'Masters Drive SE, Calgary, AB T3M 0T2, Canada',
+                displayName: { text: 'Masters Drive SE' },
+                location: { latitude: 50.8947, longitude: -113.9101 },
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({ status: 'ZERO_RESULTS', results: [] }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.places('35 Masters Dr SE Calgary', 5);
+    expect(textBody).not.toBeNull();
+    expect(textBody!.regionCode).toBe('CA');
+    expect(textBody!.locationBias).toBeUndefined();
+    expect(textBody!.locationRestriction).toBeUndefined();
+    expect(res.some((r) => r.label.includes('Masters Drive'))).toBe(true);
+  });
+
+  it('places geocodes Drive abbreviation variant for Dr queries', async () => {
+    const geocodeAddresses: string[] = [];
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('places:autocomplete')) {
+        return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('places:searchText')) {
+        return { ok: true, json: async () => ({ places: [] }) };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        const u = new URL(url);
+        geocodeAddresses.push(u.searchParams.get('address') || '');
+        const addr = (u.searchParams.get('address') || '').toLowerCase();
+        if (addr.includes('drive')) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: 'OK',
+              results: [
+                {
+                  formatted_address:
+                    'Masters Drive SE, Calgary, Alberta, T3M 0T2, Canada',
+                  place_id: 'place-masters-drive',
+                  geometry: {
+                    location: { lat: 50.8947, lng: -113.9101 },
+                  },
+                },
+              ],
+            }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'OK',
+            results: [
+              {
+                formatted_address:
+                  '35 Masters Manor SE, Calgary, Alberta, T3M 0T2, Canada',
+                place_id: 'place-manor',
+                geometry: {
+                  location: { lat: 50.8961, lng: -113.9098 },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.places('35 Masters Dr SE', 8);
+    expect(geocodeAddresses.some((a) => /drive/i.test(a))).toBe(true);
+    expect(res[0].label.toLowerCase()).toContain('drive');
+  });
+
+  it('places ranks Masters Drive above Manor when query uses Dr', async () => {
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('places:autocomplete')) {
+        return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('places:searchText')) {
+        return { ok: true, json: async () => ({ places: [] }) };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'OK',
+            results: [
+              {
+                formatted_address:
+                  '35 Masters Manor SE, Calgary, Alberta, T3M 0T2, Canada',
+                place_id: 'place-manor',
+                geometry: {
+                  location: { lat: 50.8961, lng: -113.9098 },
+                },
+              },
+              {
+                formatted_address:
+                  'Masters Drive SE, Calgary, Alberta, T3M 0T2, Canada',
+                place_id: 'place-drive',
+                geometry: {
+                  location: { lat: 50.8947, lng: -113.9101 },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.places('35 Masters Dr SE Calgary', 8);
+    expect(res[0].placeId).toBe('place-drive');
+  });
+
+  it('places ranks matching postal code above non-matching', async () => {
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('places:autocomplete')) {
+        return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('places:searchText')) {
+        return { ok: true, json: async () => ({ places: [] }) };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'OK',
+            results: [
+              {
+                formatted_address:
+                  '35 Masters Manor SE, Calgary, Alberta, T3M 0T2, Canada',
+                place_id: 'place-manor',
+                geometry: {
+                  location: { lat: 50.8961, lng: -113.9098 },
+                },
+              },
+              {
+                formatted_address:
+                  '35 Masters Dr SE, Calgary, Alberta, T3M 2T7, Canada',
+                place_id: 'place-exact',
+                geometry: {
+                  location: { lat: 50.9, lng: -113.95 },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.places(
+      '35 Masters Dr SE, Calgary, AB T3M 2T7, Canada',
+      8,
+    );
+    expect(res[0].placeId).toBe('place-exact');
+  });
 });
