@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 
@@ -45,11 +44,10 @@ class _MapBody extends StatelessWidget {
         to.hasCoords &&
         (state.serviceType != ServiceType.perHour || state.perHourHasEnd);
 
+    // Driving distance/ETA only — never haversine crow-flies for this badge.
     final selected = state.selectedRoute;
-    final distanceLabel = showTo
-        ? (selected != null
-            ? '${selected.distanceKm} km • ${selected.durationMin} min'
-            : formatDistanceKm(haversineKm(from, to)))
+    final distanceLabel = showTo && selected != null
+        ? '${selected.distanceKm} km • ${selected.durationMin} min'
         : null;
 
     return Column(

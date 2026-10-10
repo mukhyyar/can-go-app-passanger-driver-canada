@@ -769,6 +769,11 @@ export class GoogleMapsProvider implements MapsProvider {
         uri.searchParams.set('destination', `${to.lat},${to.lng}`);
         uri.searchParams.set('mode', 'driving');
         uri.searchParams.set('alternatives', 'true');
+        // Traffic-aware ETA (duration_in_traffic); distance remains road meters.
+        uri.searchParams.set(
+          'departure_time',
+          String(Math.floor(Date.now() / 1000)),
+        );
         uri.searchParams.set('key', this.key);
         const res = await fetch(uri);
         const data = (await res.json()) as {
@@ -779,6 +784,7 @@ export class GoogleMapsProvider implements MapsProvider {
             legs?: Array<{
               distance?: { value: number };
               duration?: { value: number };
+              duration_in_traffic?: { value: number };
             }>;
           }>;
         };
@@ -790,6 +796,11 @@ export class GoogleMapsProvider implements MapsProvider {
             const encoded = r.overview_polyline?.points;
             const coords = encoded ? decodeGooglePolyline(encoded) : [];
             if (coords.length > 0) {
+              const trafficSec = leg?.duration_in_traffic?.value;
+              const durationSec =
+                trafficSec != null && trafficSec > 0
+                  ? trafficSec
+                  : leg?.duration?.value;
               parsedRoutes.push({
                 id: `route-${i}`,
                 summary:
@@ -798,8 +809,8 @@ export class GoogleMapsProvider implements MapsProvider {
                 distanceKm: leg?.distance
                   ? Math.round((leg.distance.value / 1000) * 10) / 10
                   : 0,
-                durationMin: leg?.duration
-                  ? Math.max(1, Math.round(leg.duration.value / 60))
+                durationMin: durationSec
+                  ? Math.max(1, Math.round(durationSec / 60))
                   : 0,
                 geometry: { type: 'LineString', coordinates: coords },
                 overviewPolyline: encoded,

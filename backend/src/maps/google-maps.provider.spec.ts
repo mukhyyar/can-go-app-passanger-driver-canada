@@ -530,3 +530,125 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
     expect(res[0].placeId).toBe('place-exact');
   });
 });
+
+describe('GoogleMapsProvider (route)', () => {
+  let provider: GoogleMapsProvider;
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    const config = {
+      get: (key: string) => {
+        if (key === 'maps.googleApiKey') return 'test-google-key';
+        return undefined;
+      },
+    } as unknown as ConfigService;
+    provider = new GoogleMapsProvider(config);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('sends departure_time and prefers duration_in_traffic for ETA', async () => {
+    const before = Math.floor(Date.now() / 1000);
+    let capturedUrl = '';
+    // Encoded polyline for two points (enough to decode non-empty geometry)
+    const overview = '_p~iF~ps|U_ulLnnqC_mqNvxq`@';
+    global.fetch = jest.fn().mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('maps/api/directions/json')) {
+        capturedUrl = url;
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'OK',
+            routes: [
+              {
+                summary: 'AB-201 S',
+                overview_polyline: { points: overview },
+                legs: [
+                  {
+                    distance: { value: 38100 },
+                    duration: { value: 1860 },
+                    duration_in_traffic: { value: 2100 },
+                  },
+                ],
+              },
+              {
+                summary: 'Hwy 2 S',
+                overview_polyline: { points: overview },
+                legs: [
+                  {
+                    distance: { value: 45500 },
+                    duration: { value: 2100 },
+                    duration_in_traffic: { value: 2280 },
+                  },
+                ],
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const result = await provider.route(
+      { lat: 51.1314, lng: -114.0103 },
+      { lat: 50.9013, lng: -113.9558 },
+    );
+
+    const after = Math.floor(Date.now() / 1000);
+    const u = new URL(capturedUrl);
+    expect(u.searchParams.get('mode')).toBe('driving');
+    expect(u.searchParams.get('alternatives')).toBe('true');
+    const dep = Number(u.searchParams.get('departure_time'));
+    expect(dep).toBeGreaterThanOrEqual(before);
+    expect(dep).toBeLessThanOrEqual(after);
+
+    expect(result.provider).toBe('google');
+    expect(result.distanceKm).toBe(38.1);
+    // 2100s traffic → 35 min (not static 1860s → 31 min)
+    expect(result.durationMin).toBe(35);
+    expect(result.routes).toHaveLength(2);
+    expect(result.routes![0].durationMin).toBe(35);
+    expect(result.routes![1].distanceKm).toBe(45.5);
+    expect(result.routes![1].durationMin).toBe(38);
+  });
+
+  it('falls back to static duration when duration_in_traffic is absent', async () => {
+    const overview = '_p~iF~ps|U_ulLnnqC_mqNvxq`@';
+    global.fetch = jest.fn().mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes('maps/api/directions/json')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'OK',
+            routes: [
+              {
+                summary: 'AB-201 S',
+                overview_polyline: { points: overview },
+                legs: [
+                  {
+                    distance: { value: 36500 },
+                    duration: { value: 1920 },
+                  },
+                ],
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const result = await provider.route(
+      { lat: 51.13, lng: -114.01 },
+      { lat: 50.9, lng: -113.96 },
+    );
+
+    expect(result.provider).toBe('google');
+    expect(result.distanceKm).toBe(36.5);
+    expect(result.durationMin).toBe(32);
+  });
+});

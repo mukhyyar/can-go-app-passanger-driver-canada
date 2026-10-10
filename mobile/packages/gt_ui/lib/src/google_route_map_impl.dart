@@ -592,8 +592,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
 
     List<GtRouteOption> loadedRoutes = const [];
 
-    // 1. Primary: Direct Google Directions API with iOS/Android bundle headers
-    // Yields genuine Google alternative routes with live street summaries
+    // 1. Primary: Google Directions (authoritative when it returns any routes)
     try {
       loadedRoutes = await _fetchGoogleDirections(
         widget.fromLat,
@@ -603,8 +602,9 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
       );
     } catch (_) {}
 
-    // 2. Secondary: If Google Directions returned fewer than 2 routes, query backend
-    if (loadedRoutes.length < 2) {
+    // Fallbacks only when Google returns zero usable routes — never pad or
+    // replace a successful Google response with Nest/OSRM/synthetic alts.
+    if (loadedRoutes.isEmpty) {
       try {
         final uri = Uri.parse('$_normalizedApiBase/maps/route');
         final client = HttpClient();
@@ -624,14 +624,13 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         client.close(force: true);
 
         final backendRoutes = _parseRoutesFromBody(body);
-        if (backendRoutes.length > loadedRoutes.length) {
+        if (backendRoutes.isNotEmpty) {
           loadedRoutes = backendRoutes;
         }
       } catch (_) {}
     }
 
-    // 3. Tertiary: Direct OSRM driving engine
-    if (loadedRoutes.length < 2) {
+    if (loadedRoutes.isEmpty) {
       try {
         final osrmRoutes = await _fetchOsrmRoute(
           widget.fromLat,
@@ -639,29 +638,13 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
           widget.toLat!,
           widget.toLng!,
         );
-        if (osrmRoutes.length > loadedRoutes.length) {
+        if (osrmRoutes.isNotEmpty) {
           loadedRoutes = osrmRoutes;
         }
       } catch (_) {}
     }
 
-    // 4. Guaranteed Multi-Route Generator: If only 1 route was found, compute an alternative waypoint route via parallel arterial road
-    if (loadedRoutes.length == 1) {
-      try {
-        final alt = await _fetchAlternativeWaypointRoute(
-          widget.fromLat,
-          widget.fromLng,
-          widget.toLat!,
-          widget.toLng!,
-          loadedRoutes.first,
-        );
-        if (alt != null) {
-          loadedRoutes.add(alt);
-        }
-      } catch (_) {}
-    }
-
-    // 5. Fallback: Straight-line between from and to if everything failed
+    // Straight-line only when every road provider failed
     if (loadedRoutes.isEmpty) {
       final pts = [_from, to];
       loadedRoutes = [
@@ -713,12 +696,15 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
     );
     if (key.isEmpty) return const [];
     try {
+      final departureTime =
+          (DateTime.now().millisecondsSinceEpoch / 1000).floor();
       final uri = Uri.parse(
         'https://maps.googleapis.com/maps/api/directions/json?'
         'origin=$fromLat,$fromLng'
         '&destination=$toLat,$toLng'
         '&mode=driving'
         '&alternatives=true'
+        '&departure_time=$departureTime'
         '&key=$key',
       );
       final resolvedBundle = widget.bundleId ??
@@ -801,7 +787,14 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         final coords = _decodePolyline(encoded);
         if (coords.length < 2) continue;
         final distValue = (leg?['distance']?['value'] as num?)?.toDouble() ?? 0;
-        final durValue = (leg?['duration']?['value'] as num?)?.toDouble() ?? 0;
+        // Prefer traffic-aware ETA when departure_time was set.
+        final trafficDur =
+            (leg?['duration_in_traffic']?['value'] as num?)?.toDouble();
+        final staticDur =
+            (leg?['duration']?['value'] as num?)?.toDouble() ?? 0;
+        final durValue = (trafficDur != null && trafficDur > 0)
+            ? trafficDur
+            : staticDur;
         final distKm = (distValue / 1000 * 10).round() / 10;
         final durMin = (durValue / 60).round().clamp(1, 999);
         final summaryText = r['summary']?.toString().trim();
@@ -823,74 +816,6 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
       return out;
     } catch (_) {
       return const [];
-    }
-  }
-
-  Future<GtRouteOption?> _fetchAlternativeWaypointRoute(
-    double fromLat,
-    double fromLng,
-    double toLat,
-    double toLng,
-    GtRouteOption primaryRoute,
-  ) async {
-    try {
-      final dLat = toLat - fromLat;
-      final dLng = toLng - fromLng;
-      final dist = math.sqrt(dLat * dLat + dLng * dLng);
-      if (dist < 0.001) return null;
-      final offset = math.max(0.005, math.min(0.015, dist * 0.35));
-      final wpLat = (fromLat + toLat) / 2 - (dLng / dist) * offset;
-      final wpLng = (fromLng + toLng) / 2 + (dLat / dist) * offset;
-
-      final uri = Uri.parse(
-        'https://router.project-osrm.org/route/v1/driving/$fromLng,$fromLat;$wpLng,$wpLat;$toLng,$toLat?overview=full&geometries=geojson',
-      );
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 4);
-      final req = await client.getUrl(uri);
-      final res = await req.close().timeout(const Duration(seconds: 5));
-      final body = await res.transform(utf8.decoder).join();
-      client.close(force: true);
-
-      final data = jsonDecode(body);
-      if (data is! Map || data['code'] != 'Ok' || data['routes'] is! List) {
-        return null;
-      }
-      final list = data['routes'] as List;
-      if (list.isEmpty || list[0] is! Map) return null;
-      final r = list[0] as Map;
-      final geom = r['geometry'];
-      if (geom is! Map || geom['coordinates'] is! List) return null;
-      final coords = <LatLng>[];
-      for (final c in geom['coordinates'] as List) {
-        if (c is List && c.length >= 2) {
-          coords.add(LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()));
-        }
-      }
-      if (coords.length < 2) return null;
-      final distMeters = (r['distance'] as num?)?.toDouble() ?? 0;
-      final durSec = (r['duration'] as num?)?.toDouble() ?? 0;
-      final distKm = (distMeters / 1000 * 10).round() / 10;
-      final durMin = (durSec / 60).round().clamp(1, 999);
-
-      final legs = r['legs'] as List?;
-      final legSummary = (legs != null && legs.isNotEmpty && legs[0] is Map)
-          ? legs[0]['summary']?.toString().trim()
-          : null;
-      final name = (legSummary != null && legSummary.isNotEmpty)
-          ? 'Via $legSummary (Alternative)'
-          : 'Alternative Route 2';
-
-      return GtRouteOption(
-        id: 'alt_waypoint_1',
-        summary: name,
-        distanceKm: distKm,
-        durationMin: durMin,
-        points: coords,
-        isFastest: false,
-      );
-    } catch (_) {
-      return null;
     }
   }
 
