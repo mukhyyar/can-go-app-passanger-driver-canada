@@ -1275,7 +1275,7 @@ class _OnlineOfflineSwitchBar extends StatelessWidget {
                     child: Switch.adaptive(
                       key: const ValueKey('online_offline_switch'),
                       value: isOnline,
-                      activeThumbColor: GtColors.green,
+                      activeColor: GtColors.green,
                       activeTrackColor: GtColors.green.withValues(alpha: 0.35),
                       inactiveThumbColor: Colors.grey.shade400,
                       inactiveTrackColor: Colors.grey.shade200,

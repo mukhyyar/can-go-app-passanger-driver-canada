@@ -115,6 +115,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
     _idempotencyKey ??=
         'pay-${widget.rideId}-${widget.offerId}-${DateTime.now().millisecondsSinceEpoch}';
     final app = context.read<AppState>();
+
+    // Idempotent resume: already-booked ride — do not create a new charge.
+    final existing = app.rideById(widget.rideId);
+    if (existing != null &&
+        (existing.isBooked ||
+            (existing.serverStatus ?? '').toUpperCase() == 'BOOKED')) {
+      _goToConfirmed();
+      return;
+    }
+
     try {
       final result = await app.pay(
         rideId: widget.rideId,
@@ -126,20 +136,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
       if (!mounted) return;
 
-      final ride = result['ride'];
-      final rideStatus = ride is Map
-          ? ride['status']?.toString()
-          : app.rideById(widget.rideId)?.serverStatus;
       final payment = result['payment'];
-      final payStatus = payment is Map
-          ? payment['status']?.toString().toLowerCase()
-          : null;
-
-      if (rideStatus == 'BOOKED' || payStatus == 'succeeded') {
-        _goToConfirmed();
-        return;
-      }
-
       final clientSecret = result['clientSecret']?.toString();
       final provider = (result['paymentProvider'] ??
               _quote?['paymentProvider'] ??
@@ -151,51 +148,60 @@ class _PaymentScreenState extends State<PaymentScreen> {
             _quote?['stripePublishableKey']?.toString(),
       );
 
+      // Never treat create-intent alone as paid (blocks unpaid DevPayment booking).
+      if (provider == 'dev' ||
+          (clientSecret != null && clientSecret.startsWith('dev_secret_'))) {
+        setState(() {
+          _paying = false;
+          _error =
+              'Payment is not configured. Please try again later.';
+        });
+        return;
+      }
+
       // Stripe requires PaymentSheet so a payment method is attached + confirmed.
       String? paymentIntentId;
       if (payment is Map) {
         paymentIntentId = payment['providerRef']?.toString();
       }
-      if (provider == 'stripe' ||
-          (clientSecret != null && clientSecret.isNotEmpty)) {
-        if (clientSecret == null || clientSecret.isEmpty) {
-          throw StateError(
-            'Payment setup incomplete (missing client secret). Please try again.',
-          );
-        }
-        if (publishableKey == null) {
-          throw StateError(
-            'Stripe is not configured for this app (missing publishable key).',
-          );
-        }
-        if (kIsWeb) {
-          throw StateError(
-            'Card payment on web is not available in this build. Please use the mobile app.',
-          );
-        }
 
-        paymentIntentId ??= clientSecret.contains('_secret')
-            ? clientSecret.split('_secret').first
-            : null;
+      if (clientSecret == null || clientSecret.isEmpty) {
+        throw StateError(
+          'Payment setup incomplete (missing client secret). Please try again.',
+        );
+      }
+      if (publishableKey == null) {
+        throw StateError(
+          'Stripe is not configured for this app (missing publishable key).',
+        );
+      }
+      if (kIsWeb) {
+        throw StateError(
+          'Card payment on web is not available in this build. Please use the mobile app.',
+        );
+      }
 
-        final currency = _currency(_quote!, 'onlineCurrency');
-        try {
-          await StripePaymentService.presentPaymentSheet(
-            clientSecret: clientSecret,
-            publishableKey: publishableKey,
-            currency: currency,
-          );
-        } catch (e) {
-          if (StripePaymentService.isUserCancelled(e)) {
-            if (!mounted) return;
-            setState(() {
-              _paying = false;
-              _error = 'Payment cancelled. Your ride has not been booked.';
-            });
-            return;
-          }
-          rethrow;
+      paymentIntentId ??= clientSecret.contains('_secret')
+          ? clientSecret.split('_secret').first
+          : null;
+
+      final currency = _currency(_quote!, 'onlineCurrency');
+      try {
+        await StripePaymentService.presentPaymentSheet(
+          clientSecret: clientSecret,
+          publishableKey: publishableKey,
+          currency: currency,
+        );
+      } catch (e) {
+        if (StripePaymentService.isUserCancelled(e)) {
+          if (!mounted) return;
+          setState(() {
+            _paying = false;
+            _error = 'Payment cancelled. Your ride has not been booked.';
+          });
+          return;
         }
+        rethrow;
       }
 
       final confirmed = await _awaitPaymentConfirmation(
@@ -215,12 +221,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      final refreshed = await app.refreshRide(widget.rideId);
-      if (!mounted) return;
-      if (refreshed != null && refreshed.isBooked) {
-        _goToConfirmed();
-        return;
-      }
+      // Do not treat a create-intent side-effect BOOKED as success after an error;
+      // only confirm when PaymentSheet already completed (handled above).
       setState(() {
         _paying = false;
         _error =

@@ -2377,7 +2377,9 @@ export class MarketplaceService {
       paymentRef: intent.intentId,
     });
 
-    if (intent.status === 'succeeded') {
+    // Never auto-book unpaid/dev intents. Real Stripe create returns
+    // requires_payment; BOOKED only after PaymentSheet + confirm/webhook.
+    if (intent.status === 'succeeded' && intent.provider !== 'dev') {
       await this.markBooked(ride.id, payment.id, userId);
     }
 

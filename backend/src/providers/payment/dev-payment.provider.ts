@@ -19,11 +19,12 @@ export class DevPaymentProvider implements PaymentProvider {
     this.logger.log(
       `DevPayment createIntent ride=${input.rideId} amount=${input.amount} ${input.currency}`,
     );
+    // Never auto-succeed — unpaid booking must not skip real payment UI.
     return {
       provider: this.name,
       intentId,
       clientSecret: `dev_secret_${intentId}`,
-      status: 'succeeded',
+      status: 'requires_payment',
     };
   }
 
@@ -32,7 +33,7 @@ export class DevPaymentProvider implements PaymentProvider {
       provider: this.name,
       intentId,
       clientSecret: `dev_secret_${intentId}`,
-      status: 'succeeded',
+      status: 'requires_payment',
     };
   }
 
