@@ -65,6 +65,18 @@ class GetOffersBar extends StatelessWidget {
         );
         return;
       }
+      if (!state.canSubmitWithCurrentRoute) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              state.routeRecalcFailed
+                  ? 'Route calculation failed. Adjust pickup/drop-off and try again.'
+                  : 'Waiting for driving route distance. Please wait or adjust locations.',
+            ),
+          ),
+        );
+        return;
+      }
     }
     if (!state.termsAccepted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -91,7 +103,11 @@ class GetOffersBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canSubmit = state.termsAccepted && state.from != null;
+    final needsRoute = state.serviceType == ServiceType.ride ||
+        state.serviceType == ServiceType.delivery;
+    final canSubmit = state.termsAccepted &&
+        state.from != null &&
+        (!needsRoute || state.canSubmitWithCurrentRoute);
 
     return Container(
       decoration: BoxDecoration(

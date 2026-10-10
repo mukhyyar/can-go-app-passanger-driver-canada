@@ -1585,16 +1585,44 @@ class AppState extends ChangeNotifier {
   List<GtRouteOption> availableRoutes = const [];
   int selectedRouteIndex = 0;
 
+  /// True when the latest route recalculation failed (no usable driving route).
+  bool routeRecalcFailed = false;
+
   GtRouteOption? get selectedRoute =>
       availableRoutes.isNotEmpty && selectedRouteIndex < availableRoutes.length
           ? availableRoutes[selectedRouteIndex]
           : null;
+
+  /// Ride/delivery with both endpoints requires a positive driving-route distance.
+  bool get hasAuthoritativeDrivingRoute {
+    final r = selectedRoute;
+    return r != null && r.distanceKm > 0 && r.id != 'fallback_0';
+  }
+
+  /// Whether Get Offers may submit with the current route/endpoints.
+  bool get canSubmitWithCurrentRoute {
+    final needsDropoff =
+        serviceType == ServiceType.ride || serviceType == ServiceType.delivery;
+    if (!needsDropoff) return true;
+    if (from == null || to == null) return false;
+    if (routeRecalcFailed) return false;
+    return hasAuthoritativeDrivingRoute;
+  }
 
   void setAvailableRoutes(List<GtRouteOption> routes) {
     availableRoutes = routes;
     if (selectedRouteIndex >= routes.length) {
       selectedRouteIndex = 0;
     }
+    if (routes.isNotEmpty) {
+      routeRecalcFailed = false;
+    }
+    notifyListeners();
+  }
+
+  void setRouteRecalcFailed(bool failed) {
+    if (routeRecalcFailed == failed) return;
+    routeRecalcFailed = failed;
     notifyListeners();
   }
 
@@ -1619,6 +1647,7 @@ class AppState extends ChangeNotifier {
     from = place;
     availableRoutes = const [];
     selectedRouteIndex = 0;
+    routeRecalcFailed = false;
     notifyListeners();
   }
 
@@ -1626,6 +1655,7 @@ class AppState extends ChangeNotifier {
     to = place;
     availableRoutes = const [];
     selectedRouteIndex = 0;
+    routeRecalcFailed = false;
     notifyListeners();
   }
 
@@ -1635,6 +1665,7 @@ class AppState extends ChangeNotifier {
     to = tmp;
     availableRoutes = const [];
     selectedRouteIndex = 0;
+    routeRecalcFailed = false;
     notifyListeners();
   }
 
@@ -1964,6 +1995,14 @@ class AppState extends ChangeNotifier {
     final pickupAt = (pickupNow ? DateTime.now() : pickupDateTime)
         .toUtc()
         .toIso8601String();
+
+    if (needsDropoff && !canSubmitWithCurrentRoute) {
+      throw StateError(
+        routeRecalcFailed
+            ? 'Route calculation failed — adjust locations and try again'
+            : 'Driving route not ready — wait for route distance',
+      );
+    }
 
     final selRoute = selectedRoute;
     final routeDist = selRoute?.distanceKm;

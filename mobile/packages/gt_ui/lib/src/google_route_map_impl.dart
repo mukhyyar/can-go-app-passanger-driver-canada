@@ -36,11 +36,26 @@ Widget buildGoogleMapEmbed({
   double? toLng,
   ValueChanged<GtRouteOption>? onRouteSelected,
   ValueChanged<List<GtRouteOption>>? onRoutesLoaded,
+  VoidCallback? onRoutesLoadFailed,
   bool enableRouteSelection = true,
   int initialRouteIndex = 0,
   bool interactive = true,
   bool isExpanded = false,
   GtRouteMapController? controller,
+  bool autoFitOnRouteSelect = true,
+  bool? animateRouteCar,
+  bool includeSyntheticFallback = true,
+  bool enableMarkerAdjust = false,
+  GtRouteMapAdjustField? adjustingField,
+  bool centerPinAdjust = false,
+  double? previewFromLat,
+  double? previewFromLng,
+  double? previewToLat,
+  double? previewToLng,
+  ValueChanged<GtRouteMapAdjustField>? onMarkerTap,
+  void Function(GtRouteMapAdjustField field, double lat, double lng)?
+      onMarkerDragEnd,
+  void Function(double lat, double lng)? onCameraIdle,
   VoidCallback? onTap,
   String? bundleId,
   Key? key,
@@ -53,11 +68,25 @@ Widget buildGoogleMapEmbed({
     toLng: toLng,
     onRouteSelected: onRouteSelected,
     onRoutesLoaded: onRoutesLoaded,
+    onRoutesLoadFailed: onRoutesLoadFailed,
     enableRouteSelection: enableRouteSelection,
     initialRouteIndex: initialRouteIndex,
     interactive: interactive,
     isExpanded: isExpanded,
     controller: controller,
+    autoFitOnRouteSelect: autoFitOnRouteSelect,
+    animateRouteCar: animateRouteCar,
+    includeSyntheticFallback: includeSyntheticFallback,
+    enableMarkerAdjust: enableMarkerAdjust,
+    adjustingField: adjustingField,
+    centerPinAdjust: centerPinAdjust,
+    previewFromLat: previewFromLat,
+    previewFromLng: previewFromLng,
+    previewToLat: previewToLat,
+    previewToLng: previewToLng,
+    onMarkerTap: onMarkerTap,
+    onMarkerDragEnd: onMarkerDragEnd,
+    onCameraIdle: onCameraIdle,
     onTap: onTap,
     bundleId: bundleId,
   );
@@ -72,11 +101,25 @@ class _NativeRouteMap extends StatefulWidget {
     this.toLng,
     this.onRouteSelected,
     this.onRoutesLoaded,
+    this.onRoutesLoadFailed,
     this.enableRouteSelection = true,
     this.initialRouteIndex = 0,
     this.interactive = true,
     this.isExpanded = false,
     this.controller,
+    this.autoFitOnRouteSelect = true,
+    this.animateRouteCar,
+    this.includeSyntheticFallback = true,
+    this.enableMarkerAdjust = false,
+    this.adjustingField,
+    this.centerPinAdjust = false,
+    this.previewFromLat,
+    this.previewFromLng,
+    this.previewToLat,
+    this.previewToLng,
+    this.onMarkerTap,
+    this.onMarkerDragEnd,
+    this.onCameraIdle,
     this.onTap,
     this.bundleId,
   });
@@ -87,11 +130,26 @@ class _NativeRouteMap extends StatefulWidget {
   final double? toLng;
   final ValueChanged<GtRouteOption>? onRouteSelected;
   final ValueChanged<List<GtRouteOption>>? onRoutesLoaded;
+  final VoidCallback? onRoutesLoadFailed;
   final bool enableRouteSelection;
   final int initialRouteIndex;
   final bool interactive;
   final bool isExpanded;
   final GtRouteMapController? controller;
+  final bool autoFitOnRouteSelect;
+  final bool? animateRouteCar;
+  final bool includeSyntheticFallback;
+  final bool enableMarkerAdjust;
+  final GtRouteMapAdjustField? adjustingField;
+  final bool centerPinAdjust;
+  final double? previewFromLat;
+  final double? previewFromLng;
+  final double? previewToLat;
+  final double? previewToLng;
+  final ValueChanged<GtRouteMapAdjustField>? onMarkerTap;
+  final void Function(GtRouteMapAdjustField field, double lat, double lng)?
+      onMarkerDragEnd;
+  final void Function(double lat, double lng)? onCameraIdle;
   final VoidCallback? onTap;
   final String? bundleId;
 
@@ -111,11 +169,13 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
   GoogleMapController? _map;
   List<LatLng> _routePoints = const [];
   bool _fitted = false;
+  bool _userMovedCamera = false;
 
   Timer? _carTimer;
   List<RouteSample> _trajectoryFrames = const [];
   int _carFrameIndex = 0;
   int _loadTrajectoryGeneration = 0;
+  int _loadRouteGeneration = 0;
 
   /// Car position/heading isolated in a ValueNotifier so animation ticks
   /// only rebuild the Marker layer — NOT the entire widget subtree.
@@ -135,9 +195,27 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
 
   bool get _hasRoute => widget.toLat != null && widget.toLng != null;
 
-  LatLng get _from => LatLng(widget.fromLat, widget.fromLng);
-  LatLng? get _to =>
+  bool get _shouldAnimateCar =>
+      widget.animateRouteCar ?? (widget.interactive || widget.isExpanded);
+
+  LatLng get _fromCommitted => LatLng(widget.fromLat, widget.fromLng);
+  LatLng? get _toCommitted =>
       _hasRoute ? LatLng(widget.toLat!, widget.toLng!) : null;
+
+  /// Display positions — prefer pending preview while adjusting.
+  LatLng get _from {
+    final lat = widget.previewFromLat;
+    final lng = widget.previewFromLng;
+    if (lat != null && lng != null) return LatLng(lat, lng);
+    return _fromCommitted;
+  }
+
+  LatLng? get _to {
+    final lat = widget.previewToLat;
+    final lng = widget.previewToLng;
+    if (lat != null && lng != null) return LatLng(lat, lng);
+    return _toCommitted;
+  }
 
   List<GtRouteOption> _routes = const [];
   int _selectedRouteIndex = 0;
@@ -203,17 +281,38 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
   }
 
   void _updateCachedStaticMarkers() {
-    final out = <Marker>{
-      Marker(
-        markerId: const MarkerId('from'),
-        position: _from,
-        icon: _pinA ??
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        anchor: const Offset(0.5, 0.5),
-      ),
-    };
+    final adjust = widget.enableMarkerAdjust && widget.interactive;
+    final hideFrom = widget.centerPinAdjust &&
+        widget.adjustingField == GtRouteMapAdjustField.from;
+    final hideTo = widget.centerPinAdjust &&
+        widget.adjustingField == GtRouteMapAdjustField.to;
+
+    final out = <Marker>{};
+    if (!hideFrom) {
+      out.add(
+        Marker(
+          markerId: const MarkerId('from'),
+          position: _from,
+          icon: _pinA ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          anchor: const Offset(0.5, 0.5),
+          draggable: adjust && !widget.centerPinAdjust,
+          consumeTapEvents: adjust,
+          onTap: adjust
+              ? () => widget.onMarkerTap?.call(GtRouteMapAdjustField.from)
+              : null,
+          onDragEnd: adjust
+              ? (pos) => widget.onMarkerDragEnd?.call(
+                    GtRouteMapAdjustField.from,
+                    pos.latitude,
+                    pos.longitude,
+                  )
+              : null,
+        ),
+      );
+    }
     final to = _to;
-    if (to != null) {
+    if (to != null && !hideTo) {
       out.add(
         Marker(
           markerId: const MarkerId('to'),
@@ -221,19 +320,65 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
           icon: _pinB ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
           anchor: const Offset(0.5, 0.5),
+          draggable: adjust && !widget.centerPinAdjust,
+          consumeTapEvents: adjust,
+          onTap: adjust
+              ? () => widget.onMarkerTap?.call(GtRouteMapAdjustField.to)
+              : null,
+          onDragEnd: adjust
+              ? (pos) => widget.onMarkerDragEnd?.call(
+                    GtRouteMapAdjustField.to,
+                    pos.latitude,
+                    pos.longitude,
+                  )
+              : null,
         ),
       );
     }
     _cachedStaticMarkers = out;
   }
 
+  void _attachController(GtRouteMapController? c) {
+    c?.attachRecenter(() {
+      _userMovedCamera = false;
+      unawaited(_fitBounds(extra: _routePoints, force: true));
+    });
+    c?.attachZoomIn(() => unawaited(_zoomBy(1)));
+    c?.attachZoomOut(() => unawaited(_zoomBy(-1)));
+    c?.attachAnimateTo((lat, lng, {zoom}) {
+      unawaited(_animateTo(lat, lng, zoom: zoom));
+    });
+  }
+
+  Future<void> _zoomBy(double delta) async {
+    final map = _map;
+    if (map == null) return;
+    try {
+      final z = await map.getZoomLevel();
+      _userMovedCamera = true;
+      await map.animateCamera(
+        CameraUpdate.zoomTo((z + delta).clamp(3.0, 20.0)),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _animateTo(double lat, double lng, {double? zoom}) async {
+    final map = _map;
+    if (map == null) return;
+    try {
+      _userMovedCamera = true;
+      final z = zoom ?? await map.getZoomLevel();
+      await map.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(lat, lng), z.clamp(12.0, 18.0)),
+      );
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
     _selectedRouteIndex = widget.initialRouteIndex;
-    widget.controller?.attachRecenter(
-      () => _fitBounds(extra: _routePoints, force: true),
-    );
+    _attachController(widget.controller);
 
     // Prime caches before icons are loaded (uses default markers initially).
     _updateCachedStaticMarkers();
@@ -369,9 +514,10 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
     super.didUpdateWidget(oldWidget);
     if (widget.controller != oldWidget.controller) {
       oldWidget.controller?.attachRecenter(null);
-      widget.controller?.attachRecenter(
-        () => _fitBounds(extra: _routePoints, force: true),
-      );
+      oldWidget.controller?.attachZoomIn(null);
+      oldWidget.controller?.attachZoomOut(null);
+      oldWidget.controller?.attachAnimateTo(null);
+      _attachController(widget.controller);
     }
     if (widget.isExpanded != oldWidget.isExpanded) {
       _suppressCarUpdates = true;
@@ -399,7 +545,8 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
       // Pause/resume animation when the expanded state changes.
       _updateAnimationState();
     }
-    if (widget.interactive != oldWidget.interactive) {
+    if (widget.interactive != oldWidget.interactive ||
+        widget.animateRouteCar != oldWidget.animateRouteCar) {
       _updateAnimationState();
     }
     if (oldWidget.fromLat != widget.fromLat ||
@@ -407,6 +554,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         oldWidget.toLat != widget.toLat ||
         oldWidget.toLng != widget.toLng) {
       _fitted = false;
+      _userMovedCamera = false;
       _routes = const [];
       _selectedRouteIndex = widget.initialRouteIndex;
       _routePoints = const [];
@@ -420,6 +568,14 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         setState(() {});
         _fitBounds();
       }
+    } else if (oldWidget.previewFromLat != widget.previewFromLat ||
+        oldWidget.previewFromLng != widget.previewFromLng ||
+        oldWidget.previewToLat != widget.previewToLat ||
+        oldWidget.previewToLng != widget.previewToLng ||
+        oldWidget.adjustingField != widget.adjustingField ||
+        oldWidget.centerPinAdjust != widget.centerPinAdjust ||
+        oldWidget.enableMarkerAdjust != widget.enableMarkerAdjust) {
+      setState(_updateCachedStaticMarkers);
     }
     if (widget.initialRouteIndex >= 0 &&
         widget.initialRouteIndex < _routes.length &&
@@ -431,6 +587,10 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
   @override
   void dispose() {
     widget.controller?.attachRecenter(null);
+    widget.controller?.attachZoomIn(null);
+    widget.controller?.attachZoomOut(null);
+    widget.controller?.attachAnimateTo(null);
+    _loadRouteGeneration++;
     _carTimer?.cancel();
     _carNotifier.dispose();
     // Do not dispose GoogleMapController — the GoogleMap widget owns it.
@@ -471,8 +631,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
   }
 
   Future<void> _startCar(List<LatLng> points) async {
-    final shouldAnimate = widget.interactive || widget.isExpanded;
-    if (!shouldAnimate || points.length < 2) {
+    if (!_shouldAnimateCar || points.length < 2) {
       _stopCar();
       return;
     }
@@ -511,8 +670,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
 
   /// Pause/resume the animation when interactive or expanded state changes.
   void _updateAnimationState() {
-    final shouldRun = widget.interactive || widget.isExpanded;
-    if (shouldRun) {
+    if (_shouldAnimateCar) {
       if (_trajectoryFrames.isNotEmpty && _carTimer == null) {
         _carTimer = Timer.periodic(
           const Duration(milliseconds: 100),
@@ -548,7 +706,9 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
     });
 
     unawaited(_startCar(pts));
-    _fitBounds(extra: pts, force: true);
+    if (widget.autoFitOnRouteSelect && !_userMovedCamera) {
+      _fitBounds(extra: pts, force: true);
+    }
 
     Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) {
@@ -562,8 +722,10 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
   }
 
   Future<void> _loadRoute() async {
-    final to = _to;
-    if (to == null) return;
+    final toCommitted = _toCommitted;
+    if (toCommitted == null) return;
+
+    final gen = ++_loadRouteGeneration;
 
     final cacheKey =
         '${widget.fromLat.toStringAsFixed(4)},${widget.fromLng.toStringAsFixed(4)}->'
@@ -571,7 +733,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
     if (_routeCache.containsKey(cacheKey) &&
         _routeCache[cacheKey]!.isNotEmpty) {
       final cached = _routeCache[cacheKey]!;
-      if (!mounted) return;
+      if (!mounted || gen != _loadRouteGeneration) return;
       final selectedIdx = widget.initialRouteIndex
           .clamp(0, math.max(0, cached.length - 1))
           .toInt();
@@ -586,7 +748,9 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
       widget.onRoutesLoaded?.call(cached);
       widget.onRouteSelected?.call(cached[selectedIdx]);
       unawaited(_startCar(activePoints));
-      _fitBounds(extra: activePoints);
+      if (!_userMovedCamera) {
+        _fitBounds(extra: activePoints);
+      }
       return;
     }
 
@@ -601,6 +765,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         widget.toLng!,
       );
     } catch (_) {}
+    if (!mounted || gen != _loadRouteGeneration) return;
 
     // Fallbacks only when Google returns zero usable routes — never pad or
     // replace a successful Google response with Nest/OSRM/synthetic alts.
@@ -629,6 +794,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         }
       } catch (_) {}
     }
+    if (!mounted || gen != _loadRouteGeneration) return;
 
     if (loadedRoutes.isEmpty) {
       try {
@@ -643,10 +809,22 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         }
       } catch (_) {}
     }
+    if (!mounted || gen != _loadRouteGeneration) return;
 
-    // Straight-line only when every road provider failed
+    // Straight-line only when every road provider failed (optional).
     if (loadedRoutes.isEmpty) {
-      final pts = [_from, to];
+      if (!widget.includeSyntheticFallback) {
+        setState(() {
+          _routes = const [];
+          _routePoints = const [];
+          _updateCachedPolylines();
+          _updateCachedStaticMarkers();
+        });
+        widget.onRoutesLoaded?.call(const []);
+        widget.onRoutesLoadFailed?.call();
+        return;
+      }
+      final pts = [_fromCommitted, toCommitted];
       loadedRoutes = [
         GtRouteOption(
           id: 'fallback_0',
@@ -663,7 +841,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
       _routeCache[cacheKey] = loadedRoutes;
     }
 
-    if (!mounted) return;
+    if (!mounted || gen != _loadRouteGeneration) return;
     final selectedIdx = widget.initialRouteIndex
         .clamp(0, math.max(0, loadedRoutes.length - 1))
         .toInt();
@@ -681,7 +859,9 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
     widget.onRouteSelected?.call(loadedRoutes[selectedIdx]);
 
     unawaited(_startCar(activePoints));
-    _fitBounds(extra: activePoints);
+    if (!_userMovedCamera) {
+      _fitBounds(extra: activePoints);
+    }
   }
 
   Future<List<GtRouteOption>> _fetchGoogleDirections(
@@ -1005,7 +1185,12 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
     if (_isFittingBounds) return;
     _isFittingBounds = true;
     try {
-      final pts = <LatLng>[_from, if (_to != null) _to!, ...extra];
+      // Fit committed endpoints + route geometry (not pending preview pins).
+      final pts = <LatLng>[
+        _fromCommitted,
+        if (_toCommitted != null) _toCommitted!,
+        ...extra,
+      ];
       if (pts.length == 1) {
         await map.animateCamera(
           CameraUpdate.newLatLngZoom(pts.first, 13),
@@ -1037,6 +1222,30 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
     } finally {
       _isFittingBounds = false;
     }
+  }
+
+  void _onCameraMoveStarted() {
+    if (!_isFittingBounds) {
+      _userMovedCamera = true;
+    }
+  }
+
+  void _onCameraIdle() {
+    final cb = widget.onCameraIdle;
+    if (cb == null) return;
+    final map = _map;
+    if (map == null) return;
+    unawaited(() async {
+      try {
+        final bounds = await map.getVisibleRegion();
+        final center = LatLng(
+          (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+          (bounds.northeast.longitude + bounds.southwest.longitude) / 2,
+        );
+        if (!mounted) return;
+        cb(center.latitude, center.longitude);
+      } catch (_) {}
+    }());
   }
 
   /// Build the full marker set combining static pins + animated car.
@@ -1077,10 +1286,12 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
           ignoring: !widget.interactive,
           child: _MapLayer(
             mapState: this,
-            from: _from,
+            from: _fromCommitted,
             carNotifier: _carNotifier,
             interactive: widget.interactive,
             onTap: widget.onTap,
+            onCameraMoveStarted: _onCameraMoveStarted,
+            onCameraIdle: widget.onCameraIdle != null ? _onCameraIdle : null,
             onMapCreated: (c) {
               _map = c;
               if (!_fitted) unawaited(_fitBounds(extra: _routePoints));
@@ -1185,6 +1396,8 @@ class _MapLayer extends StatelessWidget {
     required this.interactive,
     required this.onMapCreated,
     this.onTap,
+    this.onCameraMoveStarted,
+    this.onCameraIdle,
   });
 
   final _NativeRouteMapState mapState;
@@ -1193,6 +1406,8 @@ class _MapLayer extends StatelessWidget {
   final bool interactive;
   final void Function(GoogleMapController) onMapCreated;
   final VoidCallback? onTap;
+  final VoidCallback? onCameraMoveStarted;
+  final VoidCallback? onCameraIdle;
 
   @override
   Widget build(BuildContext context) {
@@ -1222,6 +1437,8 @@ class _MapLayer extends StatelessWidget {
                   }
                 : const <Factory<OneSequenceGestureRecognizer>>{},
             onTap: onTap != null ? (_) => onTap!() : null,
+            onCameraMoveStarted: onCameraMoveStarted,
+            onCameraIdle: onCameraIdle,
             onMapCreated: onMapCreated,
           ),
         );

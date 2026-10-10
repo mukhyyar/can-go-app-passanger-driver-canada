@@ -23,11 +23,29 @@ class GtRouteOption {
   final bool isFastest;
 }
 
+/// Which endpoint marker is being adjusted on the map.
+enum GtRouteMapAdjustField { from, to }
+
 /// Controller for interacting with [GtGoogleRouteMap] programmatically.
 class GtRouteMapController {
   VoidCallback? _onRecenter;
+  VoidCallback? _onZoomIn;
+  VoidCallback? _onZoomOut;
+  void Function(double lat, double lng, {double? zoom})? _onAnimateTo;
+
   void attachRecenter(VoidCallback? callback) => _onRecenter = callback;
+  void attachZoomIn(VoidCallback? callback) => _onZoomIn = callback;
+  void attachZoomOut(VoidCallback? callback) => _onZoomOut = callback;
+  void attachAnimateTo(
+    void Function(double lat, double lng, {double? zoom})? callback,
+  ) =>
+      _onAnimateTo = callback;
+
   void recenter() => _onRecenter?.call();
+  void zoomIn() => _onZoomIn?.call();
+  void zoomOut() => _onZoomOut?.call();
+  void animateTo(double lat, double lng, {double? zoom}) =>
+      _onAnimateTo?.call(lat, lng, zoom: zoom);
 }
 
 /// Google Maps directions preview (A → B) with interactive expansion.
@@ -45,6 +63,7 @@ class GtGoogleRouteMap extends StatefulWidget {
     this.expandedHeight = 390,
     this.onRouteSelected,
     this.onRoutesLoaded,
+    this.onRoutesLoadFailed,
     this.enableRouteSelection = true,
     this.initialRouteIndex = 0,
     this.canExpand = true,
@@ -56,6 +75,20 @@ class GtGoogleRouteMap extends StatefulWidget {
     this.bundleId,
     this.onFullscreen,
     this.onBack,
+    this.controller,
+    this.autoFitOnRouteSelect = true,
+    this.animateRouteCar,
+    this.includeSyntheticFallback = true,
+    this.enableMarkerAdjust = false,
+    this.adjustingField,
+    this.centerPinAdjust = false,
+    this.previewFromLat,
+    this.previewFromLng,
+    this.previewToLat,
+    this.previewToLng,
+    this.onMarkerTap,
+    this.onMarkerDragEnd,
+    this.onCameraIdle,
   });
 
   final double fromLat;
@@ -69,6 +102,8 @@ class GtGoogleRouteMap extends StatefulWidget {
   final double expandedHeight;
   final ValueChanged<GtRouteOption>? onRouteSelected;
   final ValueChanged<List<GtRouteOption>>? onRoutesLoaded;
+  /// Called when road routing fails and no usable alternatives are available.
+  final VoidCallback? onRoutesLoadFailed;
   final bool enableRouteSelection;
   final int initialRouteIndex;
   final bool canExpand;
@@ -81,13 +116,50 @@ class GtGoogleRouteMap extends StatefulWidget {
   final VoidCallback? onFullscreen;
   final VoidCallback? onBack;
 
+  /// Optional external controller for recenter / zoom. Falls back to internal.
+  final GtRouteMapController? controller;
+
+  /// When false, switching routes updates the polyline without refitting camera.
+  final bool autoFitOnRouteSelect;
+
+  /// When null, car animation follows legacy rule: interactive || expanded.
+  final bool? animateRouteCar;
+
+  /// When false, do not invent a 0 km straight-line route after provider failure.
+  final bool includeSyntheticFallback;
+
+  /// When true, A/B markers are tappable and (unless [centerPinAdjust]) draggable.
+  final bool enableMarkerAdjust;
+
+  /// Endpoint currently being adjusted; used with preview coords / center pin.
+  final GtRouteMapAdjustField? adjustingField;
+
+  /// Hide the adjusting marker so the host can show a fixed center pin.
+  final bool centerPinAdjust;
+
+  /// Pending pickup position while adjusting (not committed until host confirms).
+  final double? previewFromLat;
+  final double? previewFromLng;
+
+  /// Pending drop-off position while adjusting.
+  final double? previewToLat;
+  final double? previewToLng;
+
+  final ValueChanged<GtRouteMapAdjustField>? onMarkerTap;
+  final void Function(GtRouteMapAdjustField field, double lat, double lng)?
+      onMarkerDragEnd;
+  final void Function(double lat, double lng)? onCameraIdle;
+
   @override
   State<GtGoogleRouteMap> createState() => _GtGoogleRouteMapState();
 }
 
 class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
   bool _internalExpanded = false;
-  late final GtRouteMapController _mapController;
+  late final GtRouteMapController _internalController;
+
+  GtRouteMapController get _mapController =>
+      widget.controller ?? _internalController;
 
   bool get _hasRoute =>
       widget.toLat != null &&
@@ -100,7 +172,7 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
   @override
   void initState() {
     super.initState();
-    _mapController = GtRouteMapController();
+    _internalController = GtRouteMapController();
   }
 
   @override
@@ -159,11 +231,25 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
               toLng: _hasRoute ? widget.toLng : null,
               onRouteSelected: widget.onRouteSelected,
               onRoutesLoaded: widget.onRoutesLoaded,
+              onRoutesLoadFailed: widget.onRoutesLoadFailed,
               enableRouteSelection: widget.enableRouteSelection,
               initialRouteIndex: widget.initialRouteIndex,
               interactive: isInteractive,
               isExpanded: isExpanded,
               controller: _mapController,
+              autoFitOnRouteSelect: widget.autoFitOnRouteSelect,
+              animateRouteCar: widget.animateRouteCar,
+              includeSyntheticFallback: widget.includeSyntheticFallback,
+              enableMarkerAdjust: widget.enableMarkerAdjust,
+              adjustingField: widget.adjustingField,
+              centerPinAdjust: widget.centerPinAdjust,
+              previewFromLat: widget.previewFromLat,
+              previewFromLng: widget.previewFromLng,
+              previewToLat: widget.previewToLat,
+              previewToLng: widget.previewToLng,
+              onMarkerTap: widget.onMarkerTap,
+              onMarkerDragEnd: widget.onMarkerDragEnd,
+              onCameraIdle: widget.onCameraIdle,
               bundleId: widget.bundleId,
               onTap: () {
                 if (canExpand && !isExpanded) {

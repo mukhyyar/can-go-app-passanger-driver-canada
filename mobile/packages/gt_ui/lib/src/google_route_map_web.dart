@@ -51,15 +51,48 @@ Widget buildGoogleMapEmbed({
   double? toLng,
   dynamic onRouteSelected,
   dynamic onRoutesLoaded,
+  dynamic onRoutesLoadFailed,
   bool enableRouteSelection = true,
   int initialRouteIndex = 0,
   bool interactive = true,
   bool isExpanded = false,
   dynamic controller,
+  bool autoFitOnRouteSelect = true,
+  bool? animateRouteCar,
+  bool includeSyntheticFallback = true,
+  bool enableMarkerAdjust = false,
+  dynamic adjustingField,
+  bool centerPinAdjust = false,
+  double? previewFromLat,
+  double? previewFromLng,
+  double? previewToLat,
+  double? previewToLng,
+  dynamic onMarkerTap,
+  dynamic onMarkerDragEnd,
+  dynamic onCameraIdle,
   VoidCallback? onTap,
   String? bundleId,
   Key? key,
 }) {
+  // Web embed is feature-light vs native; new optional APIs are accepted for
+  // API parity and ignored here (APK/native is the booking-map target).
+  // ignore: unused_local_variable
+  final _ = (
+    onRoutesLoadFailed,
+    autoFitOnRouteSelect,
+    animateRouteCar,
+    includeSyntheticFallback,
+    enableMarkerAdjust,
+    adjustingField,
+    centerPinAdjust,
+    previewFromLat,
+    previewFromLng,
+    previewToLat,
+    previewToLng,
+    onMarkerTap,
+    onMarkerDragEnd,
+    onCameraIdle,
+  );
   final hasRoute = toLat != null && toLng != null;
   final viewType =
       'cango-gmaps-${fromLat.toStringAsFixed(5)}-${fromLng.toStringAsFixed(5)}'
