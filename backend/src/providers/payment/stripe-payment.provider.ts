@@ -153,9 +153,12 @@ export class StripePaymentProvider implements PaymentProvider {
       data?: { object?: Record<string, unknown> };
     };
     const obj = event.data?.object ?? {};
+    // Only terminal payment_intent events map to a status. Non-terminal events
+    // (e.g. payment_intent.created) leave status undefined so the marketplace
+    // handler acknowledges them without treating them as succeeded/failed.
     let status: string | undefined;
     if (event.type === 'payment_intent.succeeded') status = 'succeeded';
-    if (event.type === 'payment_intent.payment_failed') status = 'failed';
+    else if (event.type === 'payment_intent.payment_failed') status = 'failed';
     return {
       provider: this.name,
       eventId: event.id,

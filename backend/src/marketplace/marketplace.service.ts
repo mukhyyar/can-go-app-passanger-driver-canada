@@ -2934,16 +2934,37 @@ export class MarketplaceService {
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
+    // Non-terminal Stripe events (e.g. payment_intent.created) leave status
+    // undefined — never default them to succeeded (that booked unpaid rides).
+    if (event.status !== 'succeeded' && event.status !== 'failed') {
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          rawWebhookLast: event.raw as Prisma.InputJsonValue,
+        },
+      });
+      await this.prisma.webhookEvent.update({
+        where: {
+          provider_eventId: {
+            provider: event.provider,
+            eventId: event.eventId,
+          },
+        },
+        data: { processedAt: new Date() },
+      });
+      return { ok: true, ignored: event.type ?? 'unknown' };
+    }
+
     await this.prisma.payment.update({
       where: { id: payment.id },
       data: {
-        status: event.status ?? 'succeeded',
+        status: event.status,
         rawWebhookLast: event.raw as Prisma.InputJsonValue,
       },
     });
 
     const isTip = (payment.metaJson as Record<string, unknown> | null)?.type === 'TIP';
-    if ((event.status ?? 'succeeded') === 'succeeded') {
+    if (event.status === 'succeeded') {
       if (isTip) {
         await this.finalizeTipPayment(payment.id);
       } else {
