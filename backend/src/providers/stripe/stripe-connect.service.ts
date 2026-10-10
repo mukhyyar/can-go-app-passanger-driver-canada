@@ -72,7 +72,7 @@ export class StripeConnectService {
   ): Promise<string> {
     const stripe = this.getClient();
     const appBase =
-      this.config.get<string>('admin.passengerWebBase') || 'https://can-ride.ca';
+      this.config.get<string>('admin.passengerWebBase') || 'https://www.can-rides.ca';
     const link = await stripe.accountLinks.create({
       account: accountId,
       refresh_url: refreshUrl || `${appBase}/stripe/refresh`,

@@ -520,14 +520,14 @@ export class DriversService {
           },
         });
         return {
-          url: opts?.returnUrl || 'https://can-ride.ca/stripe/return',
+          url: opts?.returnUrl || 'https://www.can-rides.ca/stripe/return',
           accountId,
           status: 'PENDING',
         };
       }
       accountId = await this.stripeConnect.createDriverExpressAccount(
         user.driverProfile.id,
-        user.email || `${user.id}@can-ride.ca`,
+        user.email || `${user.id}@can-rides.ca`,
       );
       await this.prisma.driverProfile.update({
         where: { id: user.driverProfile.id },
@@ -540,7 +540,7 @@ export class DriversService {
 
     if (!this.stripeConnect.isConfigured()) {
       return {
-        url: opts?.returnUrl || 'https://can-ride.ca/stripe/return',
+        url: opts?.returnUrl || 'https://www.can-rides.ca/stripe/return',
         accountId,
         status: user.driverProfile.stripeAccountStatus || 'PENDING',
       };
