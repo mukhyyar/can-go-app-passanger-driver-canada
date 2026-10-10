@@ -53,5 +53,15 @@ void main() {
       expect(results, isNotEmpty);
       expect(results.first.hasCoords, isTrue);
     });
+
+    test('searchPlaces works without GPS bias lat/lng', () async {
+      final repo = MockRepository.instance;
+      // Passenger address search must not require device coordinates.
+      final results = await repo.searchPlaces(
+        'Airport',
+        sessionToken: 'test-session-token',
+      );
+      expect(results, isNotEmpty);
+    });
   });
 }

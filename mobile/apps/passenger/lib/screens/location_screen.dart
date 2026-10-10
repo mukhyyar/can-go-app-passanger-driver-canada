@@ -29,8 +29,6 @@ class _LocationScreenState extends State<LocationScreen> {
 
   /// Google Places session — one token per search→select cycle.
   late String _sessionToken;
-  double? _biasLat;
-  double? _biasLng;
 
   @override
   void initState() {
@@ -39,7 +37,6 @@ class _LocationScreenState extends State<LocationScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _showHistory();
-      unawaited(_warmBias());
     });
   }
 
@@ -48,19 +45,6 @@ class _LocationScreenState extends State<LocationScreen> {
     _debounce?.cancel();
     _controller.dispose();
     super.dispose();
-  }
-
-  Future<void> _warmBias() async {
-    try {
-      final coords = await readDeviceCoords();
-      if (!mounted || coords == null) return;
-      setState(() {
-        _biasLat = coords.$1;
-        _biasLng = coords.$2;
-      });
-    } catch (_) {
-      // Backend falls back to Toronto bias.
-    }
   }
 
   void _rotateSession() {
@@ -99,10 +83,9 @@ class _LocationScreenState extends State<LocationScreen> {
     });
 
     try {
+      // Canada-wide search — no GPS / viewport bias params.
       final results = await context.read<AppState>().repo.searchPlaces(
             trimmed,
-            lat: _biasLat,
-            lng: _biasLng,
             sessionToken: _sessionToken,
           );
       if (!mounted || seq != _searchSeq) return;
@@ -120,6 +103,15 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
+  Future<void> _retrySearch() async {
+    final q = _controller.text.trim();
+    if (q.isEmpty) {
+      _showHistory();
+      return;
+    }
+    await _search(q);
+  }
+
   Future<void> _submitTyped() async {
     final q = _controller.text.trim();
     if (q.isEmpty) return;
@@ -130,8 +122,6 @@ class _LocationScreenState extends State<LocationScreen> {
     setState(() => _loading = true);
     final results = await context.read<AppState>().repo.searchPlaces(
           q,
-          lat: _biasLat,
-          lng: _biasLng,
           sessionToken: _sessionToken,
         );
     if (!mounted) return;
@@ -238,8 +228,6 @@ class _LocationScreenState extends State<LocationScreen> {
       final coords = await readDeviceCoords();
       Place? place;
       if (coords != null) {
-        _biasLat = coords.$1;
-        _biasLng = coords.$2;
         place = await PlacesSearch.reverse(coords.$1, coords.$2);
       }
       if (!mounted) return;
@@ -271,14 +259,63 @@ class _LocationScreenState extends State<LocationScreen> {
       return Icons.hotel;
     }
     if (l.contains('station') || l.contains('railway')) return Icons.train;
+    // Street / house-number style rows
+    if (RegExp(r'^\d+\s').hasMatch(p.label.trim()) ||
+        RegExp(r'\b(st|ave|rd|blvd|dr|way|cres|lane|hwy)\b', caseSensitive: false)
+            .hasMatch(l)) {
+      return Icons.home_outlined;
+    }
     return Icons.place_outlined;
+  }
+
+  /// Highlight case-insensitive occurrences of [query] inside [text].
+  Widget _highlightedText(
+    String text, {
+    required String query,
+    required TextStyle style,
+    TextStyle? matchStyle,
+  }) {
+    final q = query.trim();
+    if (q.isEmpty || _showingHistory) {
+      return Text(text, style: style);
+    }
+    final lower = text.toLowerCase();
+    final needle = q.toLowerCase();
+    final spans = <TextSpan>[];
+    var start = 0;
+    while (true) {
+      final idx = lower.indexOf(needle, start);
+      if (idx < 0) {
+        if (start < text.length) {
+          spans.add(TextSpan(text: text.substring(start), style: style));
+        }
+        break;
+      }
+      if (idx > start) {
+        spans.add(TextSpan(text: text.substring(start, idx), style: style));
+      }
+      spans.add(
+        TextSpan(
+          text: text.substring(idx, idx + needle.length),
+          style: matchStyle ??
+              style.copyWith(
+                color: GtColors.orange,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+      );
+      start = idx + needle.length;
+    }
+    if (spans.isEmpty) return Text(text, style: style);
+    return Text.rich(TextSpan(children: spans));
   }
 
   @override
   Widget build(BuildContext context) {
+    final query = _controller.text;
     final emptyMessage = _showingHistory
-        ? 'No recent searches yet.\nSearch an address, airport, or hotel.'
-        : 'No places found.\nTry a city, airport, or full address.';
+        ? 'No recent searches yet.\nSearch a Canadian address, airport, or hotel.'
+        : 'No places found.\nTry a full address, postal code, or city in Canada.';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -325,9 +362,22 @@ class _LocationScreenState extends State<LocationScreen> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Text(
-                _error!,
-                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _loading ? null : _retrySearch,
+                    child: const Text('Retry'),
+                  ),
+                ],
               ),
             ),
           if (_showingHistory && _results.isNotEmpty)
@@ -348,10 +398,31 @@ class _LocationScreenState extends State<LocationScreen> {
           Expanded(
             child: _results.isEmpty && !_loading
                 ? Center(
-                    child: Text(
-                      emptyMessage,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: GtColors.textSecondary),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            emptyMessage,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: GtColors.textSecondary,
+                            ),
+                          ),
+                          if (!_showingHistory && _error == null) ...[
+                            const SizedBox(height: 12),
+                            TextButton.icon(
+                              onPressed: () => context.push('/map-pick'),
+                              icon: const Icon(
+                                Icons.place,
+                                color: GtColors.orange,
+                              ),
+                              label: const Text('Choose on map'),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   )
                 : ListView.separated(
@@ -379,14 +450,16 @@ class _LocationScreenState extends State<LocationScreen> {
                                     : _iconFor(p),
                                 color: Colors.black87,
                               ),
-                        title: Text(
+                        title: _highlightedText(
                           title,
+                          query: query,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         subtitle: subtitle.isEmpty
                             ? null
-                            : Text(
+                            : _highlightedText(
                                 subtitle,
+                                query: query,
                                 style: const TextStyle(
                                   color: GtColors.textSecondary,
                                 ),

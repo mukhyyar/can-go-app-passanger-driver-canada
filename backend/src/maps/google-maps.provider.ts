@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -13,14 +14,22 @@ import type {
 } from './maps-provider.interface';
 import { decodeGooglePolyline } from './polyline';
 
-/** Default bias when client sends no GPS (Canada / GTA). */
-const DEFAULT_BIAS = { lat: 43.65, lng: -79.38, radiusMeters: 50_000 };
+/** Slots reserved for geocode hits on address-like queries. */
+const ADDRESS_GEOCODE_RESERVED = 3;
+
+type GeocodeOpts = {
+  lat?: number;
+  lng?: number;
+  /** ISO country code for Geocoding `components=country:XX` (e.g. CA). */
+  country?: string;
+};
 
 /** Google Maps Geocoding + Directions + Places (New). */
 @Injectable()
 export class GoogleMapsProvider implements MapsProvider {
   readonly name = 'google';
   private readonly key: string | undefined;
+  private readonly logger = new Logger(GoogleMapsProvider.name);
 
   constructor(config: ConfigService) {
     this.key = config.get<string>('maps.googleApiKey');
@@ -36,7 +45,7 @@ export class GoogleMapsProvider implements MapsProvider {
 
   async geocode(
     query: string,
-    opts?: { lat?: number; lng?: number },
+    opts?: GeocodeOpts,
   ): Promise<GeocodeResult[]> {
     this.assertKey();
     const q = query.trim();
@@ -44,19 +53,14 @@ export class GoogleMapsProvider implements MapsProvider {
     const uri = new URL('https://maps.googleapis.com/maps/api/geocode/json');
     uri.searchParams.set('address', q);
     uri.searchParams.set('key', this.key!);
-    if (
-      opts?.lat != null &&
-      opts?.lng != null &&
-      Number.isFinite(opts.lat) &&
-      Number.isFinite(opts.lng)
-    ) {
-      const lat = opts.lat;
-      const lng = opts.lng;
-      uri.searchParams.set(
-        'bounds',
-        `${lat - 1.0},${lng - 1.0}|${lat + 1.0},${lng + 1.0}`,
-      );
+    const country = opts?.country?.trim().toUpperCase();
+    if (country) {
+      uri.searchParams.set('components', `country:${country}`);
     }
+    // Viewport bounds are intentionally not applied for address search.
+    // Legacy callers may still pass lat/lng; they are ignored for ranking.
+    void opts?.lat;
+    void opts?.lng;
     try {
       const res = await fetch(uri.toString());
       const data = (await res.json()) as {
@@ -90,15 +94,13 @@ export class GoogleMapsProvider implements MapsProvider {
     return this.geocodeViaPhoton(q);
   }
 
-  /** Photon forward geocode — used when the Google server key is blocked. */
+  /** Photon forward geocode — used when the Google server key is blocked. No city bias. */
   private async geocodeViaPhoton(query: string): Promise<GeocodeResult[]> {
     try {
       const uri = new URL('https://photon.komoot.io/api/');
       uri.searchParams.set('q', query);
       uri.searchParams.set('limit', '8');
-      uri.searchParams.set('lat', String(DEFAULT_BIAS.lat));
-      uri.searchParams.set('lon', String(DEFAULT_BIAS.lng));
-      const res = await fetch(uri);
+      const res = await fetch(uri.toString());
       if (!res.ok) return [];
       const data = (await res.json()) as {
         features?: Array<{
@@ -214,9 +216,40 @@ export class GoogleMapsProvider implements MapsProvider {
     return parts.join(', ');
   }
 
+  private looksLikeAddressQuery(q: string): boolean {
+    return /\d|[A-Za-z]\d[A-Za-z]|,|st|ave|rd|blvd|dr|way|cres|lane|highway|hwy/i.test(
+      q,
+    );
+  }
+
+  /** Text relevance only — never distance-to-device. */
+  private suggestionRelevance(q: string, s: PlaceSuggestion): number {
+    const hay = `${s.label} ${s.subtitle ?? ''}`.toLowerCase();
+    const query = q.toLowerCase().trim();
+    let score = 0;
+    if (hay.includes(query)) score += 100;
+    const house = query.match(/^(\d+)\b/);
+    if (house) {
+      if (hay.startsWith(house[1]) || new RegExp(`\\b${house[1]}\\b`).test(hay)) {
+        score += 50;
+      }
+    }
+    const postal = query.match(/\b([a-z]\d[a-z])\s*(\d[a-z]\d)\b/i);
+    if (postal) {
+      const compact = `${postal[1]}${postal[2]}`.toLowerCase();
+      if (hay.replace(/\s+/g, '').includes(compact)) score += 40;
+    }
+    for (const token of query.split(/\s+/).filter((t) => t.length > 1)) {
+      if (hay.includes(token)) score += 10;
+    }
+    // Prefer resolved street rows (geocode) slightly when equally matched.
+    if (s.lat !== 0 || s.lng !== 0) score += 5;
+    return score;
+  }
+
   /**
    * Places search: hybrid Places Autocomplete (New) + Google Geocoding.
-   * Ensures addresses, intersections, postal codes, airports, and POIs are all suggested and resolved.
+   * Canada-wide, no GPS/viewport bias. Query-relevance ranking only.
    */
   async places(
     query: string,
@@ -228,41 +261,36 @@ export class GoogleMapsProvider implements MapsProvider {
     if (q.length < 2) return [];
     const max = Math.min(Math.max(limit, 1), 12);
     const languageCode = opts?.languageCode?.trim() || 'en';
-    const hasClientCoords =
-      opts?.lat != null &&
-      Number.isFinite(opts.lat) &&
-      opts?.lng != null &&
-      Number.isFinite(opts.lng);
+    // Client lat/lng intentionally ignored — no locationBias / bounds on search.
+    void opts?.lat;
+    void opts?.lng;
+
+    const addressLike = this.looksLikeAddressQuery(q);
+    const reserved = addressLike ? ADDRESS_GEOCODE_RESERVED : 0;
+    const autoCap = Math.max(1, max - reserved);
 
     const suggestions: PlaceSuggestion[] = [];
     const seenPlaceIds = new Set<string>();
     const seenLabels = new Set<string>();
 
-    const addSuggestion = (s: PlaceSuggestion) => {
+    const addSuggestion = (s: PlaceSuggestion): boolean => {
       const placeKey = s.placeId?.trim().toLowerCase();
       const labelKey = s.label.trim().toLowerCase();
-      if (placeKey && seenPlaceIds.has(placeKey)) return;
-      if (seenLabels.has(labelKey)) return;
+      if (placeKey && seenPlaceIds.has(placeKey)) return false;
+      if (seenLabels.has(labelKey)) return false;
       if (placeKey) seenPlaceIds.add(placeKey);
       seenLabels.add(labelKey);
       suggestions.push(s);
+      return true;
     };
 
-    // 1. Google Places Autocomplete (New)
+    // 1. Google Places Autocomplete (New) — Canada only, no locationBias
     try {
       const body: Record<string, unknown> = {
         input: q,
         languageCode,
-        includedRegionCodes: ['ca', 'us'],
+        includedRegionCodes: ['ca'],
       };
-      if (hasClientCoords) {
-        body.locationBias = {
-          circle: {
-            center: { latitude: opts!.lat!, longitude: opts!.lng! },
-            radius: 120_000,
-          },
-        };
-      }
       const token = opts?.sessionToken?.trim();
       if (token) body.sessionToken = token;
 
@@ -302,6 +330,7 @@ export class GoogleMapsProvider implements MapsProvider {
           };
         }>;
 
+        let autoCount = 0;
         for (const p of preds) {
           if (!p.placeId) continue;
           const placeId = p.placeId;
@@ -310,45 +339,47 @@ export class GoogleMapsProvider implements MapsProvider {
             p.text?.text ||
             placeId;
           const subtitle = p.structuredFormat?.secondaryText?.text;
-          addSuggestion({
-            id: `gplace-${placeId}`,
-            label,
-            subtitle,
-            lat: 0,
-            lng: 0,
-            placeId,
-            provider: this.name,
-          });
-          if (suggestions.length >= max) break;
+          if (
+            addSuggestion({
+              id: `gplace-${placeId}`,
+              label,
+              subtitle,
+              lat: 0,
+              lng: 0,
+              placeId,
+              provider: this.name,
+            })
+          ) {
+            autoCount += 1;
+          }
+          if (autoCount >= autoCap) break;
         }
+      } else {
+        this.logger.warn(
+          `Places Autocomplete HTTP ${autoRes.status} (key/quota/API config)`,
+        );
       }
     } catch {
       // Fall through to geocoding
     }
 
-    // 2. Supplement or fallback with Google Geocoding API
-    // Addresses with numbers, postal codes, or when autocomplete returns few/zero results
-    const looksLikeAddress =
-      /\d|[A-Za-z]\d[A-Za-z]|,|st|ave|rd|blvd|dr|way|cres|lane|highway|hwy/i.test(
-        q,
-      );
-    if (suggestions.length < max || looksLikeAddress) {
+    // 2. Supplement with Geocoding (Canada only, no viewport bounds)
+    if (suggestions.length < max || addressLike) {
       try {
-        const remaining = max - suggestions.length;
-        const geoPlaces = await this.geocodeAsPlaces(
-          q,
-          Math.max(remaining, 4),
-          opts,
-        );
+        const remaining = Math.max(max - suggestions.length, reserved, 4);
+        const geoPlaces = await this.geocodeAsPlaces(q, remaining);
         for (const gp of geoPlaces) {
           addSuggestion(gp);
-          if (suggestions.length >= max) break;
         }
       } catch {
         // Fall through
       }
     }
 
+    suggestions.sort(
+      (a, b) =>
+        this.suggestionRelevance(q, b) - this.suggestionRelevance(q, a),
+    );
     return suggestions.slice(0, max);
   }
 
@@ -509,9 +540,9 @@ export class GoogleMapsProvider implements MapsProvider {
   private async geocodeAsPlaces(
     q: string,
     max: number,
-    opts?: PlacesSearchOpts,
   ): Promise<PlaceSuggestion[]> {
-    const geo = await this.geocode(q, opts);
+    // Places supplement: Canada-only, no GPS/viewport bounds.
+    const geo = await this.geocode(q, { country: 'CA' });
     return geo.slice(0, max).map((g, i) => {
       const parts = g.label.split(',');
       const title = parts[0]?.trim() || g.label;

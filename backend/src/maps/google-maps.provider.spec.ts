@@ -25,7 +25,7 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
     global.fetch = originalFetch;
   });
 
-  it('places returns autocomplete predictions with non-Toronto bias when lat/lng supplied', async () => {
+  it('places never sends locationBias even when lat/lng are supplied', async () => {
     let capturedBody: Record<string, unknown> | null = null;
     global.fetch = jest.fn().mockImplementation(async (url: string, init?: RequestInit) => {
       if (url.includes('places:autocomplete')) {
@@ -62,10 +62,163 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
     expect(res[0].subtitle).toBe('Calgary, AB, Canada');
 
     expect(capturedBody).not.toBeNull();
-    // Verify locationBias used the client's Calgary coordinates, not Toronto
-    const biasCircle = (capturedBody as any)?.locationBias?.circle;
-    expect(biasCircle?.center?.latitude).toBe(51.0486);
-    expect(biasCircle?.center?.longitude).toBe(-114.0708);
+    expect(capturedBody!.locationBias).toBeUndefined();
+    expect(capturedBody!.includedRegionCodes).toEqual(['ca']);
+  });
+
+  it('places uses Canada-only region codes', async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    global.fetch = jest.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('places:autocomplete')) {
+        capturedBody = JSON.parse(init?.body as string);
+        return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({ status: 'ZERO_RESULTS', results: [] }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    await provider.places('Toronto', 5);
+    expect(capturedBody!.includedRegionCodes).toEqual(['ca']);
+    expect(capturedBody!.includedRegionCodes).not.toContain('us');
+  });
+
+  it('places geocode supplement uses country:CA and no bounds', async () => {
+    const geocodeUrls: string[] = [];
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('places:autocomplete')) {
+        return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        geocodeUrls.push(url);
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'OK',
+            results: [
+              {
+                formatted_address: '4523 16a St SW, Calgary, AB T2T 4L8, Canada',
+                place_id: 'place-4523',
+                geometry: {
+                  location: { lat: 51.0134, lng: -114.0987 },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.places('4523 16a St SW', 5, {
+      lat: 43.65,
+      lng: -79.38,
+    });
+
+    expect(res.length).toBeGreaterThanOrEqual(1);
+    expect(res[0].label).toBe('4523 16a St SW');
+    expect(res[0].placeId).toBe('place-4523');
+    expect(geocodeUrls.length).toBeGreaterThan(0);
+    expect(geocodeUrls[0]).toContain('components=country%3ACA');
+    expect(geocodeUrls[0]).not.toContain('bounds=');
+  });
+
+  it('places merges geocode street hit when Autocomplete fills the list', async () => {
+    const filler = Array.from({ length: 8 }, (_, i) => ({
+      placePrediction: {
+        placeId: `filler-${i}`,
+        structuredFormat: {
+          mainText: { text: `Unrelated Place ${i}` },
+          secondaryText: { text: 'Toronto, ON, Canada' },
+        },
+      },
+    }));
+
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('places:autocomplete')) {
+        return {
+          ok: true,
+          json: async () => ({ suggestions: filler }),
+        };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'OK',
+            results: [
+              {
+                formatted_address:
+                  '35 Masters Dr SE, Calgary, AB T3M 2T7, Canada',
+                place_id: 'place-masters',
+                geometry: {
+                  location: { lat: 50.9012, lng: -113.9567 },
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.places('35 Masters Dr SE', 8);
+    const masters = res.find(
+      (r) =>
+        r.placeId === 'place-masters' ||
+        r.label.toLowerCase().includes('masters'),
+    );
+    expect(masters).toBeDefined();
+    expect(masters!.label).toContain('35 Masters');
+    // Exact street match should rank at or near the top
+    expect(res[0].placeId).toBe('place-masters');
+  });
+
+  it('places Photon fallback does not hardcode Toronto lat/lon', async () => {
+    const photonUrls: string[] = [];
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('places:autocomplete')) {
+        return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({ status: 'REQUEST_DENIED', results: [] }),
+        };
+      }
+      if (url.includes('photon.komoot.io')) {
+        photonUrls.push(url);
+        return {
+          ok: true,
+          json: async () => ({
+            features: [
+              {
+                geometry: { coordinates: [-113.9567, 50.9012] },
+                properties: {
+                  housenumber: '35',
+                  street: 'Masters Drive SE',
+                  city: 'Calgary',
+                  state: 'Alberta',
+                  postcode: 'T3M 2T7',
+                  country: 'Canada',
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    await provider.places('35 Masters Dr SE Calgary', 5);
+    expect(photonUrls.length).toBeGreaterThan(0);
+    const u = new URL(photonUrls[0]);
+    expect(u.searchParams.has('lat')).toBe(false);
+    expect(u.searchParams.has('lon')).toBe(false);
   });
 
   it('places falls back to Geocoding when Autocomplete has no results', async () => {
@@ -131,7 +284,6 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
   it('placeDetails falls back to Geocoding API by place_id when Places API (New) returns 404', async () => {
     global.fetch = jest.fn().mockImplementation(async (url: string) => {
       if (url.includes('places.googleapis.com/v1/places/')) {
-        // Places API (New) 404 for address place ID
         return { ok: false, status: 404 };
       }
       if (url.includes('maps/api/geocode/json') && url.includes('place_id=')) {
