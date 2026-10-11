@@ -126,6 +126,11 @@ export class GoogleMapsProvider implements MapsProvider {
           provider: this.name,
         }));
       }
+      // Country-scoped geocode (e.g. places search CA) must stay Google-only —
+      // Photon is worldwide and was polluting Canada address suggestions.
+      if (country) {
+        return [];
+      }
       // Referrer-restricted keys / disabled APIs → open-data fallback.
       if (
         data.status &&
@@ -135,6 +140,7 @@ export class GoogleMapsProvider implements MapsProvider {
         return this.geocodeViaPhoton(q);
       }
     } catch {
+      if (country) return [];
       return this.geocodeViaPhoton(q);
     }
     return this.geocodeViaPhoton(q);

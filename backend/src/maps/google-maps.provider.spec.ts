@@ -127,6 +127,29 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
     expect(geocodeUrls[0]).not.toContain('bounds=');
   });
 
+  it('country-scoped geocode does not fall back to Photon on ZERO_RESULTS', async () => {
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({ status: 'ZERO_RESULTS', results: [] }),
+        };
+      }
+      if (url.includes('photon.komoot.io')) {
+        throw new Error('Photon must not be called for country-scoped geocode');
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.geocode('35 mast', { country: 'CA' });
+    expect(res).toEqual([]);
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((c) =>
+        String(c[0]).includes('photon.komoot.io'),
+      ),
+    ).toBe(false);
+  });
+
   it('places merges geocode street hit when Autocomplete fills the list', async () => {
     const filler = Array.from({ length: 8 }, (_, i) => ({
       placePrediction: {
@@ -178,11 +201,14 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
     expect(res[0].placeId).toBe('place-masters');
   });
 
-  it('places Photon fallback does not hardcode Toronto lat/lon', async () => {
+  it('places does not call Photon when country-scoped Google geocode fails', async () => {
     const photonUrls: string[] = [];
     global.fetch = jest.fn().mockImplementation(async (url: string) => {
       if (url.includes('places:autocomplete')) {
         return { ok: true, json: async () => ({ suggestions: [] }) };
+      }
+      if (url.includes('places:searchText')) {
+        return { ok: true, json: async () => ({ places: [] }) };
       }
       if (url.includes('maps/api/geocode/json')) {
         return {
@@ -192,33 +218,14 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
       }
       if (url.includes('photon.komoot.io')) {
         photonUrls.push(url);
-        return {
-          ok: true,
-          json: async () => ({
-            features: [
-              {
-                geometry: { coordinates: [-113.9567, 50.9012] },
-                properties: {
-                  housenumber: '35',
-                  street: 'Masters Drive SE',
-                  city: 'Calgary',
-                  state: 'Alberta',
-                  postcode: 'T3M 2T7',
-                  country: 'Canada',
-                },
-              },
-            ],
-          }),
-        };
+        return { ok: true, json: async () => ({ features: [] }) };
       }
       return { ok: false };
     }) as never;
 
-    await provider.places('35 Masters Dr SE Calgary', 5);
-    expect(photonUrls.length).toBeGreaterThan(0);
-    const u = new URL(photonUrls[0]);
-    expect(u.searchParams.has('lat')).toBe(false);
-    expect(u.searchParams.has('lon')).toBe(false);
+    const res = await provider.places('35 Masters Dr SE Calgary', 5);
+    expect(photonUrls).toEqual([]);
+    expect(res).toEqual([]);
   });
 
   it('places falls back to Geocoding when Autocomplete has no results', async () => {
