@@ -611,25 +611,10 @@ function PlaceField({
   const [open, setOpen] = useState(false);
   const [resolving, setResolving] = useState(false);
   const sessionRef = useRef(newPlacesSessionToken());
-  const biasRef = useRef<{ lat?: number; lng?: number }>({});
 
   useEffect(() => {
     setQ(value?.label ?? '');
   }, [value]);
-
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        biasRef.current = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        };
-      },
-      () => undefined,
-      { maximumAge: 60_000, timeout: 4_000 },
-    );
-  }, []);
 
   useEffect(() => {
     if (q.trim().length < 2 || (value && q === value.label)) {
@@ -637,11 +622,7 @@ function PlaceField({
       return;
     }
     const t = setTimeout(() => {
-      searchPlaces(q, {
-        sessionToken: sessionRef.current,
-        lat: biasRef.current.lat,
-        lng: biasRef.current.lng,
-      })
+      searchPlaces(q, { sessionToken: sessionRef.current })
         .then(setHits)
         .catch(() => setHits([]));
     }, 280);
@@ -706,12 +687,42 @@ function PlaceField({
                 void pick(p);
               }}
             >
-              {p.label}
+              <HighlightedLabel label={p.label} highlights={p.highlights} />
               {p.subtitle && <small>{p.subtitle}</small>}
             </button>
           ))}
+          <SuggestAttribution />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Google Maps-style bold on the matched parts of a prediction. */
+function HighlightedLabel({
+  label,
+  highlights,
+}: {
+  label: string;
+  highlights?: Array<[number, number]>;
+}) {
+  if (!highlights?.length) return <>{label}</>;
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  highlights.forEach(([start, end], i) => {
+    if (start > cursor) parts.push(label.slice(cursor, start));
+    parts.push(<b key={i}>{label.slice(start, end)}</b>);
+    cursor = end;
+  });
+  if (cursor < label.length) parts.push(label.slice(cursor));
+  return <>{parts}</>;
+}
+
+/** Attribution for Google Places predictions. */
+function SuggestAttribution() {
+  return (
+    <div className="suggest-attrib" aria-hidden>
+      powered by <strong>Google</strong>
     </div>
   );
 }

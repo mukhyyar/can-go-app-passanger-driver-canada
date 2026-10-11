@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   newPlacesSessionToken,
   placeHasCoords,
@@ -76,21 +76,6 @@ export function LandingPage() {
   const [hints, setHints] = useState<Place[]>([]);
   const [swapping, setSwapping] = useState(false);
   const sessionRef = useRef(newPlacesSessionToken());
-  const biasRef = useRef<{ lat?: number; lng?: number }>({});
-
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        biasRef.current = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        };
-      },
-      () => undefined,
-      { maximumAge: 60_000, timeout: 4_000 },
-    );
-  }, []);
 
   useEffect(() => {
     const q = active === 'from' ? fromQ : active === 'to' ? toQ : '';
@@ -99,11 +84,7 @@ export function LandingPage() {
       return;
     }
     const t = window.setTimeout(() => {
-      searchPlaces(q, {
-        sessionToken: sessionRef.current,
-        lat: biasRef.current.lat,
-        lng: biasRef.current.lng,
-      })
+      searchPlaces(q, { sessionToken: sessionRef.current })
         .then(setHints)
         .catch(() => setHints([]));
     }, 280);
@@ -258,11 +239,12 @@ export function LandingPage() {
                         >
                           <PinIcon />
                           <span>
-                            {p.label}
+                            <HighlightedLabel label={p.label} highlights={p.highlights} />
                             {p.subtitle && <small>{p.subtitle}</small>}
                           </span>
                         </button>
                       ))}
+                      <SuggestAttribution />
                     </div>
                   )}
                 </label>
@@ -316,11 +298,12 @@ export function LandingPage() {
                             >
                               <PinIcon />
                               <span>
-                                {p.label}
+                                <HighlightedLabel label={p.label} highlights={p.highlights} />
                                 {p.subtitle && <small>{p.subtitle}</small>}
                               </span>
                             </button>
                           ))}
+                          <SuggestAttribution />
                         </div>
                       )}
                     </label>
@@ -590,6 +573,35 @@ function ArrowIcon() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/** Google Maps-style bold on the matched parts of a prediction. */
+function HighlightedLabel({
+  label,
+  highlights,
+}: {
+  label: string;
+  highlights?: Array<[number, number]>;
+}) {
+  if (!highlights?.length) return <>{label}</>;
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  highlights.forEach(([start, end], i) => {
+    if (start > cursor) parts.push(label.slice(cursor, start));
+    parts.push(<b key={i}>{label.slice(start, end)}</b>);
+    cursor = end;
+  });
+  if (cursor < label.length) parts.push(label.slice(cursor));
+  return <>{parts}</>;
+}
+
+/** Required attribution when Places results are shown without a Google map. */
+function SuggestAttribution() {
+  return (
+    <div className="suggest-attrib" aria-hidden>
+      powered by <strong>Google</strong>
+    </div>
   );
 }
 

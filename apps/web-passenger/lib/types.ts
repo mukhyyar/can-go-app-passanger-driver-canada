@@ -7,6 +7,8 @@ export type Place = {
   lat: number;
   lng: number;
   placeId?: string;
+  /** [start, end) ranges in `label` matched by the query (Google-style bold). */
+  highlights?: Array<[number, number]>;
 };
 
 export type Tokens = { accessToken: string; refreshToken: string | null };

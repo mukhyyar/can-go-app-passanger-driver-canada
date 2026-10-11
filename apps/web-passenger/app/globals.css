@@ -473,6 +473,23 @@ button {
   font-size: 12px;
 }
 
+.suggest b {
+  font-weight: 700;
+}
+
+.suggest-attrib {
+  padding: 4px 12px 6px;
+  text-align: right;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.suggest-attrib strong {
+  font-weight: 600;
+}
+
 .vehicle-legend {
   display: flex;
   justify-content: space-between;

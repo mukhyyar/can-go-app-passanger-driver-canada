@@ -1,5 +1,6 @@
 import type { Place } from './types';
 import { API_BASE } from './api';
+import { googleAutocomplete, googlePlaceDetails } from './google-places';
 
 type MapsPlace = {
   id?: string;
@@ -54,13 +55,19 @@ export async function searchPlaces(
   const opts: PlaceSearchOpts =
     typeof limitOrOpts === 'number' ? { limit: limitOrOpts } : limitOrOpts;
   const limit = opts.limit ?? 8;
+
+  // 1. Google Places Autocomplete directly in the browser (Canada only, no bias).
+  //    `lat`/`lng` opts are intentionally not forwarded anywhere.
+  try {
+    return await googleAutocomplete(q, { sessionToken: opts.sessionToken, limit });
+  } catch {
+    // Maps JS / browser key unavailable → backend fallback below.
+  }
+
+  // 2. Backend fallback.
   const url = new URL(`${API_BASE}/maps/places`);
   url.searchParams.set('q', q);
   url.searchParams.set('limit', String(limit));
-  if (opts.lat != null && opts.lng != null && Number.isFinite(opts.lat) && Number.isFinite(opts.lng)) {
-    url.searchParams.set('lat', String(opts.lat));
-    url.searchParams.set('lng', String(opts.lng));
-  }
   if (opts.sessionToken) url.searchParams.set('sessionToken', opts.sessionToken);
   if (opts.languageCode) url.searchParams.set('languageCode', opts.languageCode);
   const res = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
@@ -81,6 +88,18 @@ export async function resolvePlaceDetails(
 ): Promise<Place | null> {
   if (placeHasCoords(place)) return place;
   const placeId = place.placeId?.trim();
+
+  // 1. Google Place Details directly in the browser (closes the autocomplete session).
+  if (placeId) {
+    try {
+      const viaGoogle = await googlePlaceDetails(place, { sessionToken: opts?.sessionToken });
+      if (viaGoogle && placeHasCoords(viaGoogle)) return viaGoogle;
+    } catch {
+      // Maps JS unavailable → backend fallback below.
+    }
+  }
+
+  // 2. Backend fallback.
   if (placeId) {
     const url = new URL(`${API_BASE}/maps/place-details`);
     url.searchParams.set('placeId', placeId);
