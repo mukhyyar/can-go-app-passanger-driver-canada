@@ -126,62 +126,10 @@ export class GoogleMapsProvider implements MapsProvider {
           provider: this.name,
         }));
       }
-      // Country-scoped geocode (e.g. places search CA) must stay Google-only —
-      // Photon is worldwide and was polluting Canada address suggestions.
-      if (country) {
-        return [];
-      }
-      // Referrer-restricted keys / disabled APIs → open-data fallback.
-      if (
-        data.status &&
-        data.status !== 'OK' &&
-        data.status !== 'ZERO_RESULTS'
-      ) {
-        return this.geocodeViaPhoton(q);
-      }
     } catch {
-      if (country) return [];
-      return this.geocodeViaPhoton(q);
+      // Google-only: no open-data fallback.
     }
-    return this.geocodeViaPhoton(q);
-  }
-
-  /** Photon forward geocode — used when the Google server key is blocked. No city bias. */
-  private async geocodeViaPhoton(query: string): Promise<GeocodeResult[]> {
-    try {
-      const uri = new URL('https://photon.komoot.io/api/');
-      uri.searchParams.set('q', query);
-      uri.searchParams.set('limit', '8');
-      const res = await fetch(uri.toString());
-      if (!res.ok) return [];
-      const data = (await res.json()) as {
-        features?: Array<{
-          geometry?: { coordinates?: [number, number] };
-          properties?: Record<string, unknown>;
-        }>;
-      };
-      return (data.features ?? [])
-        .map((f) => {
-          const coords = f.geometry?.coordinates;
-          const props = f.properties;
-          if (!coords || !props) return null;
-          const [lng, lat] = coords;
-          const label = this.formatPhotonLabel(props);
-          if (!label || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-            return null;
-          }
-          return {
-            label,
-            lat,
-            lng,
-            provider: 'photon',
-          } satisfies GeocodeResult;
-        })
-        .filter((x): x is GeocodeResult => !!x)
-        .slice(0, 8);
-    } catch {
-      return [];
-    }
+    return [];
   }
 
   async reverseGeocode(lat: number, lng: number): Promise<GeocodeResult | null> {
@@ -205,67 +153,9 @@ export class GoogleMapsProvider implements MapsProvider {
         };
       }
     } catch {
-      // Fall through to Photon (common when server key has referer restrictions).
+      // Google-only: no open-data fallback.
     }
-    return this.reverseViaPhoton(lat, lng);
-  }
-
-  /** Open-data reverse geocode — works without a Google server key. */
-  private async reverseViaPhoton(
-    lat: number,
-    lng: number,
-  ): Promise<GeocodeResult | null> {
-    try {
-      const uri = new URL('https://photon.komoot.io/reverse');
-      uri.searchParams.set('lat', String(lat));
-      uri.searchParams.set('lon', String(lng));
-      const res = await fetch(uri);
-      if (!res.ok) return null;
-      const data = (await res.json()) as {
-        features?: Array<{
-          properties?: Record<string, unknown>;
-        }>;
-      };
-      const props = data.features?.[0]?.properties;
-      if (!props) return null;
-      const label = this.formatPhotonLabel(props);
-      if (!label) return null;
-      return { label, lat, lng, provider: 'photon' };
-    } catch {
-      return null;
-    }
-  }
-
-  private formatPhotonLabel(props: Record<string, unknown>): string {
-    const str = (k: string) => {
-      const v = props[k];
-      return typeof v === 'string' && v.trim() ? v.trim() : '';
-    };
-    const rawName = str('name');
-    const house = str('housenumber');
-    const street = str('street');
-    const locality =
-      str('city') || str('town') || str('village') || str('municipality');
-    const state = str('state');
-    const country = str('country');
-    const postcode = str('postcode');
-    const osmValue = str('osm_value').toLowerCase();
-
-    // Skip noisy OSM infrastructure names (tunnels, motorways, etc.).
-    const noisy =
-      /tunnel|motorway|trunk|primary|secondary|tertiary|unclassified|service|footway|path|cycleway|rail|platform/i.test(
-        `${rawName} ${osmValue}`,
-      );
-    const name =
-      !noisy && rawName && rawName.toLowerCase() !== street.toLowerCase()
-        ? rawName
-        : '';
-
-    const line1 = [house, street].filter(Boolean).join(' ').trim();
-    const parts = [name, line1, locality, state, postcode, country].filter(
-      Boolean,
-    );
-    return parts.join(', ');
+    return null;
   }
 
   private looksLikeAddressQuery(q: string): boolean {
@@ -836,78 +726,15 @@ export class GoogleMapsProvider implements MapsProvider {
             };
           }
         }
-      } catch (_) {
-        // Fall back to OSRM on any Google error or rejection
+      } catch {
+        // Google-only: no OSRM / open-routing fallback.
       }
     }
 
-    // Resilient fallback: OSRM driving engine
-    return this.fallbackOsrmRoute(from, to);
-  }
-
-  private async fallbackOsrmRoute(
-    from: { lat: number; lng: number },
-    to: { lat: number; lng: number },
-  ): Promise<RouteResult> {
-    try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&alternatives=true`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-      const data = (await res.json()) as {
-        code?: string;
-        routes?: Array<{
-          distance: number;
-          duration: number;
-          geometry?: { coordinates: [number, number][] };
-          legs?: Array<{ summary?: string }>;
-        }>;
-      };
-
-      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-        const parsedRoutes: RouteOption[] = data.routes
-          .filter(
-            (r) =>
-              r.geometry?.coordinates && r.geometry.coordinates.length > 0,
-          )
-          .map((r, i) => {
-            const leg = r.legs?.[0];
-            const distKm = Math.round((r.distance / 1000) * 10) / 10;
-            const durMin = Math.max(1, Math.round(r.duration / 60));
-            const name =
-              leg?.summary?.trim() ||
-              (i === 0 ? 'Fastest route' : `Alternative ${i + 1}`);
-            return {
-              id: `osrm-${i}`,
-              summary: name,
-              distanceKm: distKm,
-              durationMin: durMin,
-              geometry: {
-                type: 'LineString' as const,
-                coordinates: r.geometry!.coordinates,
-              },
-              isFastest: i === 0,
-            };
-          });
-
-        if (parsedRoutes.length > 0) {
-          const primary = parsedRoutes[0];
-          return {
-            distanceKm: primary.distanceKm,
-            durationMin: primary.durationMin,
-            provider: 'osrm',
-            geometry: primary.geometry,
-            routes: parsedRoutes,
-          };
-        }
-      }
-    } catch (_) {
-      // Fallback below
-    }
-
-    // Straight-line fallback
     return {
       distanceKm: 0,
       durationMin: 0,
-      provider: 'fallback',
+      provider: 'google',
       geometry: {
         type: 'LineString',
         coordinates: [

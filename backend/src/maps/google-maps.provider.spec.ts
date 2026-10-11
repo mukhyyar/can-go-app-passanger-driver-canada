@@ -127,7 +127,34 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
     expect(geocodeUrls[0]).not.toContain('bounds=');
   });
 
-  it('country-scoped geocode does not fall back to Photon on ZERO_RESULTS', async () => {
+  it('geocode returns empty and never calls Photon on REQUEST_DENIED', async () => {
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'REQUEST_DENIED',
+            results: [],
+            error_message: 'denied',
+          }),
+        };
+      }
+      if (url.includes('photon.komoot.io')) {
+        throw new Error('Photon must not be called');
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.geocode('somewhere');
+    expect(res).toEqual([]);
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((c) =>
+        String(c[0]).includes('photon.komoot.io'),
+      ),
+    ).toBe(false);
+  });
+
+  it('country-scoped geocode returns empty on ZERO_RESULTS without Photon', async () => {
     global.fetch = jest.fn().mockImplementation(async (url: string) => {
       if (url.includes('maps/api/geocode/json')) {
         return {
@@ -136,18 +163,31 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
         };
       }
       if (url.includes('photon.komoot.io')) {
-        throw new Error('Photon must not be called for country-scoped geocode');
+        throw new Error('Photon must not be called');
       }
       return { ok: false };
     }) as never;
 
     const res = await provider.geocode('35 mast', { country: 'CA' });
     expect(res).toEqual([]);
-    expect(
-      (global.fetch as jest.Mock).mock.calls.some((c) =>
-        String(c[0]).includes('photon.komoot.io'),
-      ),
-    ).toBe(false);
+  });
+
+  it('reverseGeocode returns null without Photon when Google fails', async () => {
+    global.fetch = jest.fn().mockImplementation(async (url: string) => {
+      if (url.includes('maps/api/geocode/json')) {
+        return {
+          ok: true,
+          json: async () => ({ status: 'REQUEST_DENIED', results: [] }),
+        };
+      }
+      if (url.includes('photon.komoot.io')) {
+        throw new Error('Photon must not be called');
+      }
+      return { ok: false };
+    }) as never;
+
+    const res = await provider.reverseGeocode(43.65, -79.38);
+    expect(res).toBeNull();
   });
 
   it('places merges geocode street hit when Autocomplete fills the list', async () => {
@@ -657,5 +697,34 @@ describe('GoogleMapsProvider (route)', () => {
     expect(result.provider).toBe('google');
     expect(result.distanceKm).toBe(36.5);
     expect(result.durationMin).toBe(32);
+  });
+
+  it('route does not call OSRM when Google Directions fails', async () => {
+    const urls: string[] = [];
+    global.fetch = jest.fn().mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes('maps/api/directions/json')) {
+        return {
+          ok: true,
+          json: async () => ({ status: 'REQUEST_DENIED', routes: [] }),
+        };
+      }
+      return { ok: false };
+    }) as never;
+
+    const result = await provider.route(
+      { lat: 43.6777, lng: -79.6248 },
+      { lat: 43.6426, lng: -79.3871 },
+    );
+
+    expect(urls.some((u) => u.includes('project-osrm.org'))).toBe(false);
+    expect(result.provider).toBe('google');
+    expect(result.distanceKm).toBe(0);
+    expect(result.durationMin).toBe(0);
+    expect(result.geometry?.coordinates).toEqual([
+      [-79.6248, 43.6777],
+      [-79.3871, 43.6426],
+    ]);
   });
 });
