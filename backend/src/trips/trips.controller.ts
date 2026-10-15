@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Get,
+  Header,
   Param,
   Post,
   Req,
@@ -16,6 +18,8 @@ import {
   type AuthUser,
 } from '../auth/decorators/current-user.decorator';
 import { TripService } from './trip.service';
+import { PostRideNotificationService } from './post-ride-notifications.service';
+
 
 class TripTransitionDto {
   @IsString()
@@ -40,7 +44,10 @@ class TripTransitionDto {
 @Controller('rides')
 @UseGuards(JwtAuthGuard)
 export class TripsController {
-  constructor(private readonly trips: TripService) {}
+  constructor(
+    private readonly trips: TripService,
+    private readonly postRideNotifications: PostRideNotificationService,
+  ) {}
 
   @Post(':id/transitions')
   transition(
@@ -51,7 +58,21 @@ export class TripsController {
   ) {
     return this.trips.transition(user.id, id, dto.status, req.ip, dto.pin);
   }
+
+  @Get(':id/invoice')
+  @Header('Content-Type', 'text/html')
+  getInvoice(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.postRideNotifications.getPrintableInvoiceHtml(
+      user.id,
+      id,
+      user.role as UserRole,
+    );
+  }
 }
+
 
 /** Convenience aliases for drivers */
 @Controller('driver/rides')

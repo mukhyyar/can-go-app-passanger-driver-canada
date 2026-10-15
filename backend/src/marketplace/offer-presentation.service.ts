@@ -126,10 +126,11 @@ export class OfferPresentationService {
     const ridePrice = driverBid;
     const platformFee = round2(ridePrice * 0.2);
     const taxes = round2(snap.taxAmount ?? 0);
-    const total = round2(ridePrice + taxes);
+    const total = round2(ridePrice + platformFee + taxes);
     const driverEarning = round2(ridePrice - platformFee);
     return {
-      ridePrice: driverEarning,
+      ridePrice,
+      driverEarning,
       platformFee,
       marketplaceFee: platformFee,
       taxes,
@@ -391,7 +392,7 @@ export class OfferPresentationService {
       ? breakdown.total
       : (snap?.passengerTotal != null
           ? Number(snap.passengerTotal)
-          : round2(Number(offer.bidAmount ?? 0) * 1.44));
+          : round2(Number(offer.bidAmount ?? 0) * 1.2));
 
     const baseVehicleName = (() => {
       const b = (brand ?? '').trim();

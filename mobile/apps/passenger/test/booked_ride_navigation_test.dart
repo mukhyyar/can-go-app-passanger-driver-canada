@@ -304,5 +304,95 @@ void main() {
       expect(find.text('Ride Screen Reached'), findsOneWidget);
     });
   });
+
+  group('RideRequest isOverdueBooking tests', () {
+    test('identifies overdue booking if pickupAt is past by >30 mins', () {
+      final pastRide = RideRequest(
+        id: 'ride-past-1',
+        datetimeLabel: 'Yesterday',
+        from: 'Downtown',
+        to: 'Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        pickupAt: DateTime.now().subtract(const Duration(hours: 2)),
+      );
+      expect(pastRide.isOverdueBooking, isTrue);
+
+      final futureRide = RideRequest(
+        id: 'ride-future-1',
+        datetimeLabel: 'Tomorrow',
+        from: 'Downtown',
+        to: 'Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        pickupAt: DateTime.now().add(const Duration(hours: 24)),
+      );
+      expect(futureRide.isOverdueBooking, isFalse);
+    });
+
+    test('isOverdue flag overrides serverStatus/pickupAt', () {
+      final flaggedRide = RideRequest(
+        id: 'ride-flagged',
+        datetimeLabel: 'Today',
+        from: 'Downtown',
+        to: 'Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        isOverdue: true,
+      );
+      expect(flaggedRide.isOverdueBooking, isTrue);
+    });
+
+    test('ongoing and completed rides are not considered overdue bookings', () {
+      final ongoingRide = RideRequest(
+        id: 'ride-ongoing',
+        datetimeLabel: 'Yesterday',
+        from: 'Downtown',
+        to: 'Airport',
+        status: RideStatus.booked,
+        serverStatus: 'DRIVER_EN_ROUTE',
+        pickupAt: DateTime.now().subtract(const Duration(hours: 2)),
+      );
+      expect(ongoingRide.isOverdueBooking, isFalse);
+
+      final completedRide = RideRequest(
+        id: 'ride-completed',
+        datetimeLabel: 'Yesterday',
+        from: 'Downtown',
+        to: 'Airport',
+        status: RideStatus.past,
+        serverStatus: 'COMPLETED',
+        pickupAt: DateTime.now().subtract(const Duration(hours: 5)),
+      );
+      expect(completedRide.isOverdueBooking, isFalse);
+    });
+
+    test('activeBookedRide prioritizes ongoing ride over overdue booked ride', () {
+      final state = AppState();
+      final overdueRide = RideRequest(
+        id: 'ride-overdue-old',
+        datetimeLabel: '3 days ago',
+        from: 'Home',
+        to: 'Work',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        pickupAt: DateTime.now().subtract(const Duration(days: 3)),
+      );
+      final activeRide = RideRequest(
+        id: 'ride-live-now',
+        datetimeLabel: 'Now',
+        from: 'Mall',
+        to: 'Home',
+        status: RideStatus.booked,
+        serverStatus: 'DRIVER_EN_ROUTE',
+        pickupAt: DateTime.now(),
+      );
+
+      state.repo.rides.add(overdueRide);
+      state.repo.rides.add(activeRide);
+
+      expect(state.activeBookedRide?.id, equals('ride-live-now'));
+    });
+  });
 }
 

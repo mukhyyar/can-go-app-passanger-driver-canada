@@ -23,6 +23,7 @@ export type RideLifecycleConfig = {
   unfulfilledGraceMs: number;
   paymentTtlMs: number;
   immediateThresholdMs: number;
+  overdueGraceMs: number;
 };
 
 const MINUTE = 60_000;
@@ -33,10 +34,12 @@ export function loadRideLifecycleConfig(
   const graceMin = parsePositiveInt(env.RIDE_UNFULFILLED_GRACE_MINUTES, 60);
   const payMin = parsePositiveInt(env.RIDE_PAYMENT_TTL_MINUTES, 15);
   const immediateMin = parsePositiveInt(env.RIDE_IMMEDIATE_THRESHOLD_MINUTES, 120);
+  const overdueMin = parsePositiveInt(env.RIDE_OVERDUE_GRACE_MINUTES, 30);
   return {
     unfulfilledGraceMs: graceMin * MINUTE,
     paymentTtlMs: payMin * MINUTE,
     immediateThresholdMs: immediateMin * MINUTE,
+    overdueGraceMs: overdueMin * MINUTE,
   };
 }
 
@@ -132,8 +135,19 @@ const ALLOWED: Partial<Record<RideStatus, RideStatus[]>> = {
     RideStatus.ADMIN_CANCELLED,
     RideStatus.NO_SHOW,
   ],
-  [RideStatus.TRIP_STARTED]: [RideStatus.IN_PROGRESS, RideStatus.COMPLETED],
-  [RideStatus.IN_PROGRESS]: [RideStatus.COMPLETED],
+  [RideStatus.TRIP_STARTED]: [
+    RideStatus.IN_PROGRESS,
+    RideStatus.COMPLETED,
+    RideStatus.PASSENGER_CANCELLED,
+    RideStatus.DRIVER_CANCELLED,
+    RideStatus.ADMIN_CANCELLED,
+  ],
+  [RideStatus.IN_PROGRESS]: [
+    RideStatus.COMPLETED,
+    RideStatus.PASSENGER_CANCELLED,
+    RideStatus.DRIVER_CANCELLED,
+    RideStatus.ADMIN_CANCELLED,
+  ],
   // Repair-only: incorrectly expired future rides may be restored
   [RideStatus.EXPIRED]: [
     RideStatus.WAITING_FOR_OFFERS,
@@ -284,28 +298,56 @@ export function proposeRepairForIncorrectExpiry(
   };
 }
 
+export function isOverdueBooking(
+  ride: { status: RideStatus; pickupAt: Date },
+  now: Date = new Date(),
+  config: RideLifecycleConfig = loadRideLifecycleConfig(),
+): boolean {
+  if (ride.status === RideStatus.BOOKED) {
+    return now.getTime() - ride.pickupAt.getTime() > config.overdueGraceMs;
+  }
+  if (
+    ride.status === RideStatus.DRIVER_EN_ROUTE ||
+    ride.status === RideStatus.DRIVER_ARRIVED
+  ) {
+    return now.getTime() - ride.pickupAt.getTime() > config.overdueGraceMs;
+  }
+  if (
+    ride.status === RideStatus.TRIP_STARTED ||
+    ride.status === RideStatus.IN_PROGRESS
+  ) {
+    const stalledThresholdMs = Math.max(config.overdueGraceMs, 3 * 3600 * 1000);
+    return now.getTime() - ride.pickupAt.getTime() > stalledThresholdMs;
+  }
+  return false;
+}
+
 export function serializeLifecycleFlags(ride: {
   status: RideStatus;
   pickupAt: Date;
   requestExpiresAt?: Date | null;
   paymentExpiresAt?: Date | null;
-}) {
+}, now: Date = new Date(), config: RideLifecycleConfig = loadRideLifecycleConfig()) {
   const open = OPEN_MARKETPLACE_STATUSES.includes(ride.status);
   const terminal = TERMINAL_RIDE_STATUSES.includes(ride.status);
+  const isOverdue = isOverdueBooking(ride, now, config);
   return {
-    canCancel: (
-      [
-        RideStatus.WAITING_FOR_OFFERS,
-        RideStatus.OFFER_SELECTION,
-        RideStatus.PAYMENT_PENDING,
-        RideStatus.BOOKED,
-        RideStatus.DRIVER_EN_ROUTE,
-        RideStatus.DRIVER_ARRIVED,
-      ] as RideStatus[]
-    ).includes(ride.status),
+    canCancel:
+      (
+        [
+          RideStatus.WAITING_FOR_OFFERS,
+          RideStatus.OFFER_SELECTION,
+          RideStatus.PAYMENT_PENDING,
+          RideStatus.BOOKED,
+          RideStatus.DRIVER_EN_ROUTE,
+          RideStatus.DRIVER_ARRIVED,
+        ] as RideStatus[]
+      ).includes(ride.status) || isOverdue,
     canReceiveOffers: open,
     canEdit: open,
     isTerminal: terminal,
+    isOverdue,
     scheduledPickupAt: ride.pickupAt,
   };
 }
+

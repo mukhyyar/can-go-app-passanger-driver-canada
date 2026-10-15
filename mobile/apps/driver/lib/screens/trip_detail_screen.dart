@@ -710,6 +710,60 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     ],
                                   ),
                                 ),
+                              if (r.isOverdueBooking)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: const Color(0xFFFCD34D),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: Color(0xFFD97706),
+                                        size: 24,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              (r.status == 'TRIP_STARTED' || r.status == 'IN_PROGRESS')
+                                                  ? 'Trip stalled or delayed'
+                                                  : 'Scheduled pickup time has passed',
+                                              style: const TextStyle(
+                                                color: Color(0xFF92400E),
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              (r.status == 'TRIP_STARTED' || r.status == 'IN_PROGRESS')
+                                                  ? 'This trip appears delayed or stopped. Why are you not moving? If you are having trouble or cannot complete this trip, please cancel it so the passenger can be fully refunded.'
+                                                  : 'This trip has not started. Are you moving or facing an issue? Please update status, or cancel if unable to proceed so the passenger can be refunded.',
+                                              style: const TextStyle(
+                                                color: Color(0xFF78350F),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               GtCard(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -735,17 +789,28 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                               vertical: 4,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: GtColors.soft,
+                                              color: r.isOverdueBooking
+                                                  ? const Color(0xFFFEF3C7)
+                                                  : GtColors.soft,
                                               borderRadius:
                                                   BorderRadius.circular(12),
+                                              border: r.isOverdueBooking
+                                                  ? Border.all(
+                                                      color: const Color(
+                                                          0xFFFCD34D))
+                                                  : null,
                                             ),
                                             child: Text(
-                                              friendlyRideStatus(r.status),
+                                              r.isOverdueBooking
+                                                  ? 'Overdue · Not started'
+                                                  : friendlyRideStatus(r.status),
                                               textAlign: TextAlign.end,
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w700,
-                                                color: GtColors.brand,
+                                                color: r.isOverdueBooking
+                                                    ? const Color(0xFFD97706)
+                                                    : GtColors.brand,
                                               ),
                                             ),
                                           ),

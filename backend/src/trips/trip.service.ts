@@ -3,20 +3,25 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   forwardRef,
   Optional,
 } from '@nestjs/common';
 import { EmailEventsService } from '../email/email-events.service';
-import { DriverPayoutStatus, RideStatus, UserRole } from '@prisma/client';
+import { DriverPayoutStatus, Prisma, RideStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 import { DriverWalletService } from '../wallet/driver-wallet.service';
 import { StripeConnectService } from '../providers/stripe/stripe-connect.service';
+import { PostRideNotificationService } from './post-ride-notifications.service';
+import { PAYMENT_PROVIDER, type PaymentProvider } from '../providers/payment/payment-provider.interface';
 
 @Injectable()
 export class TripService {
+  private readonly logger = new Logger(TripService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
@@ -25,7 +30,10 @@ export class TripService {
     private readonly wallet: DriverWalletService,
     @Optional() private readonly stripeConnect?: StripeConnectService,
     @Optional() private readonly emailEvents?: EmailEventsService,
+    @Optional() private readonly postRideNotifications?: PostRideNotificationService,
+    @Optional() @Inject(PAYMENT_PROVIDER) private readonly payments?: PaymentProvider,
   ) {}
+
 
   async transition(
     userId: string,
@@ -192,6 +200,15 @@ export class TripService {
       });
     }
 
+    let refundInfo: { refunded: boolean; amount?: number } = { refunded: false };
+    if (
+      toStatus === RideStatus.PASSENGER_CANCELLED ||
+      toStatus === RideStatus.DRIVER_CANCELLED ||
+      toStatus === RideStatus.ADMIN_CANCELLED
+    ) {
+      refundInfo = await this.handleCancellationRefund(rideId, toStatus, userId);
+    }
+
     const final = await this.prisma.ride.findUnique({ where: { id: rideId } });
     const notifyStatus = final!.status;
 
@@ -205,38 +222,31 @@ export class TripService {
     const driverUserId = ride.selectedOffer?.driver?.userId;
 
     if (ride.passenger?.userId) {
+      const isCancelled =
+        notifyStatus === RideStatus.PASSENGER_CANCELLED ||
+        notifyStatus === RideStatus.DRIVER_CANCELLED ||
+        notifyStatus === RideStatus.ADMIN_CANCELLED;
+      const passengerBody =
+        isCancelled && refundInfo.refunded && refundInfo.amount
+          ? `Your ride was cancelled. A full refund of CAD $${refundInfo.amount.toFixed(2)} has been processed to your payment method.`
+          : this.bodyFor(notifyStatus, ride.fromLabel);
+
       await this.notifications.notifyRideStatus({
         userIds: [ride.passenger.userId],
         rideId,
         status: notifyStatus,
         title: this.titleFor(notifyStatus),
-        body: this.bodyFor(notifyStatus, ride.fromLabel),
+        body: passengerBody,
         targetRole: ['PASSENGER', 'PASSENGER_WEB'],
       });
 
       if (notifyStatus === RideStatus.COMPLETED) {
-        const user = await this.prisma.user.findUnique({ where: { id: ride.passenger.userId } });
-        if (user?.email) {
-          const financial = await this.prisma.rideFinancial.findUnique({ where: { rideId } });
-          if (financial) {
-            const fareStr = `${financial.rideFare} ${financial.currency}`;
-            const feeStr = `${financial.marketplaceFee} ${financial.currency}`;
-            const tipStr = `${financial.tipAmount || 0} ${financial.currency}`;
-            const totalStr = `${financial.passengerTotalCharged} ${financial.currency}`;
-            void this.emailEvents?.sendRideReceipt(
-              ride.passenger.userId,
-              user.email,
-              ride.id.slice(0, 8).toUpperCase(),
-              ride.selectedOffer?.driver?.fullName || 'Driver',
-              fareStr,
-              feeStr,
-              tipStr,
-              totalStr
-            );
-          }
+        if (this.postRideNotifications) {
+          void this.postRideNotifications.handleRideCompleted(rideId);
         }
       }
     }
+
 
     if (driverUserId) {
       await this.notifications.notifyRideStatus({
@@ -254,6 +264,118 @@ export class TripService {
       status: notifyStatus,
       fromStatus: ride.status,
     };
+  }
+
+  async handleCancellationRefund(
+    rideId: string,
+    cancelledByStatus: RideStatus,
+    actorId: string,
+  ): Promise<{ refunded: boolean; amount?: number; refundId?: string }> {
+    try {
+      const payment = await this.prisma.payment.findFirst({
+        where: {
+          rideId,
+          status: { in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'] },
+        },
+        include: { refunds: true },
+      });
+      if (!payment) {
+        return { refunded: false };
+      }
+
+      const alreadyRefunded = payment.refunds
+        .filter((r) => r.status === 'succeeded' || r.status === 'pending')
+        .reduce((sum, r) => sum + Number(r.amount), 0);
+
+      const paymentAmount = Number(payment.amount);
+      const remaining = paymentAmount - alreadyRefunded;
+
+      if (remaining <= 0.01) {
+        return { refunded: false };
+      }
+
+      let gatewayRefundId: string | undefined;
+      let gatewayStatus = 'succeeded';
+      let gatewayResponse: Record<string, unknown> = {};
+
+      if (this.payments) {
+        try {
+          const res = await this.payments.refund(payment.providerRef ?? payment.id, remaining);
+          gatewayRefundId = res.refundId;
+          gatewayStatus =
+            res.status === 'succeeded' || res.status === 'pending'
+              ? res.status
+              : 'succeeded';
+          gatewayResponse = res as unknown as Record<string, unknown>;
+        } catch (gatewayErr) {
+          this.logger.error(
+            `Gateway refund error for ride ${rideId}: ${gatewayErr}`,
+          );
+          gatewayStatus = 'failed';
+          gatewayResponse = {
+            error:
+              gatewayErr instanceof Error
+                ? gatewayErr.message
+                : String(gatewayErr),
+          };
+        }
+      }
+
+      // Ensure requestedById references a valid User ID in DB
+      const validUser = await this.prisma.user.findUnique({
+        where: { id: actorId },
+        select: { id: true },
+      });
+      let refundRequesterId = validUser?.id;
+      if (!refundRequesterId) {
+        const anyUser = await this.prisma.user.findFirst({ select: { id: true } });
+        refundRequesterId = anyUser?.id ?? actorId;
+      }
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.refund.create({
+          data: {
+            paymentId: payment.id,
+            amount: remaining,
+            currency: payment.currency,
+            type: 'FULL',
+            reason: `Full refund on cancellation (${cancelledByStatus})`,
+            internalNote: `Automated cancellation refund for ride ${rideId}`,
+            status: gatewayStatus,
+            gatewayRefundId,
+            gatewayResponse: gatewayResponse as Prisma.InputJsonValue,
+            requestedById: refundRequesterId,
+          },
+        });
+
+        if (gatewayStatus === 'succeeded' || gatewayStatus === 'pending') {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: { status: 'refunded' },
+          });
+
+          await tx.rideFinancial.updateMany({
+            where: { rideId },
+            data: {
+              refundAmount: remaining,
+              refundReason: `Full refund on cancellation (${cancelledByStatus})`,
+              refundedAt: new Date(),
+            },
+          });
+        }
+      });
+
+      return {
+        refunded: gatewayStatus !== 'failed',
+        amount: remaining,
+        refundId: gatewayRefundId,
+      };
+    } catch (err) {
+      this.logger.error(
+        `Failed to process cancellation refund for ride ${rideId}: ${err}`,
+      );
+      return { refunded: false };
+    }
   }
 
   private assertTransitionAllowed(
@@ -278,14 +400,16 @@ export class TripService {
         RideStatus.NO_SHOW,
         RideStatus.DRIVER_CANCELLED,
       ],
-      [RideStatus.TRIP_STARTED]: [RideStatus.COMPLETED],
-      [RideStatus.IN_PROGRESS]: [RideStatus.COMPLETED],
+      [RideStatus.TRIP_STARTED]: [RideStatus.COMPLETED, RideStatus.DRIVER_CANCELLED],
+      [RideStatus.IN_PROGRESS]: [RideStatus.COMPLETED, RideStatus.DRIVER_CANCELLED],
     };
 
     const passengerNext: Partial<Record<RideStatus, RideStatus[]>> = {
       [RideStatus.BOOKED]: [RideStatus.PASSENGER_CANCELLED],
       [RideStatus.DRIVER_EN_ROUTE]: [RideStatus.PASSENGER_CANCELLED],
       [RideStatus.DRIVER_ARRIVED]: [RideStatus.PASSENGER_CANCELLED],
+      [RideStatus.TRIP_STARTED]: [RideStatus.PASSENGER_CANCELLED],
+      [RideStatus.IN_PROGRESS]: [RideStatus.PASSENGER_CANCELLED],
     };
 
     if (isAdmin && to === RideStatus.ADMIN_CANCELLED) return;

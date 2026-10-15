@@ -59,7 +59,9 @@ import { RideLifecycleService } from './ride-lifecycle.service';
 import {
   loadRideLifecycleConfig,
   serializeLifecycleFlags,
+  isOverdueBooking,
 } from './ride-lifecycle';
+
 import { OfferPresentationService } from './offer-presentation.service';
 import {
   isMaterialRideEdit,
@@ -773,8 +775,14 @@ export class MarketplaceService {
       RideStatus.WAITING_FOR_OFFERS,
       RideStatus.OFFER_SELECTION,
       RideStatus.PAYMENT_PENDING,
+      RideStatus.BOOKED,
+      RideStatus.DRIVER_EN_ROUTE,
+      RideStatus.DRIVER_ARRIVED,
+      RideStatus.TRIP_STARTED,
+      RideStatus.IN_PROGRESS,
     ];
-    if (!cancellable.includes(ride.status)) {
+    const isOverdue = isOverdueBooking(ride);
+    if (!cancellable.includes(ride.status) && !isOverdue) {
       throw new BadRequestException(`Cannot cancel from ${ride.status}`);
     }
 
@@ -785,7 +793,7 @@ export class MarketplaceService {
       actorType: 'passenger',
       actorId: userId,
       payload: {
-        reason: 'passenger_cancel',
+        reason: isOverdue ? 'overdue_stalled_passenger_cancel' : 'passenger_cancel',
         cancelledBy: 'PASSENGER',
         cancelledAt: new Date().toISOString(),
       },
@@ -794,13 +802,66 @@ export class MarketplaceService {
       where: { rideId, status: OfferStatus.ACTIVE },
       data: { status: OfferStatus.WITHDRAWN },
     });
+
+    let refundAmount = 0;
+    try {
+      const payment = await this.prisma.payment.findFirst({
+        where: {
+          rideId,
+          status: { in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'] },
+        },
+        include: { refunds: true },
+      });
+      if (payment) {
+        const alreadyRefunded = payment.refunds
+          .filter((r) => r.status === 'succeeded' || r.status === 'pending')
+          .reduce((sum, r) => sum + Number(r.amount), 0);
+        const remaining = Number(payment.amount) - alreadyRefunded;
+        if (remaining > 0.01) {
+          refundAmount = remaining;
+          await this.prisma.$transaction(async (tx) => {
+            await tx.refund.create({
+              data: {
+                paymentId: payment.id,
+                amount: remaining,
+                currency: payment.currency,
+                type: 'FULL',
+                reason: 'Full refund on cancellation of overdue/stalled ride',
+                internalNote: `Automated cancellation refund for ride ${rideId}`,
+                status: 'succeeded',
+                requestedById: userId,
+              },
+            });
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: { status: 'refunded' },
+            });
+            await tx.rideFinancial.updateMany({
+              where: { rideId },
+              data: {
+                refundAmount: remaining,
+                refundReason: 'Full refund on cancellation',
+                refundedAt: new Date(),
+              },
+            });
+          });
+        }
+      }
+    } catch {
+      // Non-blocking error isolation
+    }
+
     await this.audit(userId, 'ride.cancel', 'Ride', rideId, ip);
+    const cancelBody =
+      refundAmount > 0
+        ? `Your ride request was cancelled. A full refund of CAD $${refundAmount.toFixed(2)} has been processed.`
+        : 'Your ride request was cancelled.';
     void this.notifications.notifyRideStatus({
       userIds: [userId],
       rideId,
       status: RideStatus.PASSENGER_CANCELLED,
       title: 'Ride cancelled',
-      body: 'Your ride request was cancelled.',
+      body: cancelBody,
       targetRole: ['PASSENGER', 'PASSENGER_WEB'],
     });
     return this.getRideForActor(userId, rideId);
@@ -1088,7 +1149,7 @@ export class MarketplaceService {
       },
     });
 
-    const reportUser = await this.prisma.user.findUnique({ where: { id: userId } });
+    const reportUser = await this.prisma.user?.findUnique({ where: { id: userId } });
     if (reportUser?.email) {
       const pName = isPassenger ? ride.passenger.fullName : ((userDriverProfile as any)?.fullName) || 'User';
       void this.emailEvents?.sendSupportReceived(userId, reportUser.email, shortIdFrom(row.id), pName);
@@ -2216,6 +2277,7 @@ export class MarketplaceService {
       priceBreakdown = {
         ridePrice,
         platformFee,
+        marketplaceFee: platformFee,
         taxes: 0,
         total: amt,
         currency: payment.currency,
@@ -2228,6 +2290,8 @@ export class MarketplaceService {
       paymentExpiresAt: ride.paymentExpiresAt,
       selectedOfferId: ride.selectedOfferId,
       priceBreakdown,
+      totalAmount:
+        priceBreakdown?.total ?? (payment ? Number(payment.amount) : null),
       payment: payment
         ? {
             id: payment.id,
@@ -3005,17 +3069,47 @@ export class MarketplaceService {
       data: { status: OfferStatus.EXPIRED, expiredAt: new Date() },
     });
     if (expiredOffers.count > 0) {
-      // bulk offer expiry is intentional and isolated from ride lifecycle
+      // If a ride is in OFFER_SELECTION but all active offers have expired,
+      // revert it back to WAITING_FOR_OFFERS so clients accurately reflect the state.
+      const openSelectionRides = await this.prisma.ride.findMany({
+        where: {
+          status: RideStatus.OFFER_SELECTION,
+        },
+        select: {
+          id: true,
+          offers: {
+            where: {
+              status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] },
+            },
+            select: { id: true },
+          },
+        },
+        take: 100,
+      });
+      for (const r of openSelectionRides) {
+        if (r.offers.length === 0) {
+          await this.lifecycle.transition({
+            rideId: r.id,
+            from: RideStatus.OFFER_SELECTION,
+            to: RideStatus.WAITING_FOR_OFFERS,
+            actorType: 'system',
+            payload: { reason: 'all_offers_expired' },
+          });
+        }
+      }
     }
 
     const expiredRequests = await this.lifecycle.expireUnfulfilledRequests();
     const pay = await this.lifecycle.handlePaymentWindowTimeouts();
+    const overdueBookings =
+      await this.lifecycle.detectAndNotifyOverdueBookings();
 
     return {
       expiredOffers: expiredOffers.count,
       expiredRequests,
       expiredPayments: pay.expiredPayments,
       reopenedPayments: pay.reopenedPayments,
+      overdueBookings,
     };
   }
 
@@ -3628,7 +3722,13 @@ export class MarketplaceService {
           ] as RideStatus[]
         ).includes(status),
         isExpired: status === RideStatus.EXPIRED,
+        isOverdue: isOverdueBooking(
+          { status, pickupAt: ride.pickupAt as Date },
+          new Date(),
+          this.lifecycle?.getConfig ? this.lifecycle.getConfig() : undefined,
+        ),
       },
+
       scheduledPickupAt: ride.pickupAt,
       offers,
       selectedOffer: isCompleted && offerObj

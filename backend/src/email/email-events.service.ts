@@ -16,6 +16,10 @@ import { renderRideReceipt } from './templates/ride_receipt';
 import { renderRideCancelled } from './templates/ride_cancelled';
 import { renderSupportReceived } from './templates/support_received';
 import { renderAdminCriticalIssue } from './templates/admin_critical_issue';
+import { renderPostRideReview, PostRideReviewData } from './templates/post_ride_review';
+import { renderRideInvoice, RideInvoiceData } from './templates/ride_invoice';
+import { renderRideTipReminder, RideTipReminderData } from './templates/ride_tip_reminder';
+import { renderRideDelayedAlert, RideDelayedAlertData } from './templates/ride_delayed_alert';
 
 @Injectable()
 export class EmailEventsService {
@@ -162,4 +166,38 @@ export class EmailEventsService {
       });
     }
   }
+
+  async sendPostRideReview(userId: string, email: string, data: PostRideReviewData) {
+    const { subject, html } = renderPostRideReview(data, this.assetBaseUrl);
+    await this.emailService.sendTemplate('post_ride_review', email, subject, html, {
+      userId,
+      eventId: `post_ride_review_email_${data.rideId}`,
+    });
+  }
+
+  async sendRideInvoice(userId: string, email: string, data: RideInvoiceData) {
+    const { subject, html } = renderRideInvoice(data, this.assetBaseUrl);
+    await this.emailService.sendTemplate('ride_invoice', email, subject, html, {
+      userId,
+      eventId: `ride_invoice_email_${data.rideId}`,
+    });
+  }
+
+  async sendRideTipReminder(userId: string, email: string, data: RideTipReminderData) {
+    const { subject, html } = renderRideTipReminder(data, this.assetBaseUrl);
+    await this.emailService.sendTemplate('ride_tip_reminder', email, subject, html, {
+      userId,
+      eventId: `ride_tip_reminder_email_${data.rideId}`,
+    });
+  }
+
+  async sendRideDelayedAlert(userId: string, email: string, data: RideDelayedAlertData) {
+    const { subject, html } = renderRideDelayedAlert(data, this.assetBaseUrl);
+    await this.emailService.sendTemplate('ride_delayed_alert', email, subject, html, {
+      userId,
+      eventId: `ride_delayed_alert_email_${data.rideId}_${data.recipientRole}`,
+    });
+  }
 }
+
+

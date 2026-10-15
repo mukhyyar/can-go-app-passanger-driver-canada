@@ -4,9 +4,11 @@ import {
   computeRequestExpiresAt,
   isEligibleForUnfulfilledExpiry,
   isImmediateRide,
+  isOverdueBooking,
   loadRideLifecycleConfig,
   paymentTimeoutOutcome,
   proposeRepairForIncorrectExpiry,
+  serializeLifecycleFlags,
   CANCELLED_ONLY,
   UNFULFILLED,
 } from './ride-lifecycle';
@@ -294,5 +296,81 @@ describe('ride lifecycle policy', () => {
       CFG,
     );
     expect(proposal?.to).toBe(RideStatus.OFFER_SELECTION);
+  });
+
+  it('identifies overdue booking only when BOOKED and past pickup + overdueGraceMs', () => {
+    const pickupAt = new Date('2026-10-07T12:00:00.000Z');
+    // 15m after pickup (within 30m grace) -> not overdue
+    expect(
+      isOverdueBooking(
+        { status: RideStatus.BOOKED, pickupAt },
+        new Date('2026-10-07T12:15:00.000Z'),
+        CFG,
+      ),
+    ).toBe(false);
+
+    // 45m after pickup -> overdue
+    expect(
+      isOverdueBooking(
+        { status: RideStatus.BOOKED, pickupAt },
+        new Date('2026-10-07T12:45:00.000Z'),
+        CFG,
+      ),
+    ).toBe(true);
+
+    // 2 hours after pickup (< 3 hours stalled cutoff) -> not yet overdue
+    expect(
+      isOverdueBooking(
+        { status: RideStatus.IN_PROGRESS, pickupAt },
+        new Date('2026-10-07T14:00:00.000Z'),
+        CFG,
+      ),
+    ).toBe(false);
+
+    // 4 hours after pickup (stalled trip, e.g. Oct 7 stuck ride) -> overdue
+    expect(
+      isOverdueBooking(
+        { status: RideStatus.IN_PROGRESS, pickupAt },
+        new Date('2026-10-07T16:00:00.000Z'),
+        CFG,
+      ),
+    ).toBe(true);
+
+    expect(
+      isOverdueBooking(
+        { status: RideStatus.TRIP_STARTED, pickupAt },
+        new Date('2026-10-07T16:00:00.000Z'),
+        CFG,
+      ),
+    ).toBe(true);
+  });
+
+  it('allows cancellation transitions from TRIP_STARTED and IN_PROGRESS for stalled/overdue rides', () => {
+    expect(canTransition(RideStatus.TRIP_STARTED, RideStatus.PASSENGER_CANCELLED)).toBe(true);
+    expect(canTransition(RideStatus.TRIP_STARTED, RideStatus.DRIVER_CANCELLED)).toBe(true);
+    expect(canTransition(RideStatus.TRIP_STARTED, RideStatus.ADMIN_CANCELLED)).toBe(true);
+    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.PASSENGER_CANCELLED)).toBe(true);
+    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.DRIVER_CANCELLED)).toBe(true);
+    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.ADMIN_CANCELLED)).toBe(true);
+  });
+
+  it('serializeLifecycleFlags exposes isOverdue and canCancel correctly for stalled rides', () => {
+    const pickupAt = new Date('2026-10-07T12:00:00.000Z');
+    const flags = serializeLifecycleFlags(
+      { status: RideStatus.BOOKED, pickupAt },
+      new Date('2026-10-07T13:00:00.000Z'),
+      CFG,
+    );
+    expect(flags.isOverdue).toBe(true);
+    expect(flags.canCancel).toBe(true);
+
+    // Stalled active ride:
+    const stalledFlags = serializeLifecycleFlags(
+      { status: RideStatus.IN_PROGRESS, pickupAt },
+      new Date('2026-10-07T16:00:00.000Z'),
+      CFG,
+    );
+    expect(stalledFlags.isOverdue).toBe(true);
+    expect(stalledFlags.canCancel).toBe(true);
   });
 });

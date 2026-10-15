@@ -973,6 +973,8 @@ class AppState extends ChangeNotifier {
       'BOOKED',
       'DRIVER_EN_ROUTE',
       'DRIVER_ARRIVED',
+      'TRIP_STARTED',
+      'IN_PROGRESS',
     };
     if (bookedCancel.contains(status)) {
       await api.marketplace.cancelBookedRide(rideId);
@@ -1914,6 +1916,15 @@ class AppState extends ChangeNotifier {
 
   RideRequest? get activeBookedRide {
     try {
+      final ongoing = repo.rides.where((r) {
+        final s = (r.serverStatus ?? '').toUpperCase();
+        return s == 'DRIVER_EN_ROUTE' ||
+            s == 'DRIVER_ARRIVED' ||
+            s == 'TRIP_STARTED' ||
+            s == 'IN_PROGRESS';
+      });
+      if (ongoing.isNotEmpty) return ongoing.first;
+
       return repo.rides.firstWhere(
         (r) => r.isBooked && (r.serverStatus ?? '').toUpperCase() != 'COMPLETED',
       );

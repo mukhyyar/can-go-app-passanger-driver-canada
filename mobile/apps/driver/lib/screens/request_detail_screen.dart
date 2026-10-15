@@ -420,13 +420,21 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
     final statusUpper = (req.status ?? '').toUpperCase();
     final offerStatusUpper = (req.myOffer?.status ?? '').toUpperCase();
-    final isCompleted =
-        statusUpper == 'COMPLETED' || offerStatusUpper == 'COMPLETED';
+    final isRequestCompleted = statusUpper == 'COMPLETED';
+    final isRequestCancelled = statusUpper.contains('CANCEL');
+    final isRequestExpired = statusUpper == 'EXPIRED';
+    final isRequestClosed =
+        isRequestCompleted || isRequestCancelled || isRequestExpired;
+
+    final isOfferCompleted = offerStatusUpper == 'COMPLETED';
+    final isOfferCancelled = offerStatusUpper.contains('CANCEL');
+    final isOfferExpired = offerStatusUpper == 'EXPIRED';
+
+    final isCompleted = isRequestCompleted || isOfferCompleted;
     final isCancelled =
-        statusUpper.contains('CANCEL') || offerStatusUpper.contains('CANCEL');
-    final isExpired =
-        statusUpper == 'EXPIRED' || offerStatusUpper == 'EXPIRED';
-    final isClosed = isCompleted || isCancelled || isExpired;
+        isRequestCancelled || (isOfferCancelled && isRequestClosed);
+    final isExpired = isRequestExpired;
+    final isClosed = isRequestClosed;
 
     final isMyOfferAccepted = offerStatusUpper == 'SELECTED' ||
         offerStatusUpper == 'ACCEPTED' ||
@@ -764,7 +772,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                     decoration: BoxDecoration(
                                       color: isCompleted
                                           ? const Color(0xFFEAF7EE)
-                                          : ((isCancelled || isExpired)
+                                          : ((isCancelled || isRequestExpired || isOfferExpired)
                                               ? const Color(0xFFFDE8E8)
                                               : const Color(0xFFEAF7EE)),
                                       borderRadius: BorderRadius.circular(8),
@@ -774,11 +782,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                           ? 'COMPLETED'
                                           : (isCancelled
                                               ? 'CANCELLED'
-                                              : (isExpired
-                                                  ? 'EXPIRED'
-                                                  : 'OFFER ACTIVE')),
+                                              : (isRequestExpired
+                                                  ? 'REQUEST EXPIRED'
+                                                  : (isOfferExpired
+                                                      ? 'OFFER EXPIRED'
+                                                      : 'OFFER ACTIVE'))),
                                       style: TextStyle(
-                                        color: (isCancelled || isExpired)
+                                        color: (isCancelled || isRequestExpired || isOfferExpired)
                                             ? GtColors.red
                                             : GtColors.green,
                                         fontWeight: FontWeight.w800,
@@ -790,7 +800,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                   Text(
                                     isCompleted ? 'COMPLETED' : myOffer.status,
                                     style: TextStyle(
-                                      color: (isCancelled || isExpired)
+                                      color: (isCancelled || isRequestExpired || isOfferExpired)
                                           ? GtColors.red
                                           : (isCompleted
                                               ? GtColors.green
@@ -1072,6 +1082,38 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                         ),
                       ),
                     ] else ...[
+                      if (isOfferExpired && !isRequestClosed) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF3C7),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFFCD34D)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline,
+                                  color: Color(0xFFD97706), size: 18),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Your previous offer expired. The passenger is still accepting offers — you can submit a new offer below.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF92400E),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       InlineOfferForm(
                         request: req,
                         vehicles: _vehicles,
@@ -1088,7 +1130,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                         onSubmit: _submitOffer,
                       ),
                     ],
-                    if (req.myOffer != null) ...[
+                    if (req.myOffer != null && (req.myOffer!.isActive)) ...[
                       const SizedBox(height: 14),
                       SizedBox(
                         width: double.infinity,

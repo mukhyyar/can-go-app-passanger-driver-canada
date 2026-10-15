@@ -147,4 +147,11 @@ export default () => ({
     assetBaseUrl: process.env.EMAIL_ASSET_BASE_URL ?? 'https://can-rides.ca/assets',
     appDeeplinkBaseUrl: process.env.APP_DEEPLINK_BASE_URL ?? 'canride://',
   },
+  postRide: {
+    tipReminderDelayMinutes: parseInt(
+      process.env.POST_RIDE_TIP_REMINDER_DELAY_MINUTES ?? '60',
+      10,
+    ),
+  },
 });
+

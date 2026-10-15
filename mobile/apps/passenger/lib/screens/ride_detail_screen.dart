@@ -166,6 +166,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       'WAITING_FOR_OFFERS',
       'OFFER_SELECTION',
       'PAYMENT_PENDING',
+      'TRIP_STARTED',
+      'IN_PROGRESS',
     };
     return allowed.contains(_serverStatus);
   }
@@ -185,14 +187,15 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     return ongoing.contains(_serverStatus);
   }
 
-  Future<void> _confirmCancel() async {
+  Future<void> _confirmCancel({bool isOverdue = false}) async {
+    final message = isOverdue
+        ? 'This scheduled ride has not started within the expected time. You can cancel this booking. If payment was pre-authorized or charged, full refund will apply for overdue rides.'
+        : 'Are you sure you want to cancel this ride? Cancellation fees may apply.';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cancel ride?'),
-        content: const Text(
-          'Are you sure you want to cancel this ride? Cancellation fees may apply.',
-        ),
+        title: Text(isOverdue ? 'Cancel overdue ride?' : 'Cancel ride?'),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -200,7 +203,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Cancel ride'),
+            style: isOverdue
+                ? TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626))
+                : null,
+            child: Text(isOverdue ? 'Cancel & Refund' : 'Cancel ride'),
           ),
         ],
       ),
@@ -2113,7 +2119,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
 
   double _num(dynamic v) => (v is num) ? v.toDouble() : 0;
 
-  Color _bannerColor(String status) {
+  Color _bannerColor(String status, {bool isOverdue = false}) {
+    if (isOverdue) return const Color(0xFFD97706);
     switch (status) {
       case 'DRIVER_EN_ROUTE':
       case 'DRIVER_ARRIVED':
@@ -2132,6 +2139,99 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     }
   }
 
+  Widget _buildOverdueBanner(RideRequest ride) {
+    final isStalled = _serverStatus == 'TRIP_STARTED' || _serverStatus == 'IN_PROGRESS';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFCD34D)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Color(0xFFD97706),
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isStalled ? 'Trip stalled or delayed' : 'Scheduled ride delayed',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      isStalled
+                          ? 'This trip appears delayed or stopped. Why are you not moving or having an issue? Please confirm status, reschedule, or cancel for a full refund.'
+                          : 'Pickup was scheduled for ${ride.datetimeLabel}. Why are you not moving or having trouble? Please reschedule or cancel for a full refund.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF78350F),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _actionBusy ? null : _showRescheduleForm,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF92400E),
+                    side: const BorderSide(color: Color(0xFFD97706)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: const Text(
+                    'Reschedule',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _actionBusy
+                      ? null
+                      : () => _confirmCancel(isOverdue: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: const Text(
+                    'Cancel & Refund',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Subscribe only to the ride + offer data for this specific ride.
@@ -2147,10 +2247,13 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     final isCompleted =
         status == 'COMPLETED' || ride?.status == RideStatus.past;
     final isCancelled = status.contains('CANCELLED');
+    final isOverdue = ride?.isOverdueBooking ?? false;
     if (isCompleted && !_alreadyRated && !_ratingPromptShown) {
       _maybeShowRating();
     }
-    final statusLabel = friendlyRideStatus(ride?.serverStatus);
+    final statusLabel = isOverdue
+        ? 'Overdue · Not started'
+        : friendlyRideStatus(ride?.serverStatus);
 
     final currency =
         _paymentStatus?['onlineCurrency']?.toString() ??
@@ -2158,21 +2261,50 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         offer?.currency ??
         ride?.currency ??
         'CAD';
-    final total = _num(_paymentStatus?['totalAmount'] ?? offer?.price);
     final breakdown = offer?.priceBreakdown;
-    final breakdownPayment = _paymentStatus?['priceBreakdown'];
-    final rideFare = breakdown != null && breakdown.ridePrice > 0
-        ? breakdown.ridePrice
-        : (breakdownPayment is Map && _num(breakdownPayment['ridePrice']) > 0
-              ? _num(breakdownPayment['ridePrice'])
-              : (total > 0
-                    ? (((total / 1.2) * 100).roundToDouble() / 100.0)
-                    : 0.0));
-    final platformFee = breakdown != null && breakdown.platformFee > 0
-        ? breakdown.platformFee
-        : (breakdownPayment is Map && _num(breakdownPayment['platformFee']) > 0
-              ? _num(breakdownPayment['platformFee'])
+    final breakdownPaymentRaw = _paymentStatus?['priceBreakdown'];
+    final breakdownPayment = breakdownPaymentRaw is Map<String, dynamic>
+        ? OfferPriceBreakdown.fromJson(breakdownPaymentRaw)
+        : (breakdownPaymentRaw is Map
+            ? OfferPriceBreakdown.fromJson(
+                Map<String, dynamic>.from(breakdownPaymentRaw),
+              )
+            : null);
+    final effectiveBreakdown = breakdown ?? breakdownPayment;
+
+    final double rideFare;
+    final double platformFee;
+    final double total;
+
+    if (effectiveBreakdown != null && effectiveBreakdown.ridePrice > 0) {
+      rideFare = effectiveBreakdown.ridePrice;
+      platformFee = effectiveBreakdown.marketplaceFee > 0
+          ? effectiveBreakdown.marketplaceFee
+          : (effectiveBreakdown.platformFee > 0
+              ? effectiveBreakdown.platformFee
               : (((rideFare * 0.2) * 100).roundToDouble() / 100.0));
+      total = effectiveBreakdown.total > 0
+          ? effectiveBreakdown.total
+          : (((rideFare + platformFee) * 100).roundToDouble() / 100.0);
+    } else if (offer != null && offer.price > 0) {
+      rideFare = offer.price;
+      platformFee = (((rideFare * 0.2) * 100).roundToDouble() / 100.0);
+      total = (((rideFare + platformFee) * 100).roundToDouble() / 100.0);
+    } else {
+      final rawTotal = _num(
+        _paymentStatus?['totalAmount'] ??
+            _paymentStatus?['payment']?['amount'],
+      );
+      if (rawTotal > 0) {
+        rideFare = (((rawTotal / 1.2) * 100).roundToDouble() / 100.0);
+        platformFee = (((rideFare * 0.2) * 100).roundToDouble() / 100.0);
+        total = rawTotal;
+      } else {
+        rideFare = 0.0;
+        platformFee = 0.0;
+        total = 0.0;
+      }
+    }
 
     return PopScope(
       canPop: false,
@@ -2232,7 +2364,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: _bannerColor(status),
+                      color: _bannerColor(status, isOverdue: isOverdue),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -2244,6 +2376,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                     ),
                   ),
+                  if (isOverdue && ride != null) ...[
+                    const SizedBox(height: 12),
+                    _buildOverdueBanner(ride),
+                  ],
                   if (_isLiveTrackStatus(status)) ...[
                     const SizedBox(height: 12),
                     _Section(
@@ -2558,7 +2694,14 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           ],
                           const SizedBox(height: 12),
                           Text(
-                            formatMoney(offer.price, offer.currency),
+                            formatMoney(
+                              rideFare > 0
+                                  ? rideFare
+                                  : (offer.price > 0
+                                      ? (offer.price / 1.2)
+                                      : 0),
+                              offer.currency,
+                            ),
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 18,
@@ -2583,7 +2726,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           if (rideFare > 0 && platformFee > 0) ...[
                             _row('Ride fare', formatMoney(rideFare, currency)),
                             _row(
-                              'Platform fee',
+                              'Marketplace fee',
                               formatMoney(platformFee, currency),
                             ),
                           ],
@@ -2628,7 +2771,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   if (_canCancel) ...[
                     const SizedBox(height: 10),
                     OutlinedButton(
-                      onPressed: _actionBusy ? null : _confirmCancel,
+                      onPressed: _actionBusy
+                          ? null
+                          : () => _confirmCancel(isOverdue: isOverdue),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
                         side: const BorderSide(color: GtColors.brand),

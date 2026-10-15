@@ -80,14 +80,20 @@ class _RideList extends StatelessWidget {
   final Future<void> Function() onRefresh;
 
   String _statusText(RideRequest r) {
+    if (r.isOverdueBooking) {
+      return 'Overdue · Not started';
+    }
     if (r.serverStatus != null && r.serverStatus!.isNotEmpty) {
       return friendlyRideStatus(r.serverStatus);
     }
     return friendlyLocalRideStatus(r.status);
   }
 
-  Color _badgeColor(RideStatus s) {
-    switch (s) {
+  Color _badgeColor(RideRequest r) {
+    if (r.isOverdueBooking) {
+      return const Color(0xFFD97706);
+    }
+    switch (r.status) {
       case RideStatus.waitingOffers:
         return GtColors.brand;
       case RideStatus.chooseOffer:
@@ -224,14 +230,14 @@ class _RideList extends StatelessWidget {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: _badgeColor(r.status).withValues(alpha: 0.12),
+                          color: _badgeColor(r).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           _statusText(r),
                           textAlign: TextAlign.end,
                           style: TextStyle(
-                            color: _badgeColor(r.status),
+                            color: _badgeColor(r),
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),

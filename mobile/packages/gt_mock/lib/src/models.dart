@@ -14,6 +14,7 @@ class Place {
   final String subtitle;
   final double lat;
   final double lng;
+
   /// Google Places placeId when present (autocomplete may lack coords until details).
   final String? placeId;
 
@@ -27,7 +28,8 @@ double haversineKm(Place a, Place b) {
   final dLng = _rad(b.lng - a.lng);
   final lat1 = _rad(a.lat);
   final lat2 = _rad(b.lat);
-  final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+  final h =
+      math.sin(dLat / 2) * math.sin(dLat / 2) +
       math.cos(lat1) * math.cos(lat2) * math.sin(dLng / 2) * math.sin(dLng / 2);
   return 2 * r * math.asin(math.sqrt(h.clamp(0.0, 1.0)));
 }
@@ -53,6 +55,7 @@ class VehicleClass {
   final String id;
   final String name;
   final String? fromPrice;
+
   /// Path under `gt_ui` package assets, e.g. `assets/vehicles/economy.png`.
   final String? imageAsset;
   final int passengerSeats;
@@ -86,10 +89,10 @@ class ChildSeats {
   }
 
   Map<String, int> toJson() => {
-        'infant': infant,
-        'convertible': convertible,
-        'booster': booster,
-      };
+    'infant': infant,
+    'convertible': convertible,
+    'booster': booster,
+  };
 }
 
 class OfferImage {
@@ -161,19 +164,32 @@ class OfferPriceBreakdown {
       return 0;
     }
 
-    final rawRidePrice = n(json['ridePrice']);
+    var rawRidePrice = n(json['ridePrice']);
     var rawPlatformFee = n(json['platformFee'] ?? json['marketplaceFee']);
     final rawTaxes = n(json['taxes']);
     var rawTotal = n(json['total']);
 
-    if (rawPlatformFee == 0 && rawRidePrice > 0) {
+    // Detect legacy bug where ridePrice was driver earning ($160) and total was driver bid ($200):
+    // e.g. rawRidePrice = 160, rawPlatformFee = 40, rawTotal = 200 (160 + 40 == 200 and 160 == 200 * 0.8)
+    if (rawTotal > 0 &&
+        rawRidePrice > 0 &&
+        (rawRidePrice + rawPlatformFee - rawTotal).abs() < 0.05 &&
+        (rawRidePrice - (rawTotal * 0.8)).abs() < 0.05) {
+      rawRidePrice = rawTotal;
       rawPlatformFee = ((rawRidePrice * 0.20) * 100).roundToDouble() / 100.0;
-    }
-    if (rawTotal <= 0 ||
-        (rawRidePrice > 0 && (rawTotal - rawRidePrice).abs() < 0.01)) {
-      rawTotal = ((rawRidePrice + rawPlatformFee + rawTaxes) * 100)
-              .roundToDouble() /
+      rawTotal =
+          ((rawRidePrice + rawPlatformFee + rawTaxes) * 100).roundToDouble() /
           100.0;
+    } else {
+      if (rawPlatformFee == 0 && rawRidePrice > 0) {
+        rawPlatformFee = ((rawRidePrice * 0.20) * 100).roundToDouble() / 100.0;
+      }
+      if (rawTotal <= 0 ||
+          (rawRidePrice > 0 && (rawTotal - rawRidePrice).abs() < 0.01)) {
+        rawTotal =
+            ((rawRidePrice + rawPlatformFee + rawTaxes) * 100).roundToDouble() /
+            100.0;
+      }
     }
 
     return OfferPriceBreakdown(
@@ -193,7 +209,6 @@ class OfferPriceBreakdown {
     );
   }
 }
-
 
 class OfferRatingBreakdown {
   const OfferRatingBreakdown({
@@ -279,11 +294,13 @@ class Offer {
   final String vehicleModel;
   final String vehicleClass;
   final double price;
+
   /// ISO code (CAD/USD) or legacy display prefix (US$).
   final String currency;
   final double rating;
   final int ratingCount;
   final int rides;
+
   /// Amenity labels for display.
   final List<String> options;
   final List<String> languages;
@@ -302,6 +319,7 @@ class Offer {
   final String? color;
   final String? vehicleDisplayName;
   final String? plate;
+
   /// Driver / carrier display name after booking (from server `driver.fullName`).
   final String? driverName;
 
@@ -484,20 +502,20 @@ class LostItemDetails {
   }
 
   Map<String, dynamic> toJson() => {
-        'caseId': caseId,
-        'status': status,
-        'contactPhone': contactPhone,
-        'itemDescription': itemDescription,
-        'driverNote': driverNote,
-        'photoUrl': photoUrl,
-        'handoverPhotoUrl': handoverPhotoUrl,
-        'pickupLocation': pickupLocation,
-        'returnFeeAmount': returnFeeAmount,
-        'returnFeePaid': returnFeePaid,
-        'returnFeePaymentId': returnFeePaymentId,
-        'reportedAt': reportedAt?.toIso8601String(),
-        'updatedAt': updatedAt?.toIso8601String(),
-      };
+    'caseId': caseId,
+    'status': status,
+    'contactPhone': contactPhone,
+    'itemDescription': itemDescription,
+    'driverNote': driverNote,
+    'photoUrl': photoUrl,
+    'handoverPhotoUrl': handoverPhotoUrl,
+    'pickupLocation': pickupLocation,
+    'returnFeeAmount': returnFeeAmount,
+    'returnFeePaid': returnFeePaid,
+    'returnFeePaymentId': returnFeePaymentId,
+    'reportedAt': reportedAt?.toIso8601String(),
+    'updatedAt': updatedAt?.toIso8601String(),
+  };
 }
 
 class RideRequest {
@@ -527,6 +545,8 @@ class RideRequest {
     this.tipAmount,
     this.shareToken,
     this.shareUrl,
+    this.pickupAt,
+    this.isOverdue = false,
   });
 
   final String id;
@@ -541,6 +561,7 @@ class RideRequest {
   final String? returnLabel;
   final bool isRoundTrip;
   String? selectedOfferId;
+
   /// Canonical Nest status when wired to API.
   String? serverStatus;
   final String? shortId;
@@ -555,19 +576,33 @@ class RideRequest {
   final double? tipAmount;
   String? shareToken;
   String? shareUrl;
+  final DateTime? pickupAt;
+  final bool isOverdue;
+
+  bool get isOverdueBooking {
+    if (isOverdue) return true;
+    final s = (serverStatus ?? '').toUpperCase();
+    if (pickupAt != null) {
+      final now = DateTime.now();
+      if (s == 'BOOKED') {
+        return now.isAfter(pickupAt!.add(const Duration(minutes: 30)));
+      }
+      if (const {'TRIP_STARTED', 'IN_PROGRESS'}.contains(s)) {
+        return now.isAfter(pickupAt!.add(const Duration(hours: 3)));
+      }
+    }
+    return false;
+  }
 
   bool get hasReturnTrip =>
-      isRoundTrip ||
-      (returnLabel != null && returnLabel!.trim().isNotEmpty);
+      isRoundTrip || (returnLabel != null && returnLabel!.trim().isNotEmpty);
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
     if (id.length <= 8) return id;
     final digits = id.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length >= 6) {
-      return digits.length >= 8
-          ? digits.substring(digits.length - 8)
-          : digits;
+      return digits.length >= 8 ? digits.substring(digits.length - 8) : digits;
     }
     return id.substring(0, 8).toUpperCase();
   }
@@ -788,10 +823,12 @@ class DriverOfferSummary {
       platformCommissionPct: commission is Map
           ? asDouble(commission['platformCommissionPct'])
           : null,
-      platformFee:
-          commission is Map ? asDouble(commission['platformFee']) : null,
-      driverEarning:
-          commission is Map ? asDouble(commission['driverEarning']) : null,
+      platformFee: commission is Map
+          ? asDouble(commission['platformFee'])
+          : null,
+      driverEarning: commission is Map
+          ? asDouble(commission['driverEarning'])
+          : null,
     );
   }
 }
@@ -841,6 +878,7 @@ class DriverRequest {
     this.lostItem,
     this.startPin,
     this.tipAmount,
+    this.isOverdue = false,
   });
 
   final String id;
@@ -855,6 +893,7 @@ class DriverRequest {
   final String? flightWait;
   final bool hasOffer;
   final double? offerPrice;
+
   /// Net driver earning from frozen priceSnapshot (completed trips).
   final double? driverEarning;
   final double? fromLat;
@@ -880,6 +919,7 @@ class DriverRequest {
   final String? status;
   final String? shortId;
   final DateTime? pickupAt;
+
   /// Booked passenger display name (from API `passengerName` / `passenger.fullName`).
   final String? passengerName;
   final bool hasLostItemRequest;
@@ -888,6 +928,22 @@ class DriverRequest {
   final LostItemDetails? lostItem;
   final String? startPin;
   final double? tipAmount;
+  final bool isOverdue;
+
+  bool get isOverdueBooking {
+    if (isOverdue) return true;
+    final s = (status ?? '').toUpperCase();
+    if (pickupAt != null) {
+      final now = DateTime.now();
+      if (s == 'BOOKED') {
+        return now.isAfter(pickupAt!.add(const Duration(minutes: 30)));
+      }
+      if (const {'TRIP_STARTED', 'IN_PROGRESS'}.contains(s)) {
+        return now.isAfter(pickupAt!.add(const Duration(hours: 3)));
+      }
+    }
+    return false;
+  }
 
   String get displayId {
     if (shortId != null && shortId!.isNotEmpty) return shortId!;
@@ -908,6 +964,7 @@ class DriverRequest {
     bool? hasActiveSupport,
     LostItemDetails? lostItem,
     double? tipAmount,
+    bool? isOverdue,
   }) {
     return DriverRequest(
       id: id,
@@ -953,16 +1010,13 @@ class DriverRequest {
       lostItem: lostItem ?? this.lostItem,
       startPin: startPin,
       tipAmount: tipAmount ?? this.tipAmount,
+      isOverdue: isOverdue ?? this.isOverdue,
     );
   }
 }
 
 class PassengerProfile {
-  PassengerProfile({
-    this.fullName = '',
-    this.email = '',
-    this.phone = '',
-  });
+  PassengerProfile({this.fullName = '', this.email = '', this.phone = ''});
   String fullName;
   String email;
   String phone;
@@ -976,14 +1030,14 @@ class GeoPoint {
   final double longitude;
 
   Map<String, dynamic> toJson() => {
-        'latitude': latitude,
-        'longitude': longitude,
-      };
+    'latitude': latitude,
+    'longitude': longitude,
+  };
 
   factory GeoPoint.fromJson(Map<String, dynamic> json) => GeoPoint(
-        latitude: (json['latitude'] as num).toDouble(),
-        longitude: (json['longitude'] as num).toDouble(),
-      );
+    latitude: (json['latitude'] as num).toDouble(),
+    longitude: (json['longitude'] as num).toDouble(),
+  );
 }
 
 enum OperatingZoneType {
@@ -1026,21 +1080,23 @@ class OperatingZone {
   bool get isCircle => type == OperatingZoneType.circle;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'type': type.toJson(),
-        'coordinates': coordinates.map((c) => c.toJson()).toList(),
-        if (center != null) 'center': center!.toJson(),
-        if (radiusKm != null) 'radiusKm': radiusKm,
-      };
+    'id': id,
+    'name': name,
+    'type': type.toJson(),
+    'coordinates': coordinates.map((c) => c.toJson()).toList(),
+    if (center != null) 'center': center!.toJson(),
+    if (radiusKm != null) 'radiusKm': radiusKm,
+  };
 
   factory OperatingZone.fromJson(Map<String, dynamic> json) {
     final type = OperatingZoneType.fromJson(json['type']);
     final coordsRaw = json['coordinates'];
     final coordinates = coordsRaw is List
         ? coordsRaw
-            .map((e) => GeoPoint.fromJson(Map<String, dynamic>.from(e as Map)))
-            .toList()
+              .map(
+                (e) => GeoPoint.fromJson(Map<String, dynamic>.from(e as Map)),
+              )
+              .toList()
         : <GeoPoint>[];
 
     GeoPoint? center;
@@ -1085,6 +1141,7 @@ class DriverProfile {
     this.legalName = '',
     this.isIndividual = true,
     this.baseLocation = '',
+
     /// Default map center (GTA) only when no saved base location exists.
     this.baseLatitude = 43.8341,
     this.baseLongitude = -79.5373,

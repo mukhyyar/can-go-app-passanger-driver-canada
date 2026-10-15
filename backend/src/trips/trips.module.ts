@@ -5,6 +5,8 @@ import { TrackingModule } from '../tracking/tracking.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { TripService } from './trip.service';
 import { DriverTripController, TripsController } from './trips.controller';
+import { PostRideNotificationService } from './post-ride-notifications.service';
+import { PostRideNotificationScheduler } from './post-ride-notifications.scheduler';
 
 @Module({
   imports: [
@@ -14,7 +16,12 @@ import { DriverTripController, TripsController } from './trips.controller';
     WalletModule,
   ],
   controllers: [TripsController, DriverTripController],
-  providers: [TripService],
-  exports: [TripService],
+  providers: [
+    TripService,
+    PostRideNotificationService,
+    PostRideNotificationScheduler,
+  ],
+  exports: [TripService, PostRideNotificationService],
 })
 export class TripsModule {}
+

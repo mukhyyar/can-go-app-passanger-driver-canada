@@ -107,15 +107,6 @@ class MockData {
       luggagePlaces: 10,
       capacityInfo: 'Seating capacity: Up to 16 passengers\nLuggage capacity: Up to 10 standard bags',
     ),
-    VehicleClass(
-      id: 'bus',
-      name: 'Bus',
-      fromPrice: 'from CA\$160',
-      imageAsset: 'assets/vehicles/bus.png',
-      passengerSeats: 30,
-      luggagePlaces: 20,
-      capacityInfo: 'Seating capacity: Up to 30+ passengers\nLuggage capacity: Up to 20+ standard bags',
-    ),
   ];
 
   static const languages = [
@@ -131,6 +122,7 @@ class MockData {
     }
     if (key == 'business') return 'assets/vehicles/business.png';
     if (key == 'vip') return 'assets/vehicles/vip.png';
+    if (key == 'bus') return 'assets/vehicles/bus.png';
     return null;
   }
 

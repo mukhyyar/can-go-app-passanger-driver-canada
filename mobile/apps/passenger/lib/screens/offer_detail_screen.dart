@@ -67,7 +67,8 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       return;
     }
     final status = (offer.status ?? '').toUpperCase();
-    final withdrawn = status.contains('WITHDRAW') ||
+    final withdrawn =
+        status.contains('WITHDRAW') ||
         status == 'EXPIRED' ||
         status == 'CANCELLED' ||
         status == 'SUPERSEDED';
@@ -89,7 +90,8 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     final eventOfferId = app.pendingOfferEventOfferId;
     final superseded = app.pendingOfferEventSupersededId;
     final watching = _activeOfferId ?? widget.offerId;
-    final matches = eventOfferId == watching ||
+    final matches =
+        eventOfferId == watching ||
         superseded == watching ||
         (type == 'offer.withdrawn' && eventOfferId == watching);
 
@@ -111,9 +113,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
             title: const Text('Offer withdrawn'),
-            content: const Text(
-              'This offer has been withdrawn by the driver.',
-            ),
+            content: const Text('This offer has been withdrawn by the driver.'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
@@ -176,9 +176,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
         context.go('/ride/${widget.rideId}');
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cannot book: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Cannot book: $e')));
     } finally {
       if (mounted) setState(() => _booking = false);
     }
@@ -303,13 +303,15 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     // This avoids rebuilding the entire screen (photo gallery, PageView,
     // etc.) on unrelated AppState changes like avatar load or notification
     // badge count updates.
-    context.select<AppState, (String?, String?, String?, String?, bool)>((s) => (
-      s.pendingOfferEventType,
-      s.pendingOfferEventRideId,
-      s.pendingOfferEventOfferId,
-      s.pendingOfferEventSupersededId,
-      s.rideById(widget.rideId)?.isBooked ?? false,
-    ));
+    context.select<AppState, (String?, String?, String?, String?, bool)>(
+      (s) => (
+        s.pendingOfferEventType,
+        s.pendingOfferEventRideId,
+        s.pendingOfferEventOfferId,
+        s.pendingOfferEventSupersededId,
+        s.rideById(widget.rideId)?.isBooked ?? false,
+      ),
+    );
     // Use read for mutations — does NOT subscribe to changes.
     final app = context.read<AppState>();
     _consumeRealtime(app);
@@ -421,7 +423,8 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                                   width: 7,
                                   height: 7,
                                   margin: const EdgeInsets.symmetric(
-                                      horizontal: 3),
+                                    horizontal: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: i == _pageIndex
@@ -584,8 +587,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                                   if (_page.hasClients) {
                                     _page.animateToPage(
                                       i,
-                                      duration:
-                                          const Duration(milliseconds: 300),
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
                                       curve: Curves.easeInOut,
                                     );
                                   }
@@ -598,8 +602,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                                       width: 110,
                                       height: 84,
                                       decoration: BoxDecoration(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
                                           color: isSelected
                                               ? GtColors.brand
@@ -608,8 +611,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                                         ),
                                       ),
                                       child: ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(8),
                                         child: AuthNetworkImage(
                                           url: images[i],
                                           fit: BoxFit.cover,
@@ -623,16 +625,17 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                                         bottom: 4,
                                         left: 4,
                                         child: Container(
-                                          padding:
-                                              const EdgeInsets.symmetric(
+                                          padding: const EdgeInsets.symmetric(
                                             horizontal: 5,
                                             vertical: 2,
                                           ),
                                           decoration: BoxDecoration(
                                             color: Colors.black.withValues(
-                                                alpha: 0.72),
-                                            borderRadius:
-                                                BorderRadius.circular(4),
+                                              alpha: 0.72,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
                                           ),
                                           child: const Text(
                                             'Primary',
@@ -672,7 +675,10 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           children: offer.options
                               .map(
                                 (o) => Chip(
-                                  label: Text(o, style: const TextStyle(fontSize: 12)),
+                                  label: Text(
+                                    o,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
                                   visualDensity: VisualDensity.compact,
                                   backgroundColor: GtColors.bgGrey,
                                   side: BorderSide.none,
@@ -698,7 +704,11 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.star, color: GtColors.star, size: 18),
+                          const Icon(
+                            Icons.star,
+                            color: GtColors.star,
+                            size: 18,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             offer.ratingCount > 0
@@ -812,13 +822,14 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           'Platform fee',
                           (breakdown != null && breakdown.platformFee > 0)
                               ? breakdown.platformFee
-                              : (((((breakdown != null && breakdown.ridePrice > 0)
-                                              ? breakdown.ridePrice
-                                              : (offer.price / 1.2)) *
-                                          0.2) *
-                                      100)
-                                  .roundToDouble() /
-                              100.0),
+                              : (((((breakdown != null &&
+                                                        breakdown.ridePrice > 0)
+                                                    ? breakdown.ridePrice
+                                                    : (offer.price / 1.2)) *
+                                                0.2) *
+                                            100)
+                                        .roundToDouble() /
+                                    100.0),
                           offer.currency,
                         ),
                         if (breakdown != null && breakdown.taxes > 0)
@@ -833,7 +844,6 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           bold: true,
                         ),
                       ],
-
                     ],
                   ),
                 ),
@@ -843,8 +853,10 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
                       dense: true,
-                      leading: const Icon(Icons.timer_outlined,
-                          color: GtColors.brand),
+                      leading: const Icon(
+                        Icons.timer_outlined,
+                        color: GtColors.brand,
+                      ),
                       title: const Text(
                         'Waiting time',
                         style: TextStyle(fontWeight: FontWeight.w700),
@@ -908,8 +920,11 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       child: asset != null
           ? Image.asset(asset, package: 'gt_ui', fit: BoxFit.contain)
           : const Center(
-              child:
-                  Icon(Icons.directions_car, size: 72, color: Colors.black45),
+              child: Icon(
+                Icons.directions_car,
+                size: 72,
+                color: Colors.black45,
+              ),
             ),
     );
   }
@@ -959,7 +974,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     left: 16,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(20),
@@ -978,8 +995,11 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     top: 40,
                     right: 16,
                     child: IconButton(
-                      icon: const Icon(Icons.close,
-                          color: Colors.white, size: 28),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                       onPressed: () => Navigator.of(ctx).pop(),
                     ),
                   ),
@@ -992,8 +1012,12 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     );
   }
 
-  Widget _breakRow(String label, double amount, String currency,
-      {bool bold = false}) {
+  Widget _breakRow(
+    String label,
+    double amount,
+    String currency, {
+    bool bold = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -1028,7 +1052,10 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
             width: 110,
             child: Text(
               label,
-              style: const TextStyle(fontSize: 12, color: GtColors.textSecondary),
+              style: const TextStyle(
+                fontSize: 12,
+                color: GtColors.textSecondary,
+              ),
             ),
           ),
           Expanded(

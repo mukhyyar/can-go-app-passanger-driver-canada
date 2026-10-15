@@ -169,22 +169,40 @@ class _ActiveBookedRideCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = (ride.serverStatus ?? '').toUpperCase();
-    final statusText = status == 'DRIVER_EN_ROUTE'
-        ? 'Driver is on the way'
-        : status == 'DRIVER_ARRIVED'
-            ? 'Driver has arrived'
-            : status == 'IN_PROGRESS' || status == 'TRIP_STARTED'
-                ? 'Trip in progress'
-                : 'Booked ride active';
+    final isOverdue = ride.isOverdueBooking;
+    final statusText = isOverdue
+        ? 'Scheduled ride not started · Action required'
+        : status == 'DRIVER_EN_ROUTE'
+            ? 'Driver is on the way'
+            : status == 'DRIVER_ARRIVED'
+                ? 'Driver has arrived'
+                : status == 'IN_PROGRESS' || status == 'TRIP_STARTED'
+                    ? 'Trip in progress'
+                    : 'Booked ride active';
+
+    final bgColor =
+        isOverdue ? const Color(0xFFFEF3C7) : const Color(0xFFF0FDF4);
+    final borderColor =
+        isOverdue ? const Color(0xFFFCD34D) : const Color(0xFFBBF7D0);
+    final shadowColor = isOverdue
+        ? Colors.amber.withValues(alpha: 0.12)
+        : Colors.green.withValues(alpha: 0.06);
+    final iconBgColor = isOverdue ? const Color(0xFFD97706) : GtColors.green;
+    final iconData =
+        isOverdue ? Icons.warning_amber_rounded : Icons.directions_car_filled_rounded;
+    final statusTextColor =
+        isOverdue ? const Color(0xFF92400E) : const Color(0xFF166534);
+    final buttonBg = isOverdue ? const Color(0xFFD97706) : GtColors.brand;
+    final buttonText = isOverdue ? 'Resolve' : 'View';
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFF0FDF4),
+        color: bgColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFBBF7D0)),
+        border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withValues(alpha: 0.06),
+            color: shadowColor,
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -202,12 +220,12 @@ class _ActiveBookedRideCard extends StatelessWidget {
                 Container(
                   width: 40,
                   height: 40,
-                  decoration: const BoxDecoration(
-                    color: GtColors.green,
+                  decoration: BoxDecoration(
+                    color: iconBgColor,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.directions_car_filled_rounded,
+                  child: Icon(
+                    iconData,
                     color: Colors.white,
                     size: 22,
                   ),
@@ -222,10 +240,10 @@ class _ActiveBookedRideCard extends StatelessWidget {
                           Flexible(
                             child: Text(
                               statusText,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
-                                color: Color(0xFF166534),
+                                color: statusTextColor,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -259,12 +277,12 @@ class _ActiveBookedRideCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: GtColors.brand,
+                    color: buttonBg,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'View',
-                    style: TextStyle(
+                  child: Text(
+                    buttonText,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,

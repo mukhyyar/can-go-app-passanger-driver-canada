@@ -760,7 +760,10 @@ class _ScheduledRideCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusLabel = friendlyRideStatus(request.status);
+    final isOverdue = request.isOverdueBooking;
+    final statusLabel = isOverdue
+        ? 'Overdue · Not started'
+        : friendlyRideStatus(request.status);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GtCard(
@@ -784,19 +787,24 @@ class _ScheduledRideCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: GtColors.soft,
+                        color:
+                            isOverdue ? const Color(0xFFFEF3C7) : GtColors.soft,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: GtColors.brand.withValues(alpha: 0.14),
+                          color: isOverdue
+                              ? const Color(0xFFFCD34D)
+                              : GtColors.brand.withValues(alpha: 0.14),
                         ),
                       ),
                       child: Text(
                         statusLabel,
                         textAlign: TextAlign.end,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: GtColors.brand,
+                          color: isOverdue
+                              ? const Color(0xFFD97706)
+                              : GtColors.brand,
                         ),
                       ),
                     ),

@@ -48,6 +48,8 @@ String friendlyRideStatus(String? serverStatus) {
       return 'Payment pending';
     case 'BOOKED':
       return 'Booked';
+    case 'OVERDUE':
+      return 'Overdue';
     case 'DRIVER_EN_ROUTE':
       return 'Driver en route';
     case 'DRIVER_ARRIVED':
@@ -170,6 +172,15 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     throw FormatException('Ride missing id');
   }
 
+  DateTime? pickupAt;
+  final pickupRaw = json['pickupAt'];
+  if (pickupRaw != null) {
+    pickupAt = DateTime.tryParse(pickupRaw.toString());
+  }
+
+  final isOverdue = json['isOverdue'] == true ||
+      (json['flags'] is Map && json['flags']['isOverdue'] == true);
+
   return RideRequest(
     id: id,
     datetimeLabel: pickupLabel,
@@ -201,6 +212,8 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
         : null,
     shareToken: json['shareToken']?.toString(),
     shareUrl: json['shareUrl']?.toString(),
+    pickupAt: pickupAt,
+    isOverdue: isOverdue,
   );
 }
 
@@ -793,6 +806,9 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     passengerName = null;
   }
 
+  final isOverdue = json['isOverdue'] == true ||
+      (json['flags'] is Map && json['flags']['isOverdue'] == true);
+
   return DriverRequest(
     id: id,
     datetimeLabel: _formatPickup(json['pickupAt']),
@@ -846,6 +862,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
             asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip'])! > 0
         ? asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip'])
         : null,
+    isOverdue: isOverdue,
   );
 }
 
