@@ -428,7 +428,7 @@ Price match still applies after the trip when another site had a similar offer c
 
 1. **Flight number** — the driver tracks delays and uses the included waiting window.
 2. **Signage** — your name on a board at arrivals, not a hunt at the curb.
-3. **Vehicle class** — Economy, Comfort, or Van so luggage actually fits.
+3. **Vehicle class** — Economy, Comfort, or Mini Van so luggage actually fits.
 
 Add a comment if you have a tight connection or a lot of bags. Drivers bid with that context. After you accept, keep chat open until you see the car.`,
   },

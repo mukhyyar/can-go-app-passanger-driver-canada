@@ -49,8 +49,8 @@ void main() {
               'toLabel': 'T3M 2T5, Calgary',
               'toLat': 50.89,
               'toLng': -113.94,
-              'pickupAt': '2026-10-01T10:14:00.000Z',
-              'returnAt': '2026-10-01T15:00:00.000Z',
+              'pickupAt': '2028-10-01T10:14:00.000Z',
+              'returnAt': '2028-10-01T15:00:00.000Z',
               'isRoundTrip': true,
               'vehicleClassIds': ['economy', 'comfort'],
               'adults': 2,
@@ -132,7 +132,7 @@ void main() {
 
       // Verify Vehicle preferences section is displayed
       expect(find.text('Vehicle preferences'), findsOneWidget);
-      expect(find.text('2 of 7 selected'), findsOneWidget);
+      expect(find.text('2 of 6 selected'), findsOneWidget);
 
       // Verify Flight number, Name sign, Action chips
       expect(find.text('pk737'), findsOneWidget);
@@ -157,7 +157,7 @@ void main() {
       expect(premiumCard, findsOneWidget);
       await tester.tap(premiumCard);
       await tester.pumpAndSettle();
-      expect(find.text('3 of 7 selected'), findsOneWidget);
+      expect(find.text('3 of 6 selected'), findsOneWidget);
 
       // Save changes
       final saveBtn = find.widgetWithText(FilledButton, 'Save changes');
@@ -208,7 +208,7 @@ void main() {
               'toLabel': 'Calgary Airport',
               'toLat': 51.12,
               'toLng': -114.01,
-              'pickupAt': '2026-10-01T12:00:00.000Z',
+              'pickupAt': '2028-10-01T12:00:00.000Z',
               'vehicleClassIds': ['economy'],
               'adults': 1,
               'childSeatsJson': {},
@@ -310,7 +310,7 @@ void main() {
         findsOneWidget,
       );
       // Economy should still be selected
-      expect(find.text('1 of 7 selected'), findsOneWidget);
+      expect(find.text('1 of 6 selected'), findsOneWidget);
 
       // Save changes
       final saveBtn = find.widgetWithText(FilledButton, 'Save changes');

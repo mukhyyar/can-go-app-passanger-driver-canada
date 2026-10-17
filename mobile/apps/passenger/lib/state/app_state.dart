@@ -1705,12 +1705,59 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Minimum turnaround buffer after pickup before a return trip can start.
+  Duration get minimumReturnBuffer {
+    final routeMin = selectedRoute?.durationMin;
+    if (routeMin != null && routeMin > 0) {
+      return Duration(minutes: (routeMin + 15).clamp(30, 720));
+    }
+    return const Duration(minutes: 30);
+  }
+
+  /// Automatically adjusts return and hourly end times to guarantee no conflicts
+  /// with the effective pickup time and that neither is in the past.
+  void _resolveScheduleConflicts() {
+    final now = DateTime.now();
+    // 1. Ensure scheduled pickup is not in the past (minute precision with 1 min grace)
+    if (!pickupNow && pickupDateTime.isBefore(now.subtract(const Duration(minutes: 1)))) {
+      pickupDateTime = now;
+    }
+
+    // 2. Ensure return trip is always strictly after pickup + minimumReturnBuffer and not in the past
+    if (returnEnabled) {
+      final minReturn = effectivePickupDateTime.add(minimumReturnBuffer);
+      if (returnDateTime == null || returnDateTime!.isBefore(minReturn) || returnDateTime!.isBefore(now)) {
+        returnDateTime = effectivePickupDateTime.add(const Duration(hours: 3));
+        if (returnDateTime!.isBefore(minReturn)) {
+          returnDateTime = minReturn;
+        }
+      }
+    }
+
+    // 3. Ensure ride ends for hourly service is after pickup and not in the past
+    if (serviceType == ServiceType.perHour) {
+      _syncRideEndsFromDuration();
+      if (rideEndsDateTime != null) {
+        final minEnds = effectivePickupDateTime.add(const Duration(minutes: 30));
+        if (rideEndsDateTime!.isBefore(minEnds) || rideEndsDateTime!.isBefore(now)) {
+          rideEndsDateTime = minEnds;
+        }
+      }
+    }
+  }
+
   void setReturnEnabled(bool value) {
     returnEnabled = value;
-    if (value && returnDateTime == null) {
+    if (value) {
       final start = effectivePickupDateTime;
-      returnDateTime = start.add(const Duration(hours: 3));
-    } else if (!value) {
+      final minReturn = start.add(minimumReturnBuffer);
+      if (returnDateTime == null || returnDateTime!.isBefore(minReturn) || returnDateTime!.isBefore(DateTime.now())) {
+        returnDateTime = start.add(const Duration(hours: 3));
+        if (returnDateTime!.isBefore(minReturn)) {
+          returnDateTime = minReturn;
+        }
+      }
+    } else {
       returnDateTime = null;
       returnFlight = '';
     }
@@ -1718,7 +1765,18 @@ class AppState extends ChangeNotifier {
   }
 
   void setReturnDateTime(DateTime? value) {
-    returnDateTime = value;
+    if (value == null) {
+      returnDateTime = null;
+      notifyListeners();
+      return;
+    }
+    final now = DateTime.now();
+    final minReturn = effectivePickupDateTime.add(minimumReturnBuffer);
+    var candidate = value;
+    if (candidate.isBefore(minReturn) || candidate.isBefore(now)) {
+      candidate = minReturn.isAfter(now) ? minReturn : now.add(const Duration(minutes: 30));
+    }
+    returnDateTime = candidate;
     notifyListeners();
   }
 
@@ -1756,14 +1814,15 @@ class AppState extends ChangeNotifier {
   void setPickupNow(bool value) {
     pickupNow = value;
     if (value) pickupDateTime = DateTime.now();
-    _syncRideEndsFromDuration();
+    _resolveScheduleConflicts();
     notifyListeners();
   }
 
   void setPickupDateTime(DateTime value) {
-    pickupDateTime = value;
+    final now = DateTime.now();
+    pickupDateTime = value.isBefore(now.subtract(const Duration(minutes: 1))) ? now : value;
     pickupNow = false;
-    _syncRideEndsFromDuration();
+    _resolveScheduleConflicts();
     notifyListeners();
   }
 
@@ -2012,9 +2071,12 @@ class AppState extends ChangeNotifier {
       final hours = isPerHour
           ? ((perHourDurationMinutes ?? 60) / 60).clamp(1, 24).toDouble()
           : null;
-      final pickupAt = (pickupNow ? DateTime.now() : pickupDateTime)
-          .toUtc()
-          .toIso8601String();
+      final effectivePickup = pickupNow ? DateTime.now() : pickupDateTime;
+      final now = DateTime.now();
+      if (!pickupNow && effectivePickup.isBefore(now.subtract(const Duration(minutes: 2)))) {
+        throw StateError('Pickup time cannot be in the past');
+      }
+      final pickupAt = effectivePickup.toUtc().toIso8601String();
 
       if (needsDropoff && !canSubmitWithCurrentRoute) {
         throw StateError(
@@ -2044,11 +2106,16 @@ class AppState extends ChangeNotifier {
       final childSeatsPayload =
           childSeats.total > 0 ? childSeats.toJson() : null;
       final isRoundTrip = returnEnabled;
-      if (returnEnabled && returnDateTime == null) {
-        final start = pickupNow ? DateTime.now() : pickupDateTime;
-        returnDateTime = start.add(const Duration(hours: 3));
-      }
-      if (returnEnabled && returnDateTime != null) {
+      if (returnEnabled) {
+        if (returnDateTime == null) {
+          returnDateTime = effectivePickup.add(const Duration(hours: 3));
+        }
+        if (returnDateTime!.isBefore(now.subtract(const Duration(minutes: 2)))) {
+          throw StateError('Return time cannot be in the past');
+        }
+        if (!returnDateTime!.isAfter(effectivePickup)) {
+          throw StateError('Return time must be after pickup time');
+        }
         returnLabel = _formatDate(returnDateTime!);
       }
       final returnAt = isRoundTrip && returnDateTime != null

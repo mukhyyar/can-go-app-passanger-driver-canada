@@ -100,6 +100,28 @@ class _GetOffersBarState extends State<GetOffersBar> {
       return;
     }
 
+    final now = DateTime.now();
+    if (!state.pickupNow && state.pickupDateTime.isBefore(now.subtract(const Duration(minutes: 2)))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pickup time cannot be in the past')),
+      );
+      return;
+    }
+    if (state.returnEnabled && state.returnDateTime != null) {
+      if (state.returnDateTime!.isBefore(now.subtract(const Duration(minutes: 2)))) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Return time cannot be in the past')),
+        );
+        return;
+      }
+      if (!state.returnDateTime!.isAfter(state.effectivePickupDateTime)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Return time must be after pickup time')),
+        );
+        return;
+      }
+    }
+
     setState(() => _isSubmitting = true);
     try {
       final req = await state.createBookingRequestAsync();

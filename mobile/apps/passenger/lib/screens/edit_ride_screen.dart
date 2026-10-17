@@ -174,40 +174,50 @@ class _EditRideScreenState extends State<EditRideScreen> {
   }
 
   Future<void> _pickDateTime() async {
+    final now = DateTime.now();
+    final minDate = DateTime(now.year, now.month, now.day);
+    final initial = _pickupAt.isBefore(now) ? now : _pickupAt;
     final date = await showDatePicker(
       context: context,
-      initialDate: _pickupAt,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initial,
+      firstDate: minDate,
+      lastDate: now.add(const Duration(days: 365)),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(_pickupAt),
+      initialTime: TimeOfDay.fromDateTime(initial),
     );
     if (time == null || !mounted) return;
+    final picked = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    final effectivePickup = picked.isBefore(now.subtract(const Duration(minutes: 1))) ? now : picked;
     setState(() {
-      _pickupAt = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      );
-      if (_returnAt != null && !_returnAt!.isAfter(_pickupAt)) {
-        _returnAt = _pickupAt.add(const Duration(hours: 3));
+      _pickupAt = effectivePickup;
+      if (_isRoundTrip || _returnAt != null) {
+        final minReturn = _pickupAt.add(const Duration(minutes: 30));
+        if (_returnAt == null || _returnAt!.isBefore(minReturn)) {
+          _returnAt = _pickupAt.add(const Duration(hours: 3));
+        }
       }
     });
   }
 
   Future<void> _pickReturnDateTime() async {
+    final now = DateTime.now();
     final start = _pickupAt;
+    final minReturnDate = start.isBefore(now) ? now : start;
     final initial = _returnAt ?? start.add(const Duration(hours: 3));
     final date = await showDatePicker(
       context: context,
-      initialDate: initial.isBefore(start) ? start : initial,
-      firstDate: DateTime(start.year, start.month, start.day),
-      lastDate: start.add(const Duration(days: 365)),
+      initialDate: initial.isBefore(minReturnDate) ? minReturnDate : initial,
+      firstDate: DateTime(minReturnDate.year, minReturnDate.month, minReturnDate.day),
+      lastDate: minReturnDate.add(const Duration(days: 365)),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
@@ -222,8 +232,9 @@ class _EditRideScreenState extends State<EditRideScreen> {
       time.hour,
       time.minute,
     );
-    if (!returnDt.isAfter(start)) {
-      returnDt = start.add(const Duration(hours: 2));
+    final minAllowed = start.add(const Duration(minutes: 30));
+    if (returnDt.isBefore(minAllowed) || returnDt.isBefore(now)) {
+      returnDt = minAllowed.isAfter(now) ? minAllowed : now.add(const Duration(minutes: 30));
     }
     setState(() {
       _returnAt = returnDt;
@@ -371,6 +382,27 @@ class _EditRideScreenState extends State<EditRideScreen> {
         const SnackBar(content: Text('Choose a return pickup date and time')),
       );
       return;
+    }
+    final now = DateTime.now();
+    if (_pickupAt.isBefore(now.subtract(const Duration(minutes: 2)))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pickup time cannot be in the past')),
+      );
+      return;
+    }
+    if (_isRoundTrip && _returnAt != null) {
+      if (_returnAt!.isBefore(now.subtract(const Duration(minutes: 2)))) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Return time cannot be in the past')),
+        );
+        return;
+      }
+      if (!_returnAt!.isAfter(_pickupAt)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Return time must be after pickup time')),
+        );
+        return;
+      }
     }
     if (_vehicleClassIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

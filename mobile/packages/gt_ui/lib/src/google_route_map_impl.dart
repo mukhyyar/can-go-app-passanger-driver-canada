@@ -745,8 +745,11 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
         _updateCachedPolylines();
         _updateCachedStaticMarkers();
       });
-      widget.onRoutesLoaded?.call(cached);
-      widget.onRouteSelected?.call(cached[selectedIdx]);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || gen != _loadRouteGeneration) return;
+        widget.onRoutesLoaded?.call(cached);
+        widget.onRouteSelected?.call(cached[selectedIdx]);
+      });
       unawaited(_startCar(activePoints));
       if (!_userMovedCamera) {
         _fitBounds(extra: activePoints);
@@ -820,8 +823,11 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
           _updateCachedPolylines();
           _updateCachedStaticMarkers();
         });
-        widget.onRoutesLoaded?.call(const []);
-        widget.onRoutesLoadFailed?.call();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || gen != _loadRouteGeneration) return;
+          widget.onRoutesLoaded?.call(const []);
+          widget.onRoutesLoadFailed?.call();
+        });
         return;
       }
       final pts = [_fromCommitted, toCommitted];

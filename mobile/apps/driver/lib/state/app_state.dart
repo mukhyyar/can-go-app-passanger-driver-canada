@@ -1631,6 +1631,13 @@ class AppState extends ChangeNotifier {
           debugPrint('refreshOpenRequests skip row: $e');
         }
       }
+      parsed.sort((a, b) {
+        final aTime = a.createdAt ?? a.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.createdAt ?? b.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final cmp = bTime.compareTo(aTime);
+        if (cmp != 0) return cmp;
+        return b.id.compareTo(a.id);
+      });
       openRequests = parsed;
       if ((fromPush || previousIds.isNotEmpty) && drivingEnabled) {
         DriverRequest? newest;
@@ -1671,9 +1678,15 @@ class AppState extends ChangeNotifier {
         }
       }
       parsed.sort((a, b) {
-        final aAt = a.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bAt = b.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return aAt.compareTo(bAt);
+        final aAt = a.pickupAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bAt = b.pickupAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final cmp = bAt.compareTo(aAt);
+        if (cmp != 0) return cmp;
+        final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final cmpCreated = bCreated.compareTo(aCreated);
+        if (cmpCreated != 0) return cmpCreated;
+        return b.id.compareTo(a.id);
       });
       myRides = parsed;
       notifyListeners();
@@ -1683,22 +1696,41 @@ class AppState extends ChangeNotifier {
   }
 
   List<DriverRequest> get scheduledRides {
-    return myRides.where((r) {
+    final list = myRides.where((r) {
       final mapped = mapServerRideStatus(r.status);
       return mapped == RideStatus.booked;
     }).toList();
+    list.sort((a, b) {
+      final aAt = a.pickupAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bAt = b.pickupAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final cmp = bAt.compareTo(aAt);
+      if (cmp != 0) return cmp;
+      final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final cmpCreated = bCreated.compareTo(aCreated);
+      if (cmpCreated != 0) return cmpCreated;
+      return b.id.compareTo(a.id);
+    });
+    return list;
   }
 
   List<DriverRequest> get pastRides {
-    return myRides.where((r) {
+    final list = myRides.where((r) {
       final mapped = mapServerRideStatus(r.status);
       return mapped == RideStatus.past || mapped == RideStatus.cancelled;
-    }).toList()
-      ..sort((a, b) {
-        final aAt = a.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bAt = b.pickupAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bAt.compareTo(aAt);
-      });
+    }).toList();
+    list.sort((a, b) {
+      final aAt = a.pickupAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bAt = b.pickupAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final cmp = bAt.compareTo(aAt);
+      if (cmp != 0) return cmp;
+      final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final cmpCreated = bCreated.compareTo(aCreated);
+      if (cmpCreated != 0) return cmpCreated;
+      return b.id.compareTo(a.id);
+    });
+    return list;
   }
 
   Future<void> startMarketplaceRealtime() async {

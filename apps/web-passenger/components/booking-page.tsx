@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../lib/api';
-import { toPickupIso } from '../lib/datetime';
+import {
+  fromLocalInputValue,
+  getMinPickupInputValue,
+  getMinReturnInputValue,
+  isPastDate,
+  toLocalInputValue,
+  toPickupIso,
+} from '../lib/datetime';
 import {
   newPlacesSessionToken,
   placeHasCoords,
@@ -170,6 +177,29 @@ export function BookingPage() {
       setError('Please select at least one vehicle class');
       return;
     }
+    if (!pickupNow) {
+      const pDate = fromLocalInputValue(pickupValue);
+      if (!pDate || isPastDate(pDate)) {
+        setError('Pickup time cannot be in the past');
+        return;
+      }
+    }
+    if (service === 'RIDE' && returnOn) {
+      if (!returnValue) {
+        setError('Please select a return date and time');
+        return;
+      }
+      const rDate = fromLocalInputValue(returnValue);
+      if (!rDate || isPastDate(rDate)) {
+        setError('Return time cannot be in the past');
+        return;
+      }
+      const pDate = pickupNow ? new Date() : fromLocalInputValue(pickupValue);
+      if (pDate && rDate.getTime() <= pDate.getTime()) {
+        setError('Return time must be after pickup time');
+        return;
+      }
+    }
     if (!token) {
       setQueued(true);
       setAuthOpen(true);
@@ -329,10 +359,23 @@ export function BookingPage() {
               <input
                 ref={pickupInputRef}
                 type="datetime-local"
+                min={getMinPickupInputValue()}
                 value={pickupValue}
                 onChange={(e) => {
                   setPickupNow(false);
                   setPickupValue(e.target.value);
+                  if (returnOn && returnValue) {
+                    const newPickup = fromLocalInputValue(e.target.value);
+                    const currentReturn = fromLocalInputValue(returnValue);
+                    if (
+                      newPickup &&
+                      currentReturn &&
+                      currentReturn.getTime() <= newPickup.getTime() + 30 * 60 * 1000
+                    ) {
+                      const adjusted = new Date(newPickup.getTime() + 3 * 60 * 60 * 1000);
+                      setReturnValue(toLocalInputValue(adjusted));
+                    }
+                  }
                 }}
                 aria-label="Pick-up date & time"
               />
@@ -372,13 +415,27 @@ export function BookingPage() {
           )}
 
           {service === 'RIDE' && (
-            <ToggleRow label="Add return way" on={returnOn} onChange={setReturnOn} />
+            <ToggleRow
+              label="Add return way"
+              on={returnOn}
+              onChange={(on) => {
+                setReturnOn(on);
+                if (on && !returnValue) {
+                  const base = pickupNow
+                    ? new Date()
+                    : (fromLocalInputValue(pickupValue) ?? new Date());
+                  const defaultReturn = new Date(base.getTime() + 3 * 60 * 60 * 1000);
+                  setReturnValue(toLocalInputValue(defaultReturn));
+                }
+              }}
+            />
           )}
           {service === 'RIDE' && returnOn && (
             <div className="field">
               <CalendarIcon />
               <input
                 type="datetime-local"
+                min={getMinReturnInputValue(pickupNow, pickupValue)}
                 value={returnValue}
                 onChange={(e) => setReturnValue(e.target.value)}
                 aria-label="Return ride date & time"

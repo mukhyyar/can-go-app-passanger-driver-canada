@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/screens/book/route_map_adjust_bar.dart';
@@ -248,22 +249,42 @@ class _MapBodyState extends State<_MapBody> {
   }
 
   void _onRoutesLoaded(List<GtRouteOption> routes) {
-    final usable = routes
-        .where((r) => r.distanceKm > 0 && r.id != 'fallback_0')
-        .toList();
-    if (usable.isEmpty && routes.isNotEmpty) {
-      // Synthetic / zero-distance only — do not book with stale road distance.
-      state.setAvailableRoutes(const []);
-      state.setRouteRecalcFailed(true);
-      return;
+    void apply() {
+      if (!mounted) return;
+      final usable = routes
+          .where((r) => r.distanceKm > 0 && r.id != 'fallback_0')
+          .toList();
+      if (usable.isEmpty && routes.isNotEmpty) {
+        // Synthetic / zero-distance only — do not book with stale road distance.
+        state.setAvailableRoutes(const []);
+        state.setRouteRecalcFailed(true);
+        return;
+      }
+      state.setRouteRecalcFailed(false);
+      state.setAvailableRoutes(usable.isNotEmpty ? usable : routes);
     }
-    state.setRouteRecalcFailed(false);
-    state.setAvailableRoutes(usable.isNotEmpty ? usable : routes);
+
+    if (WidgetsBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      apply();
+    }
   }
 
   void _onRoutesLoadFailed() {
-    state.setAvailableRoutes(const []);
-    state.setRouteRecalcFailed(true);
+    void apply() {
+      if (!mounted) return;
+      state.setAvailableRoutes(const []);
+      state.setRouteRecalcFailed(true);
+    }
+
+    if (WidgetsBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      apply();
+    }
   }
 
   @override
@@ -326,7 +347,17 @@ class _MapBodyState extends State<_MapBody> {
               onRoutesLoaded: _onRoutesLoaded,
               onRoutesLoadFailed: _onRoutesLoadFailed,
               onRouteSelected: (route) {
-                state.selectRoute(route);
+                void apply() {
+                  if (!mounted) return;
+                  state.selectRoute(route);
+                }
+
+                if (WidgetsBinding.instance.schedulerPhase ==
+                    SchedulerPhase.persistentCallbacks) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+                } else {
+                  apply();
+                }
               },
             ),
             Positioned(

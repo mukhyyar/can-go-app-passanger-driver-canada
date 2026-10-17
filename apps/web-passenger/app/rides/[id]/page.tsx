@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '../../../lib/api';
+import { isPastDate, toLocalInputValue } from '../../../lib/datetime';
 import {
   formatMoney,
   friendlyRideStatus,
@@ -184,6 +185,20 @@ export default function RideDetailPage() {
     setBusy(true);
     setError(null);
     try {
+      if (editPickup) {
+        const pDate = new Date(editPickup);
+        if (isPastDate(pDate)) {
+          setError('Pickup time cannot be in the past');
+          return;
+        }
+        if (ride?.returnAt) {
+          const rDate = new Date(ride.returnAt);
+          if (rDate.getTime() <= pDate.getTime()) {
+            setError('Pickup time cannot be after return time');
+            return;
+          }
+        }
+      }
       const pickupAt = editPickup
         ? new Date(editPickup).toISOString()
         : undefined;
@@ -482,6 +497,7 @@ export default function RideDetailPage() {
                       Pickup
                       <input
                         type="datetime-local"
+                        min={toLocalInputValue(new Date())}
                         value={editPickup}
                         onChange={(e) => setEditPickup(e.target.value)}
                         style={{ display: 'block', width: '100%', marginTop: 4 }}

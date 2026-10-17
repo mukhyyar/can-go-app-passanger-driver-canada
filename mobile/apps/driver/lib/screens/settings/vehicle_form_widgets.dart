@@ -169,7 +169,9 @@ class VehicleClassPicker extends StatelessWidget {
                     Text(
                       c == 'suv'
                           ? 'Black SUV'
-                          : c[0].toUpperCase() + c.substring(1),
+                          : c == 'van'
+                              ? 'Mini Van'
+                              : c[0].toUpperCase() + c.substring(1),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight:

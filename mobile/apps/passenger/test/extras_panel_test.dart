@@ -64,4 +64,34 @@ void main() {
       expect(find.text('Enter promo code'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'ExtrasPanel does not display return trip details even when returnEnabled is true',
+    (tester) async {
+      final state = AppState();
+      state.setServiceType(ServiceType.ride);
+      state.setReturnEnabled(true);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: Consumer<AppState>(
+                  builder: (_, s, __) => ExtrasPanel(state: s),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Return arrival flight number'), findsNothing);
+      expect(find.text('Return ride date & time'), findsNothing);
+      expect(find.textContaining('Return:'), findsNothing);
+      expect(find.byKey(const ValueKey('returnFlight')), findsNothing);
+    },
+  );
 }

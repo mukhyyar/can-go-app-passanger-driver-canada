@@ -596,11 +596,13 @@ class GtVehicleChips extends StatelessWidget {
     final lower = trimmed.toLowerCase();
     if (lower == 'suv' || lower == 'black suv' || lower == 'black_suv') return 'Black SUV';
     if (lower == 'vip') return 'VIP';
+    if (lower == 'van' || lower == 'mini van' || lower == 'minivan' || lower == 'mini_van') return 'Mini Van';
     final words = trimmed.replaceAll('_', ' ').split(' ');
     return words.map((w) {
       if (w.isEmpty) return w;
       if (w.toLowerCase() == 'suv') return 'Black SUV';
       if (w.toLowerCase() == 'vip') return 'VIP';
+      if (w.toLowerCase() == 'van') return 'Mini Van';
       return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
     }).join(' ');
   }

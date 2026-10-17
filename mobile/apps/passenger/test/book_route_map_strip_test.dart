@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
+import 'package:passenger/screens/book/book_screen.dart';
 import 'package:passenger/screens/book/route_map_adjust_bar.dart';
 import 'package:passenger/screens/book/route_map_controls.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -169,6 +171,47 @@ void main() {
       await tester.pump();
 
       expect(hits, ['recenter', 'in', 'out', 'pickup', 'drop']);
+    });
+  });
+
+  group('ServiceMode switching', () {
+    testWidgets('switching between hour and delivery in BookScreen does not crash or get stuck',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final state = AppState();
+      state.setFrom(MockData.places.first);
+      state.setTo(MockData.places.last);
+      state.setTermsAccepted(true);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const MaterialApp(
+            home: BookScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to PER HOUR
+      await tester.tap(find.text('PER HOUR'));
+      await tester.pumpAndSettle();
+      expect(state.serviceType, ServiceType.perHour);
+
+      // Switch to DELIVERY
+      await tester.tap(find.text('DELIVERY'));
+      await tester.pumpAndSettle();
+      expect(state.serviceType, ServiceType.delivery);
+
+      // Switch back to PER HOUR
+      await tester.tap(find.text('PER HOUR'));
+      await tester.pumpAndSettle();
+      expect(state.serviceType, ServiceType.perHour);
+
+      // Switch back to DELIVERY
+      await tester.tap(find.text('DELIVERY'));
+      await tester.pumpAndSettle();
+      expect(state.serviceType, ServiceType.delivery);
     });
   });
 }

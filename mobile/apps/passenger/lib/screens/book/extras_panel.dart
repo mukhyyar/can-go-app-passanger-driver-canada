@@ -77,20 +77,7 @@ class ExtrasPanel extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                 ],
-                if (mode == ServiceType.ride && state.returnEnabled) ...[
-                  _ReturnDateField(state: state),
-                  const SizedBox(height: 8),
-                  _ExtraField(
-                    icon: Icons.flight,
-                    child: BoundField(
-                      fieldKey: const ValueKey('returnFlight'),
-                      initial: state.returnFlight,
-                      hint: 'Return arrival flight number',
-                      onChanged: state.setReturnFlight,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
+
                 _ExtraField(
                   icon: Icons.chat_bubble_outline,
                   child: BoundField(
@@ -208,73 +195,4 @@ class _ExtraField extends StatelessWidget {
   }
 }
 
-class _ReturnDateField extends StatelessWidget {
-  const _ReturnDateField({required this.state});
-  final AppState state;
 
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () async {
-        final now = DateTime.now();
-        final start = state.effectivePickupDateTime;
-        final initial =
-            state.returnDateTime ?? start.add(const Duration(hours: 3));
-        final date = await showDatePicker(
-          context: context,
-          initialDate: initial.isBefore(now) ? now : initial,
-          firstDate: DateTime(now.year, now.month, now.day),
-          lastDate: now.add(const Duration(days: 365)),
-        );
-        if (date == null || !context.mounted) return;
-        final time = await showTimePicker(
-          context: context,
-          initialTime: TimeOfDay.fromDateTime(initial),
-        );
-        if (time == null) return;
-        var returnDt = DateTime(
-          date.year,
-          date.month,
-          date.day,
-          time.hour,
-          time.minute,
-        );
-        if (!returnDt.isAfter(start)) {
-          returnDt = start.add(const Duration(hours: 2));
-        }
-        state.setReturnDateTime(returnDt);
-      },
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: GtColors.bgGrey,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.calendar_today_outlined,
-              size: 20,
-              color: GtColors.textSecondary,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                state.returnDateTime == null
-                    ? 'Return ride date & time'
-                    : 'Return: ${state.formatReturnLabel()}',
-                style: TextStyle(
-                  color: state.returnDateTime == null
-                      ? GtColors.textMuted
-                      : GtColors.text,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

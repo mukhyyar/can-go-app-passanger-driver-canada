@@ -40,7 +40,7 @@ void main() {
       expect(find.text('Premium'), findsOneWidget);
       expect(find.text('VIP'), findsOneWidget);
       expect(find.text('Black SUV'), findsOneWidget);
-      expect(find.text('Van'), findsOneWidget);
+      expect(find.text('Mini Van'), findsOneWidget);
       expect(find.text('Minibus'), findsOneWidget);
       expect(find.text('Bus'), findsOneWidget);
 

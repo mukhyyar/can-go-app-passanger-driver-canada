@@ -125,15 +125,25 @@ class _PickupRow extends StatelessWidget {
       initialTime: TimeOfDay.fromDateTime(initial),
     );
     if (time == null) return;
-    state.setPickupDateTime(
-      DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time.hour,
-        time.minute,
-      ),
+    final selectedDt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
     );
+    final nowCheck = DateTime.now();
+    final isPast = selectedDt.isBefore(nowCheck.subtract(const Duration(minutes: 1)));
+    final effectiveDt = isPast ? nowCheck : selectedDt;
+    state.setPickupDateTime(effectiveDt);
+    if (isPast && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selected pickup time was in the past; updated to current time.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -206,14 +216,16 @@ class _RideEndsRow extends StatelessWidget {
     return _EssentialsCard(
       child: InkWell(
         onTap: () async {
+          final now = DateTime.now();
           final start = state.effectivePickupDateTime;
+          final minDate = start.isBefore(now) ? now : start;
           final initial =
               state.rideEndsDateTime ?? start.add(const Duration(hours: 1));
           final date = await showDatePicker(
             context: context,
-            initialDate: initial.isBefore(start) ? start : initial,
-            firstDate: DateTime(start.year, start.month, start.day),
-            lastDate: start.add(const Duration(days: 365)),
+            initialDate: initial.isBefore(minDate) ? minDate : initial,
+            firstDate: DateTime(minDate.year, minDate.month, minDate.day),
+            lastDate: minDate.add(const Duration(days: 365)),
           );
           if (date == null || !context.mounted) return;
           final time = await showTimePicker(
@@ -228,8 +240,9 @@ class _RideEndsRow extends StatelessWidget {
             time.hour,
             time.minute,
           );
-          if (!ends.isAfter(start)) {
-            ends = start.add(const Duration(minutes: 30));
+          final minEnds = start.add(const Duration(minutes: 30));
+          if (ends.isBefore(minEnds) || ends.isBefore(now)) {
+            ends = minEnds.isAfter(now) ? minEnds : now.add(const Duration(minutes: 30));
           }
           state.setRideEndsDateTime(ends);
         },
@@ -478,13 +491,14 @@ class _ReturnTripRow extends StatelessWidget {
         onTap: () async {
           final now = DateTime.now();
           final start = state.effectivePickupDateTime;
+          final minReturnDate = start.isBefore(now) ? now : start;
           final initial =
               state.returnDateTime ?? start.add(const Duration(hours: 3));
           final date = await showDatePicker(
             context: context,
-            initialDate: initial.isBefore(now) ? now : initial,
-            firstDate: DateTime(now.year, now.month, now.day),
-            lastDate: now.add(const Duration(days: 365)),
+            initialDate: initial.isBefore(minReturnDate) ? minReturnDate : initial,
+            firstDate: DateTime(minReturnDate.year, minReturnDate.month, minReturnDate.day),
+            lastDate: minReturnDate.add(const Duration(days: 365)),
           );
           if (date == null || !context.mounted) return;
           final time = await showTimePicker(
@@ -499,8 +513,18 @@ class _ReturnTripRow extends StatelessWidget {
             time.hour,
             time.minute,
           );
-          if (!returnDt.isAfter(start)) {
-            returnDt = start.add(const Duration(hours: 2));
+          final minAllowed = start.add(state.minimumReturnBuffer);
+          final isConflicting = returnDt.isBefore(minAllowed) || returnDt.isBefore(now);
+          if (isConflicting) {
+            returnDt = minAllowed.isAfter(now) ? minAllowed : now.add(const Duration(minutes: 30));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Return time adjusted to follow pickup arrival time.'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
           }
           state.setReturnDateTime(returnDt);
         },

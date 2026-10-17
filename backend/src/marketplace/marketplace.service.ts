@@ -67,6 +67,7 @@ import {
   isMaterialRideEdit,
   isPassengerEditableStatus,
 } from './ride-update.logic';
+import { validateRideSchedule } from './ride-schedule.logic';
 import { StorageService } from '../storage/storage.service';
 import { sanitizeContentDispositionFilename } from '../drivers/vehicle-photos.util';
 import { REQUIRED_DOC_TYPES } from '../drivers/documents.constants';
@@ -200,14 +201,14 @@ export class MarketplaceService {
 
     const requiredOptions = this.resolveRequiredOptions(dto);
 
-    if (isRoundTrip && !dto.returnAt) {
-      throw new BadRequestException('returnAt required for round-trip rides');
-    }
-
     const pickupAt = new Date(dto.pickupAt);
-    if (Number.isNaN(pickupAt.getTime())) {
-      throw new BadRequestException('Invalid pickupAt');
-    }
+    const returnAtDate = dto.returnAt ? new Date(dto.returnAt) : undefined;
+    validateRideSchedule({
+      pickupAt,
+      isRoundTrip,
+      returnAt: returnAtDate,
+    });
+
     const ride = await this.prisma.ride.create({
       data: {
         passengerId: passenger.id,
@@ -220,7 +221,7 @@ export class MarketplaceService {
         toLat: dto.toLat,
         toLng: dto.toLng,
         pickupAt,
-        returnAt: dto.returnAt ? new Date(dto.returnAt) : undefined,
+        returnAt: returnAtDate,
         isRoundTrip,
         pickupWaitMin: dto.pickupWaitMin,
         returnWaitMin: dto.returnWaitMin,
@@ -284,9 +285,6 @@ export class MarketplaceService {
     const toLat = dto.toLat !== undefined ? dto.toLat : ride.toLat;
     const toLng = dto.toLng !== undefined ? dto.toLng : ride.toLng;
     const pickupAt = dto.pickupAt ? new Date(dto.pickupAt) : ride.pickupAt;
-    if (Number.isNaN(pickupAt.getTime())) {
-      throw new BadRequestException('Invalid pickupAt');
-    }
     const isRoundTrip =
       dto.isRoundTrip !== undefined
         ? (dto.isRoundTrip === true ||
@@ -297,9 +295,13 @@ export class MarketplaceService {
           ? (dto.returnAt ? new Date(dto.returnAt) : null)
           : ride.returnAt)
       : null;
-    if (isRoundTrip && !returnAtRaw) {
-      throw new BadRequestException('returnAt required for round-trip rides');
-    }
+    validateRideSchedule({
+      pickupAt,
+      isPickupExplicitlyUpdated: Boolean(dto.pickupAt),
+      isRoundTrip,
+      returnAt: returnAtRaw,
+      isReturnExplicitlyUpdated: Boolean(dto.returnAt),
+    });
     const vehicleClassIds =
       dto.vehicleClassIds ?? ride.vehicleClassIds;
     if (!vehicleClassIds.length) {
@@ -1359,7 +1361,7 @@ export class MarketplaceService {
                  ST_SetSRID(ST_MakePoint(r."fromLng", r."fromLat"), 4326)
                )
            )
-         ORDER BY r."createdAt" ASC
+         ORDER BY r."createdAt" DESC
          LIMIT 50`,
         driver.id,
       );
@@ -1391,7 +1393,7 @@ export class MarketplaceService {
         },
         passenger: { select: { fullName: true } },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: 50,
     });
 
@@ -1490,7 +1492,7 @@ export class MarketplaceService {
           },
         },
       },
-      orderBy: { pickupAt: 'asc' },
+      orderBy: [{ pickupAt: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     });
 

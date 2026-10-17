@@ -49,7 +49,7 @@ export const VEHICLE_CLASSES: VehicleClass[] = [
   },
   {
     id: 'van',
-    name: 'Van',
+    name: 'Mini Van',
     fromPrice: 'from US$85',
     kind: 'van',
     seats: 7,

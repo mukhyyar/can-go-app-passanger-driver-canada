@@ -52,12 +52,22 @@ class _RidesScreenState extends State<RidesScreen>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
   List<DriverRequest> _ridesOnDay(List<DriverRequest> all, DateTime day) {
-    return all.where((r) {
+    final list = all.where((r) {
       final at = r.pickupAt;
       if (at == null) return false;
       final local = at.toLocal();
       return _sameDay(local, day);
     }).toList();
+    list.sort((a, b) {
+      final aAt = a.pickupAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bAt = b.pickupAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final cmp = bAt.compareTo(aAt);
+      if (cmp != 0) return cmp;
+      final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bCreated.compareTo(aCreated);
+    });
+    return list;
   }
 
   Future<void> _onRefresh() => context.read<AppState>().refreshMyRides();
