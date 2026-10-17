@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gt_mock/gt_mock.dart';
+import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -157,11 +158,18 @@ void main() {
       expect(find.text("YOU'RE ONLINE"), findsNothing);
       expect(find.text('Ready to receive ride requests'), findsNothing);
 
-      // Check switch widget value in Status card
+      // Check switch widget value and theme colors in Status card
       final switchFinder = find.byKey(const ValueKey('online_offline_switch'));
       expect(switchFinder, findsOneWidget);
       final switchWidget = tester.widget<Switch>(switchFinder);
       expect(switchWidget.value, isTrue);
+      // Active theme: track is primary brand color, thumb is white
+      expect(switchWidget.trackColor?.resolve({WidgetState.selected}), equals(GtColors.brand));
+      expect(switchWidget.thumbColor?.resolve({WidgetState.selected}), equals(Colors.white));
+      // Inactive theme: border is grey, track is white, thumb matches border
+      expect(switchWidget.trackColor?.resolve({}), equals(Colors.white));
+      expect(switchWidget.thumbColor?.resolve({}), equals(const Color(0xFF9E9E9E)));
+      expect(switchWidget.trackOutlineColor?.resolve({}), equals(const Color(0xFF9E9E9E)));
 
       // Check status heading and Online text
       expect(find.text('Status'), findsOneWidget);

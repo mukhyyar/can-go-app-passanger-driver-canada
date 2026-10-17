@@ -516,17 +516,38 @@ class _RequestsScreenState extends State<RequestsScreen>
                         )
                       else if (s.isActivated && !s.hasExpiredDocuments && !s.hasReuploadRequest)
                         SizedBox(
-                          height: 20,
-                          width: 34,
+                          height: 24,
+                          width: 40,
                           child: FittedBox(
-                            fit: BoxFit.fill,
-                            child: Switch.adaptive(
+                            fit: BoxFit.contain,
+                            child: Switch(
                               key: const ValueKey('online_offline_switch'),
                               value: s.isOnline,
-                              activeThumbColor: GtColors.green,
-                              activeTrackColor: GtColors.green.withValues(alpha: 0.35),
-                              inactiveThumbColor: Colors.grey.shade400,
-                              inactiveTrackColor: Colors.grey.shade200,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return Colors.white;
+                                }
+                                return const Color(0xFF9E9E9E);
+                              }),
+                              trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return GtColors.brand;
+                                }
+                                return Colors.white;
+                              }),
+                              trackOutlineColor: WidgetStateProperty.resolveWith<Color>((states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return GtColors.brand;
+                                }
+                                return const Color(0xFF9E9E9E);
+                              }),
+                              trackOutlineWidth: WidgetStateProperty.resolveWith<double>((states) {
+                                if (states.contains(WidgetState.selected)) {
+                                  return 0.0;
+                                }
+                                return 1.5;
+                              }),
                               onChanged: (val) => _handleToggleOnline(s, val),
                             ),
                           ),
