@@ -10,7 +10,7 @@
 | http://api.can-rides.ca/api/health | API direct (HTTP until LE cert for `api`) |
 | https://can-rides.ca | Redirects to https://www.can-rides.ca |
 
-Email stays on cPanel (`mail.can-rides.ca`).
+Email: production uses a **cPanel HTTPS mail relay** (`EMAIL_RELAY_URL` + `EMAIL_RELAY_KEY`) because DigitalOcean blocks outbound SMTP. See `deploy/cpanel/README-mail-relay.md`. Optional fallback: Resend (`RESEND_API_KEY`). Direct SMTP only for local/dev.
 
 SSL: Let's Encrypt covers `www.can-rides.ca` + `can-rides.ca` (same cert) and `admin.can-rides.ca`. Apex HTTPS redirects to `https://www.can-rides.ca`. `api` still HTTP-only until its own cert is issued.
 
