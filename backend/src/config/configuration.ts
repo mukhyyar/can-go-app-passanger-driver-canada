@@ -139,11 +139,20 @@ export default () => ({
   },
   email: {
     enabled: process.env.EMAIL_ENABLED === 'true',
+    /**
+     * Transport priority (DigitalOcean blocks outbound SMTP):
+     * 1) EMAIL_RELAY_URL + EMAIL_RELAY_KEY → cPanel PHP HTTPS relay
+     * 2) RESEND_API_KEY → Resend HTTP API
+     * 3) SMTP_* → direct SMTP (local/dev only on DO)
+     */
+    relayUrl: process.env.EMAIL_RELAY_URL?.trim() || undefined,
+    relayKey: process.env.EMAIL_RELAY_KEY?.trim() || undefined,
+    resendApiKey: process.env.RESEND_API_KEY?.trim() || undefined,
     smtpHost: process.env.SMTP_HOST ?? 'mail.can-rides.ca',
     smtpPort: parseInt(process.env.SMTP_PORT ?? '465', 10),
     smtpUser: process.env.SMTP_USER ?? 'no-reply@can-rides.ca',
     smtpPass: process.env.SMTP_PASS,
-    fromAddress: process.env.SMTP_FROM ?? 'no-reply@can-rides.ca',
+    fromAddress: process.env.SMTP_FROM ?? 'Can Ride <no-reply@can-rides.ca>',
     assetBaseUrl: process.env.EMAIL_ASSET_BASE_URL ?? 'https://can-rides.ca/assets',
     appDeeplinkBaseUrl: process.env.APP_DEEPLINK_BASE_URL ?? 'canride://',
   },

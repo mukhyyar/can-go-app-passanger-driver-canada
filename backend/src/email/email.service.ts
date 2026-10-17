@@ -8,15 +8,41 @@ export interface SendTemplateOptions {
   userId?: string;
 }
 
+type MailPayload = {
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+};
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private transporter: nodemailer.Transporter;
+  private transporter: nodemailer.Transporter | null = null;
+  private readonly transport: 'relay' | 'resend' | 'smtp';
 
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
+    const relayUrl = this.configService.get<string>('email.relayUrl');
+    const relayKey = this.configService.get<string>('email.relayKey');
+    const resendKey = this.configService.get<string>('email.resendApiKey');
+
+    if (relayUrl && relayKey) {
+      this.transport = 'relay';
+      this.logger.log(`Email transport: HTTP relay (${relayUrl})`);
+      return;
+    }
+
+    if (resendKey) {
+      this.transport = 'resend';
+      this.logger.log('Email transport: Resend HTTP API');
+      return;
+    }
+
+    this.transport = 'smtp';
     const host = this.configService.get<string>('email.smtpHost');
     const port = this.configService.get<number>('email.smtpPort') ?? 465;
     const secure = port === 465; // SSL/TLS
@@ -29,6 +55,7 @@ export class EmailService {
         jsonTransport: true,
       });
     } else {
+      this.logger.log(`Email transport: SMTP ${host}:${port}`);
       this.transporter = nodemailer.createTransport({
         pool: true,
         host,
@@ -75,17 +102,25 @@ export class EmailService {
     const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
     try {
-      let info;
+      let messageId: string | undefined;
       let attempt = 0;
       while (attempt < 3) {
         try {
-          info = await this.transporter.sendMail({
-            from,
+          const payload: MailPayload = {
+            from: from!,
             to,
             subject,
             html,
             text,
-          });
+          };
+          if (this.transport === 'relay') {
+            messageId = await this.sendViaRelay(payload);
+          } else if (this.transport === 'resend') {
+            messageId = await this.sendViaResend(payload);
+          } else {
+            const info = await this.transporter!.sendMail(payload);
+            messageId = info?.messageId;
+          }
           break;
         } catch (error) {
           attempt++;
@@ -93,8 +128,8 @@ export class EmailService {
           await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
         }
       }
-      this.logger.log(`Email sent successfully to ${to} (Message ID: ${info?.messageId})`);
-      
+      this.logger.log(`Email sent successfully to ${to} (Message ID: ${messageId})`);
+
       if (opts?.eventId) {
         await this.prisma.notificationDelivery.create({
           data: {
@@ -107,7 +142,8 @@ export class EmailService {
         });
       }
     } catch (error) {
-      this.logger.error(`Failed to send email to ${to}: ${error.message}`, error.stack);
+      const err = error as Error;
+      this.logger.error(`Failed to send email to ${to}: ${err.message}`, err.stack);
       if (opts?.eventId) {
         try {
           await this.prisma.notificationDelivery.create({
@@ -116,12 +152,15 @@ export class EmailService {
               templateKey: templateId,
               userId: opts.userId,
               status: 'failed',
-              errorCode: error.message?.slice(0, 255),
+              errorCode: err.message?.slice(0, 255),
               dataJson: { eventId: opts.eventId },
             },
           });
         } catch (dbErr) {
-          this.logger.error(`Failed to record email failure for ${opts.eventId}`, dbErr.stack);
+          this.logger.error(
+            `Failed to record email failure for ${opts.eventId}`,
+            (dbErr as Error).stack,
+          );
         }
       }
     }
@@ -129,5 +168,71 @@ export class EmailService {
 
   async sendEmail(to: string, subject: string, htmlBody: string): Promise<void> {
     await this.sendTemplate('raw', to, subject, htmlBody);
+  }
+
+  private async sendViaRelay(payload: MailPayload): Promise<string> {
+    const url = this.configService.get<string>('email.relayUrl');
+    const key = this.configService.get<string>('email.relayKey');
+    if (!url || !key) {
+      throw new Error('EMAIL_RELAY_URL / EMAIL_RELAY_KEY not set');
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Mail-Relay-Key': key,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      id?: string;
+      error?: string;
+      detail?: string;
+    };
+
+    if (!res.ok || body.ok === false) {
+      throw new Error(
+        body.detail || body.error || `Mail relay HTTP ${res.status}`,
+      );
+    }
+
+    return body.id ?? 'relay';
+  }
+
+  private async sendViaResend(payload: MailPayload): Promise<string> {
+    const apiKey = this.configService.get<string>('email.resendApiKey');
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY is not set');
+    }
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: payload.from,
+        to: [payload.to],
+        subject: payload.subject,
+        html: payload.html,
+        text: payload.text,
+      }),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as {
+      id?: string;
+      message?: string;
+      name?: string;
+    };
+
+    if (!res.ok) {
+      throw new Error(body.message || body.name || `Resend HTTP ${res.status}`);
+    }
+
+    return body.id ?? 'resend';
   }
 }
