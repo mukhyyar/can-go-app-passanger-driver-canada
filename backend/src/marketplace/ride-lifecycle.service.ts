@@ -33,6 +33,8 @@ type RideScalarPatch = {
 export class RideLifecycleService {
   private readonly logger = new Logger(RideLifecycleService.name);
   private readonly config: RideLifecycleConfig;
+  /** In-memory cache of ride alert timestamps to prevent tight scheduler polling spam (24h cooldown) */
+  private readonly overdueAlertedAt = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -42,6 +44,15 @@ export class RideLifecycleService {
     @Optional() @Inject(SMS_PROVIDER) private readonly sms?: SmsProvider,
   ) {
     this.config = loadRideLifecycleConfig();
+  }
+
+  private isAlertCooldownActive(
+    key: string,
+    now: Date,
+    cooldownMs = 24 * 60 * 60 * 1000,
+  ): boolean {
+    const last = this.overdueAlertedAt.get(key);
+    return !!last && now.getTime() - last < cooldownMs;
   }
 
   getConfig(): RideLifecycleConfig {
@@ -364,7 +375,9 @@ export class RideLifecycleService {
       const eventId = `ride.overdue.${r.id}`;
 
       // 1. Push notifications
-      if (this.notifications && passengerUserId) {
+      const paxPushKey = `push:${r.id}:passenger`;
+      if (this.notifications && passengerUserId && !this.isAlertCooldownActive(paxPushKey, now)) {
+        this.overdueAlertedAt.set(paxPushKey, now.getTime());
         void this.notifications.notifyRideStatus({
           userIds: [passengerUserId],
           rideId: r.id,
@@ -381,7 +394,9 @@ export class RideLifecycleService {
         });
       }
 
-      if (this.notifications && driverUserId) {
+      const drvPushKey = `push:${r.id}:driver`;
+      if (this.notifications && driverUserId && !this.isAlertCooldownActive(drvPushKey, now)) {
+        this.overdueAlertedAt.set(drvPushKey, now.getTime());
         void this.notifications.notifyRideStatus({
           userIds: [driverUserId],
           rideId: r.id,
@@ -401,109 +416,191 @@ export class RideLifecycleService {
       // 2. Multi-channel SMS notifications
       if (this.sms && passengerPhone) {
         const smsPaxEventId = `ride_overdue_sms_pax_${r.id}`;
-        void this.prisma.notificationDelivery
-          .findFirst({
-            where: {
-              channel: 'sms',
-              templateKey: 'ride_overdue_sms',
-              dataJson: { path: ['eventId'], equals: smsPaxEventId },
-              status: 'sent',
-            },
-          })
-          .then(async (alreadySent) => {
-            if (!alreadySent && passengerPhone && this.sms) {
-              try {
-                await this.sms.sendSms(
-                  passengerPhone,
-                  `CAN-RIDE Alert: Your ride (${rideCode}) appears delayed or stopped. Why are you not moving or having an issue? Reschedule or cancel anytime in the app for a full refund: https://can-rides.ca/ride/${r.id}`,
-                );
-                await this.prisma.notificationDelivery.create({
-                  data: {
-                    userId: passengerUserId,
-                    channel: 'sms',
-                    templateKey: 'ride_overdue_sms',
-                    body: `Ride ${rideCode} delayed alert`,
-                    status: 'sent',
-                    dataJson: { eventId: smsPaxEventId, rideId: r.id },
-                  },
-                });
-              } catch (e) {
-                this.logger.warn(`Failed to send overdue SMS to passenger: ${e}`);
+        const smsPaxCacheKey = `sms:${r.id}:passenger`;
+        if (!this.isAlertCooldownActive(smsPaxCacheKey, now)) {
+          void this.prisma.notificationDelivery
+            .findFirst({
+              where: {
+                channel: 'sms',
+                templateKey: 'ride_overdue_sms',
+                dataJson: { path: ['eventId'], equals: smsPaxEventId },
+                status: 'sent',
+              },
+            })
+            .then(async (alreadySent) => {
+              if (alreadySent) {
+                this.overdueAlertedAt.set(smsPaxCacheKey, now.getTime());
+                return;
               }
-            }
-          });
+              this.overdueAlertedAt.set(smsPaxCacheKey, now.getTime());
+              if (passengerPhone && this.sms) {
+                try {
+                  await this.sms.sendSms(
+                    passengerPhone,
+                    `CAN-RIDE Alert: Your ride (${rideCode}) appears delayed or stopped. Why are you not moving or having an issue? Reschedule or cancel anytime in the app for a full refund: https://can-rides.ca/ride/${r.id}`,
+                  );
+                  await this.prisma.notificationDelivery.create({
+                    data: {
+                      userId: passengerUserId,
+                      channel: 'sms',
+                      templateKey: 'ride_overdue_sms',
+                      body: `Ride ${rideCode} delayed alert`,
+                      status: 'sent',
+                      dataJson: { eventId: smsPaxEventId, rideId: r.id },
+                    },
+                  });
+                } catch (e) {
+                  this.logger.warn(`Failed to send overdue SMS to passenger: ${e}`);
+                }
+              }
+            });
+        }
       }
 
       if (this.sms && driverPhone) {
         const smsDrvEventId = `ride_overdue_sms_drv_${r.id}`;
-        void this.prisma.notificationDelivery
-          .findFirst({
-            where: {
-              channel: 'sms',
-              templateKey: 'ride_overdue_sms',
-              dataJson: { path: ['eventId'], equals: smsDrvEventId },
-              status: 'sent',
-            },
-          })
-          .then(async (alreadySent) => {
-            if (!alreadySent && driverPhone && this.sms) {
-              try {
-                await this.sms.sendSms(
-                  driverPhone,
-                  `CAN-RIDE Alert: Trip ${rideCode} has not progressed. Why are you not moving? If unable to complete the trip, please cancel in the driver app so passenger can be fully refunded.`,
-                );
-                await this.prisma.notificationDelivery.create({
-                  data: {
-                    userId: driverUserId,
-                    channel: 'sms',
-                    templateKey: 'ride_overdue_sms',
-                    body: `Trip ${rideCode} delayed alert`,
-                    status: 'sent',
-                    dataJson: { eventId: smsDrvEventId, rideId: r.id },
-                  },
-                });
-              } catch (e) {
-                this.logger.warn(`Failed to send overdue SMS to driver: ${e}`);
+        const smsDrvCacheKey = `sms:${r.id}:driver`;
+        if (!this.isAlertCooldownActive(smsDrvCacheKey, now)) {
+          void this.prisma.notificationDelivery
+            .findFirst({
+              where: {
+                channel: 'sms',
+                templateKey: 'ride_overdue_sms',
+                dataJson: { path: ['eventId'], equals: smsDrvEventId },
+                status: 'sent',
+              },
+            })
+            .then(async (alreadySent) => {
+              if (alreadySent) {
+                this.overdueAlertedAt.set(smsDrvCacheKey, now.getTime());
+                return;
               }
-            }
-          });
+              this.overdueAlertedAt.set(smsDrvCacheKey, now.getTime());
+              if (driverPhone && this.sms) {
+                try {
+                  await this.sms.sendSms(
+                    driverPhone,
+                    `CAN-RIDE Alert: Trip ${rideCode} has not progressed. Why are you not moving? If unable to complete the trip, please cancel in the driver app so passenger can be fully refunded.`,
+                  );
+                  await this.prisma.notificationDelivery.create({
+                    data: {
+                      userId: driverUserId,
+                      channel: 'sms',
+                      templateKey: 'ride_overdue_sms',
+                      body: `Trip ${rideCode} delayed alert`,
+                      status: 'sent',
+                      dataJson: { eventId: smsDrvEventId, rideId: r.id },
+                    },
+                  });
+                } catch (e) {
+                  this.logger.warn(`Failed to send overdue SMS to driver: ${e}`);
+                }
+              }
+            });
+        }
       }
 
       // 3. Multi-channel Email notifications
       if (this.emailEvents && passengerUser?.email && passengerUserId) {
-        void this.emailEvents
-          .sendRideDelayedAlert(passengerUserId, passengerUser.email, {
-            recipientRole: 'passenger',
-            rideId: r.id,
-            rideCode,
-            recipientName: passengerName,
-            otherPartyName: driverName,
-            pickupAt: pickupStr,
-            fromLabel: r.fromLabel,
-            toLabel: r.toLabel || 'Destination',
-            actionUrl: `https://can-rides.ca/ride/${r.id}`,
-          })
-          .catch((e) => {
-            this.logger.warn(`Failed to send overdue email to passenger: ${e}`);
-          });
+        const paxEmailEventId = `ride_delayed_alert_email_${r.id}_passenger`;
+        const paxCacheKey = `email:${r.id}:passenger`;
+
+        if (!this.isAlertCooldownActive(paxCacheKey, now)) {
+          void this.prisma.notificationDelivery
+            .findFirst({
+              where: {
+                channel: 'email',
+                templateKey: 'ride_delayed_alert',
+                OR: [
+                  { providerMsgId: paxEmailEventId },
+                  { dataJson: { path: ['eventId'], equals: paxEmailEventId } },
+                ],
+                status: 'sent',
+              },
+            })
+            .then(async (alreadySent) => {
+              if (alreadySent) {
+                this.overdueAlertedAt.set(paxCacheKey, now.getTime());
+                return;
+              }
+              this.overdueAlertedAt.set(paxCacheKey, now.getTime());
+              if (this.emailEvents && passengerUser?.email && passengerUserId) {
+                try {
+                  await this.emailEvents.sendRideDelayedAlert(
+                    passengerUserId,
+                    passengerUser.email,
+                    {
+                      recipientRole: 'passenger',
+                      rideId: r.id,
+                      rideCode,
+                      recipientName: passengerName,
+                      otherPartyName: driverName,
+                      pickupAt: pickupStr,
+                      fromLabel: r.fromLabel,
+                      toLabel: r.toLabel || 'Destination',
+                      actionUrl: `https://can-rides.ca/ride/${r.id}`,
+                    },
+                  );
+                } catch (e) {
+                  this.logger.warn(`Failed to send overdue email to passenger: ${e}`);
+                }
+              }
+            })
+            .catch((e) => {
+              this.logger.warn(`Failed checking passenger overdue email status: ${e}`);
+            });
+        }
       }
 
       if (this.emailEvents && driverUser?.email && driverUserId) {
-        void this.emailEvents
-          .sendRideDelayedAlert(driverUserId, driverUser.email, {
-            recipientRole: 'driver',
-            rideId: r.id,
-            rideCode,
-            recipientName: driverName,
-            otherPartyName: passengerName,
-            pickupAt: pickupStr,
-            fromLabel: r.fromLabel,
-            toLabel: r.toLabel || 'Destination',
-            actionUrl: `https://can-rides.ca/trip/${r.id}`,
-          })
-          .catch((e) => {
-            this.logger.warn(`Failed to send overdue email to driver: ${e}`);
-          });
+        const drvEmailEventId = `ride_delayed_alert_email_${r.id}_driver`;
+        const drvCacheKey = `email:${r.id}:driver`;
+
+        if (!this.isAlertCooldownActive(drvCacheKey, now)) {
+          void this.prisma.notificationDelivery
+            .findFirst({
+              where: {
+                channel: 'email',
+                templateKey: 'ride_delayed_alert',
+                OR: [
+                  { providerMsgId: drvEmailEventId },
+                  { dataJson: { path: ['eventId'], equals: drvEmailEventId } },
+                ],
+                status: 'sent',
+              },
+            })
+            .then(async (alreadySent) => {
+              if (alreadySent) {
+                this.overdueAlertedAt.set(drvCacheKey, now.getTime());
+                return;
+              }
+              this.overdueAlertedAt.set(drvCacheKey, now.getTime());
+              if (this.emailEvents && driverUser?.email && driverUserId) {
+                try {
+                  await this.emailEvents.sendRideDelayedAlert(
+                    driverUserId,
+                    driverUser.email,
+                    {
+                      recipientRole: 'driver',
+                      rideId: r.id,
+                      rideCode,
+                      recipientName: driverName,
+                      otherPartyName: passengerName,
+                      pickupAt: pickupStr,
+                      fromLabel: r.fromLabel,
+                      toLabel: r.toLabel || 'Destination',
+                      actionUrl: `https://can-rides.ca/trip/${r.id}`,
+                    },
+                  );
+                } catch (e) {
+                  this.logger.warn(`Failed to send overdue email to driver: ${e}`);
+                }
+              }
+            })
+            .catch((e) => {
+              this.logger.warn(`Failed checking driver overdue email status: ${e}`);
+            });
+        }
       }
 
       // 4. WebSocket live tracking event

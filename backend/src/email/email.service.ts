@@ -22,6 +22,8 @@ export class EmailService {
   private transporter: nodemailer.Transporter | null = null;
   private readonly transport: 'relay' | 'resend' | 'smtp';
 
+  private readonly inFlightEventIds = new Set<string>();
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
@@ -85,16 +87,47 @@ export class EmailService {
     }
 
     if (opts?.eventId) {
-      const prior = await this.prisma.notificationDelivery.findFirst({
-        where: {
-          channel: 'email',
-          templateKey: templateId,
-          dataJson: { path: ['eventId'], equals: opts.eventId },
-        },
-      });
-      if (prior && prior.status === 'sent') {
-        this.logger.debug(`Email ${templateId} for event ${opts.eventId} already sent.`);
+      if (this.inFlightEventIds.has(opts.eventId)) {
+        this.logger.debug(
+          `Email ${templateId} for event ${opts.eventId} is currently in-flight. Skipping duplicate.`,
+        );
         return;
+      }
+      this.inFlightEventIds.add(opts.eventId);
+
+      try {
+        const prior = await this.prisma.notificationDelivery.findFirst({
+          where: {
+            channel: 'email',
+            templateKey: templateId,
+            OR: [
+              { providerMsgId: opts.eventId },
+              { dataJson: { path: ['eventId'], equals: opts.eventId } },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (prior) {
+          if (prior.status === 'sent') {
+            this.logger.debug(
+              `Email ${templateId} for event ${opts.eventId} already sent.`,
+            );
+            return;
+          }
+          // If failed recently (< 15 minutes ago), enforce cooldown to prevent tight retry loops
+          const ageMs = Date.now() - new Date(prior.createdAt).getTime();
+          if (ageMs < 15 * 60 * 1000) {
+            this.logger.warn(
+              `Email ${templateId} for event ${opts.eventId} failed ${Math.round(ageMs / 1000)}s ago. Cooldown active, skipping retry.`,
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Failed checking prior delivery for ${opts.eventId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -131,15 +164,42 @@ export class EmailService {
       this.logger.log(`Email sent successfully to ${to} (Message ID: ${messageId})`);
 
       if (opts?.eventId) {
-        await this.prisma.notificationDelivery.create({
-          data: {
-            channel: 'email',
-            templateKey: templateId,
-            userId: opts.userId,
-            status: 'sent',
-            dataJson: { eventId: opts.eventId },
-          },
-        });
+        try {
+          await this.prisma.notificationDelivery.create({
+            data: {
+              channel: 'email',
+              templateKey: templateId,
+              userId: opts.userId,
+              provider: this.transport,
+              providerMsgId: opts.eventId,
+              status: 'sent',
+              dataJson: { eventId: opts.eventId },
+            },
+          });
+        } catch (dbErr) {
+          this.logger.error(
+            `Failed to record email delivery for ${opts.eventId}: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
+          );
+          // If foreign key constraint on userId failed, persist delivery record without userId
+          if (opts.userId) {
+            try {
+              await this.prisma.notificationDelivery.create({
+                data: {
+                  channel: 'email',
+                  templateKey: templateId,
+                  provider: this.transport,
+                  providerMsgId: opts.eventId,
+                  status: 'sent',
+                  dataJson: { eventId: opts.eventId, failedUserId: opts.userId },
+                },
+              });
+            } catch (fallbackErr) {
+              this.logger.error(
+                `Failed fallback delivery record for ${opts.eventId}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+              );
+            }
+          }
+        }
       }
     } catch (error) {
       const err = error as Error;
@@ -151,17 +211,43 @@ export class EmailService {
               channel: 'email',
               templateKey: templateId,
               userId: opts.userId,
+              provider: this.transport,
+              providerMsgId: opts.eventId,
               status: 'failed',
               errorCode: err.message?.slice(0, 255),
               dataJson: { eventId: opts.eventId },
             },
           });
         } catch (dbErr) {
-          this.logger.error(
-            `Failed to record email failure for ${opts.eventId}`,
-            (dbErr as Error).stack,
-          );
+          if (opts.userId) {
+            try {
+              await this.prisma.notificationDelivery.create({
+                data: {
+                  channel: 'email',
+                  templateKey: templateId,
+                  provider: this.transport,
+                  providerMsgId: opts.eventId,
+                  status: 'failed',
+                  errorCode: err.message?.slice(0, 255),
+                  dataJson: { eventId: opts.eventId, failedUserId: opts.userId },
+                },
+              });
+            } catch (fallbackErr) {
+              this.logger.error(
+                `Failed fallback failure record for ${opts.eventId}: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+              );
+            }
+          } else {
+            this.logger.error(
+              `Failed to record email failure for ${opts.eventId}`,
+              (dbErr as Error).stack,
+            );
+          }
         }
+      }
+    } finally {
+      if (opts?.eventId) {
+        this.inFlightEventIds.delete(opts.eventId);
       }
     }
   }

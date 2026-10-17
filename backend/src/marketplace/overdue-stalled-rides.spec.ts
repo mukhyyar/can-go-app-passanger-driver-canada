@@ -137,6 +137,69 @@ describe('Overdue and Stalled Rides Feature', () => {
           isOverdue: true,
         }),
       );
+
+      // Subsequent tick within cooldown should NOT re-dispatch alerts
+      mockNotifications.notifyRideStatus.mockClear();
+      mockSms.sendSms.mockClear();
+      mockEmailEvents.sendRideDelayedAlert.mockClear();
+
+      await service.detectAndNotifyOverdueBookings();
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(mockNotifications.notifyRideStatus).not.toHaveBeenCalled();
+      expect(mockSms.sendSms).not.toHaveBeenCalled();
+      expect(mockEmailEvents.sendRideDelayedAlert).not.toHaveBeenCalled();
+    });
+
+    it('does not send email or sms when delivery record already exists', async () => {
+      const mockPrisma: any = {
+        ride: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'cuid_stalled_1008',
+              status: RideStatus.IN_PROGRESS,
+              pickupAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
+              fromLabel: 'Start',
+              toLabel: 'End',
+              passenger: {
+                userId: 'user_pax_2',
+                fullName: 'Alice',
+                user: { id: 'user_pax_2', email: 'alice@example.ca', phoneE164: '+14165550200' },
+              },
+              selectedOffer: {
+                driver: {
+                  userId: 'user_drv_2',
+                  fullName: 'Bob',
+                  user: { id: 'user_drv_2', email: 'bob@example.ca', phoneE164: '+14165550201' },
+                },
+              },
+            },
+          ]),
+        },
+        notificationDelivery: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'prior_del_1', status: 'sent' }),
+          create: jest.fn(),
+        },
+      };
+
+      const mockTracking: any = { emitRideEvent: jest.fn() };
+      const mockEmailEvents: any = { sendRideDelayedAlert: jest.fn().mockResolvedValue(undefined) };
+      const mockNotifications: any = { notifyRideStatus: jest.fn().mockResolvedValue([]) };
+      const mockSms: any = { sendSms: jest.fn().mockResolvedValue({ messageId: 'sms_1' }) };
+
+      const service = new RideLifecycleService(
+        mockPrisma,
+        mockTracking,
+        mockEmailEvents,
+        mockNotifications,
+        mockSms,
+      );
+
+      await service.detectAndNotifyOverdueBookings();
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(mockSms.sendSms).not.toHaveBeenCalled();
+      expect(mockEmailEvents.sendRideDelayedAlert).not.toHaveBeenCalled();
     });
   });
 

@@ -7,6 +7,8 @@ export class MarketplaceScheduler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MarketplaceScheduler.name);
   private timer?: NodeJS.Timeout;
 
+  private isTickRunning = false;
+
   constructor(private readonly marketplace: MarketplaceService) {}
 
   onModuleInit() {
@@ -21,6 +23,11 @@ export class MarketplaceScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   private async tick() {
+    if (this.isTickRunning) {
+      this.logger.debug('TTL sweep tick skipped: previous tick is still in progress.');
+      return;
+    }
+    this.isTickRunning = true;
     try {
       const result = await this.marketplace.expireDueEntities();
       if (
@@ -37,6 +44,8 @@ export class MarketplaceScheduler implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `TTL sweep failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+    } finally {
+      this.isTickRunning = false;
     }
   }
 }
