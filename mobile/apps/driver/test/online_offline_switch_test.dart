@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:driver/screens/notifications_screen.dart';
 import 'package:driver/screens/requests_screen.dart';
-import 'package:driver/screens/shell.dart';
 import 'package:driver/state/app_state.dart';
 
 class MockSwitchAppState extends AppState {
@@ -142,7 +140,7 @@ void main() {
   });
 
   group('Homescreen Online/Offline Switch & Grayscale UI tests', () {
-    testWidgets('Renders online state with active switch and green indicators',
+    testWidgets('Renders online state with active switch and green indicators in Status card',
         (tester) async {
       final app = MockSwitchAppState();
       app.drivingEnabled = true;
@@ -155,18 +153,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Check switch bar exists
-      expect(find.byKey(const ValueKey('online_offline_switch_bar')), findsOneWidget);
-      expect(find.text("YOU'RE ONLINE"), findsOneWidget);
-      expect(find.text('Ready to receive ride requests'), findsOneWidget);
+      // Bottom banner should be removed entirely
+      expect(find.text("YOU'RE ONLINE"), findsNothing);
+      expect(find.text('Ready to receive ride requests'), findsNothing);
 
-      // Check switch widget value
+      // Check switch widget value in Status card
       final switchFinder = find.byKey(const ValueKey('online_offline_switch'));
       expect(switchFinder, findsOneWidget);
       final switchWidget = tester.widget<Switch>(switchFinder);
       expect(switchWidget.value, isTrue);
 
-      // Check status chip shows Online
+      // Check status heading and Online text
+      expect(find.text('Status'), findsOneWidget);
       expect(find.text('Online'), findsOneWidget);
 
       // ColorFiltered with grayscale shouldn't be active
@@ -186,14 +184,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Tap on the online/offline switch bar
-      await tester.tap(find.byKey(const ValueKey('online_offline_bar_tap')));
+      // Tap on the online/offline switch in Status card
+      await tester.tap(find.byKey(const ValueKey('online_offline_switch')));
       await tester.pumpAndSettle();
 
       // Driver is now offline
       expect(app.drivingEnabled, isFalse);
-      expect(find.text("YOU'RE OFFLINE"), findsOneWidget);
-      expect(find.text('Go online to receive requests'), findsOneWidget);
+      expect(find.text("YOU'RE OFFLINE"), findsNothing);
 
       // Status chip shows Offline
       expect(find.text('Offline'), findsOneWidget);
@@ -220,11 +217,11 @@ void main() {
       );
 
       // Tap again to switch back online
-      await tester.tap(find.byKey(const ValueKey('online_offline_bar_tap')));
+      await tester.tap(find.byKey(const ValueKey('online_offline_switch')));
       await tester.pumpAndSettle();
 
       expect(app.drivingEnabled, isTrue);
-      expect(find.text("YOU'RE ONLINE"), findsOneWidget);
+      expect(find.text('Online'), findsOneWidget);
       expect(find.byType(ColorFiltered), findsNothing);
       expect(
         find.text("You're now online and ready to receive requests."),
@@ -292,7 +289,8 @@ void main() {
       );
       expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
     });
-    testWidgets('Floating action button is positioned above and does not overlap online/offline switch bar',
+
+    testWidgets('Floating action button renders correctly on the screen',
         (tester) async {
       final app = MockSwitchAppState();
       app.drivingEnabled = true;
@@ -306,16 +304,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final fabFinder = find.byType(FloatingActionButton);
-      final switchBarFinder = find.byKey(const ValueKey('online_offline_switch_bar'));
-
       expect(fabFinder, findsOneWidget);
-      expect(switchBarFinder, findsOneWidget);
-
-      final fabRect = tester.getRect(fabFinder);
-      final switchBarRect = tester.getRect(switchBarFinder);
-
-      // Verify that the bottom of the FAB is strictly above the top of the switch bar
-      expect(fabRect.bottom, lessThanOrEqualTo(switchBarRect.top));
     });
   });
 }

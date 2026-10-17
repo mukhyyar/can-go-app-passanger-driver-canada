@@ -441,40 +441,101 @@ class _RequestsScreenState extends State<RequestsScreen>
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              DriverStatChip(
-                icon: Icons.alt_route,
-                label: 'New',
-                value: '${newReqs.length}',
-              ),
-              const SizedBox(width: 8),
-              DriverStatChip(
-                icon: Icons.local_offer_outlined,
-                label: 'My offers',
-                value: '${offers.length}',
-              ),
-              const SizedBox(width: 8),
-              DriverStatChip(
-                icon: Icons.verified_outlined,
-                label: 'Status',
-                value: s.hasExpiredDocuments
-                    ? 'Disabled'
-                    : (s.hasReuploadRequest
-                        ? 'Action req.'
-                        : (s.drivingEnabled ? 'Online' : 'Offline')),
-                valueColor: s.hasExpiredDocuments
-                    ? Colors.red.shade700
-                    : (s.hasReuploadRequest
-                        ? Colors.amber.shade900
-                        : (s.drivingEnabled
-                            ? GtColors.green
-                            : GtColors.textMuted)),
-                onTap: (!s.isActivated || s.hasExpiredDocuments || s.hasReuploadRequest)
-                    ? null
-                    : () => _handleToggleOnline(s, !s.drivingEnabled),
-              ),
-            ],
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DriverStatChip(
+                  icon: Icons.alt_route,
+                  label: 'New',
+                  value: '${newReqs.length}',
+                ),
+                const SizedBox(width: 8),
+                DriverStatChip(
+                  icon: Icons.local_offer_outlined,
+                  label: 'My offers',
+                  value: '${offers.length}',
+                ),
+                const SizedBox(width: 8),
+                DriverStatChip(
+                  icon: Icons.verified_outlined,
+                  label: 'Status',
+                  value: s.hasExpiredDocuments
+                      ? 'Disabled'
+                      : (s.hasReuploadRequest
+                          ? 'Action req.'
+                          : (s.isOnline ? 'Online' : 'Offline')),
+                  valueColor: s.hasExpiredDocuments
+                      ? Colors.red.shade700
+                      : (s.hasReuploadRequest
+                          ? Colors.amber.shade900
+                          : (s.isOnline
+                              ? GtColors.green
+                              : GtColors.textMuted)),
+                  onTap: (!s.isActivated || s.hasExpiredDocuments || s.hasReuploadRequest)
+                      ? null
+                      : () => _handleToggleOnline(s, !s.isOnline),
+                  customValue: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            s.hasExpiredDocuments
+                                ? 'Disabled'
+                                : (s.hasReuploadRequest
+                                    ? 'Action req.'
+                                    : (s.isOnline ? 'Online' : 'Offline')),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: s.hasExpiredDocuments
+                                  ? Colors.red.shade700
+                                  : (s.hasReuploadRequest
+                                      ? Colors.amber.shade900
+                                      : (s.isOnline
+                                          ? GtColors.green
+                                          : GtColors.textMuted)),
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      if (_isTogglingDrivingMode)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: GtColors.brand,
+                          ),
+                        )
+                      else if (s.isActivated && !s.hasExpiredDocuments && !s.hasReuploadRequest)
+                        SizedBox(
+                          height: 20,
+                          width: 34,
+                          child: FittedBox(
+                            fit: BoxFit.fill,
+                            child: Switch.adaptive(
+                              key: const ValueKey('online_offline_switch'),
+                              value: s.isOnline,
+                              activeThumbColor: GtColors.green,
+                              activeTrackColor: GtColors.green.withValues(alpha: 0.35),
+                              inactiveThumbColor: Colors.grey.shade400,
+                              inactiveTrackColor: Colors.grey.shade200,
+                              onChanged: (val) => _handleToggleOnline(s, val),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -533,14 +594,8 @@ class _RequestsScreenState extends State<RequestsScreen>
         },
         child: const Icon(Icons.arrow_upward, color: Colors.white),
       ),
-      bottomNavigationBar: _OnlineOfflineSwitchBar(
-        key: const ValueKey('online_offline_switch_bar'),
-        isOnline: s.isOnline,
-        isLoading: _isTogglingDrivingMode,
-        onToggle: () => _handleToggleOnline(s, !s.isOnline),
-      ),
       body: SafeArea(
-        bottom: false,
+        bottom: true,
         child: s.isOffline
             ? ColorFiltered(
                 colorFilter: const ColorFilter.matrix(<double>[
@@ -1141,153 +1196,4 @@ class _MetaChip extends StatelessWidget {
   }
 }
 
-class _OnlineOfflineSwitchBar extends StatelessWidget {
-  const _OnlineOfflineSwitchBar({
-    super.key,
-    required this.isOnline,
-    required this.isLoading,
-    required this.onToggle,
-  });
-
-  final bool isOnline;
-  final bool isLoading;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 10,
-            offset: const Offset(0, -3),
-          ),
-        ],
-        border: Border(
-          top: BorderSide(
-            color: isOnline
-                ? GtColors.green.withValues(alpha: 0.3)
-                : GtColors.border,
-            width: 1,
-          ),
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Material(
-        color: isOnline ? const Color(0xFFF0FDF4) : const Color(0xFFF3F4F6),
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          key: const ValueKey('online_offline_bar_tap'),
-          onTap: isLoading ? null : onToggle,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isOnline
-                    ? GtColors.green.withValues(alpha: 0.4)
-                    : Colors.grey.shade300,
-                width: 1.5,
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: isOnline
-                        ? GtColors.green.withValues(alpha: 0.15)
-                        : Colors.grey.shade300,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isOnline
-                        ? Icons.sensors_rounded
-                        : Icons.sensors_off_rounded,
-                    color: isOnline ? GtColors.green : Colors.grey.shade600,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            isOnline ? "YOU'RE ONLINE" : "YOU'RE OFFLINE",
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
-                              color: isOnline
-                                  ? const Color(0xFF15803D)
-                                  : Colors.grey.shade800,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: isOnline
-                                  ? const Color(0xFF15803D)
-                                  : Colors.grey.shade500,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        isOnline
-                            ? 'Ready to receive ride requests'
-                            : 'Go online to receive requests',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isOnline
-                              ? const Color(0xFF166534)
-                              : Colors.grey.shade600,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (isLoading)
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: GtColors.brand,
-                    ),
-                  )
-                else
-                  IgnorePointer(
-                    ignoring: true,
-                    child: Switch.adaptive(
-                      key: const ValueKey('online_offline_switch'),
-                      value: isOnline,
-                      activeColor: GtColors.green,
-                      activeTrackColor: GtColors.green.withValues(alpha: 0.35),
-                      inactiveThumbColor: Colors.grey.shade400,
-                      inactiveTrackColor: Colors.grey.shade200,
-                      onChanged: null,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 

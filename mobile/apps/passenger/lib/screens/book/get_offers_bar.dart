@@ -3,11 +3,19 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
-
-class GetOffersBar extends StatelessWidget {
+class GetOffersBar extends StatefulWidget {
   const GetOffersBar({super.key, required this.state});
 
   final AppState state;
+
+  @override
+  State<GetOffersBar> createState() => _GetOffersBarState();
+}
+
+class _GetOffersBarState extends State<GetOffersBar> {
+  bool _isSubmitting = false;
+
+  AppState get state => widget.state;
 
   String get _summary {
     final from = state.from?.label;
@@ -51,6 +59,8 @@ class GetOffersBar extends StatelessWidget {
   }
 
   Future<void> _submit(BuildContext context) async {
+    if (_isSubmitting || state.isCreatingBooking) return;
+
     if (state.from == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a pickup location')),
@@ -89,6 +99,8 @@ class GetOffersBar extends StatelessWidget {
       context.push('/auth');
       return;
     }
+
+    setState(() => _isSubmitting = true);
     try {
       final req = await state.createBookingRequestAsync();
       if (!context.mounted) return;
@@ -98,11 +110,16 @@ class GetOffersBar extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Booking failed: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isSubmitting = _isSubmitting || state.isCreatingBooking;
     final needsRoute = state.serviceType == ServiceType.ride ||
         state.serviceType == ServiceType.delivery;
     final canSubmit = state.termsAccepted &&
@@ -152,7 +169,9 @@ class GetOffersBar extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             InkWell(
-              onTap: () => state.setTermsAccepted(!state.termsAccepted),
+              onTap: isSubmitting
+                  ? null
+                  : () => state.setTermsAccepted(!state.termsAccepted),
               borderRadius: BorderRadius.circular(8),
               child: Row(
                 children: [
@@ -164,7 +183,9 @@ class GetOffersBar extends StatelessWidget {
                       activeColor: GtColors.brand,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
-                      onChanged: (v) => state.setTermsAccepted(v ?? false),
+                      onChanged: isSubmitting
+                          ? null
+                          : (v) => state.setTermsAccepted(v ?? false),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -183,10 +204,10 @@ class GetOffersBar extends StatelessWidget {
             const SizedBox(height: 10),
             AnimatedOpacity(
               duration: const Duration(milliseconds: 180),
-              opacity: canSubmit ? 1 : 0.55,
+              opacity: canSubmit && !isSubmitting ? 1 : 0.55,
               child: GtGreenButton(
-                label: 'Get offers',
-                onPressed: () => _submit(context),
+                label: isSubmitting ? 'Getting offers…' : 'Get offers',
+                onPressed: isSubmitting ? null : () => _submit(context),
               ),
             ),
           ],

@@ -69,6 +69,8 @@ class AppState extends ChangeNotifier {
   bool promoEnabled = false;
   String promoCode = '';
   bool termsAccepted = false;
+  bool _isCreatingBooking = false;
+  bool get isCreatingBooking => _isCreatingBooking;
   DateTime pickupDateTime = DateTime.now();
   bool pickupNow = true;
   /// Selected duration pill for PER HOUR (30, 60, 120, 180). Null if custom end.
@@ -1874,6 +1876,7 @@ class AppState extends ChangeNotifier {
     promoEnabled = false;
     promoCode = '';
     termsAccepted = false;
+    _isCreatingBooking = false;
     me = null;
     isAuthenticated = false;
     unreadNotificationCount = 0;
@@ -1961,154 +1964,163 @@ class AppState extends ChangeNotifier {
 
   /// Creates a ride via Nest marketplace API (server-authoritative pricing).
   Future<RideRequest> createBookingRequestAsync() async {
-    final fromLabel = from?.label ?? MockData.places.first.label;
-    String? toLabel;
-    String? timeBadge;
-    String? returnLabel;
+    if (_isCreatingBooking) {
+      throw StateError('A booking request is already in progress');
+    }
+    _isCreatingBooking = true;
+    notifyListeners();
+    try {
+      final fromLabel = from?.label ?? MockData.places.first.label;
+      String? toLabel;
+      String? timeBadge;
+      String? returnLabel;
 
-    if (serviceType == ServiceType.perHour) {
-      if (perHourHasEnd && to != null) {
+      if (serviceType == ServiceType.perHour) {
+        if (perHourHasEnd && to != null) {
+          toLabel = to!.label;
+        }
+        final parts = <String>[formatPickupLabel()];
+        if (rideEndsDateTime != null) {
+          parts.add('ends ${formatRideEndsLabel()}');
+        } else if (perHourDurationMinutes != null) {
+          final m = perHourDurationMinutes!;
+          parts.add(m < 60 ? '${m}m' : '${m ~/ 60}h');
+        }
+        timeBadge = parts.join(' · ');
+      } else if (to != null) {
         toLabel = to!.label;
       }
-      final parts = <String>[formatPickupLabel()];
-      if (rideEndsDateTime != null) {
-        parts.add('ends ${formatRideEndsLabel()}');
-      } else if (perHourDurationMinutes != null) {
-        final m = perHourDurationMinutes!;
-        parts.add(m < 60 ? '${m}m' : '${m ~/ 60}h');
+
+      if (returnEnabled && returnDateTime != null) {
+        returnLabel = _formatDate(returnDateTime!);
       }
-      timeBadge = parts.join(' · ');
-    } else if (to != null) {
-      toLabel = to!.label;
-    }
 
-    if (returnEnabled && returnDateTime != null) {
-      returnLabel = _formatDate(returnDateTime!);
-    }
+      if (!isAuthenticated) {
+        throw StateError('Sign in required to book');
+      }
 
-    if (!isAuthenticated) {
-      throw StateError('Sign in required to book');
-    }
+      final pickup = from ?? MockData.places.first;
+      final dropoff = to ?? MockData.places[1];
+      final service = switch (serviceType) {
+        ServiceType.perHour => 'PER_HOUR',
+        ServiceType.delivery => 'DELIVERY',
+        ServiceType.ride => 'RIDE',
+      };
+      final needsDropoff =
+          serviceType == ServiceType.ride || serviceType == ServiceType.delivery;
+      final isPerHour = serviceType == ServiceType.perHour;
+      final hours = isPerHour
+          ? ((perHourDurationMinutes ?? 60) / 60).clamp(1, 24).toDouble()
+          : null;
+      final pickupAt = (pickupNow ? DateTime.now() : pickupDateTime)
+          .toUtc()
+          .toIso8601String();
 
-    final pickup = from ?? MockData.places.first;
-    final dropoff = to ?? MockData.places[1];
-    final service = switch (serviceType) {
-      ServiceType.perHour => 'PER_HOUR',
-      ServiceType.delivery => 'DELIVERY',
-      ServiceType.ride => 'RIDE',
-    };
-    final needsDropoff =
-        serviceType == ServiceType.ride || serviceType == ServiceType.delivery;
-    final isPerHour = serviceType == ServiceType.perHour;
-    final hours = isPerHour
-        ? ((perHourDurationMinutes ?? 60) / 60).clamp(1, 24).toDouble()
-        : null;
-    final pickupAt = (pickupNow ? DateTime.now() : pickupDateTime)
-        .toUtc()
-        .toIso8601String();
+      if (needsDropoff && !canSubmitWithCurrentRoute) {
+        throw StateError(
+          routeRecalcFailed
+              ? 'Route calculation failed — adjust locations and try again'
+              : 'Driving route not ready — wait for route distance',
+        );
+      }
 
-    if (needsDropoff && !canSubmitWithCurrentRoute) {
-      throw StateError(
-        routeRecalcFailed
-            ? 'Route calculation failed — adjust locations and try again'
-            : 'Driving route not ready — wait for route distance',
+      final selRoute = selectedRoute;
+      final routeDist = selRoute?.distanceKm;
+      final routeDur = selRoute?.durationMin.toDouble();
+
+      await api.marketplace.quote(
+        serviceType: service,
+        fromLat: pickup.lat,
+        fromLng: pickup.lng,
+        toLat: needsDropoff ? dropoff.lat : null,
+        toLng: needsDropoff ? dropoff.lng : null,
+        distanceKm: routeDist,
+        durationMin: routeDur,
+        vehicleClass: vehicleClassIds.first,
+        currency: 'CAD',
+        hours: hours,
       );
-    }
 
-    final selRoute = selectedRoute;
-    final routeDist = selRoute?.distanceKm;
-    final routeDur = selRoute?.durationMin.toDouble();
+      final childSeatsPayload =
+          childSeats.total > 0 ? childSeats.toJson() : null;
+      final isRoundTrip = returnEnabled;
+      if (returnEnabled && returnDateTime == null) {
+        final start = pickupNow ? DateTime.now() : pickupDateTime;
+        returnDateTime = start.add(const Duration(hours: 3));
+      }
+      if (returnEnabled && returnDateTime != null) {
+        returnLabel = _formatDate(returnDateTime!);
+      }
+      final returnAt = isRoundTrip && returnDateTime != null
+          ? returnDateTime!.toUtc().toIso8601String()
+          : null;
 
-    await api.marketplace.quote(
-      serviceType: service,
-      fromLat: pickup.lat,
-      fromLng: pickup.lng,
-      toLat: needsDropoff ? dropoff.lat : null,
-      toLng: needsDropoff ? dropoff.lng : null,
-      distanceKm: routeDist,
-      durationMin: routeDur,
-      vehicleClass: vehicleClassIds.first,
-      currency: 'CAD',
-      hours: hours,
-    );
+      final created = await api.marketplace.createRide(
+        serviceType: service,
+        fromLabel: fromLabel,
+        toLabel: toLabel,
+        fromLat: pickup.lat,
+        fromLng: pickup.lng,
+        toLat: needsDropoff ? dropoff.lat : null,
+        toLng: needsDropoff ? dropoff.lng : null,
+        distanceKm: routeDist,
+        durationMin: routeDur,
+        currency: 'CAD',
+        pickupAt: pickupAt,
+        vehicleClassIds: vehicleClassIds.toList(),
+        adults: adults,
+        childSeatsJson: childSeatsPayload,
+        flight: flight.isEmpty ? null : flight,
+        signage: signage.isEmpty ? null : signage,
+        comment: comment.isEmpty ? null : comment,
+        isRoundTrip: isRoundTrip,
+        returnAt: returnAt,
+        returnFlight: returnFlight.isEmpty ? null : returnFlight,
+        promoCode: promoEnabled && promoCode.isNotEmpty ? promoCode : null,
+        hours: hours,
+      );
 
-    final childSeatsPayload =
-        childSeats.total > 0 ? childSeats.toJson() : null;
-    final isRoundTrip = returnEnabled;
-    if (returnEnabled && returnDateTime == null) {
-      final start = pickupNow ? DateTime.now() : pickupDateTime;
-      returnDateTime = start.add(const Duration(hours: 3));
+      final ride = rideFromServer(created);
+      if (timeBadge != null) {
+        // preserve UI badge via local overlay fields on copy
+      }
+      final local = RideRequest(
+        id: ride.id,
+        datetimeLabel: ride.datetimeLabel,
+        from: fromLabel,
+        to: toLabel,
+        distance: ride.distance,
+        duration: ride.duration,
+        timeBadge: timeBadge ?? ride.timeBadge,
+        status: ride.status,
+        offerCount: ride.offerCount,
+        returnLabel: returnLabel ?? ride.returnLabel,
+        isRoundTrip: isRoundTrip || ride.isRoundTrip,
+        selectedOfferId: ride.selectedOfferId,
+        serverStatus: ride.serverStatus,
+        shortId: ride.shortId,
+        createdAtLabel: ride.createdAtLabel,
+        viewCount: ride.viewCount,
+        currency: ride.currency,
+        hasLostItemRequest: ride.hasLostItemRequest,
+      );
+      final idx = repo.rides.indexWhere((r) => r.id == local.id);
+      if (idx >= 0) {
+        repo.rides[idx] = local;
+      } else {
+        repo.rides.insert(0, local);
+      }
+      _serverRideStatus[local.id] =
+          created['status'] as String? ?? 'WAITING_FOR_OFFERS';
+      _serverOffers[local.id] = const [];
+      unawaited(startRideRealtime());
+      _realtime?.subscribeRide(local.id);
+      _syncOpenRidePolling();
+      return local;
+    } finally {
+      _isCreatingBooking = false;
+      notifyListeners();
     }
-    if (returnEnabled && returnDateTime != null) {
-      returnLabel = _formatDate(returnDateTime!);
-    }
-    final returnAt = isRoundTrip && returnDateTime != null
-        ? returnDateTime!.toUtc().toIso8601String()
-        : null;
-
-    final created = await api.marketplace.createRide(
-      serviceType: service,
-      fromLabel: fromLabel,
-      toLabel: toLabel,
-      fromLat: pickup.lat,
-      fromLng: pickup.lng,
-      toLat: needsDropoff ? dropoff.lat : null,
-      toLng: needsDropoff ? dropoff.lng : null,
-      distanceKm: routeDist,
-      durationMin: routeDur,
-      currency: 'CAD',
-      pickupAt: pickupAt,
-      vehicleClassIds: vehicleClassIds.toList(),
-      adults: adults,
-      childSeatsJson: childSeatsPayload,
-      flight: flight.isEmpty ? null : flight,
-      signage: signage.isEmpty ? null : signage,
-      comment: comment.isEmpty ? null : comment,
-      isRoundTrip: isRoundTrip,
-      returnAt: returnAt,
-      returnFlight: returnFlight.isEmpty ? null : returnFlight,
-      promoCode: promoEnabled && promoCode.isNotEmpty ? promoCode : null,
-      hours: hours,
-    );
-
-    final ride = rideFromServer(created);
-    if (timeBadge != null) {
-      // preserve UI badge via local overlay fields on copy
-    }
-    final local = RideRequest(
-      id: ride.id,
-      datetimeLabel: ride.datetimeLabel,
-      from: fromLabel,
-      to: toLabel,
-      distance: ride.distance,
-      duration: ride.duration,
-      timeBadge: timeBadge ?? ride.timeBadge,
-      status: ride.status,
-      offerCount: ride.offerCount,
-      returnLabel: returnLabel ?? ride.returnLabel,
-      isRoundTrip: isRoundTrip || ride.isRoundTrip,
-      selectedOfferId: ride.selectedOfferId,
-      serverStatus: ride.serverStatus,
-      shortId: ride.shortId,
-      createdAtLabel: ride.createdAtLabel,
-      viewCount: ride.viewCount,
-      currency: ride.currency,
-      hasLostItemRequest: ride.hasLostItemRequest,
-    );
-    final idx = repo.rides.indexWhere((r) => r.id == local.id);
-    if (idx >= 0) {
-      repo.rides[idx] = local;
-    } else {
-      repo.rides.insert(0, local);
-    }
-    _serverRideStatus[local.id] =
-        created['status'] as String? ?? 'WAITING_FOR_OFFERS';
-    _serverOffers[local.id] = const [];
-    unawaited(startRideRealtime());
-    _realtime?.subscribeRide(local.id);
-    _syncOpenRidePolling();
-    notifyListeners();
-    return local;
   }
 
   String _formatDate(DateTime d) => formatDateTimeLabel(d);

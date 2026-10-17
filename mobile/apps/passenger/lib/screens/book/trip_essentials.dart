@@ -107,73 +107,88 @@ class _PickupRow extends StatelessWidget {
   const _PickupRow({required this.state});
   final AppState state;
 
+  Future<void> _pickDateTime(BuildContext context) async {
+    final now = DateTime.now();
+    final initial = state.pickupNow
+        ? now
+        : (state.pickupDateTime.isBefore(now) ? now : state.pickupDateTime);
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (date == null) return;
+    if (!context.mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null) return;
+    state.setPickupDateTime(
+      DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return _EssentialsCard(
       child: Row(
         children: [
-          const Icon(
-            Icons.calendar_today_outlined,
-            size: 20,
-            color: GtColors.textSecondary,
-          ),
-          const SizedBox(width: 10),
           Expanded(
             child: InkWell(
-              onTap: () async {
-                final now = DateTime.now();
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: state.pickupNow ? now : state.pickupDateTime,
-                  firstDate: DateTime(now.year, now.month, now.day),
-                  lastDate: now.add(const Duration(days: 365)),
-                );
-                if (date == null || !context.mounted) return;
-                final time = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.fromDateTime(
-                    state.pickupNow ? now : state.pickupDateTime,
-                  ),
-                );
-                if (time == null || !context.mounted) return;
-                state.setPickupDateTime(
-                  DateTime(
-                    date.year,
-                    date.month,
-                    date.day,
-                    time.hour,
-                    time.minute,
-                  ),
-                );
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              onTap: () => _pickDateTime(context),
+              child: Row(
                 children: [
-                  Text(
-                    state.pickupNow
-                        ? 'Pickup · Now'
-                        : 'Pickup · ${state.formatPickupLabel()}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                  const Icon(
+                    Icons.calendar_today_outlined,
+                    size: 20,
+                    color: GtColors.textSecondary,
                   ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'Tap to schedule',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: GtColors.textMuted,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          state.pickupNow
+                              ? 'Pickup · Now'
+                              : 'Pickup · ${state.formatPickupLabel()}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          state.pickupNow
+                              ? 'Tap to schedule'
+                              : 'Tap to change time',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: GtColors.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
           ),
+          const SizedBox(width: 10),
           GtOrangePill(
             label: 'Now',
             selected: state.pickupNow,
-            onTap: () => state.setPickupNow(true),
+            onTap: state.pickupNow
+                ? () => _pickDateTime(context)
+                : () => state.setPickupNow(true),
           ),
         ],
       ),

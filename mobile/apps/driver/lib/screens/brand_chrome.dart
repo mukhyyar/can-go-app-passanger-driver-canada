@@ -230,6 +230,7 @@ class DriverStatChip extends StatelessWidget {
     this.icon,
     this.onTap,
     this.valueColor,
+    this.customValue,
   });
 
   final String label;
@@ -237,11 +238,12 @@ class DriverStatChip extends StatelessWidget {
   final IconData? icon;
   final VoidCallback? onTap;
   final Color? valueColor;
+  final Widget? customValue;
 
   @override
   Widget build(BuildContext context) {
     final child = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -256,12 +258,13 @@ class DriverStatChip extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
               if (icon != null) ...[
                 Icon(icon, size: 16, color: GtColors.brand),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
               ],
               Expanded(
                 child: Text(
@@ -278,15 +281,18 @@ class DriverStatChip extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: valueColor ?? GtColors.text,
-              height: 1,
+          if (customValue != null)
+            customValue!
+          else
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: valueColor ?? GtColors.text,
+                height: 1,
+              ),
             ),
-          ),
         ],
       ),
     );
