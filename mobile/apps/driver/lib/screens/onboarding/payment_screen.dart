@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../payment/payment_details_rules.dart';
 import '../../state/app_state.dart';
+import '../../utils/error_utils.dart';
 
 enum _PaymentLoadState { initialLoading, loaded, loadError }
 
@@ -774,7 +775,7 @@ class _StripeConnectCardState extends State<_StripeConnectCard> {
         }
       }
     } catch (e) {
-      setState(() => _error = 'Could not open Stripe: $e');
+      setState(() => _error = 'Could not open Stripe: ${cleanErrorMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -790,7 +791,7 @@ class _StripeConnectCardState extends State<_StripeConnectCard> {
     try {
       await s.refreshStripeStatus();
     } catch (e) {
-      setState(() => _error = 'Refresh failed: $e');
+      setState(() => _error = 'Refresh failed: ${cleanErrorMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _loading = false);

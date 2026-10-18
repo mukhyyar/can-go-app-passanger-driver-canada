@@ -5,6 +5,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -53,7 +54,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = cleanErrorMessage(e);
         _loading = false;
       });
     }
@@ -67,7 +68,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not mark all read: $e')),
+        SnackBar(content: Text('Could not mark all read: ${cleanErrorMessage(e)}')),
       );
     }
   }

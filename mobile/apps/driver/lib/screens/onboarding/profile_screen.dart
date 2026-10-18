@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
 import '../../state/driver_settings_mappers.dart';
+import '../../utils/error_utils.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -158,7 +159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       try {
         await s.saveDriverProfile();
       } catch (e) {
-        setState(() => _error = e.toString());
+        setState(() => _error = cleanErrorMessage(e));
         return;
       }
     }

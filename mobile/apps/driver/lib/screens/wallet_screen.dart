@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../payment/wallet_transaction_detail.dart';
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 
 String _newIdempotencyKey() {
   final r = Random.secure();
@@ -62,7 +63,7 @@ class _WalletScreenState extends State<WalletScreen> {
       if (!mounted) return;
       final msg = e is ApiException && e.statusCode == 401
           ? 'Session expired. Please sign in again.'
-          : e.toString();
+          : cleanErrorMessage(e);
       setState(() {
         _error = msg;
         _loading = false;
@@ -150,16 +151,10 @@ class _WalletScreenState extends State<WalletScreen> {
       );
       _amountCtrl.clear();
       await _refresh();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      final code = e.code;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(code != null ? '$code: ${e.message}' : e.message)),
-      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(content: Text(cleanErrorMessage(e))),
       );
     } finally {
       if (mounted) setState(() => _withdrawing = false);

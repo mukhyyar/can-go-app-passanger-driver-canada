@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../offer/offer_helpers.dart';
 import '../offer/price_range_heatmap_bar.dart';
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 
 class OfferReviewScreen extends StatefulWidget {
   const OfferReviewScreen({
@@ -117,10 +118,7 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e
-            .toString()
-            .replaceFirst('ApiException(', '')
-            .replaceAll(RegExp(r'\)$'), '');
+        _error = cleanErrorMessage(e);
         _submitting = false;
       });
     }

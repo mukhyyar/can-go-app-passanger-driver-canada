@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 import 'brand_chrome.dart';
 
 class RidesScreen extends StatefulWidget {
@@ -334,7 +335,7 @@ class _RidesScreenState extends State<RidesScreen>
                   );
                 } catch (e) {
                   messenger.showSnackBar(
-                    SnackBar(content: Text('Day off failed: $e')),
+                    SnackBar(content: Text('Day off failed: ${cleanErrorMessage(e)}')),
                   );
                 }
               },

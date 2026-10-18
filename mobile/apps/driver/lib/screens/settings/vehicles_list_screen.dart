@@ -5,6 +5,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import '../../utils/error_utils.dart';
 import 'vehicle_form_widgets.dart';
 
 class VehiclesListScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
     try {
       await context.read<AppState>().loadDriverVehicles();
     } catch (e) {
-      _error = e.toString();
+      _error = cleanErrorMessage(e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

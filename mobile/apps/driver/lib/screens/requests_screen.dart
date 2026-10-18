@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../offer/offer_helpers.dart';
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 import 'brand_chrome.dart';
 
 class RequestsScreen extends StatefulWidget {
@@ -244,14 +245,7 @@ class _RequestsScreenState extends State<RequestsScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(
-              e.toString().replaceFirst('ApiException: ', '').replaceFirst('Exception: ', ''),
-            ),
-          ),
-        );
+        context.showErrorSnackBar(e);
       }
     } finally {
       if (mounted) {

@@ -6,6 +6,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import '../../utils/error_utils.dart';
 import '../settings/vehicle_form_widgets.dart';
 
 class EditVehicleScreen extends StatefulWidget {
@@ -221,7 +222,7 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
             _error =
                 'Vehicle information changed. Refresh and review before saving.';
           } else {
-            _error = msg.replaceFirst('Exception: ', '');
+            _error = cleanErrorMessage(e);
           }
         });
       }

@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../offer/inline_offer_form.dart';
 import '../offer/offer_helpers.dart';
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 import 'offer_review_screen.dart';
 
 class RequestDetailScreen extends StatefulWidget {
@@ -141,7 +142,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = cleanErrorMessage(e);
       });
     }
   }
@@ -263,7 +264,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not skip: $e')),
+        SnackBar(content: Text('Could not skip: ${cleanErrorMessage(e)}')),
       );
     }
   }
@@ -370,7 +371,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
+        SnackBar(content: Text(cleanErrorMessage(e))),
       );
     } finally {
       if (mounted) setState(() => _withdrawing = false);

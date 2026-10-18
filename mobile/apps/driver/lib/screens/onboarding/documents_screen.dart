@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import '../../utils/error_utils.dart';
 
 class DocumentsScreen extends StatefulWidget {
   const DocumentsScreen({super.key});
@@ -158,7 +159,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
+          SnackBar(content: Text('Upload failed: ${cleanErrorMessage(e)}')),
         );
       }
     } finally {
@@ -198,7 +199,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Delete failed: $e')),
+          SnackBar(content: Text('Delete failed: ${cleanErrorMessage(e)}')),
         );
       }
     } finally {

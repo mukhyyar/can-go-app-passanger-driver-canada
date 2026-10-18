@@ -4,6 +4,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 
 /// Settings-style menu content matching passenger MenuPanel branding.
 class DriverMenuPanel extends StatefulWidget {
@@ -61,7 +62,7 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Upload failed: $e'),
+                content: Text('Upload failed: ${cleanErrorMessage(e)}'),
                 action: SnackBarAction(
                   label: 'Retry',
                   onPressed: () => s.uploadAvatar(bytes),
@@ -78,7 +79,7 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update photo: $e')),
+        SnackBar(content: Text('Could not update photo: ${cleanErrorMessage(e)}')),
       );
     }
   }
@@ -328,7 +329,7 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                           if (context.mounted) {
                             _toast(
                               context,
-                              e.toString().replaceFirst('ApiException: ', ''),
+                              cleanErrorMessage(e),
                             );
                           }
                         }

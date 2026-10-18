@@ -32,7 +32,8 @@ class ApiException implements Exception {
   }
 
   @override
-  String toString() => 'ApiException($statusCode): $message';
+  String toString() =>
+      message.trim().isNotEmpty ? message.trim() : 'Request failed ($statusCode)';
 }
 
 class TokenStore {

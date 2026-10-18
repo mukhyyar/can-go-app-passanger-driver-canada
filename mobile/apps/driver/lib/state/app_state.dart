@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../offer/offer_helpers.dart';
 import '../payment/payment_details_rules.dart';
 import '../services/marketplace_realtime.dart';
+import '../utils/error_utils.dart';
 import 'driver_settings_mappers.dart';
 
 class AppState extends ChangeNotifier {
@@ -833,7 +834,7 @@ class AppState extends ChangeNotifier {
         }
       }
     } catch (e) {
-      settingsError = e.toString();
+      settingsError = cleanErrorMessage(e);
       debugPrint('refreshDriverSettings: $e');
     } finally {
       settingsRefreshing = false;

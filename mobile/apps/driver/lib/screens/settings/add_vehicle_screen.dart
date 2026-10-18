@@ -5,6 +5,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import '../../utils/error_utils.dart';
 import 'vehicle_form_widgets.dart';
 
 class AddVehicleScreen extends StatefulWidget {
@@ -103,7 +104,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+        setState(() => _error = cleanErrorMessage(e));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

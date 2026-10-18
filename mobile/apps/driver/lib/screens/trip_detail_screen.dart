@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 
 class TripDetailScreen extends StatefulWidget {
   const TripDetailScreen({super.key, required this.rideId});
@@ -81,7 +82,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = cleanErrorMessage(e);
       });
     }
   }
@@ -259,10 +260,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           const SnackBar(content: Text('You already rated this passenger')),
         );
       } else {
-        String displayMsg = 'Could not submit rating';
-        if (e is ApiException && e.message.trim().isNotEmpty) {
-          displayMsg = e.message.trim();
-        }
+        final displayMsg =
+            cleanErrorMessage(e, fallback: 'Could not submit rating');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(displayMsg)),
         );
@@ -403,7 +402,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Action failed: $e')),
+          SnackBar(content: Text('Action failed: ${cleanErrorMessage(e)}')),
         );
       }
     } finally {
@@ -2011,7 +2010,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error updating inquiry: $e')),
+            SnackBar(content: Text('Error updating inquiry: ${cleanErrorMessage(e)}')),
           );
         }
       } finally {
@@ -2105,7 +2104,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error updating inquiry: $e')),
+            SnackBar(content: Text('Error updating inquiry: ${cleanErrorMessage(e)}')),
           );
         }
       } finally {
@@ -2328,7 +2327,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error completing return: $e')),
+            SnackBar(content: Text('Error completing return: ${cleanErrorMessage(e)}')),
           );
         }
       } finally {
@@ -2493,10 +2492,7 @@ class _StartPinSheetState extends State<_StartPinSheet> {
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      final msg = e
-          .toString()
-          .replaceAll('Exception: ', '')
-          .replaceAll('BadRequestException: ', '');
+      final msg = cleanErrorMessage(e);
       setState(() {
         _submitting = false;
         _status = GtOtpStatus.error;

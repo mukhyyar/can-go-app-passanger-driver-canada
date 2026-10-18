@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/app_state.dart';
+import '../../utils/error_utils.dart';
 
 const kVehicleClasses = <String>[
   'sedan',
@@ -337,7 +338,7 @@ class _VehiclePhotoGridState extends State<VehiclePhotoGrid> {
       await _hydrate();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => _error = cleanErrorMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -373,7 +374,7 @@ class _VehiclePhotoGridState extends State<VehiclePhotoGrid> {
       await _hydrate();
     } catch (e) {
       if (mounted) {
-        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+        setState(() => _error = cleanErrorMessage(e));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
