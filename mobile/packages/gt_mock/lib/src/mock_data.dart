@@ -72,6 +72,36 @@ class MockData {
       capacityInfo: 'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 2 standard bags',
     ),
     VehicleClass(
+      id: 'suv_xl',
+      name: 'SUV (XL)',
+      fromPrice: 'from CA\$55',
+      imageAsset: 'assets/vehicles/suv.png',
+      passengerSeats: 8,
+      luggagePlaces: 4,
+      seatsRange: '7 - 8',
+      capacityInfo: 'Seating capacity: Up to 7 - 8 passengers\nLuggage capacity: Up to 4 standard bags',
+    ),
+    VehicleClass(
+      id: 'van',
+      name: 'Minivan (XXL)',
+      fromPrice: 'from CA\$85',
+      imageAsset: 'assets/vehicles/van.png',
+      passengerSeats: 8,
+      luggagePlaces: 6,
+      seatsRange: '7 - 8',
+      capacityInfo: 'Seating capacity: Up to 7 - 8 passengers\nLuggage capacity: Up to 6 standard bags',
+    ),
+    VehicleClass(
+      id: 'minibus',
+      name: 'Mini bus',
+      fromPrice: 'from CA\$110',
+      imageAsset: 'assets/vehicles/minibus.png',
+      passengerSeats: 25,
+      luggagePlaces: 10,
+      seatsRange: '12 - 25',
+      capacityInfo: 'Seating capacity: Up to 12 - 25 passengers\nLuggage capacity: Up to 10 standard bags',
+    ),
+    VehicleClass(
       id: 'premium',
       name: 'Premium',
       fromPrice: 'from CA\$95',
@@ -89,24 +119,6 @@ class MockData {
       luggagePlaces: 4,
       capacityInfo: 'Seating capacity: Up to 6 passengers\nLuggage capacity: Up to 4 standard bags',
     ),
-    VehicleClass(
-      id: 'van',
-      name: 'Mini Van',
-      fromPrice: 'from CA\$85',
-      imageAsset: 'assets/vehicles/van.png',
-      passengerSeats: 7,
-      luggagePlaces: 6,
-      capacityInfo: 'Seating capacity: Up to 7 passengers\nLuggage capacity: Up to 6 standard bags',
-    ),
-    VehicleClass(
-      id: 'minibus',
-      name: 'Minibus',
-      fromPrice: 'from CA\$110',
-      imageAsset: 'assets/vehicles/minibus.png',
-      passengerSeats: 16,
-      luggagePlaces: 10,
-      capacityInfo: 'Seating capacity: Up to 16 passengers\nLuggage capacity: Up to 10 standard bags',
-    ),
   ];
 
   static const languages = [
@@ -120,6 +132,9 @@ class MockData {
     for (final vc in vehicleClasses) {
       if (vc.id == key || vc.name.toLowerCase() == key) return vc.imageAsset;
     }
+    if (key == 'suv_xl' || key == 'suv (xl)' || key == 'suv xl') return 'assets/vehicles/suv.png';
+    if (key == 'van' || key == 'minivan' || key == 'minivan (xxl)' || key == 'mini van') return 'assets/vehicles/van.png';
+    if (key == 'minibus' || key == 'mini bus') return 'assets/vehicles/minibus.png';
     if (key == 'business') return 'assets/vehicles/business.png';
     if (key == 'vip') return 'assets/vehicles/vip.png';
     if (key == 'bus') return 'assets/vehicles/bus.png';
@@ -169,7 +184,7 @@ class MockData {
           id: 'o3-$requestId',
           vehicleBrand: 'Mercedes-Benz',
           vehicleModel: 'V-Class',
-          vehicleClass: 'Mini Van',
+          vehicleClass: 'Minivan (XXL)',
           price: 871.11,
           currency: 'CAD',
           rating: 4.9,
@@ -191,7 +206,7 @@ class MockData {
           to: 'Toronto Pearson International Airport (YYZ), Silver Dart Drive, Mississauga, ON, Canada',
           distance: '34 km',
           duration: '~ 44 min',
-          vehicleNeed: 'Mini Van, SUV',
+          vehicleNeed: 'Minivan (XXL), SUV (XL)',
           passengers: 2,
           ttlLabel: '15 min',
           fromLat: 43.6702,

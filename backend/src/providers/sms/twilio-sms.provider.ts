@@ -14,24 +14,40 @@ export class TwilioSmsProvider implements SmsProvider {
   private readonly accountSid: string | undefined;
   private readonly authToken: string | undefined;
   private readonly from: string | undefined;
+  private readonly messagingServiceSid: string | undefined;
 
   constructor(config: ConfigService) {
     this.accountSid = config.get<string>('twilio.accountSid')?.trim();
     this.authToken = config.get<string>('twilio.authToken')?.trim();
     this.from = config.get<string>('twilio.fromNumber')?.replace(/\s+/g, '');
+    this.messagingServiceSid = config
+      .get<string>('twilio.messagingServiceSid')
+      ?.trim();
   }
 
   async sendSms(toE164: string, body: string) {
-    if (!this.accountSid || !this.authToken || !this.from) {
+    if (
+      !this.accountSid ||
+      !this.authToken ||
+      (!this.from && !this.messagingServiceSid)
+    ) {
       throw new ServiceUnavailableException(
-        'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER required when SMS_PROVIDER=twilio',
+        'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and either TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID required when SMS_PROVIDER=twilio',
       );
     }
     const url = `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`;
     const form = new URLSearchParams();
-    const cleanedTo = toE164.trim().replace(/\s+/g, '');
+
+    // Clean to strict E.164 digits with leading +
+    const digits = toE164.trim().replace(/\D/g, '');
+    const cleanedTo = `+${digits}`;
+
     form.set('To', cleanedTo);
-    form.set('From', this.from);
+    if (this.messagingServiceSid) {
+      form.set('MessagingServiceSid', this.messagingServiceSid);
+    } else if (this.from) {
+      form.set('From', this.from);
+    }
     form.set('Body', body);
     const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString(
       'base64',
@@ -44,11 +60,18 @@ export class TwilioSmsProvider implements SmsProvider {
       },
       body: form,
     });
-    const data = (await res.json()) as { sid?: string; message?: string };
+    const data = (await res.json()) as {
+      sid?: string;
+      message?: string;
+      code?: number;
+    };
     if (!res.ok) {
-      this.logger.error(`Twilio SMS failed: ${JSON.stringify(data)}`);
+      this.logger.error(
+        `Twilio SMS failed (status ${res.status}, code ${data.code ?? 'none'}): ${data.message ?? JSON.stringify(data)}`,
+      );
       throw new ServiceUnavailableException(data.message ?? 'Twilio SMS failed');
     }
+    this.logger.log(`Twilio SMS dispatched: sid=${data.sid} to=${cleanedTo}`);
     return { providerMessageId: String(data.sid) };
   }
 }

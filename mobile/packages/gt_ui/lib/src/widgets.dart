@@ -594,15 +594,18 @@ class GtVehicleChips extends StatelessWidget {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return trimmed;
     final lower = trimmed.toLowerCase();
+    if (lower == 'suv_xl' || lower == 'suv (xl)' || lower == 'suv-xl' || lower == 'suv xl') return 'SUV (XL)';
     if (lower == 'suv' || lower == 'black suv' || lower == 'black_suv') return 'Black SUV';
     if (lower == 'vip') return 'VIP';
-    if (lower == 'van' || lower == 'mini van' || lower == 'minivan' || lower == 'mini_van') return 'Mini Van';
+    if (lower == 'van' || lower == 'mini van' || lower == 'minivan' || lower == 'mini_van' || lower == 'minivan (xxl)' || lower == 'minivan_xxl') return 'Minivan (XXL)';
+    if (lower == 'minibus' || lower == 'mini bus') return 'Mini bus';
     final words = trimmed.replaceAll('_', ' ').split(' ');
     return words.map((w) {
       if (w.isEmpty) return w;
       if (w.toLowerCase() == 'suv') return 'Black SUV';
       if (w.toLowerCase() == 'vip') return 'VIP';
-      if (w.toLowerCase() == 'van') return 'Mini Van';
+      if (w.toLowerCase() == 'van') return 'Minivan (XXL)';
+      if (w.toLowerCase() == 'minibus') return 'Mini bus';
       return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
     }).join(' ');
   }

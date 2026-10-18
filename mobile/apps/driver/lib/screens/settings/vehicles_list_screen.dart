@@ -185,7 +185,11 @@ class _VehicleCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        vehicle.name,
+                        vehicle.make != null &&
+                                vehicle.model != null &&
+                                vehicle.make!.isNotEmpty
+                            ? '${vehicle.make} ${vehicle.model}'
+                            : vehicle.name,
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
@@ -213,6 +217,10 @@ class _VehicleCard extends StatelessWidget {
                 Text(
                   [
                     if (vehicle.year != null) '${vehicle.year}',
+                    if (vehicle.passengerSeats != null)
+                      '${vehicle.passengerSeats} seats',
+                    if (vehicle.luggagePlaces != null)
+                      '${vehicle.luggagePlaces} bags',
                     if (vehicle.color.isNotEmpty) vehicle.color,
                     vehicle.vehicleClass,
                   ].where((e) => e.isNotEmpty).join(' · '),
@@ -222,30 +230,49 @@ class _VehicleCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: GtColors.border),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    vehicle.plate,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
+                Row(
+                  children: [
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: GtColors.border),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        vehicle.plate,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Text(
+                      vehicle.isActive ? 'Active' : 'Inactive',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: vehicle.isActive
+                            ? GtColors.textSecondary
+                            : GtColors.red,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  vehicle.isActive ? 'Active' : 'Inactive',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: vehicle.isActive
-                        ? GtColors.textSecondary
-                        : GtColors.red,
-                  ),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    VehicleRegulatoryBadge(
+                      label: 'Inspection',
+                      status: vehicle.inspectionStatus,
+                    ),
+                    VehicleRegulatoryBadge(
+                      label: 'Approval',
+                      status: vehicle.approvalStatus,
+                    ),
+                  ],
                 ),
               ],
             ),

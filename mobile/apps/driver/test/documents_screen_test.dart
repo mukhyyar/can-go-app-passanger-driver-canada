@@ -49,7 +49,7 @@ void main() {
     expect(state.isDocumentLocked(validDoc), isTrue);
   });
 
-  testWidgets('DocumentsScreen displays all required document slots including Vehicle insurance',
+  testWidgets('DocumentsScreen displays required personal document slots and not vehicle documents',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
@@ -83,11 +83,11 @@ void main() {
     expect(find.text('Required documents for activation'), findsOneWidget);
     expect(find.text('Selfie with driving license'), findsOneWidget);
     expect(find.text('Driving license'), findsOneWidget);
-    expect(find.text('Vehicle registration'), findsOneWidget);
-    expect(find.text('Vehicle insurance'), findsOneWidget);
+    expect(find.text('Vehicle registration'), findsNothing);
+    expect(find.text('Vehicle insurance'), findsNothing);
   });
 
-  testWidgets('DocumentsScreen displays status badge and locks approved insurance document',
+  testWidgets('DocumentsScreen displays status badge and locks approved document',
       (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
@@ -99,8 +99,8 @@ void main() {
     appState.loaded = true;
     appState.documents = [
       {
-        'id': 'doc-ins-1',
-        'docType': 'insurance',
+        'id': 'doc-lic-1',
+        'docType': 'license',
         'status': 'APPROVED',
         'lifecycleStatus': 'CURRENT',
         'expiresAt': '2030-05-15T00:00:00Z',
@@ -127,7 +127,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Vehicle insurance'), findsOneWidget);
+    expect(find.text('Driving license'), findsOneWidget);
     expect(find.text('APPROVED'), findsOneWidget);
     expect(find.text('Expires: 2030-05-15'), findsOneWidget);
     expect(find.text('Approved — locked by admin'), findsOneWidget);
@@ -145,8 +145,8 @@ void main() {
     appState.loaded = true;
     appState.documents = [
       {
-        'id': 'doc-ins-exp',
-        'docType': 'insurance',
+        'id': 'doc-lic-exp',
+        'docType': 'license',
         'status': 'APPROVED',
         'lifecycleStatus': 'CURRENT',
         'expiresAt': '2022-01-01T00:00:00Z',
@@ -200,8 +200,6 @@ void main() {
     appState.documents = [
       {'id': 'd1', 'docType': 'selfie', 'status': 'PENDING'},
       {'id': 'd2', 'docType': 'license', 'status': 'PENDING'},
-      {'id': 'd3', 'docType': 'vehicle_registration', 'status': 'PENDING'},
-      {'id': 'd4', 'docType': 'insurance', 'status': 'PENDING'},
     ];
 
     final router = GoRouter(
@@ -235,8 +233,8 @@ void main() {
     expect(find.text('Delete'), findsNothing);
     expect(find.text('Upload'), findsNothing);
 
-    // Banner title (1) + 4 slot buttons (4) + 1 bottom button (1) = 6
-    expect(find.text('Documents under review'), findsNWidgets(6));
+    // Banner title (1) + 2 slot buttons (2) + 1 bottom button (1) = 4
+    expect(find.text('Documents under review'), findsNWidgets(4));
 
     // Verify bottom button is disabled
     final bottomButton = tester.widget<GtGreenButton>(find.byType(GtGreenButton));
@@ -258,9 +256,7 @@ void main() {
     appState.approvalStatus = 'ACTION_REQUIRED';
     appState.documents = [
       {'id': 'd1', 'docType': 'selfie', 'status': 'PENDING'},
-      {'id': 'd2', 'docType': 'license', 'status': 'PENDING'},
-      {'id': 'd3', 'docType': 'vehicle_registration', 'status': 'PENDING'},
-      {'id': 'd4', 'docType': 'insurance', 'status': 'REJECTED'},
+      {'id': 'd2', 'docType': 'license', 'status': 'REJECTED'},
     ];
 
     final router = GoRouter(
@@ -283,8 +279,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Since insurance is REJECTED, isAllUnderReview is false
-    // Insurance slot shows REJECTED status and has active Replace/Delete buttons
+    // Since license is REJECTED, isAllUnderReview is false
+    // License slot shows REJECTED status and has active Replace/Delete buttons
     expect(find.text('REJECTED'), findsOneWidget);
     expect(find.text('Replace'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
@@ -311,8 +307,6 @@ void main() {
         'resubmissionReason': 'image_unclear',
         'customerMessage': 'Please provide a clearer, sharper photo of your driving license.',
       },
-      {'id': 'd3', 'docType': 'vehicle_registration', 'status': 'PENDING'},
-      {'id': 'd4', 'docType': 'insurance', 'status': 'PENDING'},
     ];
 
     expect(appState.hasReuploadRequest, isTrue);
@@ -354,8 +348,8 @@ void main() {
     // Active Re-upload button on license slot
     expect(find.text('Re-upload'), findsOneWidget);
 
-    // 3 remaining documents stay locked under review
-    expect(find.text('Documents under review'), findsNWidgets(3));
+    // 1 remaining document stays locked under review
+    expect(find.text('Documents under review'), findsNWidgets(1));
 
     // Bottom button indicates re-upload requested document(s)
     final bottomButton = tester.widget<GtGreenButton>(find.byType(GtGreenButton));
@@ -379,8 +373,6 @@ void main() {
     appState.documents = [
       {'id': 'd1', 'docType': 'selfie', 'status': 'APPROVED'},
       {'id': 'd2', 'docType': 'license', 'status': 'APPROVED'},
-      {'id': 'd3', 'docType': 'vehicle_registration', 'status': 'APPROVED'},
-      {'id': 'd4', 'docType': 'insurance', 'status': 'APPROVED'},
     ];
 
     expect(appState.areDocumentsUnderReview, isFalse);

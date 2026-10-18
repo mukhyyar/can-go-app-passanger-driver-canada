@@ -2090,6 +2090,10 @@ export class AdminOpsService {
         driver: {
           select: { id: true, fullName: true, userId: true, approvalStatus: true },
         },
+        documents: {
+          where: { lifecycleStatus: 'CURRENT' },
+          select: { id: true, docType: true, status: true, originalFilename: true, expiresAt: true },
+        },
       },
       orderBy: { updatedAt: 'desc' },
       take: 200,

@@ -65,7 +65,7 @@ export function evaluateLaunchGate(
   }
   if (providers.sms === 'twilio' && !flags.twilioCredentialsPresent) {
     blockedReasons.push(
-      'TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER required',
+      'TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / (TWILIO_FROM_NUMBER or TWILIO_MESSAGING_SERVICE_SID) required',
     );
   }
   if (isProd && !flags.adminTotpEnforce) {

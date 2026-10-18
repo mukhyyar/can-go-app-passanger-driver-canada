@@ -335,6 +335,8 @@ model Vehicle {
   driverId         String
   driver           DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
   name             String
+  make             String?
+  model            String?
   plate            String
   vehicleClass     String
   color            String   @default("")
@@ -344,6 +346,8 @@ model Vehicle {
   amenitiesJson    Json     @default("{}")
   autocancelBefore Int      @default(10)
   autocancelAfter  Int      @default(10)
+  inspectionStatus String   @default("PENDING")
+  approvalStatus   String   @default("PENDING")
   /// Soft eligibility gate for marketplace offers.
   isActive         Boolean  @default(true)
   /// At most one default vehicle per driver (enforced in service transaction).

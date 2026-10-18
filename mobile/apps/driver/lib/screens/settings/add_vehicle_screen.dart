@@ -16,7 +16,8 @@ class AddVehicleScreen extends StatefulWidget {
 }
 
 class _AddVehicleScreenState extends State<AddVehicleScreen> {
-  final _name = TextEditingController();
+  final _make = TextEditingController();
+  final _model = TextEditingController();
   final _plate = TextEditingController();
   final _color = TextEditingController();
   final _year = TextEditingController();
@@ -25,17 +26,19 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   String _class = 'sedan';
   bool _saving = false;
   String? _error;
-  String? _nameError;
+  String? _makeError;
+  String? _modelError;
   String? _plateError;
   String? _yearError;
 
-  /// Once create succeeds, never create again — photo stage uses this id.
+  /// Once create succeeds, never create again — document/photo stage uses this id.
   String? _createdVehicleId;
   bool _photoStage = false;
 
   @override
   void dispose() {
-    _name.dispose();
+    _make.dispose();
+    _model.dispose();
     _plate.dispose();
     _color.dispose();
     _year.dispose();
@@ -43,13 +46,16 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   }
 
   bool _validate() {
-    final name = _name.text.trim();
+    final make = _make.text.trim();
+    final model = _model.text.trim();
     final plate = _plate.text.trim();
     final yearText = _year.text.trim();
-    String? nameErr;
+    String? makeErr;
+    String? modelErr;
     String? plateErr;
     String? yearErr;
-    if (name.isEmpty) nameErr = 'Brand/model is required';
+    if (make.isEmpty) makeErr = 'Make is required';
+    if (model.isEmpty) modelErr = 'Model is required';
     if (plate.isEmpty) plateErr = 'License plate is required';
     if (yearText.isNotEmpty) {
       final y = int.tryParse(yearText);
@@ -63,12 +69,13 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       return false;
     }
     setState(() {
-      _nameError = nameErr;
+      _makeError = makeErr;
+      _modelError = modelErr;
       _plateError = plateErr;
       _yearError = yearErr;
       _error = null;
     });
-    return nameErr == null && plateErr == null && yearErr == null;
+    return makeErr == null && modelErr == null && plateErr == null && yearErr == null;
   }
 
   Future<void> _create() async {
@@ -83,8 +90,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     });
     try {
       final s = context.read<AppState>();
+      final make = _make.text.trim();
+      final model = _model.text.trim();
       final created = await s.createDriverVehicle(
-        name: _name.text.trim(),
+        name: '$make $model'.trim(),
+        make: make,
+        model: model,
         plate: _plate.text.trim().toUpperCase(),
         vehicleClass: _class,
         color: _color.text.trim(),
@@ -130,7 +141,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
       appBar: AppBar(
-        title: Text(_photoStage ? 'Vehicle photos' : 'Create vehicle'),
+        title: Text(_photoStage ? 'Vehicle documents & photos' : 'Create vehicle'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
@@ -175,18 +186,40 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                     ),
                     const SizedBox(height: 20),
                     const VehicleSectionHeader('Identity'),
-                    TextField(
-                      controller: _name,
-                      decoration: vehicleFieldDecoration(
-                        'Brand, model',
-                        errorText: _nameError,
-                      ),
-                      textCapitalization: TextCapitalization.words,
-                      onChanged: (_) {
-                        if (_nameError != null) {
-                          setState(() => _nameError = null);
-                        }
-                      },
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _make,
+                            decoration: vehicleFieldDecoration(
+                              'Make (e.g. Toyota)',
+                              errorText: _makeError,
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            onChanged: (_) {
+                              if (_makeError != null) {
+                                setState(() => _makeError = null);
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _model,
+                            decoration: vehicleFieldDecoration(
+                              'Model (e.g. Camry)',
+                              errorText: _modelError,
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            onChanged: (_) {
+                              if (_modelError != null) {
+                                setState(() => _modelError = null);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -249,7 +282,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                       label: 'Passenger seats',
                       value: _seats,
                       min: 1,
-                      max: 20,
+                      max: 30,
                       onChanged: (v) => setState(() => _seats = v),
                     ),
                     const SizedBox(height: 10),
@@ -261,6 +294,35 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                       onChanged: (v) => setState(() => _luggage = v),
                     ),
                   ] else ...[
+                    const VehicleSectionHeader(
+                      'Regulatory status',
+                      subtitle: 'Initial status for this newly registered vehicle',
+                    ),
+                    const Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        VehicleRegulatoryBadge(label: 'Inspection', status: 'PENDING'),
+                        VehicleRegulatoryBadge(label: 'Approval', status: 'PENDING'),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const VehicleSectionHeader(
+                      'Vehicle documents',
+                      subtitle: 'Upload registration and insurance for this vehicle',
+                    ),
+                    VehicleDocumentSlot(
+                      vehicleId: _createdVehicleId!,
+                      docType: 'vehicle_registration',
+                      title: 'Vehicle registration',
+                    ),
+                    VehicleDocumentSlot(
+                      vehicleId: _createdVehicleId!,
+                      docType: 'insurance',
+                      title: 'Vehicle insurance',
+                      requiresExpiry: true,
+                    ),
+                    const SizedBox(height: 20),
                     const VehicleSectionHeader(
                       'Photos',
                       subtitle:

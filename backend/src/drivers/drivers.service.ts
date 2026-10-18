@@ -756,6 +756,8 @@ export class DriversService {
         data: {
           driverId: driver.id,
           name: dto.name.trim(),
+          make: dto.make?.trim() ?? null,
+          model: dto.model?.trim() ?? null,
           plate,
           vehicleClass: dto.vehicleClass.trim(),
           color: dto.color?.trim() ?? '',
@@ -767,6 +769,8 @@ export class DriversService {
           amenitiesJson: (dto.amenities ?? {}) as Prisma.InputJsonValue,
           autocancelBefore: dto.autocancelBefore ?? 10,
           autocancelAfter: dto.autocancelAfter ?? 10,
+          inspectionStatus: dto.inspectionStatus?.trim() ?? 'PENDING',
+          approvalStatus: dto.approvalStatus?.trim() ?? 'PENDING',
           isActive: dto.isActive ?? true,
           isDefault: makeDefault,
         },
@@ -841,6 +845,8 @@ export class DriversService {
       (dto.plate !== undefined &&
         dto.plate.trim().toUpperCase() !== existing.plate) ||
       (dto.name !== undefined && dto.name.trim() !== existing.name) ||
+      (dto.make !== undefined && (dto.make?.trim() ?? null) !== existing.make) ||
+      (dto.model !== undefined && (dto.model?.trim() ?? null) !== existing.model) ||
       (dto.vehicleClass !== undefined &&
         dto.vehicleClass.trim() !== existing.vehicleClass);
 
@@ -855,6 +861,12 @@ export class DriversService {
         where: { id: vehicleId },
         data: {
           ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+          ...(dto.make !== undefined
+            ? { make: dto.make ? dto.make.trim() : null }
+            : {}),
+          ...(dto.model !== undefined
+            ? { model: dto.model ? dto.model.trim() : null }
+            : {}),
           ...(dto.plate !== undefined
             ? { plate: dto.plate.trim().toUpperCase() }
             : {}),
@@ -877,6 +889,12 @@ export class DriversService {
             : {}),
           ...(dto.autocancelAfter !== undefined
             ? { autocancelAfter: dto.autocancelAfter }
+            : {}),
+          ...(dto.inspectionStatus !== undefined
+            ? { inspectionStatus: dto.inspectionStatus ? dto.inspectionStatus.trim() : 'PENDING' }
+            : {}),
+          ...(dto.approvalStatus !== undefined
+            ? { approvalStatus: dto.approvalStatus ? dto.approvalStatus.trim() : 'PENDING' }
             : {}),
           ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
           ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
@@ -1112,6 +1130,8 @@ export class DriversService {
   private serializeVehicle(v: {
     id: string;
     name: string;
+    make?: string | null;
+    model?: string | null;
     plate: string;
     vehicleClass: string;
     color: string;
@@ -1121,6 +1141,8 @@ export class DriversService {
     amenitiesJson: Prisma.JsonValue;
     autocancelBefore: number;
     autocancelAfter: number;
+    inspectionStatus?: string;
+    approvalStatus?: string;
     isActive: boolean;
     isDefault: boolean;
     createdAt: Date;
@@ -1129,6 +1151,8 @@ export class DriversService {
     return {
       id: v.id,
       name: v.name,
+      make: v.make ?? null,
+      model: v.model ?? null,
       plate: v.plate,
       vehicleClass: v.vehicleClass,
       color: v.color,
@@ -1142,6 +1166,8 @@ export class DriversService {
           : {},
       autocancelBefore: v.autocancelBefore,
       autocancelAfter: v.autocancelAfter,
+      inspectionStatus: v.inspectionStatus ?? 'PENDING',
+      approvalStatus: v.approvalStatus ?? 'PENDING',
       isActive: v.isActive,
       isDefault: v.isDefault,
       createdAt: v.createdAt,

@@ -155,6 +155,10 @@ class DriverApi {
     int? autocancelBefore,
     int? autocancelAfter,
     bool? isDefault,
+    String? make,
+    String? model,
+    String? inspectionStatus,
+    String? approvalStatus,
   }) =>
       client.post(
         '/driver/vehicles',
@@ -170,6 +174,10 @@ class DriverApi {
           if (autocancelBefore != null) 'autocancelBefore': autocancelBefore,
           if (autocancelAfter != null) 'autocancelAfter': autocancelAfter,
           if (isDefault != null) 'isDefault': isDefault,
+          if (make != null) 'make': make,
+          if (model != null) 'model': model,
+          if (inspectionStatus != null) 'inspectionStatus': inspectionStatus,
+          if (approvalStatus != null) 'approvalStatus': approvalStatus,
         },
       );
 

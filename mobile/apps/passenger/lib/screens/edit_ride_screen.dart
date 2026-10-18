@@ -763,124 +763,323 @@ class _EditRideScreenState extends State<EditRideScreen> {
                                 final vc = MockData.vehicleClasses[i];
                                 final selected =
                                     _vehicleClassIds.contains(vc.id);
+                                final isLuxury =
+                                    vc.id == 'premium' || vc.id == 'suv';
                                 return InkWell(
                                   onTap: () => _toggleVehicleClass(vc.id),
                                   borderRadius: BorderRadius.circular(12),
                                   child: AnimatedContainer(
                                     duration: const Duration(milliseconds: 150),
                                     width: 108,
-                                    padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: isLuxury ? null : Colors.white,
+                                      gradient: isLuxury
+                                          ? const LinearGradient(
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                              colors: [
+                                                Color(0xFFFFFBEA),
+                                                Color(0xFFFDE68A),
+                                                Color(0xFFF59E0B),
+                                                Color(0xFFD97706),
+                                              ],
+                                              stops: [0.0, 0.35, 0.70, 1.0],
+                                            )
+                                          : null,
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: selected
-                                            ? GtColors.brand
-                                            : GtColors.border,
-                                        width: selected ? 1.5 : 1,
+                                        color: isLuxury
+                                            ? (selected
+                                                ? const Color(0xFFB45309)
+                                                : const Color(0xFFF59E0B))
+                                            : (selected
+                                                ? GtColors.brand
+                                                : GtColors.border),
+                                        width: isLuxury
+                                            ? (selected ? 2.0 : 1.4)
+                                            : (selected ? 1.5 : 1),
                                       ),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        Expanded(
-                                          child: Stack(
-                                            clipBehavior: Clip.none,
-                                            children: [
-                                              Center(
-                                                child: vc.imageAsset != null
-                                                    ? Image.asset(
-                                                        vc.imageAsset!,
-                                                        package: 'gt_ui',
-                                                        fit: BoxFit.contain,
-                                                        width: double.infinity,
-                                                        errorBuilder:
-                                                            (_, __, ___) =>
-                                                                Icon(
-                                                          Icons.directions_car,
-                                                          size: 38,
-                                                          color: selected
-                                                              ? GtColors.brand
-                                                              : GtColors.text,
-                                                        ),
-                                                      )
-                                                    : Icon(
-                                                        Icons.directions_car,
-                                                        size: 38,
-                                                        color: selected
-                                                            ? GtColors.brand
-                                                            : GtColors.text,
-                                                      ),
+                                      boxShadow: isLuxury
+                                          ? [
+                                              const BoxShadow(
+                                                color: Color(0x38D97706),
+                                                blurRadius: 8,
+                                                offset: Offset(0, 3),
                                               ),
                                               if (selected)
-                                                const Positioned(
-                                                  top: -2,
-                                                  right: -2,
-                                                  child: Icon(
-                                                    Icons.check_circle,
-                                                    size: 18,
-                                                    color: GtColors.brand,
+                                                const BoxShadow(
+                                                  color: Color(0x30F59E0B),
+                                                  blurRadius: 12,
+                                                  offset: Offset(0, 1),
+                                                ),
+                                            ]
+                                          : null,
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(11),
+                                      child: Stack(
+                                        children: [
+                                          if (isLuxury)
+                                            Positioned.fill(
+                                              child: IgnorePointer(
+                                                child: DecoratedBox(
+                                                  decoration: BoxDecoration(
+                                                    gradient: LinearGradient(
+                                                      begin: const Alignment(
+                                                          -1.2, -1.2),
+                                                      end: const Alignment(
+                                                          1.2, 1.2),
+                                                      colors: [
+                                                        Colors.white.withValues(
+                                                            alpha: 0.0),
+                                                        Colors.white.withValues(
+                                                            alpha: 0.0),
+                                                        Colors.white.withValues(
+                                                            alpha: 0.42),
+                                                        Colors.white.withValues(
+                                                            alpha: 0.12),
+                                                        Colors.white.withValues(
+                                                            alpha: 0.0),
+                                                      ],
+                                                      stops: const [
+                                                        0.0,
+                                                        0.30,
+                                                        0.46,
+                                                        0.58,
+                                                        1.0
+                                                      ],
+                                                    ),
                                                   ),
                                                 ),
-                                            ],
+                                              ),
+                                            ),
+                                          Padding(
+                                            padding: const EdgeInsets.all(8),
+                                            child: Column(
+                                              children: [
+                                                Expanded(
+                                                  child: Stack(
+                                                    clipBehavior: Clip.none,
+                                                    children: [
+                                                      Center(
+                                                        child: vc.imageAsset !=
+                                                                null
+                                                            ? Image.asset(
+                                                                vc.imageAsset!,
+                                                                package:
+                                                                    'gt_ui',
+                                                                fit: BoxFit
+                                                                    .contain,
+                                                                width: double
+                                                                    .infinity,
+                                                                errorBuilder:
+                                                                    (_, __,
+                                                                            ___) =>
+                                                                        Icon(
+                                                                  Icons
+                                                                      .directions_car,
+                                                                  size: 38,
+                                                                  color: selected
+                                                                      ? (isLuxury
+                                                                          ? const Color(
+                                                                              0xFFB45309)
+                                                                          : GtColors
+                                                                              .brand)
+                                                                      : (isLuxury
+                                                                          ? const Color(
+                                                                              0xFF78350F)
+                                                                          : GtColors
+                                                                              .text),
+                                                                ),
+                                                              )
+                                                            : Icon(
+                                                                Icons
+                                                                    .directions_car,
+                                                                size: 38,
+                                                                color: selected
+                                                                    ? (isLuxury
+                                                                        ? const Color(
+                                                                            0xFFB45309)
+                                                                        : GtColors
+                                                                            .brand)
+                                                                    : (isLuxury
+                                                                        ? const Color(
+                                                                            0xFF78350F)
+                                                                        : GtColors
+                                                                            .text),
+                                                              ),
+                                                      ),
+                                                      if (isLuxury)
+                                                        Positioned(
+                                                          top: -2,
+                                                          left: -2,
+                                                          child: Container(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .symmetric(
+                                                              horizontal: 5,
+                                                              vertical: 1.5,
+                                                            ),
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              gradient:
+                                                                  const LinearGradient(
+                                                                colors: [
+                                                                  Color(
+                                                                      0xFF2E1704),
+                                                                  Color(
+                                                                      0xFF451A03),
+                                                                ],
+                                                              ),
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          4),
+                                                              boxShadow: const [
+                                                                BoxShadow(
+                                                                  color: Color(
+                                                                      0x25000000),
+                                                                  blurRadius: 2,
+                                                                  offset:
+                                                                      Offset(
+                                                                          0, 1),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            child: const Row(
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
+                                                              children: [
+                                                                Icon(
+                                                                  Icons.star,
+                                                                  size: 8,
+                                                                  color: Color(
+                                                                      0xFFFDE68A),
+                                                                ),
+                                                                SizedBox(
+                                                                    width: 2),
+                                                                Text(
+                                                                  'LUXE',
+                                                                  style:
+                                                                      TextStyle(
+                                                                    color: Color(
+                                                                        0xFFFFFBE8),
+                                                                    fontSize:
+                                                                        8.5,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w800,
+                                                                    letterSpacing:
+                                                                        0.4,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      if (selected)
+                                                        Positioned(
+                                                          top: -2,
+                                                          right: -2,
+                                                          child: Icon(
+                                                            Icons.check_circle,
+                                                            size: 18,
+                                                            color: isLuxury
+                                                                ? const Color(
+                                                                    0xFFB45309)
+                                                                : GtColors
+                                                                    .brand,
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Flexible(
+                                                      child: Text(
+                                                        vc.name,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          fontWeight: isLuxury
+                                                              ? FontWeight.w800
+                                                              : FontWeight.w700,
+                                                          fontSize: 12.5,
+                                                          color: isLuxury
+                                                              ? const Color(
+                                                                  0xFF2E1704)
+                                                              : Colors.black87,
+                                                          letterSpacing:
+                                                              isLuxury
+                                                                  ? -0.2
+                                                                  : 0,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 3),
+                                                    Tooltip(
+                                                      message:
+                                                          '${vc.name} Capacity:\n• ${vc.seatsCapacityText} passenger seats\n• Up to ${vc.luggagePlaces} standard bags',
+                                                      triggerMode:
+                                                          TooltipTriggerMode
+                                                              .tap,
+                                                      showDuration:
+                                                          const Duration(
+                                                              seconds: 4),
+                                                      preferBelow: false,
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
+                                                      ),
+                                                      margin: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 16),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                            0xFF1E293B),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(8),
+                                                      ),
+                                                      textStyle:
+                                                          const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 11.5,
+                                                        height: 1.3,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                      child: Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(2.0),
+                                                        child: Icon(
+                                                          Icons.info_outline,
+                                                          size: 13,
+                                                          color: isLuxury
+                                                              ? const Color(
+                                                                  0xFF78350F)
+                                                              : GtColors
+                                                                  .textSecondary,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                vc.name,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 12.5,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 3),
-                                            Tooltip(
-                                              message:
-                                                  '${vc.name} Capacity:\n• Up to ${vc.passengerSeats} passenger seats\n• Up to ${vc.luggagePlaces} standard bags',
-                                              triggerMode:
-                                                  TooltipTriggerMode.tap,
-                                              showDuration:
-                                                  const Duration(seconds: 4),
-                                              preferBelow: false,
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 6,
-                                              ),
-                                              margin:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 16),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF1E293B),
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              textStyle: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11.5,
-                                                height: 1.3,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                              child: const Padding(
-                                                padding: EdgeInsets.all(2.0),
-                                                child: Icon(
-                                                  Icons.info_outline,
-                                                  size: 13,
-                                                  color: GtColors.textSecondary,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 );

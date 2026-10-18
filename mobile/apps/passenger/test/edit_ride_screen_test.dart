@@ -132,7 +132,7 @@ void main() {
 
       // Verify Vehicle preferences section is displayed
       expect(find.text('Vehicle preferences'), findsOneWidget);
-      expect(find.text('2 of 6 selected'), findsOneWidget);
+      expect(find.text('2 of ${MockData.vehicleClasses.length} selected'), findsOneWidget);
 
       // Verify Flight number, Name sign, Action chips
       expect(find.text('pk737'), findsOneWidget);
@@ -157,7 +157,7 @@ void main() {
       expect(premiumCard, findsOneWidget);
       await tester.tap(premiumCard);
       await tester.pumpAndSettle();
-      expect(find.text('3 of 6 selected'), findsOneWidget);
+      expect(find.text('3 of ${MockData.vehicleClasses.length} selected'), findsOneWidget);
 
       // Save changes
       final saveBtn = find.widgetWithText(FilledButton, 'Save changes');
@@ -310,7 +310,7 @@ void main() {
         findsOneWidget,
       );
       // Economy should still be selected
-      expect(find.text('1 of 6 selected'), findsOneWidget);
+      expect(find.text('1 of ${MockData.vehicleClasses.length} selected'), findsOneWidget);
 
       // Save changes
       final saveBtn = find.widgetWithText(FilledButton, 'Save changes');

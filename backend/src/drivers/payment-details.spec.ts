@@ -1,3 +1,8 @@
+jest.mock('@nestjs/config', () => ({
+  ConfigService: class ConfigService {
+    get = jest.fn();
+  },
+}));
 jest.mock('../storage/storage.service', () => ({
   StorageService: class StorageService {},
 }));

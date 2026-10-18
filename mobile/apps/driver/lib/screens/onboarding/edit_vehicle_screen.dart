@@ -30,11 +30,14 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
-  String? _nameError;
+  String? _makeError;
+  String? _modelError;
   String? _plateError;
   String? _yearError;
 
   final _name = TextEditingController();
+  final _make = TextEditingController();
+  final _model = TextEditingController();
   final _plate = TextEditingController();
   final _color = TextEditingController();
   final _year = TextEditingController();
@@ -85,6 +88,8 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
   @override
   void dispose() {
     _name.dispose();
+    _make.dispose();
+    _model.dispose();
     _plate.dispose();
     _color.dispose();
     _year.dispose();
@@ -107,6 +112,10 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
     if (vehicle == null) return;
     _boundVehicleId = vehicle.id;
     _name.text = vehicle.name;
+    _make.text = vehicle.make ??
+        (vehicle.name.contains(' ') ? vehicle.name.split(' ').first : vehicle.name);
+    _model.text = vehicle.model ??
+        (vehicle.name.contains(' ') ? vehicle.name.split(' ').skip(1).join(' ') : '');
     _plate.text = vehicle.plate;
     _color.text = vehicle.color;
     _year.text = vehicle.year?.toString() ?? '';
@@ -135,13 +144,16 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
   }
 
   bool _validate() {
-    final name = _name.text.trim();
+    final make = _make.text.trim();
+    final model = _model.text.trim();
     final plate = _plate.text.trim();
     final yearText = _year.text.trim();
-    String? nameErr;
+    String? makeErr;
+    String? modelErr;
     String? plateErr;
     String? yearErr;
-    if (name.isEmpty) nameErr = 'Brand/model is required';
+    if (make.isEmpty) makeErr = 'Make is required';
+    if (model.isEmpty) modelErr = 'Model is required';
     if (plate.isEmpty) plateErr = 'License plate is required';
     if (yearText.isNotEmpty) {
       final y = int.tryParse(yearText);
@@ -151,12 +163,13 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
       }
     }
     setState(() {
-      _nameError = nameErr;
+      _makeError = makeErr;
+      _modelError = modelErr;
       _plateError = plateErr;
       _yearError = yearErr;
       _error = null;
     });
-    return nameErr == null && plateErr == null && yearErr == null;
+    return makeErr == null && modelErr == null && plateErr == null && yearErr == null;
   }
 
   Future<bool> _confirmLeave() async {
@@ -193,10 +206,15 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
         s.amenities[e.key] = e.value;
       }
       s.setAutocancel(before: _before, after: _after);
+      final make = _make.text.trim();
+      final model = _model.text.trim();
+      final name = '$make $model'.trim();
       await s.updateDriverVehicle(
         vehicle.id,
         patch: {
-          'name': _name.text.trim(),
+          'name': name,
+          'make': make,
+          'model': model,
           'plate': _plate.text.trim().toUpperCase(),
           'vehicleClass': _class,
           'color': _color.text.trim(),
@@ -379,6 +397,14 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
                                                     ? 'Active'
                                                     : 'Inactive',
                                               ),
+                                              VehicleRegulatoryBadge(
+                                                label: 'Inspection',
+                                                status: vehicle.inspectionStatus,
+                                              ),
+                                              VehicleRegulatoryBadge(
+                                                label: 'Approval',
+                                                status: vehicle.approvalStatus,
+                                              ),
                                             ],
                                           ),
                                         ],
@@ -397,13 +423,34 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
                                 },
                               ),
                               const SizedBox(height: 12),
-                              TextField(
-                                controller: _name,
-                                decoration: vehicleFieldDecoration(
-                                  'Brand, model',
-                                  errorText: _nameError,
-                                ),
-                                onChanged: (_) => _markDirty(),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _make,
+                                      decoration: vehicleFieldDecoration(
+                                        'Make (e.g. Toyota)',
+                                        errorText: _makeError,
+                                      ),
+                                      textCapitalization:
+                                          TextCapitalization.words,
+                                      onChanged: (_) => _markDirty(),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _model,
+                                      decoration: vehicleFieldDecoration(
+                                        'Model (e.g. Camry)',
+                                        errorText: _modelError,
+                                      ),
+                                      textCapitalization:
+                                          TextCapitalization.words,
+                                      onChanged: (_) => _markDirty(),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 12),
                               TextField(
@@ -466,7 +513,7 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
                                 label: 'Passenger seats',
                                 value: _seats,
                                 min: 1,
-                                max: 20,
+                                max: 30,
                                 onChanged: (v) {
                                   setState(() => _seats = v);
                                   _markDirty();
@@ -482,6 +529,23 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
                                   setState(() => _luggage = v);
                                   _markDirty();
                                 },
+                              ),
+                              const SizedBox(height: 20),
+                              const VehicleSectionHeader(
+                                'Regulatory documents & compliance',
+                                subtitle:
+                                    'Registration and insurance documents specific to this vehicle',
+                              ),
+                              VehicleDocumentSlot(
+                                vehicleId: vehicle.id,
+                                docType: 'vehicle_registration',
+                                title: 'Vehicle registration',
+                              ),
+                              VehicleDocumentSlot(
+                                vehicleId: vehicle.id,
+                                docType: 'insurance',
+                                title: 'Vehicle insurance',
+                                requiresExpiry: true,
                               ),
                               const SizedBox(height: 20),
                               const VehicleSectionHeader(

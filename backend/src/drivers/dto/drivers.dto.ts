@@ -224,6 +224,22 @@ export class CreateVehicleDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  make?: string;
+
+  @IsOptional()
+  @IsString()
+  model?: string;
+
+  @IsOptional()
+  @IsString()
+  inspectionStatus?: string;
+
+  @IsOptional()
+  @IsString()
+  approvalStatus?: string;
 }
 
 export class UpdateVehicleDto {
@@ -245,6 +261,22 @@ export class UpdateVehicleDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  @IsOptional()
+  @IsString()
+  make?: string | null;
+
+  @IsOptional()
+  @IsString()
+  model?: string | null;
+
+  @IsOptional()
+  @IsString()
+  inspectionStatus?: string | null;
+
+  @IsOptional()
+  @IsString()
+  approvalStatus?: string | null;
 
   @IsOptional()
   @Type(() => Number)

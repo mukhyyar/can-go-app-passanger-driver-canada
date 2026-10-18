@@ -1184,6 +1184,23 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Map<String, dynamic>? vehicleDocumentForType(String? vehicleId, String docType) {
+    for (final d in documents) {
+      if (d['docType']?.toString() == docType &&
+          (vehicleId == null || d['vehicleId']?.toString() == vehicleId)) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> vehicleDocumentsForVehicle(String? vehicleId) {
+    return documents.where((d) {
+      if (vehicleId == null || vehicleId.isEmpty) return true;
+      return d['vehicleId']?.toString() == vehicleId;
+    }).toList();
+  }
+
   List<Map<String, dynamic>> get vehiclePhotoDocuments {
     return documents
         .where((d) => d['docType']?.toString() == 'vehicle_photo')
@@ -1233,7 +1250,7 @@ class AppState extends ChangeNotifier {
 
   bool get hasExpiredDocuments {
     if (hasExpiredDocumentsFromServer) return true;
-    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
+    for (final slot in const ['selfie', 'license']) {
       final doc = documentForType(slot);
       if (isDocumentExpired(doc)) return true;
     }
@@ -1241,7 +1258,7 @@ class AppState extends ChangeNotifier {
   }
 
   bool get hasAllRequiredDocuments {
-    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
+    for (final slot in const ['selfie', 'license']) {
       if (documentForType(slot) == null) return false;
     }
     return true;
@@ -1264,8 +1281,6 @@ class AppState extends ChangeNotifier {
     for (final slot in const [
       'selfie',
       'license',
-      'vehicle_registration',
-      'insurance',
     ]) {
       final doc = documentForType(slot);
       if (isDocumentReuploadRequested(doc)) return true;
@@ -1287,8 +1302,6 @@ class AppState extends ChangeNotifier {
     for (final slot in const [
       'selfie',
       'license',
-      'vehicle_registration',
-      'insurance',
     ]) {
       final doc = documentForType(slot);
       if (isDocumentReuploadRequested(doc)) {
@@ -1361,7 +1374,7 @@ class AppState extends ChangeNotifier {
     if (!hasAllRequiredDocuments) return false;
     if (hasExpiredDocuments) return false;
     if (hasReuploadRequest) return false;
-    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
+    for (final slot in const ['selfie', 'license']) {
       final doc = documentForType(slot);
       if (!isDocumentUnderReview(doc)) return false;
     }
@@ -1378,9 +1391,9 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  /// True if a KYC-required document (selfie / license / registration) is PENDING.
+  /// True if a KYC-required personal document (selfie / license) is PENDING.
   bool get hasPendingRequiredDocuments {
-    for (final slot in const ['selfie', 'license', 'vehicle_registration']) {
+    for (final slot in const ['selfie', 'license']) {
       final doc = documentForType(slot);
       if (doc == null) continue;
       if ((doc['status']?.toString().toUpperCase() ?? '') == 'PENDING') {
@@ -1555,7 +1568,10 @@ class AppState extends ChangeNotifier {
         }
       }
     } else {
-      final id = documentForType(docType)?['id']?.toString();
+      final doc = resolvedVehicleId != null
+          ? vehicleDocumentForType(resolvedVehicleId, docType)
+          : documentForType(docType);
+      final id = doc?['id']?.toString();
       if (id != null) rememberDocumentPreview(id, bytes);
     }
     notifyListeners();
@@ -1569,6 +1585,7 @@ class AppState extends ChangeNotifier {
     String? vehicleId,
     String? expiresAt,
   }) async {
+    final resolvedVehicleId = vehicleId ?? primaryVehicleId;
     try {
       await api.driver.reuploadDocument(
         documentId: documentId,
@@ -1578,7 +1595,6 @@ class AppState extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('reuploadDocument endpoint fallback to uploadDocument: $e');
-      final resolvedVehicleId = vehicleId ?? primaryVehicleId;
       await api.driver.uploadDocument(
         docType: docType,
         bytes: bytes,
@@ -1592,7 +1608,10 @@ class AppState extends ChangeNotifier {
     if (docType == 'vehicle_registration') vehicleDocUploaded = true;
     if (docType == 'insurance') insuranceUploaded = true;
     await syncDocumentsStatus();
-    final id = documentForType(docType)?['id']?.toString() ?? documentId;
+    final doc = resolvedVehicleId != null
+        ? vehicleDocumentForType(resolvedVehicleId, docType)
+        : documentForType(docType);
+    final id = doc?['id']?.toString() ?? documentId;
     rememberDocumentPreview(id, bytes);
     notifyListeners();
   }
@@ -2332,6 +2351,10 @@ class AppState extends ChangeNotifier {
     int? passengerSeats,
     int? luggagePlaces,
     bool isDefault = false,
+    String? make,
+    String? model,
+    String? inspectionStatus,
+    String? approvalStatus,
   }) async {
     final row = await api.driver.createVehicle(
       name: name,
@@ -2345,6 +2368,10 @@ class AppState extends ChangeNotifier {
       autocancelBefore: autocancelBefore,
       autocancelAfter: autocancelAfter,
       isDefault: isDefault || vehicles.isEmpty,
+      make: make,
+      model: model,
+      inspectionStatus: inspectionStatus,
+      approvalStatus: approvalStatus,
     );
     final created = DriverVehicle.fromJson(row);
     primaryVehicleId = created.id;

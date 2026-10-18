@@ -11,6 +11,7 @@ import '../../utils/error_utils.dart';
 const kVehicleClasses = <String>[
   'sedan',
   'suv',
+  'suv_xl',
   'van',
   'minibus',
   'economy',
@@ -19,12 +20,16 @@ const kVehicleClasses = <String>[
 
 int defaultSeatsForClass(String vehicleClass) {
   switch (vehicleClass.toLowerCase().trim()) {
+    case 'suv_xl':
+      return 7;
     case 'suv':
       return 6;
     case 'van':
     case 'minivan':
+    case 'minivan (xxl)':
       return 7;
     case 'minibus':
+    case 'mini bus':
     case 'bus':
       return 16;
     case 'sedan':
@@ -39,11 +44,15 @@ int defaultSeatsForClass(String vehicleClass) {
 
 String vehicleClassAsset(String vehicleClass) {
   switch (vehicleClass.toLowerCase()) {
+    case 'suv_xl':
     case 'suv':
       return 'packages/gt_ui/assets/vehicles/suv.png';
     case 'van':
+    case 'minivan':
+    case 'minivan (xxl)':
       return 'packages/gt_ui/assets/vehicles/van.png';
     case 'minibus':
+    case 'mini bus':
     case 'bus':
       return 'packages/gt_ui/assets/vehicles/minibus.png';
     case 'economy':
@@ -170,9 +179,13 @@ class VehicleClassPicker extends StatelessWidget {
                     Text(
                       c == 'suv'
                           ? 'Black SUV'
-                          : c == 'van'
-                              ? 'Mini Van'
-                              : c[0].toUpperCase() + c.substring(1),
+                          : c == 'suv_xl'
+                              ? 'SUV (XL)'
+                              : c == 'van'
+                                  ? 'Minivan (XXL)'
+                                  : c == 'minibus'
+                                      ? 'Mini bus'
+                                      : c[0].toUpperCase() + c.substring(1),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight:
@@ -632,6 +645,469 @@ class _VehiclePrimaryThumbState extends State<VehiclePrimaryThumb> {
                       ),
                     ),
                   ),
+      ),
+    );
+  }
+}
+
+class VehicleRegulatoryBadge extends StatelessWidget {
+  const VehicleRegulatoryBadge({
+    super.key,
+    required this.label,
+    required this.status,
+  });
+
+  final String label;
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final st = status.trim().toUpperCase();
+    Color bg;
+    Color fg;
+    Border? border;
+
+    switch (st) {
+      case 'APPROVED':
+        bg = Colors.green.shade50;
+        fg = Colors.green.shade800;
+        break;
+      case 'REJECTED':
+      case 'FAILED':
+      case 'EXPIRED':
+        bg = Colors.red.shade50;
+        fg = Colors.red.shade800;
+        border = Border.all(color: Colors.red.shade300);
+        break;
+      case 'PENDING':
+      case 'IN_REVIEW':
+      case 'NEEDS_RESUBMISSION':
+      default:
+        bg = Colors.amber.shade50;
+        fg = Colors.amber.shade900;
+        border = Border.all(color: Colors.amber.shade300);
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        border: border,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label: ',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+          Text(
+            st.replaceAll('_', ' '),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: fg,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class VehicleDocumentSlot extends StatefulWidget {
+  const VehicleDocumentSlot({
+    super.key,
+    required this.vehicleId,
+    required this.docType,
+    required this.title,
+    this.requiresExpiry = false,
+  });
+
+  final String vehicleId;
+  final String docType;
+  final String title;
+  final bool requiresExpiry;
+
+  @override
+  State<VehicleDocumentSlot> createState() => _VehicleDocumentSlotState();
+}
+
+class _VehicleDocumentSlotState extends State<VehicleDocumentSlot> {
+  Uint8List? _previewBytes;
+  bool _previewFailed = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPreview());
+  }
+
+  @override
+  void didUpdateWidget(covariant VehicleDocumentSlot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.vehicleId != widget.vehicleId || oldWidget.docType != widget.docType) {
+      _loadPreview();
+    }
+  }
+
+  Future<void> _loadPreview() async {
+    final s = context.read<AppState>();
+    final doc = s.vehicleDocumentForType(widget.vehicleId, widget.docType);
+    final id = doc?['id']?.toString();
+    if (id == null) {
+      if (mounted) setState(() => _previewBytes = null);
+      return;
+    }
+    final cached = s.cachedDocumentPreview(id);
+    if (cached != null) {
+      if (mounted) setState(() => _previewBytes = cached);
+      return;
+    }
+    try {
+      final bytes = await s.fetchDocumentPreviewBytes(id);
+      if (!mounted) return;
+      setState(() {
+        if (bytes != null) {
+          _previewBytes = bytes;
+          _previewFailed = false;
+        } else {
+          _previewFailed = true;
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _previewFailed = true);
+    }
+  }
+
+  Future<void> _pickAndUpload() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (file == null || !mounted) return;
+
+    String? expiresAt;
+    if (widget.requiresExpiry || widget.docType == 'insurance') {
+      final now = DateTime.now();
+      final pickedDate = await showDatePicker(
+        context: context,
+        initialDate: now.add(const Duration(days: 365)),
+        firstDate: now.subtract(const Duration(days: 365)),
+        lastDate: now.add(const Duration(days: 365 * 10)),
+        helpText: 'Select document expiry date',
+      );
+      if (pickedDate == null || !mounted) return;
+      expiresAt =
+          '${pickedDate.year.toString().padLeft(4, '0')}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
+    }
+
+    final s = context.read<AppState>();
+    setState(() => _busy = true);
+    try {
+      final bytes = await file.readAsBytes();
+      final existingDoc = s.vehicleDocumentForType(widget.vehicleId, widget.docType);
+      final existingId = existingDoc?['id']?.toString();
+      final isReupload = s.isDocumentReuploadRequested(existingDoc);
+
+      if (isReupload && existingId != null) {
+        await s.reuploadKycBytes(
+          docType: widget.docType,
+          documentId: existingId,
+          bytes: bytes,
+          filename: file.name,
+          vehicleId: widget.vehicleId,
+          expiresAt: expiresAt,
+        );
+      } else {
+        await s.uploadKycBytes(
+          docType: widget.docType,
+          bytes: bytes,
+          filename: file.name,
+          vehicleId: widget.vehicleId,
+          expiresAt: expiresAt,
+        );
+      }
+      final newDoc = s.vehicleDocumentForType(widget.vehicleId, widget.docType);
+      final id = newDoc?['id']?.toString() ?? existingId;
+      if (id != null && mounted) {
+        s.rememberDocumentPreview(id, bytes);
+        setState(() {
+          _previewBytes = bytes;
+          _previewFailed = false;
+        });
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${widget.title} uploaded')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(cleanErrorMessage(e))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openPreview(Uint8List bytes) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+            ),
+            InteractiveViewer(
+              maxScale: 4,
+              child: Image.memory(bytes, fit: BoxFit.contain),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final doc = s.vehicleDocumentForType(widget.vehicleId, widget.docType);
+    final hasDoc = doc != null;
+    final status = doc?['status']?.toString().toUpperCase() ?? '';
+    final isLocked = hasDoc && s.isDocumentLocked(doc);
+    final isUnderReview = hasDoc && s.isDocumentUnderReview(doc);
+    final isExpired = hasDoc && s.isDocumentExpired(doc);
+    final isNeedsResubmission = hasDoc && s.isDocumentReuploadRequested(doc);
+    final feedback = s.documentFeedback(doc);
+    final expStr = doc?['expiresAt']?.toString();
+    String? expiryFormatted;
+    if (expStr != null && expStr.isNotEmpty) {
+      final dt = DateTime.tryParse(expStr);
+      if (dt != null) {
+        expiryFormatted = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isNeedsResubmission || isExpired ? Colors.red.shade300 : GtColors.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                    if (expiryFormatted != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        isExpired ? 'Expired: $expiryFormatted' : 'Expires: $expiryFormatted',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isExpired ? Colors.red.shade700 : GtColors.textSecondary,
+                          fontWeight: isExpired ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (hasDoc)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isExpired
+                        ? Colors.red.shade50
+                        : (isNeedsResubmission
+                            ? Colors.amber.shade50
+                            : (isUnderReview || status == 'PENDING'
+                                ? Colors.amber.shade50
+                                : (status == 'APPROVED'
+                                    ? Colors.green.shade50
+                                    : (status == 'REJECTED'
+                                        ? Colors.red.shade50
+                                        : GtColors.soft)))),
+                    border: (isNeedsResubmission || status == 'REJECTED' || isExpired)
+                        ? Border.all(color: isNeedsResubmission ? Colors.amber.shade300 : Colors.red.shade300)
+                        : null,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    isExpired
+                        ? 'EXPIRED'
+                        : (isNeedsResubmission
+                            ? 'Re-upload requested'
+                            : (isUnderReview || status == 'PENDING'
+                                ? 'Under review'
+                                : (status == 'APPROVED' ? 'Approved' : status))),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: isExpired || status == 'REJECTED'
+                          ? Colors.red.shade800
+                          : (isNeedsResubmission || isUnderReview || status == 'PENDING'
+                              ? Colors.amber.shade900
+                              : Colors.green.shade800),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: GtColors.soft,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Missing',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: GtColors.textSecondary),
+                  ),
+                ),
+            ],
+          ),
+          if (feedback != null && feedback.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.amber.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 14, color: Colors.amber.shade900),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      feedback,
+                      style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              InkWell(
+                onTap: _previewBytes != null && !_busy
+                    ? () => _openPreview(_previewBytes!)
+                    : (hasDoc || isUnderReview ? null : (_busy ? null : _pickAndUpload)),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: GtColors.bgGrey,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: GtColors.border),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _previewBytes != null
+                      ? Image.memory(
+                          _previewBytes!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined, size: 32, color: GtColors.textMuted),
+                        )
+                      : hasDoc
+                          ? (_previewFailed
+                              ? const Icon(Icons.broken_image_outlined, size: 32, color: GtColors.textMuted)
+                              : const Center(
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                ))
+                          : const Icon(Icons.add, size: 32, color: GtColors.textMuted),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (isLocked) ...[
+                      const Text(
+                        'Approved — locked by admin',
+                        style: TextStyle(fontSize: 12, color: GtColors.textSecondary),
+                      ),
+                      const SizedBox(height: 6),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _pickAndUpload,
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Resubmit document', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: GtColors.brand,
+                          side: const BorderSide(color: GtColors.brand),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        ),
+                      ),
+                    ] else ...[
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _pickAndUpload,
+                        icon: Icon(hasDoc ? Icons.replay : Icons.upload_file, size: 16),
+                        label: Text(
+                          _busy ? 'Uploading…' : (hasDoc ? 'Replace document' : 'Upload document'),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: GtColors.brand,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

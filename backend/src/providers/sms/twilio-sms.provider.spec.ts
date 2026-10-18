@@ -50,6 +50,45 @@ describe('TwilioSmsProvider', () => {
     expect(bodyParams.get('Body')).toBe('Test verification code');
   });
 
+  it('sanitizes formatted phone numbers like +1 (604) 555-0199 properly', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ sid: 'SMformatted123' }),
+    });
+    global.fetch = fetchMock;
+
+    const result = await provider.sendSms('+1 (604) 555-0199', 'Formatted number test');
+    expect(result).toEqual({ providerMessageId: 'SMformatted123' });
+    const [, options] = fetchMock.mock.calls[0];
+    const bodyParams = options.body as URLSearchParams;
+    expect(bodyParams.get('To')).toBe('+16045550199');
+  });
+
+  it('uses MessagingServiceSid when configured', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ sid: 'SMservice123' }),
+    });
+    global.fetch = fetchMock;
+
+    const serviceConfigMock = {
+      get: jest.fn((key: string) => {
+        if (key === 'twilio.accountSid') return 'ACmock_sid';
+        if (key === 'twilio.authToken') return 'mock_token';
+        if (key === 'twilio.messagingServiceSid') return 'MGmock_service_sid';
+        return undefined;
+      }),
+    };
+    const serviceProvider = new TwilioSmsProvider(serviceConfigMock as any);
+    const result = await serviceProvider.sendSms('+16045550199', 'Service test');
+
+    expect(result).toEqual({ providerMessageId: 'SMservice123' });
+    const [, options] = fetchMock.mock.calls[0];
+    const bodyParams = options.body as URLSearchParams;
+    expect(bodyParams.get('MessagingServiceSid')).toBe('MGmock_service_sid');
+    expect(bodyParams.get('From')).toBeNull();
+  });
+
   it('throws ServiceUnavailableException on Twilio API failure', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,

@@ -34,7 +34,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   Future<void> _loadPreviews() async {
     final s = context.read<AppState>();
-    for (final slot in const ['selfie', 'license', 'vehicle_registration', 'insurance']) {
+    for (final slot in const ['selfie', 'license']) {
       final doc = s.documentForType(slot);
       final id = doc?['id']?.toString();
       if (id == null) continue;
@@ -115,9 +115,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     setState(() => _busy = true);
     try {
       final bytes = await file.readAsBytes();
-      if (docType == 'vehicle_registration' || docType == 'insurance') {
-        await app.ensureVehicle();
-      }
       final existingDoc = app.documentForType(docType);
       final existingId = existingDoc?['id']?.toString();
       final isReupload = app.isDocumentReuploadRequested(existingDoc);
@@ -520,47 +517,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       s.isDocumentLocked(s.documentForType('license')!),
                   isUnderReview: isSlotUnderReview(s.documentForType('license')),
                   feedback: s.documentFeedback(s.documentForType('license')),
-                ),
-                const SizedBox(height: 12),
-                _DocSlot(
-                  title: 'Vehicle registration',
-                  doc: s.documentForType('vehicle_registration'),
-                  previewBytes: _previewBytes[
-                      s.documentForType('vehicle_registration')?['id']],
-                  previewFailed: _previewFailed.contains(
-                      s.documentForType('vehicle_registration')?['id']
-                          ?.toString()),
-                  busy: _busy,
-                  onUpload: () => _pickAndUpload('vehicle_registration'),
-                  onReplace: () => _pickAndUpload('vehicle_registration'),
-                  onResubmit: () => _confirmAndResubmit('vehicle_registration', 'Vehicle registration'),
-                  onDelete: (doc) => _deleteDoc(doc),
-                  onPreview: _openPreview,
-                  isLocked: s.documentForType('vehicle_registration') != null &&
-                      s.isDocumentLocked(
-                          s.documentForType('vehicle_registration')!),
-                  isUnderReview: isSlotUnderReview(
-                      s.documentForType('vehicle_registration')),
-                  feedback: s.documentFeedback(s.documentForType('vehicle_registration')),
-                ),
-                const SizedBox(height: 12),
-                _DocSlot(
-                  title: 'Vehicle insurance',
-                  doc: s.documentForType('insurance'),
-                  previewBytes:
-                      _previewBytes[s.documentForType('insurance')?['id']],
-                  previewFailed: _previewFailed
-                      .contains(s.documentForType('insurance')?['id']?.toString()),
-                  busy: _busy,
-                  onUpload: () => _pickAndUpload('insurance'),
-                  onReplace: () => _pickAndUpload('insurance'),
-                  onResubmit: () => _confirmAndResubmit('insurance', 'Vehicle insurance'),
-                  onDelete: (doc) => _deleteDoc(doc),
-                  onPreview: _openPreview,
-                  isLocked: s.documentForType('insurance') != null &&
-                      s.isDocumentLocked(s.documentForType('insurance')!),
-                  isUnderReview: isSlotUnderReview(s.documentForType('insurance')),
-                  feedback: s.documentFeedback(s.documentForType('insurance')),
                 ),
               ],
             ),

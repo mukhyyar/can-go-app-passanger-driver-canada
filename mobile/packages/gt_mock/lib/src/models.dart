@@ -51,6 +51,7 @@ class VehicleClass {
     this.passengerSeats = 4,
     this.luggagePlaces = 2,
     this.capacityInfo,
+    this.seatsRange,
   });
   final String id;
   final String name;
@@ -61,6 +62,10 @@ class VehicleClass {
   final int passengerSeats;
   final int luggagePlaces;
   final String? capacityInfo;
+  final String? seatsRange;
+
+  String get seatsCapacityText =>
+      seatsRange != null ? 'Up to $seatsRange' : 'Up to $passengerSeats';
 }
 
 class ChildSeats {
@@ -646,6 +651,10 @@ class DriverVehicle {
     this.autocancelBefore = 10,
     this.autocancelAfter = 10,
     this.updatedAt,
+    this.make,
+    this.model,
+    this.inspectionStatus = 'PENDING',
+    this.approvalStatus = 'PENDING',
   });
 
   final String id;
@@ -662,6 +671,10 @@ class DriverVehicle {
   final int autocancelBefore;
   final int autocancelAfter;
   final DateTime? updatedAt;
+  final String? make;
+  final String? model;
+  final String inspectionStatus;
+  final String approvalStatus;
 
   factory DriverVehicle.fromJson(Map<String, dynamic> json) {
     final amenitiesRaw = json['amenities'] ?? json['amenitiesJson'];
@@ -695,6 +708,10 @@ class DriverVehicle {
           ? (json['autocancelAfter'] as num).toInt()
           : 10,
       updatedAt: updatedAt,
+      make: json['make'] as String?,
+      model: json['model'] as String?,
+      inspectionStatus: json['inspectionStatus'] as String? ?? 'PENDING',
+      approvalStatus: json['approvalStatus'] as String? ?? 'PENDING',
     );
   }
 }

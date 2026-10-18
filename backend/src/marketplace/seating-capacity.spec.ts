@@ -5,10 +5,13 @@ describe('Seating Capacity Constraints', () => {
   it('returns appropriate default seating capacity per vehicle class', () => {
     expect(getDefaultSeatingCapacity('sedan')).toBe(4);
     expect(getDefaultSeatingCapacity('economy')).toBe(4);
+    expect(getDefaultSeatingCapacity('suv_xl')).toBe(7);
     expect(getDefaultSeatingCapacity('suv')).toBe(6);
     expect(getDefaultSeatingCapacity('van')).toBe(7);
     expect(getDefaultSeatingCapacity('minivan')).toBe(7);
+    expect(getDefaultSeatingCapacity('minivan (xxl)')).toBe(7);
     expect(getDefaultSeatingCapacity('minibus')).toBe(16);
+    expect(getDefaultSeatingCapacity('mini bus')).toBe(16);
     expect(getDefaultSeatingCapacity('bus')).toBe(16);
     expect(getDefaultSeatingCapacity(null)).toBe(4);
   });

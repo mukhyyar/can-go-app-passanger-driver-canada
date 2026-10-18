@@ -15,9 +15,12 @@ void main() {
       expect(names.contains('bus'), isFalse);
     });
 
-    test('MockData.vehicleClasses contains remaining active classes', () {
+    test('MockData.vehicleClasses contains remaining active classes with premium and suv at the end', () {
       final ids = MockData.vehicleClasses.map((v) => v.id).toList();
-      expect(ids, equals(['economy', 'comfort', 'premium', 'suv', 'van', 'minibus']));
+      expect(ids, equals(['economy', 'comfort', 'suv_xl', 'van', 'minibus', 'premium', 'suv']));
+
+      final names = MockData.vehicleClasses.map((v) => v.name).toList();
+      expect(names, containsAll(['Minivan (XXL)', 'SUV (XL)', 'Mini bus', 'Premium', 'Black SUV']));
     });
   });
 }

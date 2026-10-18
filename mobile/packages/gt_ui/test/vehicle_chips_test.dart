@@ -8,15 +8,18 @@ void main() {
       expect(GtVehicleChips.formatLabel('economy'), equals('Economy'));
       expect(GtVehicleChips.formatLabel('comfort'), equals('Comfort'));
       expect(GtVehicleChips.formatLabel('suv'), equals('Black SUV'));
+      expect(GtVehicleChips.formatLabel('suv_xl'), equals('SUV (XL)'));
       expect(GtVehicleChips.formatLabel('vip'), equals('VIP'));
+      expect(GtVehicleChips.formatLabel('van'), equals('Minivan (XXL)'));
       expect(GtVehicleChips.formatLabel('business_class'), equals('Business Class'));
-      expect(GtVehicleChips.formatLabel('minibus'), equals('Minibus'));
+      expect(GtVehicleChips.formatLabel('minibus'), equals('Mini bus'));
     });
 
     test('vehicleIcon picks appropriate icons for vehicle categories', () {
       expect(GtVehicleChips.vehicleIcon('van'), equals(Icons.airport_shuttle_outlined));
       expect(GtVehicleChips.vehicleIcon('minibus'), equals(Icons.airport_shuttle_outlined));
       expect(GtVehicleChips.vehicleIcon('suv'), equals(Icons.directions_car_filled_outlined));
+      expect(GtVehicleChips.vehicleIcon('suv_xl'), equals(Icons.directions_car_filled_outlined));
       expect(GtVehicleChips.vehicleIcon('vip'), equals(Icons.airline_seat_recline_extra_outlined));
       expect(GtVehicleChips.vehicleIcon('economy'), equals(Icons.directions_car_outlined));
     });
@@ -26,7 +29,7 @@ void main() {
         const MaterialApp(
           home: Scaffold(
             body: GtVehicleChips(
-              rawNeed: 'economy, comfort, business, premium, vip, suv, van, minibus, bus',
+              rawNeed: 'economy, comfort, business, premium, vip, suv, suv_xl, van, minibus, bus',
               passengers: 2,
             ),
           ),
@@ -40,8 +43,9 @@ void main() {
       expect(find.text('Premium'), findsOneWidget);
       expect(find.text('VIP'), findsOneWidget);
       expect(find.text('Black SUV'), findsOneWidget);
-      expect(find.text('Mini Van'), findsOneWidget);
-      expect(find.text('Minibus'), findsOneWidget);
+      expect(find.text('SUV (XL)'), findsOneWidget);
+      expect(find.text('Minivan (XXL)'), findsOneWidget);
+      expect(find.text('Mini bus'), findsOneWidget);
       expect(find.text('Bus'), findsOneWidget);
 
       // Verify passenger count badge
