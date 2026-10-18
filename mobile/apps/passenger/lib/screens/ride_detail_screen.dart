@@ -9,6 +9,7 @@ import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import 'package:passenger/services/stripe_payment_service.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 class RideDetailScreen extends StatefulWidget {
@@ -448,10 +449,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           const SnackBar(content: Text('You already rated this ride')),
         );
       } else {
-        String displayMsg = 'Could not submit rating';
-        if (e is ApiException && e.message.trim().isNotEmpty) {
-          displayMsg = e.message.trim();
-        }
+        final displayMsg =
+            cleanErrorMessage(e, fallback: 'Could not submit rating');
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(displayMsg)));
@@ -505,7 +504,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate share link: $e')),
+          SnackBar(content: Text('Failed to generate share link: ${cleanErrorMessage(e)}')),
         );
       }
       if (mounted) setState(() => _actionBusy = false);
@@ -722,7 +721,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Could not revoke link: $e'),
+                                content: Text('Could not revoke link: ${cleanErrorMessage(e)}'),
                               ),
                             );
                           }
@@ -759,7 +758,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Error: $e')),
+                              SnackBar(content: Text(cleanErrorMessage(e))),
                             );
                           }
                         }
@@ -1000,7 +999,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to process tip: $e')));
+      ).showSnackBar(SnackBar(content: Text('Failed to process tip: ${cleanErrorMessage(e)}')));
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -1426,7 +1425,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         if (mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('Could not update case: $e')));
+          ).showSnackBar(SnackBar(content: Text('Could not update case: ${cleanErrorMessage(e)}')));
         }
       } finally {
         if (mounted) setState(() => _actionBusy = false);
@@ -1618,7 +1617,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not update pickup location: $e')),
+            SnackBar(content: Text('Could not update pickup location: ${cleanErrorMessage(e)}')),
           );
         }
       } finally {
@@ -1701,7 +1700,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not process payment: $e')),
+            SnackBar(content: Text('Could not process payment: ${cleanErrorMessage(e)}')),
           );
         }
       } finally {

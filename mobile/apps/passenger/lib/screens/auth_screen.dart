@@ -11,6 +11,7 @@ import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import '../utils/error_utils.dart';
 
 enum _AuthStep {
   methods,
@@ -277,7 +278,7 @@ class _AuthScreenState extends State<AuthScreen> {
       await fn();
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      setState(() => _error = cleanErrorMessage(e));
     } on GoogleSignInException catch (e) {
       if (!mounted) return;
       // User dismissed the picker / reauth prompt — not an error to show.
@@ -290,7 +291,7 @@ class _AuthScreenState extends State<AuthScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      setState(() => _error = cleanErrorMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

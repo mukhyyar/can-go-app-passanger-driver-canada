@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 /// Edit an open marketplace ride (WAITING_FOR_OFFERS / OFFER_SELECTION).
@@ -140,7 +141,7 @@ class _EditRideScreenState extends State<EditRideScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = cleanErrorMessage(e);
       });
     }
   }
@@ -448,7 +449,7 @@ class _EditRideScreenState extends State<EditRideScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: $e')),
+        SnackBar(content: Text('Could not update: ${cleanErrorMessage(e)}')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import '../../utils/error_utils.dart';
 class GetOffersBar extends StatefulWidget {
   const GetOffersBar({super.key, required this.state});
 
@@ -130,7 +131,7 @@ class _GetOffersBarState extends State<GetOffersBar> {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Booking failed: $e')),
+        SnackBar(content: Text('Booking failed: ${cleanErrorMessage(e)}')),
       );
     } finally {
       if (mounted) {

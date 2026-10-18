@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -44,7 +45,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = cleanErrorMessage(e);
         _loading = false;
       });
     }
@@ -58,7 +59,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not mark all read: $e')),
+        SnackBar(content: Text('Could not mark all read: ${cleanErrorMessage(e)}')),
       );
     }
   }

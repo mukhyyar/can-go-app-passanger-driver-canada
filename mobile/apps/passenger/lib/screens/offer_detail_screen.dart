@@ -4,6 +4,7 @@ import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 class OfferDetailScreen extends StatefulWidget {
@@ -178,7 +179,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Cannot book: $e')));
+      ).showSnackBar(SnackBar(content: Text('Cannot book: ${cleanErrorMessage(e)}')));
     } finally {
       if (mounted) setState(() => _booking = false);
     }

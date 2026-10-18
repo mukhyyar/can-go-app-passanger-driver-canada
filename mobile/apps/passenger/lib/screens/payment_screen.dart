@@ -6,6 +6,7 @@ import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/services/stripe_payment_service.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 class PaymentScreen extends StatefulWidget {
@@ -76,7 +77,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = cleanErrorMessage(e);
         _loadingQuote = false;
       });
     }
@@ -224,7 +225,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       // only confirm when PaymentSheet already completed (handled above).
       setState(() {
         _paying = false;
-        _error = 'Payment unsuccessful. Your ride has not been booked.\n$e';
+        _error =
+            'Payment unsuccessful. Your ride has not been booked.\n${cleanErrorMessage(e)}';
       });
     }
   }
@@ -321,7 +323,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not cancel: $e'),
+          content: Text('Could not cancel: ${cleanErrorMessage(e)}'),
           behavior: SnackBarBehavior.floating,
           showCloseIcon: true,
           duration: const Duration(seconds: 4),

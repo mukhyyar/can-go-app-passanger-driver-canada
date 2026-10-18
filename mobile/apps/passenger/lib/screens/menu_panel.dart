@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 /// Settings-style menu content (CAN-RIDE passenger layout).
@@ -107,7 +108,7 @@ class _MenuPanelState extends State<MenuPanel>
             if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Upload failed: $e'),
+                content: Text('Upload failed: ${cleanErrorMessage(e)}'),
                 action: SnackBarAction(
                   label: 'Retry',
                   onPressed: () => state.uploadAvatar(bytes),
@@ -124,7 +125,7 @@ class _MenuPanelState extends State<MenuPanel>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update photo: $e')),
+        SnackBar(content: Text('Could not update photo: ${cleanErrorMessage(e)}')),
       );
     }
   }

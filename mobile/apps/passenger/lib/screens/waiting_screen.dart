@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 class WaitingScreen extends StatefulWidget {
@@ -94,7 +95,7 @@ class _WaitingScreenState extends State<WaitingScreen>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not cancel: $e')),
+        SnackBar(content: Text('Could not cancel: ${cleanErrorMessage(e)}')),
       );
     }
   }

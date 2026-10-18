@@ -6,6 +6,7 @@ import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
+import 'package:passenger/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 
 enum _OfferSort {
@@ -132,7 +133,7 @@ class _OffersScreenState extends State<OffersScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = '$e';
+        _loadError = cleanErrorMessage(e);
       });
     }
   }
@@ -178,7 +179,7 @@ class _OffersScreenState extends State<OffersScreen> {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Cannot book: $e')));
+      ).showSnackBar(SnackBar(content: Text('Cannot book: ${cleanErrorMessage(e)}')));
     } finally {
       if (mounted) setState(() => _booking = false);
     }
@@ -213,7 +214,7 @@ class _OffersScreenState extends State<OffersScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Could not cancel: $e')));
+      ).showSnackBar(SnackBar(content: Text('Could not cancel: ${cleanErrorMessage(e)}')));
     }
   }
 
