@@ -404,6 +404,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ? (policy['body']?.toString() ?? '')
         : (quote?['cancellationPolicy']?.toString() ??
               'The ride is not refundable in case of cancellation.');
+    final List<dynamic> policyTiers =
+        (policy is Map && policy['tiers'] is List)
+            ? (policy['tiers'] as List<dynamic>)
+            : const [];
 
     return ScaffoldMessenger(
       child: Scaffold(
@@ -658,19 +662,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Cancellation policy',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    policyBody,
-                    style: const TextStyle(
-                      color: GtColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
+                  const SizedBox(height: 14),
+                  _buildCancellationTerms(policyBody, policyTiers),
                   const SizedBox(height: 12),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
@@ -787,6 +780,160 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCancellationTerms(String fallbackBody, List<dynamic> tiers) {
+    if (tiers.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Cancellation policy',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            fallbackBody,
+            style: const TextStyle(
+              color: GtColors.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.shield_outlined, size: 18, color: GtColors.brand),
+              SizedBox(width: 8),
+              Text(
+                'Cancellation Terms & Refund Policy',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                  color: GtColors.text,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Review cancellation terms before paying:',
+            style: TextStyle(color: GtColors.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          ...tiers.map((t) {
+            final tier = t is Map ? t : <String, dynamic>{};
+            final window =
+                tier['windowLabel']?.toString() ?? tier['name']?.toString() ?? '';
+            final rule = tier['refundLabel']?.toString() ?? '';
+            final terms = tier['passengerDisplayTerms']?.toString() ?? '';
+            final isFull = rule.toLowerCase().contains('full');
+            final isPartial = rule.toLowerCase().contains('partial');
+            final badgeBg = isFull
+                ? const Color(0xFFE8F6EC)
+                : isPartial
+                ? const Color(0xFFFEF3C7)
+                : const Color(0xFFFDEAEA);
+            final badgeText = isFull
+                ? const Color(0xFF165F36)
+                : isPartial
+                ? const Color(0xFF92400E)
+                : const Color(0xFFB91C1C);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 5),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isFull
+                          ? GtColors.green
+                          : (isPartial ? GtColors.warn : GtColors.brand),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                window,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.5,
+                                  color: GtColors.text,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: badgeBg,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                rule,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: badgeText,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (terms.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            terms,
+                            style: const TextStyle(
+                              color: GtColors.textSecondary,
+                              fontSize: 11,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
