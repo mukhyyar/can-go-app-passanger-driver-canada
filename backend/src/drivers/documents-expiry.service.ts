@@ -136,10 +136,37 @@ export class DocumentsExpiryService {
           );
         }
 
+        // 4. Record KycFlag for admin ops visibility
+        try {
+          const existingFlag = await this.prisma.kycFlag?.findFirst?.({
+            where: {
+              driverId,
+              flagType: 'DOCUMENT_CONCERN',
+              clearedAt: null,
+              reason: { contains: 'expired' },
+            },
+          });
+          if (!existingFlag && this.prisma.kycFlag?.create) {
+            await this.prisma.kycFlag.create({
+              data: {
+                driverId,
+                flagType: 'DOCUMENT_CONCERN',
+                reason: `Document expired: ${expiredNames}`,
+                note: 'Automatically flagged by system document expiry sweep.',
+                createdById: 'SYSTEM',
+              },
+            });
+          }
+        } catch (e) {
+          this.logger.warn(
+            `Failed to create KYC flag for driver deactivation ${driverId}: ${e}`,
+          );
+        }
+
         deactivatedCount++;
       }
 
-      // 4. Send notification to driver (deduplicated by primary expired doc id)
+      // 5. Send notification to driver (deduplicated by primary expired doc id)
       const primaryDoc = docs[0];
       try {
         await this.notifications.sendToUser({
@@ -169,7 +196,7 @@ export class DocumentsExpiryService {
 
   /**
    * Sweeps current driver documents that are expiring soon (within 30 days)
-   * and notifies active drivers so they can re-upload before expiry.
+   * across 30d, 14d, 7d, and 1d intervals, and notifies active drivers.
    */
   async notifyExpiringSoon(
     now = new Date(),
@@ -208,12 +235,14 @@ export class DocumentsExpiryService {
       const diffMs = doc.expiresAt.getTime() - now.getTime();
       const daysLeft = Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
 
-      // Bucketing for reminder intervals: 30d, 7d, 1d
+      // Bucketing for reminder intervals: 30d, 14d, 7d, 1d
       let bucket: string | null = null;
       if (daysLeft <= 1) {
         bucket = '1d';
       } else if (daysLeft <= 7) {
         bucket = '7d';
+      } else if (daysLeft <= 14) {
+        bucket = '14d';
       } else if (daysLeft <= 30) {
         bucket = '30d';
       }
@@ -223,6 +252,35 @@ export class DocumentsExpiryService {
       const label =
         DOC_TYPE_LABELS[doc.docType as DriverDocType] || doc.docType;
       const eventId = `doc_expiring_${doc.id}_${bucket}`;
+
+      // If document is expiring within 7 days, add an automated warning flag if not already flagged
+      if (daysLeft <= 7) {
+        try {
+          const existingWarning = await this.prisma.kycFlag?.findFirst?.({
+            where: {
+              driverId: doc.driver.id,
+              flagType: 'DOCUMENT_CONCERN',
+              clearedAt: null,
+              reason: { contains: label },
+            },
+          });
+          if (!existingWarning && this.prisma.kycFlag?.create) {
+            await this.prisma.kycFlag.create({
+              data: {
+                driverId: doc.driver.id,
+                flagType: 'DOCUMENT_CONCERN',
+                reason: `${label} expiring soon (${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining)`,
+                note: 'Upcoming expiration flagged by automated sweep.',
+                createdById: 'SYSTEM',
+              },
+            });
+          }
+        } catch (e) {
+          this.logger.warn(
+            `Failed to create upcoming expiry flag for doc ${doc.id}: ${e}`,
+          );
+        }
+      }
 
       try {
         const result = await this.notifications.sendToUser({
@@ -236,6 +294,7 @@ export class DocumentsExpiryService {
             docId: doc.id,
             docType: doc.docType,
             daysLeft: String(daysLeft),
+            interval: bucket,
           },
         });
         if (result.sent > 0) notifiedCount++;
@@ -247,5 +306,26 @@ export class DocumentsExpiryService {
     }
 
     return { notifiedCount };
+  }
+
+  /**
+   * Sweeps both expired documents and upcoming document expirations.
+   * Usable on-demand by admin operations and scheduled background tasks.
+   */
+  async sweepAll(
+    now = new Date(),
+  ): Promise<{
+    deactivatedDrivers: number;
+    expiredDocs: number;
+    notifiedCount: number;
+    scannedAt: string;
+  }> {
+    const expiredResult = await this.enforceExpiredDocuments(now);
+    const expiringResult = await this.notifyExpiringSoon(now);
+    return {
+      ...expiredResult,
+      notifiedCount: expiringResult.notifiedCount,
+      scannedAt: now.toISOString(),
+    };
   }
 }

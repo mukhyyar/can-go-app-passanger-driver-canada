@@ -75,7 +75,7 @@ class MockData {
       id: 'suv_xl',
       name: 'SUV (XL)',
       fromPrice: 'from CA\$55',
-      imageAsset: 'assets/vehicles/suv.png',
+      imageAsset: 'assets/vehicles/suv_xl.png',
       passengerSeats: 8,
       luggagePlaces: 4,
       seatsRange: '7 - 8',
@@ -132,7 +132,8 @@ class MockData {
     for (final vc in vehicleClasses) {
       if (vc.id == key || vc.name.toLowerCase() == key) return vc.imageAsset;
     }
-    if (key == 'suv_xl' || key == 'suv (xl)' || key == 'suv xl') return 'assets/vehicles/suv.png';
+    if (key == 'sedan') return 'assets/vehicles/premium.png';
+    if (key == 'suv_xl' || key == 'suv (xl)' || key == 'suv xl') return 'assets/vehicles/suv_xl.png';
     if (key == 'van' || key == 'minivan' || key == 'minivan (xxl)' || key == 'mini van') return 'assets/vehicles/van.png';
     if (key == 'minibus' || key == 'mini bus') return 'assets/vehicles/minibus.png';
     if (key == 'business') return 'assets/vehicles/business.png';

@@ -64,6 +64,11 @@ import {
 
 import { OfferPresentationService } from './offer-presentation.service';
 import {
+  CancellationPolicyService,
+  resolveIncludedWaitingMinutes,
+} from './cancellation-policy.service';
+import { DriverCancellationService } from './driver-cancellation.service';
+import {
   isMaterialRideEdit,
   isPassengerEditableStatus,
 } from './ride-update.logic';
@@ -92,6 +97,8 @@ export class MarketplaceService {
     @Optional() private readonly tracking?: TrackingGateway,
     @Optional() private readonly stripeConnect?: StripeConnectService,
     @Optional() private readonly emailEvents?: EmailEventsService,
+    @Optional() private readonly cancellationPolicy?: CancellationPolicyService,
+    @Optional() private readonly driverCancellation?: DriverCancellationService,
   ) {
     this.payTtlMs = loadRideLifecycleConfig().paymentTtlMs;
   }
@@ -209,6 +216,16 @@ export class MarketplaceService {
       returnAt: returnAtDate,
     });
 
+    const resolvedPickupWaitMin =
+      dto.pickupWaitMin ??
+      resolveIncludedWaitingMinutes({
+        fromLabel: dto.fromLabel,
+        flight: dto.flight,
+        pickupAt,
+        createdAt: new Date(),
+        pickupWaitMin: dto.pickupWaitMin,
+      });
+
     const ride = await this.prisma.ride.create({
       data: {
         passengerId: passenger.id,
@@ -223,7 +240,7 @@ export class MarketplaceService {
         pickupAt,
         returnAt: returnAtDate,
         isRoundTrip,
-        pickupWaitMin: dto.pickupWaitMin,
+        pickupWaitMin: resolvedPickupWaitMin,
         returnWaitMin: dto.returnWaitMin,
         vehicleClassIds: dto.vehicleClassIds,
         adults: dto.adults ?? 1,
@@ -641,6 +658,14 @@ export class MarketplaceService {
             },
           },
         },
+        originalDriver: {
+          select: {
+            id: true,
+            fullName: true,
+            avatarStorageKey: true,
+            user: { select: { phoneE164: true } },
+          },
+        },
         supportCases: {
           select: {
             id: true,
@@ -706,6 +731,14 @@ export class MarketplaceService {
             },
           },
         },
+        originalDriver: {
+          select: {
+            id: true,
+            fullName: true,
+            avatarStorageKey: true,
+            user: { select: { phoneE164: true } },
+          },
+        },
         events: { orderBy: { createdAt: 'asc' }, take: 100 },
         payments: true,
         passenger: { select: { id: true, fullName: true, userId: true } },
@@ -734,6 +767,8 @@ export class MarketplaceService {
     const isPassenger = ride.passenger.userId === userId;
     const isAssignedDriver =
       !!user.driverProfile && ride.assignedDriverId === user.driverProfile.id;
+    const isOriginalDriver =
+      !!user.driverProfile && ride.originalDriverId === user.driverProfile.id;
     const hasOffer =
       !!user.driverProfile &&
       ride.offers.some((o) => o.driverId === user.driverProfile!.id);
@@ -752,6 +787,7 @@ export class MarketplaceService {
     if (
       !isPassenger &&
       !isAssignedDriver &&
+      !isOriginalDriver &&
       !hasOffer &&
       !isEligibleOpenDriver &&
       !isAdmin
@@ -806,6 +842,10 @@ export class MarketplaceService {
     });
 
     let refundAmount = 0;
+    let cancellationFee = 0;
+    let providerCompAmount = 0;
+    let evaluationLabel = 'Cancellation Policy';
+
     try {
       const payment = await this.prisma.payment.findFirst({
         where: {
@@ -819,8 +859,438 @@ export class MarketplaceService {
           .filter((r) => r.status === 'succeeded' || r.status === 'pending')
           .reduce((sum, r) => sum + Number(r.amount), 0);
         const remaining = Number(payment.amount) - alreadyRefunded;
+
+        if (isOverdue || !this.cancellationPolicy) {
+          refundAmount = Math.max(0, remaining);
+          evaluationLabel = isOverdue
+            ? 'Overdue ride cancellation'
+            : 'Standard cancellation';
+        } else {
+          const evalResult = await this.cancellationPolicy.evaluateCancellation(rideId);
+          refundAmount = Math.min(
+            remaining,
+            Math.max(0, evalResult.passengerRefundAmount),
+          );
+          cancellationFee = evalResult.cancellationFee;
+          providerCompAmount = evalResult.providerCompAmount;
+          evaluationLabel = evalResult.passengerDisplayLabel;
+        }
+
+        if (refundAmount > 0.01) {
+          const isFull = Math.abs(refundAmount - remaining) < 0.01;
+          await this.prisma.$transaction(async (tx) => {
+            await tx.refund.create({
+              data: {
+                paymentId: payment.id,
+                amount: refundAmount,
+                currency: payment.currency,
+                type: isFull ? 'FULL' : 'PARTIAL',
+                reason: `Cancellation refund (${evaluationLabel})`,
+                internalNote: `Automated cancellation refund for ride ${rideId}`,
+                status: 'succeeded',
+                requestedById: userId,
+              },
+            });
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: { status: isFull ? 'refunded' : 'partially_refunded' },
+            });
+            await tx.rideFinancial.updateMany({
+              where: { rideId },
+              data: {
+                refundAmount: refundAmount,
+                refundReason: evaluationLabel,
+                refundedAt: new Date(),
+                ...(providerCompAmount > 0
+                  ? { driverNetEarning: providerCompAmount }
+                  : {}),
+              },
+            });
+
+            // Credit driver compensation if applicable
+            if (providerCompAmount > 0.01 && ride.assignedDriverId) {
+              await tx.driverWalletEntry.create({
+                data: {
+                  driverId: ride.assignedDriverId,
+                  type: WalletEntryType.ADJUSTMENT,
+                  direction: WalletDirection.CREDIT,
+                  amount: providerCompAmount,
+                  currency: payment.currency,
+                  status: WalletEntryStatus.POSTED,
+                  rideId: ride.id,
+                  description: `Cancellation compensation (${evaluationLabel}) · Ride ${ride.id.slice(0, 8)}`,
+                  metaJson: {
+                    rideId: ride.id,
+                    tier: evaluationLabel,
+                    compensatedAt: new Date().toISOString(),
+                  } as Prisma.InputJsonValue,
+                },
+              });
+            }
+          });
+        } else if (providerCompAmount > 0.01 && ride.assignedDriverId) {
+          // Zero refund to passenger, but provider compensation applies from retained fee
+          await this.prisma.$transaction(async (tx) => {
+            await tx.rideFinancial.updateMany({
+              where: { rideId },
+              data: {
+                refundAmount: 0,
+                refundReason: `${evaluationLabel} (No passenger refund)`,
+                refundedAt: new Date(),
+                driverNetEarning: providerCompAmount,
+              },
+            });
+            await tx.driverWalletEntry.create({
+              data: {
+                driverId: ride.assignedDriverId!,
+                type: WalletEntryType.ADJUSTMENT,
+                direction: WalletDirection.CREDIT,
+                amount: providerCompAmount,
+                currency: payment.currency,
+                status: WalletEntryStatus.POSTED,
+                rideId: ride.id,
+                description: `Cancellation compensation (${evaluationLabel}) · Ride ${ride.id.slice(0, 8)}`,
+                metaJson: {
+                  rideId: ride.id,
+                  tier: evaluationLabel,
+                  compensatedAt: new Date().toISOString(),
+                } as Prisma.InputJsonValue,
+              },
+            });
+          });
+        }
+      }
+    } catch (err) {
+      this.logger.error(`Error processing cancellation financial settlement: ${err}`);
+    }
+
+    await this.audit(userId, 'ride.cancel', 'Ride', rideId, ip);
+    const cancelBody =
+      refundAmount > 0
+        ? `Your ride was cancelled. An eligible refund of CAD $${refundAmount.toFixed(2)} has been processed (${evaluationLabel}).`
+        : cancellationFee > 0
+        ? `Your ride was cancelled. A cancellation fee of CAD $${cancellationFee.toFixed(2)} applies per cancellation terms (${evaluationLabel}).`
+        : 'Your ride request was cancelled.';
+
+    void this.notifications.notifyRideStatus({
+      userIds: [userId],
+      rideId,
+      status: RideStatus.PASSENGER_CANCELLED,
+      title: 'Ride cancelled',
+      body: cancelBody,
+      targetRole: ['PASSENGER', 'PASSENGER_WEB'],
+    });
+
+    if (providerCompAmount > 0.01 && ride.assignedDriverId) {
+      const driverUser = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      if (driverUser) {
+        void this.notifications.notifyRideStatus({
+          userIds: [driverUser.userId],
+          rideId,
+          status: RideStatus.PASSENGER_CANCELLED,
+          title: 'Ride cancelled - Compensation credited',
+          body: `Passenger cancelled ride ${ride.id.slice(0, 8)}. CAD $${providerCompAmount.toFixed(2)} has been credited to your wallet (${evaluationLabel}).`,
+          targetRole: ['DRIVER'],
+        });
+      }
+    }
+
+    return this.getRideForActor(userId, rideId);
+  }
+
+  /**
+   * Section 11: Attempt Replacement Driver when Provider Fails to Arrive.
+   * - Retains original provider in ride.originalDriverId
+   * - Records RideEvent provider_replaced snapshot
+   * - Unassigns failing driver and withdraws their offer
+   * - Flags failing driver account for review (unjustified cancellation / no-show)
+   * - Reopens ride to WAITING_FOR_OFFERS (escrowed payment remains held)
+   * - Dispatches urgent replacement broadcast
+   */
+  async attemptReplacement(userId: string, rideId: string, ip?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { passengerProfile: true },
+    });
+    const isAdmin =
+      user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: true,
+        selectedOffer: { include: { driver: true } },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const isPassenger = ride.passenger?.userId === userId;
+    if (!isPassenger && !isAdmin) {
+      throw new ForbiddenException(
+        'Not allowed to request replacement for this ride',
+      );
+    }
+
+    const failingDriverId = ride.assignedDriverId;
+    if (!failingDriverId) {
+      throw new BadRequestException('No assigned provider to replace');
+    }
+
+    const terminalStatuses: RideStatus[] = [
+      RideStatus.COMPLETED,
+      RideStatus.PASSENGER_CANCELLED,
+      RideStatus.DRIVER_CANCELLED,
+      RideStatus.ADMIN_CANCELLED,
+      RideStatus.EXPIRED,
+      RideStatus.NO_SHOW,
+    ];
+    if (terminalStatuses.includes(ride.status)) {
+      throw new BadRequestException(`Cannot replace driver from status ${ride.status}`);
+    }
+
+    const originalDriverId = ride.originalDriverId ?? failingDriverId;
+    const failingDriver = await this.prisma.driverProfile.findUnique({
+      where: { id: failingDriverId },
+      include: { user: true },
+    });
+
+    const previousStatus = ride.status;
+
+    // Retain original provider, unassign current driver, reopen to WAITING_FOR_OFFERS
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ride.update({
+        where: { id: rideId },
+        data: {
+          originalDriverId,
+          assignedDriverId: null,
+          selectedOfferId: null,
+          status: RideStatus.WAITING_FOR_OFFERS,
+          requestExpiresAt: new Date(Date.now() + 30 * 60 * 1000), // extend search window
+        },
+      });
+
+      // Withdraw failing driver's offer so they are not reselected
+      await tx.offer.updateMany({
+        where: { rideId, driverId: failingDriverId },
+        data: { status: OfferStatus.WITHDRAWN },
+      });
+
+      // Preserve snapshot in RideEvent
+      await tx.rideEvent.create({
+        data: {
+          rideId,
+          fromStatus: previousStatus,
+          toStatus: RideStatus.WAITING_FOR_OFFERS,
+          actorType: 'passenger',
+          actorId: userId,
+          payload: {
+            action: 'provider_replaced',
+            reason: 'provider_failed_to_arrive',
+            failingDriverId,
+            originalDriverId,
+            failingDriverName: failingDriver?.fullName ?? 'Original Driver',
+            reassignedAt: new Date().toISOString(),
+            isUrgentReplacement: true,
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: userId,
+          action: 'ride.provider_replacement_attempted',
+          resource: 'Ride',
+          resourceId: rideId,
+          ip,
+          meta: {
+            failingDriverId,
+            originalDriverId,
+          },
+        },
+      });
+    });
+
+    // Flag failing provider for review
+    if (this.driverCancellation) {
+      await this.driverCancellation.flagProviderForNoShow({
+        driverId: failingDriverId,
+        rideId,
+        actorId: userId,
+        reasonDetails:
+          'Passenger requested replacement driver because provider failed to arrive.',
+        ip,
+      });
+    }
+
+    // Broadcast urgent replacement to nearby drivers & passenger
+    this.tracking?.emitRideEvent(rideId, {
+      type: 'ride.replacement_requested',
+      rideId,
+      status: RideStatus.WAITING_FOR_OFFERS,
+      isUrgentReplacement: true,
+    });
+    if (ride.passenger?.userId) {
+      this.tracking?.emitToPassengers(
+        [ride.passenger.userId],
+        'ride.status.changed',
+        {
+          rideId,
+          status: RideStatus.WAITING_FOR_OFFERS,
+          isUrgentReplacement: true,
+        },
+      );
+    }
+
+    return this.getRideForActor(userId, rideId);
+  }
+
+  /**
+   * Section 11: Cancel Booking when Provider Fails to Arrive.
+   * - 100% full refund to passenger (fare + fees + tips/taxes)
+   * - $0.00 provider earnings
+   * - Transitions status to PASSENGER_CANCELLED with provider_no_show reason
+   * - Flags failing provider account for compliance review
+   * - Retains original provider in history
+   */
+  async cancelProviderNoShow(userId: string, rideId: string, ip?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { passengerProfile: true },
+    });
+    const isAdmin =
+      user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      include: {
+        passenger: true,
+        selectedOffer: { include: { driver: true } },
+      },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    const isPassenger = ride.passenger?.userId === userId;
+    if (!isPassenger && !isAdmin) {
+      throw new ForbiddenException('Not allowed to cancel this ride');
+    }
+
+    const cancellable: RideStatus[] = [
+      RideStatus.WAITING_FOR_OFFERS,
+      RideStatus.OFFER_SELECTION,
+      RideStatus.PAYMENT_PENDING,
+      RideStatus.BOOKED,
+      RideStatus.DRIVER_EN_ROUTE,
+      RideStatus.DRIVER_ARRIVED,
+    ];
+    if (!cancellable.includes(ride.status) && !isOverdueBooking(ride)) {
+      throw new BadRequestException(
+        `Cannot cancel ride with current status: ${ride.status}`,
+      );
+    }
+
+    const failingDriverId = ride.assignedDriverId ?? ride.originalDriverId;
+    const previousStatus = ride.status;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ride.update({
+        where: { id: rideId },
+        data: { status: RideStatus.PASSENGER_CANCELLED },
+      });
+
+      await tx.offer.updateMany({
+        where: {
+          rideId,
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] },
+        },
+        data: { status: OfferStatus.WITHDRAWN },
+      });
+
+      await tx.rideEvent.create({
+        data: {
+          rideId,
+          fromStatus: previousStatus,
+          toStatus: RideStatus.PASSENGER_CANCELLED,
+          actorType: 'passenger',
+          actorId: userId,
+          payload: {
+            action: 'provider_no_show_cancel',
+            reason: 'provider_no_show',
+            failingDriverId: failingDriverId ?? null,
+            originalDriverId: ride.originalDriverId ?? failingDriverId ?? null,
+            cancelledBy: 'PASSENGER',
+            cancelledAt: new Date().toISOString(),
+            isProviderNoShow: true,
+          },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: userId,
+          action: 'ride.provider_no_show_cancel',
+          resource: 'Ride',
+          resourceId: rideId,
+          ip,
+          meta: {
+            failingDriverId,
+            previousStatus,
+          },
+        },
+      });
+    });
+
+    // Process 100% full refund
+    let refundAmount = 0;
+    try {
+      const payment = await this.prisma.payment.findFirst({
+        where: {
+          rideId,
+          status: {
+            in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'],
+          },
+        },
+        include: { refunds: true },
+      });
+      if (payment) {
+        const alreadyRefunded = payment.refunds
+          .filter((r) => r.status === 'succeeded' || r.status === 'pending')
+          .reduce((sum, r) => sum + Number(r.amount), 0);
+        const remaining = Number(payment.amount) - alreadyRefunded;
         if (remaining > 0.01) {
           refundAmount = remaining;
+          let gatewayRefundId: string | undefined;
+          let gatewayStatus = 'succeeded';
+          let gatewayResponse: Record<string, unknown> = {};
+
+          if (this.payments) {
+            try {
+              const res = await this.payments.refund(
+                payment.providerRef ?? payment.id,
+                remaining,
+              );
+              gatewayRefundId = res.refundId;
+              gatewayStatus =
+                res.status === 'succeeded' || res.status === 'pending'
+                  ? res.status
+                  : 'succeeded';
+              gatewayResponse = res as unknown as Record<string, unknown>;
+            } catch (gatewayErr) {
+              this.logger.error(
+                `Gateway refund error on provider no show for ride ${rideId}: ${gatewayErr}`,
+              );
+              gatewayStatus = 'failed';
+              gatewayResponse = {
+                error:
+                  gatewayErr instanceof Error
+                    ? gatewayErr.message
+                    : String(gatewayErr),
+              };
+            }
+          }
+
           await this.prisma.$transaction(async (tx) => {
             await tx.refund.create({
               data: {
@@ -828,9 +1298,13 @@ export class MarketplaceService {
                 amount: remaining,
                 currency: payment.currency,
                 type: 'FULL',
-                reason: 'Full refund on cancellation of overdue/stalled ride',
-                internalNote: `Automated cancellation refund for ride ${rideId}`,
-                status: 'succeeded',
+                reason:
+                  '100% full refund due to provider no-show (failed to arrive)',
+                internalNote: `Provider no-show refund for ride ${rideId}`,
+                status: gatewayStatus,
+                gatewayRefundId,
+                gatewayResponse:
+                  gatewayResponse as unknown as Prisma.InputJsonValue,
                 requestedById: userId,
               },
             });
@@ -842,31 +1316,97 @@ export class MarketplaceService {
               where: { rideId },
               data: {
                 refundAmount: remaining,
-                refundReason: 'Full refund on cancellation',
+                refundReason: 'Provider failed to arrive (No-Show)',
                 refundedAt: new Date(),
+                driverNetEarning: 0,
+                marketplaceFee: 0,
               },
             });
           });
         }
       }
-    } catch {
-      // Non-blocking error isolation
+    } catch (err) {
+      this.logger.error(
+        `Error processing refund on provider no show for ride ${rideId}: ${err}`,
+      );
     }
 
-    await this.audit(userId, 'ride.cancel', 'Ride', rideId, ip);
-    const cancelBody =
-      refundAmount > 0
-        ? `Your ride request was cancelled. A full refund of CAD $${refundAmount.toFixed(2)} has been processed.`
-        : 'Your ride request was cancelled.';
-    void this.notifications.notifyRideStatus({
-      userIds: [userId],
+    // Flag failing provider for no-show review
+    if (failingDriverId && this.driverCancellation) {
+      await this.driverCancellation.flagProviderForNoShow({
+        driverId: failingDriverId,
+        rideId,
+        actorId: userId,
+        reasonDetails:
+          'Passenger cancelled ride because provider failed to arrive at pickup location.',
+        ip,
+      });
+    }
+
+    // Notifications
+    if (ride.passenger?.userId) {
+      const refundNotice =
+        refundAmount > 0
+          ? ` A 100% full refund of CAD $${refundAmount.toFixed(2)} has been processed.`
+          : '';
+      await this.notifications.notifyRideStatus({
+        userIds: [ride.passenger.userId],
+        rideId,
+        status: RideStatus.PASSENGER_CANCELLED,
+        title: 'Booking Cancelled (Provider No-Show)',
+        body: `Your booking was cancelled because the provider did not arrive.${refundNotice}`,
+        targetRole: ['PASSENGER', 'PASSENGER_WEB'],
+      });
+    }
+
+    this.tracking?.emitRideEvent(rideId, {
+      type: 'ride.cancelled',
       rideId,
       status: RideStatus.PASSENGER_CANCELLED,
-      title: 'Ride cancelled',
-      body: cancelBody,
-      targetRole: ['PASSENGER', 'PASSENGER_WEB'],
+      reason: 'provider_no_show',
     });
+
     return this.getRideForActor(userId, rideId);
+  }
+
+  async getCancellationQuote(userId: string, rideId: string) {
+    const passenger = await this.requirePassenger(userId);
+    const ride = await this.prisma.ride.findFirst({
+      where: { id: rideId, passengerId: passenger.id },
+    });
+    if (!ride) throw new NotFoundException('Ride not found');
+
+    if (this.cancellationPolicy) {
+      const evaluation = await this.cancellationPolicy.evaluateCancellation(ride.id);
+      return {
+        rideId: ride.id,
+        status: ride.status,
+        matchedTier: {
+          key: evaluation.tier.tierKey,
+          name: evaluation.tier.name,
+          label: evaluation.passengerDisplayLabel,
+          terms: evaluation.termsSummary,
+        },
+        hoursBeforePickup: evaluation.hoursBeforePickup,
+        estimatedRefund: evaluation.passengerRefundAmount,
+        cancellationFee: evaluation.cancellationFee,
+        currency: evaluation.currency,
+      };
+    }
+
+    return {
+      rideId: ride.id,
+      status: ride.status,
+      matchedTier: {
+        key: 'STANDARD',
+        name: 'Standard Cancellation',
+        label: 'Cancellation Policy',
+        terms: 'Eligible refunds are processed per cancellation terms.',
+      },
+      estimatedRefund: 0,
+      cancellationFee: 0,
+      currency: ride.currency,
+    };
   }
 
   async createChangeRequest(
@@ -1330,6 +1870,25 @@ export class MarketplaceService {
         status: RideStatus.PAYMENT_PENDING,
         offerId,
       });
+    }
+
+    // If the ride already has a valid captured payment (e.g. replacement driver after provider no-show),
+    // immediately transition to BOOKED using the escrowed payment so passenger doesn't pay twice.
+    const existingPayment = await this.prisma.payment.findFirst({
+      where: {
+        rideId,
+        status: { in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'] },
+      },
+      include: { refunds: true },
+    });
+    if (existingPayment) {
+      const alreadyRefunded = (existingPayment.refunds ?? [])
+        .filter((r) => r.status === 'succeeded' || r.status === 'pending')
+        .reduce((sum, r) => sum + Number(r.amount), 0);
+      const remainingPaid = Number(existingPayment.amount) - alreadyRefunded;
+      if (remainingPaid > 0.01) {
+        await this.markBooked(rideId, existingPayment.id, userId);
+      }
     }
 
     return this.getRideForActor(userId, rideId);
@@ -2008,15 +2567,25 @@ export class MarketplaceService {
       paymentMode: 'FULL',
     });
 
+    const basePolicy = this.presentation.cancellationPolicy({
+      paymentMode: 'FULL',
+    });
+    const publicPolicy = this.cancellationPolicy
+      ? await this.cancellationPolicy.getPublicPolicy()
+      : null;
+
     return {
       ok: true as const,
       offer: await this.serializeOfferForPassenger(
         offer as unknown as Record<string, unknown>,
       ),
       paymentQuote,
-      cancellationPolicy: this.presentation.cancellationPolicy({
-        paymentMode: 'FULL',
-      }),
+      cancellationPolicy: {
+        ...basePolicy,
+        title: publicPolicy?.title ?? basePolicy.title,
+        body: publicPolicy?.description ?? basePolicy.body,
+        tiers: publicPolicy?.tiers ?? [],
+      },
       paymentMethods: this.presentation.paymentMethodsAvailable(),
       ...this.stripeClientConfig(),
     };
@@ -2071,13 +2640,23 @@ export class MarketplaceService {
       paymentMode: mode,
     });
 
+    const baseCancellationPolicy = this.presentation.cancellationPolicy({
+      paymentMode: mode,
+    });
+    const activePublicPolicy = this.cancellationPolicy
+      ? await this.cancellationPolicy.getPublicPolicy()
+      : null;
+
     return {
       paymentQuote,
       priceBreakdown: breakdown,
       partialEnabled: paymentQuote.partialEnabled,
-      cancellationPolicy: this.presentation.cancellationPolicy({
-        paymentMode: mode,
-      }),
+      cancellationPolicy: {
+        ...baseCancellationPolicy,
+        title: activePublicPolicy?.title ?? baseCancellationPolicy.title,
+        body: activePublicPolicy?.description ?? baseCancellationPolicy.body,
+        tiers: activePublicPolicy?.tiers ?? [],
+      },
 
       paymentMethods: this.presentation.paymentMethodsAvailable(dto.platform),
       ...this.stripeClientConfig(),
@@ -3690,6 +4269,20 @@ export class MarketplaceService {
         : null,
       selectedOfferId: ride.selectedOfferId,
       assignedDriverId: ride.assignedDriverId,
+      originalDriverId: (ride.originalDriverId as string | null) ?? null,
+      originalDriver: ride.originalDriver
+        ? {
+            id: (ride.originalDriver as Record<string, unknown>).id,
+            fullName: (ride.originalDriver as Record<string, unknown>).fullName,
+            avatarStorageKey:
+              (ride.originalDriver as Record<string, unknown>)
+                .avatarStorageKey ?? null,
+            phoneE164:
+              ((ride.originalDriver as Record<string, unknown>).user as
+                | { phoneE164?: string }
+                | undefined)?.phoneE164 ?? null,
+          }
+        : null,
       requestExpiresAt: ride.requestExpiresAt,
       paymentExpiresAt: ride.paymentExpiresAt,
       viewCount: Number(ride.viewCount ?? 0),

@@ -9,8 +9,12 @@ export const DRIVER_DOC_TYPES = [
   'background_check',
   'work_eligibility',
   'inspection_certificate',
+  'transportation_authority',
+  'business_information',
+  'jurisdiction_document',
   'profile_photo',
   'supporting_document',
+  'us_transit_permit',
   'other',
 ] as const;
 
@@ -41,7 +45,11 @@ export const SINGLE_ACTIVE_DOC_TYPES: DriverDocType[] = [
   'background_check',
   'work_eligibility',
   'inspection_certificate',
+  'transportation_authority',
+  'business_information',
+  'jurisdiction_document',
   'profile_photo',
+  'us_transit_permit',
 ];
 
 export const MAX_VEHICLE_PHOTOS = 6;
@@ -56,16 +64,20 @@ export const ALLOWED_MIME = new Set([
 
 export const DOC_TYPE_LABELS: Record<DriverDocType, string> = {
   selfie: 'Selfie',
-  license: 'Driving Licence',
+  license: 'Driver Licence',
   vehicle_registration: 'Vehicle Registration',
   vehicle_photo: 'Vehicle Photo',
-  insurance: 'Insurance',
+  insurance: 'Commercial/TNC Insurance',
   driver_abstract: 'Driver Abstract',
-  background_check: 'Background Check',
+  background_check: 'Police/Background Check',
   work_eligibility: 'Work Eligibility',
-  inspection_certificate: 'Inspection Certificate',
+  inspection_certificate: 'Vehicle Inspection',
+  transportation_authority: 'Transportation/Operating Authority',
+  business_information: 'Business Information',
+  jurisdiction_document: 'Jurisdiction-Specific Document',
   profile_photo: 'Profile Photo',
   supporting_document: 'Supporting Document',
+  us_transit_permit: 'U.S. Transit & Travel Authorization',
   other: 'Other',
 };
 

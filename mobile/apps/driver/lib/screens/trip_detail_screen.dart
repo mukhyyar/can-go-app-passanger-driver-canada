@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../state/app_state.dart';
 import '../utils/error_utils.dart';
+import 'driver_cancellation_sheet.dart';
 
 class TripDetailScreen extends StatefulWidget {
   const TripDetailScreen({super.key, required this.rideId});
@@ -33,6 +35,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   bool _alreadyRated = false;
   int? _myRatingStars;
 
+  Timer? _waitCountdownTimer;
+  DateTime? _arrivedTimestamp;
+  bool _contactAttemptMade = false;
+  double? _driverDistanceMeters;
+  Position? _currentPosition;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -47,6 +55,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
   @override
   void dispose() {
+    _waitCountdownTimer?.cancel();
     _app?.stopTripLocationTracking();
     super.dispose();
   }
@@ -77,6 +86,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         }
       });
       _syncLocationTracking(detail.status);
+      if ((detail.status ?? '').toUpperCase() == 'DRIVER_ARRIVED') {
+        _startWaitingTimer();
+      } else {
+        _waitCountdownTimer?.cancel();
+        _waitCountdownTimer = null;
+      }
       _maybeShowRating();
     } catch (e) {
       if (!mounted) return;
@@ -334,41 +349,78 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   bool get _canCancel {
     return _serverStatus == 'BOOKED' ||
         _serverStatus == 'DRIVER_EN_ROUTE' ||
-        _serverStatus == 'DRIVER_ARRIVED';
+        _serverStatus == 'DRIVER_ARRIVED' ||
+        _serverStatus == 'TRIP_STARTED' ||
+        _serverStatus == 'IN_PROGRESS';
+  }
+
+  bool get _isInProgress {
+    return _serverStatus == 'TRIP_STARTED' || _serverStatus == 'IN_PROGRESS';
+  }
+
+  void _showEmergencySafetySheet() {
+    final r = _ride;
+    final s = context.read<AppState>();
+    final primaryVeh = s.vehicles.isNotEmpty ? s.vehicles.first : null;
+    final info = EmergencyTripInfo(
+      rideId: r?.shortId ?? widget.rideId,
+      vehiclePlate: primaryVeh?.plate,
+      vehicleModel: primaryVeh != null
+          ? '${primaryVeh.make} ${primaryVeh.model}'.trim()
+          : null,
+      passengerName: r?.passengerName,
+      driverName: s.fullName.isNotEmpty ? s.fullName : null,
+      pickupAddress: r?.from,
+      dropoffAddress: r?.to,
+    );
+
+    EmergencySafetySheet.show(
+      context,
+      tripInfo: info,
+      isDriver: true,
+      onStopTripForSafety: _canCancel ? _confirmCancel : null,
+      onContactSupport: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Support contact: partner@can-go.ca')),
+        );
+      },
+    );
   }
 
   Future<void> _confirmCancel() async {
-    final ok = await showDialog<bool>(
+    final result = await showModalBottomSheet<Map<String, String>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel ride?'),
-        content: const Text(
-          'Are you sure you want to cancel this ride?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Cancel ride', style: TextStyle(color: Colors.red)),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DriverCancellationSheet(
+        isInProgress: _isInProgress,
       ),
     );
-    if (ok != true) return;
+    if (result == null) return;
     setState(() => _acting = true);
     try {
-      await context.read<AppState>().cancelRide(widget.rideId);
+      await context.read<AppState>().cancelRide(
+            widget.rideId,
+            reasonCode: result['reasonCode'],
+            reasonDetails: result['reasonDetails'],
+          );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Ride cancelled')));
+          SnackBar(
+            content: Text(
+              _isInProgress ? 'Trip stopped for safety' : 'Ride cancelled',
+            ),
+          ),
+        );
+        await _load();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not cancel ride')));
+          SnackBar(
+            content: Text('Could not cancel ride: ${cleanErrorMessage(e)}'),
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -393,6 +445,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           await s.tripGoEnRoute(widget.rideId);
         case 'DRIVER_EN_ROUTE':
           await s.tripArrived(widget.rideId);
+          _arrivedTimestamp = DateTime.now();
+          _startWaitingTimer();
         case 'TRIP_STARTED':
         case 'IN_PROGRESS':
           await s.tripComplete(widget.rideId);
@@ -628,6 +682,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             onPressed: _onBack,
           ),
           actions: [
+            if (r != null && _isActiveTrip)
+              IconButton(
+                icon: const Icon(Icons.shield_outlined, color: Colors.red),
+                tooltip: 'Emergency & Safety (911)',
+                onPressed: _showEmergencySafetySheet,
+              ),
             if (r != null)
               IconButton(
                 icon: const Icon(Icons.flag_outlined),
@@ -660,6 +720,54 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                             children: [
+                              if (r.originalDriverId != null &&
+                                  (r.status == 'WAITING_FOR_OFFERS' ||
+                                      (r.status ?? '').contains('CANCEL'))) ...[
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                                  ),
+                                  child: const Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: Color(0xFFDC2626),
+                                        size: 24,
+                                      ),
+                                      SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Ride Unassigned: Provider Failed to Arrive',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
+                                                color: Color(0xFF991B1B),
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              'You were unassigned from this ride because you did not arrive at the scheduled pickup. Your account has been flagged for compliance review.',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF7F1D1D),
+                                                height: 1.3,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                               if (isCompleted)
                                 _buildLostItemCard(r),
                               if (isCompleted && (r.tipAmount ?? 0) > 0)
@@ -763,6 +871,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     ],
                                   ),
                                 ),
+                              if (_serverStatus == 'DRIVER_ARRIVED') ...[
+                                _buildWaitingForPassengerCard(r),
+                                const SizedBox(height: 12),
+                              ],
                               GtCard(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1105,8 +1217,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: OutlinedButton.icon(
-                                        onPressed: () =>
-                                            context.push('/chat/${r.id}'),
+                                        onPressed: () {
+                                          setState(() => _contactAttemptMade = true);
+                                          context
+                                              .read<AppState>()
+                                              .recordContactAttempt(r.id, method: 'CHAT');
+                                          context.push('/chat/${r.id}');
+                                        },
                                         icon: const Icon(Icons.chat_outlined),
                                         label: const Text('Chat'),
                                       ),
@@ -1118,6 +1235,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   label: _acting ? 'Updating…' : _primaryLabel!,
                                   onPressed: _acting ? null : _primaryAction,
                                 ),
+                                if (_serverStatus == 'DRIVER_ARRIVED') ...[
+                                  const SizedBox(height: 8),
+                                  _buildNoShowButton(r),
+                                ],
                                 const SizedBox(height: 8),
                                 OutlinedButton.icon(
                                   onPressed: _showReportSheet,
@@ -1131,7 +1252,24 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     style: OutlinedButton.styleFrom(
                                       side: const BorderSide(color: GtColors.brand),
                                     ),
-                                    child: const Text('Cancel ride'),
+                                    child: Text(
+                                      _isInProgress ? 'Stop Trip for Safety' : 'Cancel ride',
+                                    ),
+                                  ),
+                                ],
+                                if (_isActiveTrip) ...[
+                                  const SizedBox(height: 8),
+                                  TextButton.icon(
+                                    onPressed: _showEmergencySafetySheet,
+                                    icon: const Icon(Icons.shield_outlined,
+                                        color: Colors.red, size: 18),
+                                    label: const Text(
+                                      'Emergency & Safety (911)',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ],
@@ -2336,6 +2474,408 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
     noteCtrl.dispose();
   }
+
+  void _startWaitingTimer() {
+    _arrivedTimestamp ??= DateTime.now();
+    _checkDriverProximity();
+    _waitCountdownTimer?.cancel();
+    _waitCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  Future<void> _checkDriverProximity() async {
+    final r = _ride;
+    if (r?.fromLat == null || r?.fromLng == null) return;
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 4),
+        ),
+      );
+      if (!mounted) return;
+      final distMeters = Geolocator.distanceBetween(
+        pos.latitude,
+        pos.longitude,
+        r!.fromLat!,
+        r.fromLng!,
+      );
+      setState(() {
+        _currentPosition = pos;
+        _driverDistanceMeters = distMeters;
+      });
+    } catch (_) {
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null && mounted && r != null) {
+          final distMeters = Geolocator.distanceBetween(
+            last.latitude,
+            last.longitude,
+            r.fromLat!,
+            r.fromLng!,
+          );
+          setState(() {
+            _currentPosition = last;
+            _driverDistanceMeters = distMeters;
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  WaitingCategoryInfo _getWaitingCategoryInfo(DriverRequest r) {
+    if (r.flight != null && r.flight!.trim().isNotEmpty) {
+      return const WaitingCategoryInfo(
+        category: 'Flight Tracking',
+        badgeLabel: '✈️ Flight tracking (60 min wait · Delay tracked up to 7h)',
+        allowedMinutes: 60,
+      );
+    }
+    final from = r.from.toLowerCase();
+    final isAirportOrPort = RegExp(
+      r'(airport|aeroport|airfield|aerodrome|terminal|cruise|port\b|harbour|harbor|dock|pier|ferry)',
+      caseSensitive: false,
+    ).hasMatch(from);
+    if (isAirportOrPort) {
+      return const WaitingCategoryInfo(
+        category: 'Airports and Cruise Ports',
+        badgeLabel: '✈️ Airports and cruise ports (60 min wait)',
+        allowedMinutes: 60,
+      );
+    }
+    final isTrainStation = RegExp(
+      r'(station|train|railway|rail|gare\b|amtrak|via rail|subway|metro)',
+      caseSensitive: false,
+    ).hasMatch(from);
+    if (isTrainStation) {
+      return const WaitingCategoryInfo(
+        category: 'Train Stations',
+        badgeLabel: '🚆 Train stations (30 min wait)',
+        allowedMinutes: 30,
+      );
+    }
+    if (r.pickupWaitMin != null && r.pickupWaitMin! <= 5) {
+      return WaitingCategoryInfo(
+        category: 'Urgent Transfers',
+        badgeLabel: '⚡ Urgent transfers (${r.pickupWaitMin} min wait)',
+        allowedMinutes: r.pickupWaitMin!,
+      );
+    }
+    final mins = r.pickupWaitMin ?? 15;
+    return WaitingCategoryInfo(
+      category: 'Other Places',
+      badgeLabel: '🕒 Other places ($mins min wait)',
+      allowedMinutes: mins,
+    );
+  }
+
+  Duration _calculateRemainingWait(DriverRequest r) {
+    final info = _getWaitingCategoryInfo(r);
+    final allowedMin = info.allowedMinutes;
+    final scheduledPickup = r.pickupAt;
+    final arrived = _arrivedTimestamp ?? DateTime.now();
+    final effectiveStart =
+        (scheduledPickup != null && scheduledPickup.isAfter(arrived))
+            ? scheduledPickup
+            : arrived;
+    final waitEndTime = effectiveStart.add(Duration(minutes: allowedMin));
+    final diff = waitEndTime.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
+  }
+
+  Widget _buildWaitingForPassengerCard(DriverRequest r) {
+    final waitInfo = _getWaitingCategoryInfo(r);
+    final remaining = _calculateRemainingWait(r);
+    final isTimerDone = remaining == Duration.zero;
+
+    final isAtPickup = (_driverDistanceMeters != null && _driverDistanceMeters! <= 500) ||
+        r.fromLat == null;
+    const isArrived = true;
+    final isContactDone = _contactAttemptMade;
+
+    final minutesStr = remaining.inMinutes.toString().padLeft(2, '0');
+    final secondsStr = (remaining.inSeconds % 60).toString().padLeft(2, '0');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isTimerDone ? GtColors.brand : Colors.amber.shade400,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isTimerDone ? Icons.check_circle : Icons.hourglass_top_rounded,
+                color: isTimerDone ? GtColors.brand : Colors.amber.shade800,
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isTimerDone
+                      ? 'Waiting Period Complete'
+                      : 'Waiting for Passenger',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isTimerDone
+                      ? GtColors.brand.withValues(alpha: 0.1)
+                      : Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  isTimerDone ? 'COMPLETED' : '$minutesStr:$secondsStr',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: isTimerDone ? GtColors.brand : Colors.amber.shade900,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    waitInfo.badgeLabel,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Section 9 No-Show Checkpoints:',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildCheckItem(
+            label: isAtPickup
+                ? 'Reached pickup location (${_driverDistanceMeters != null ? "${_driverDistanceMeters!.round()}m away" : "verified"})'
+                : 'Move closer to pickup location (${_driverDistanceMeters != null ? "${_driverDistanceMeters!.round()}m away, limit 500m" : "GPS check pending"})',
+            isComplete: isAtPickup,
+            onActionTap: _checkDriverProximity,
+            actionLabel: 'Check GPS',
+          ),
+          const SizedBox(height: 6),
+          _buildCheckItem(
+            label: 'Driver marked Arrived',
+            isComplete: isArrived,
+          ),
+          const SizedBox(height: 6),
+          _buildCheckItem(
+            label: isContactDone
+                ? 'Reasonable contact attempt verified'
+                : 'Attempt contact with passenger',
+            isComplete: isContactDone,
+            actionLabel: 'Chat with passenger',
+            onActionTap: () {
+              setState(() => _contactAttemptMade = true);
+              context.read<AppState>().recordContactAttempt(r.id, method: 'CHAT');
+              context.push('/chat/${r.id}');
+            },
+          ),
+          const SizedBox(height: 6),
+          _buildCheckItem(
+            label: isTimerDone
+                ? 'Required waiting period elapsed (${waitInfo.allowedMinutes} min)'
+                : 'Waiting period in progress ($minutesStr:$secondsStr remaining)',
+            isComplete: isTimerDone,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckItem({
+    required String label,
+    required bool isComplete,
+    String? actionLabel,
+    VoidCallback? onActionTap,
+  }) {
+    return Row(
+      children: [
+        Icon(
+          isComplete ? Icons.check_circle : Icons.radio_button_unchecked,
+          size: 18,
+          color: isComplete ? GtColors.brand : Colors.grey.shade400,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: isComplete ? Colors.black87 : Colors.black54,
+              fontWeight: isComplete ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ),
+        if (!isComplete && actionLabel != null && onActionTap != null)
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: onActionTap,
+            child: Text(
+              actionLabel,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: GtColors.brand,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildNoShowButton(DriverRequest r) {
+    final remaining = _calculateRemainingWait(r);
+    final isTimerDone = remaining == Duration.zero;
+    final isAtPickup = (_driverDistanceMeters != null && _driverDistanceMeters! <= 500) ||
+        r.fromLat == null;
+    final isContactDone = _contactAttemptMade;
+    final canDeclareNoShow = isTimerDone && isAtPickup && isContactDone;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: canDeclareNoShow && !_acting ? _promptPassengerNoShow : null,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: canDeclareNoShow ? Colors.amber.shade900 : Colors.grey.shade500,
+            side: BorderSide(
+              color: canDeclareNoShow ? Colors.amber.shade800 : Colors.grey.shade300,
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+          icon: Icon(
+            canDeclareNoShow ? Icons.person_off_outlined : Icons.lock_outline,
+            size: 18,
+          ),
+          label: Text(
+            canDeclareNoShow
+                ? 'Declare Passenger No-Show'
+                : 'Passenger No-Show (Locked)',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (!canDeclareNoShow)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: Text(
+              !isTimerDone
+                  ? 'Waiting timer must elapse before declaring No-Show'
+                  : !isContactDone
+                      ? 'Please attempt to contact passenger (Chat / Call) first'
+                      : 'Must be within 500m of pickup location to declare No-Show',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _promptPassengerNoShow() async {
+    final r = _ride;
+    if (r == null) return;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _PassengerNoShowSheet(
+        ride: r,
+        currentPosition: _currentPosition,
+        distanceMeters: _driverDistanceMeters,
+        arrivedTimestamp: _arrivedTimestamp,
+        contactAttemptMade: _contactAttemptMade,
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() => _acting = true);
+      try {
+        await context.read<AppState>().tripNoShow(
+              widget.rideId,
+              lat: _currentPosition?.latitude,
+              lng: _currentPosition?.longitude,
+              contactMethod: _contactAttemptMade ? 'CHAT' : null,
+            );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Passenger marked No-Show. Compensation has been credited to your wallet.',
+              ),
+              backgroundColor: GtColors.brand,
+            ),
+          );
+          await _load();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No-Show failed: ${cleanErrorMessage(e)}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _acting = false);
+      }
+    }
+  }
 }
 
 class _TripChip extends StatelessWidget {
@@ -2608,6 +3148,223 @@ class _StartPinSheetState extends State<_StartPinSheet> {
             onPressed: _submitting
                 ? null
                 : () => _submitPin(_pinController.text),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WaitingCategoryInfo {
+  const WaitingCategoryInfo({
+    required this.category,
+    required this.badgeLabel,
+    required this.allowedMinutes,
+  });
+
+  final String category;
+  final String badgeLabel;
+  final int allowedMinutes;
+}
+
+class _PassengerNoShowSheet extends StatelessWidget {
+  const _PassengerNoShowSheet({
+    required this.ride,
+    this.currentPosition,
+    this.distanceMeters,
+    this.arrivedTimestamp,
+    this.contactAttemptMade = false,
+  });
+
+  final DriverRequest ride;
+  final Position? currentPosition;
+  final double? distanceMeters;
+  final DateTime? arrivedTimestamp;
+  final bool contactAttemptMade;
+
+  @override
+  Widget build(BuildContext context) {
+    final distStr = distanceMeters != null
+        ? '${distanceMeters!.round()} meters from pickup'
+        : 'GPS proximity verified';
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        20 + MediaQuery.paddingOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.person_off_outlined,
+                  color: Colors.amber.shade900,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Declare Passenger No-Show',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Section 9 Compliance Verification',
+                      style: TextStyle(fontSize: 13, color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Captured Evidence:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                _evidenceRow(Icons.pin_drop_outlined, 'Location', distStr),
+                _evidenceRow(
+                  Icons.timer_outlined,
+                  'Arrival',
+                  arrivedTimestamp != null
+                      ? '${arrivedTimestamp!.hour.toString().padLeft(2, '0')}:${arrivedTimestamp!.minute.toString().padLeft(2, '0')}'
+                      : 'Recorded',
+                ),
+                _evidenceRow(
+                  Icons.chat_outlined,
+                  'Contact',
+                  contactAttemptMade ? 'Attempted via Chat / Call' : 'Recorded',
+                ),
+                _evidenceRow(
+                  Icons.hourglass_bottom_outlined,
+                  'Waiting Time',
+                  'Full required period elapsed',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.blue.shade100),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 20, color: Colors.blue.shade800),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'The passenger will not receive a refund. Your provider compensation will be credited directly to your wallet.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.blue.shade900,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Back'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber.shade800,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text(
+                    'Confirm No-Show',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _evidenceRow(IconData icon, String label, String val) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.black54),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+          ),
+          Expanded(
+            child: Text(
+              val,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
           ),
         ],
       ),

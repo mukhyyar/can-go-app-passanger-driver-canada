@@ -29,6 +29,7 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { KycOpsService, type KycListQuery } from './kyc-ops.service';
 import { KycDocumentsService } from './kyc-documents.service';
+import { DocumentsExpiryService } from './documents-expiry.service';
 import { sanitizeContentDispositionFilename } from './vehicle-photos.util';
 import {
   AddKycNoteDto,
@@ -63,12 +64,19 @@ export class AdminKycController {
   constructor(
     private readonly kyc: KycOpsService,
     private readonly kycDocs: KycDocumentsService,
+    private readonly expiry: DocumentsExpiryService,
   ) {}
 
   @Get('drivers/kyc')
   @RequirePermission('kyc.view')
   listKyc(@Query() query: KycListQuery) {
     return this.kyc.listQueue(query);
+  }
+
+  @Post('drivers/kyc/scan-expirations')
+  @RequirePermission('kyc.review')
+  scanExpirations() {
+    return this.expiry.sweepAll();
   }
 
   @Post('drivers/kyc/assign')

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -8,18 +9,13 @@ import 'package:provider/provider.dart';
 import '../../state/app_state.dart';
 import '../../utils/error_utils.dart';
 
-const kVehicleClasses = <String>[
-  'sedan',
-  'suv',
-  'suv_xl',
-  'van',
-  'minibus',
-  'economy',
-  'comfort',
-];
+final kVehicleClasses = List<String>.unmodifiable(
+  MockData.vehicleClasses.map((v) => v.id),
+);
 
 int defaultSeatsForClass(String vehicleClass) {
-  switch (vehicleClass.toLowerCase().trim()) {
+  final key = vehicleClass.toLowerCase().trim();
+  switch (key) {
     case 'suv_xl':
       return 7;
     case 'suv':
@@ -35,6 +31,7 @@ int defaultSeatsForClass(String vehicleClass) {
     case 'sedan':
     case 'economy':
     case 'comfort':
+    case 'premium':
     case 'business':
     case 'vip':
     default:
@@ -43,30 +40,11 @@ int defaultSeatsForClass(String vehicleClass) {
 }
 
 String vehicleClassAsset(String vehicleClass) {
-  switch (vehicleClass.toLowerCase()) {
-    case 'suv_xl':
-    case 'suv':
-      return 'packages/gt_ui/assets/vehicles/suv.png';
-    case 'van':
-    case 'minivan':
-    case 'minivan (xxl)':
-      return 'packages/gt_ui/assets/vehicles/van.png';
-    case 'minibus':
-    case 'mini bus':
-    case 'bus':
-      return 'packages/gt_ui/assets/vehicles/minibus.png';
-    case 'economy':
-      return 'packages/gt_ui/assets/vehicles/economy.png';
-    case 'comfort':
-      return 'packages/gt_ui/assets/vehicles/comfort.png';
-    case 'business':
-    case 'premium':
-      return 'packages/gt_ui/assets/vehicles/business.png';
-    case 'vip':
-      return 'packages/gt_ui/assets/vehicles/vip.png';
-    default:
-      return 'packages/gt_ui/assets/vehicles/can-ride-car.png';
+  final asset = MockData.vehicleImageAsset(vehicleClass);
+  if (asset != null && asset.isNotEmpty) {
+    return 'packages/gt_ui/$asset';
   }
+  return 'packages/gt_ui/assets/vehicles/premium.png';
 }
 
 InputDecoration vehicleFieldDecoration(String label, {String? errorText}) =>
@@ -135,64 +113,190 @@ class VehicleClassPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final classes = MockData.vehicleClasses;
     return SizedBox(
-      height: 112,
+      height: 118,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: kVehicleClasses.length,
+        itemCount: classes.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, i) {
-          final c = kVehicleClasses[i];
-          final selected = c == value;
+          final vc = classes[i];
+          final isLuxury = vc.id == 'premium' || vc.id == 'suv';
+          final selected = vc.id == value || (value == 'sedan' && vc.id == 'economy');
           return Semantics(
             button: true,
             selected: selected,
-            label: 'Vehicle class $c',
+            label: 'Vehicle class ${vc.name}',
             child: InkWell(
-              onTap: () => onChanged(c),
+              onTap: () => onChanged(vc.id),
               borderRadius: BorderRadius.circular(14),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                width: 96,
-                padding: const EdgeInsets.all(10),
+                width: 100,
                 decoration: BoxDecoration(
-                  color: selected ? GtColors.soft : Colors.white,
+                  color: isLuxury ? null : (selected ? GtColors.soft : Colors.white),
+                  gradient: isLuxury
+                      ? const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFFFFBEA), // luminous pale gold highlight
+                            Color(0xFFFDE68A), // warm metallic amber gold
+                            Color(0xFFF59E0B), // deep golden amber
+                            Color(0xFFD97706), // rich gold base
+                          ],
+                          stops: [0.0, 0.35, 0.70, 1.0],
+                        )
+                      : null,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: selected ? GtColors.brand : GtColors.border,
-                    width: selected ? 2 : 1,
+                    color: isLuxury
+                        ? (selected ? const Color(0xFFB45309) : const Color(0xFFF59E0B))
+                        : (selected ? GtColors.brand : GtColors.border),
+                    width: isLuxury
+                        ? (selected ? 2.0 : 1.4)
+                        : (selected ? 2 : 1),
                   ),
+                  boxShadow: isLuxury
+                      ? [
+                          BoxShadow(
+                            color: const Color(0x38D97706),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                            spreadRadius: selected ? 1 : 0,
+                          ),
+                          if (selected)
+                            const BoxShadow(
+                              color: Color(0x30F59E0B),
+                              blurRadius: 12,
+                              offset: Offset(0, 1),
+                            ),
+                        ]
+                      : null,
                 ),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Image.asset(
-                        vehicleClassAsset(c),
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.directions_car,
-                          color: GtColors.brand,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: Stack(
+                    children: [
+                      if (isLuxury)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: const Alignment(-1.2, -1.2),
+                                  end: const Alignment(1.2, 1.2),
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.0),
+                                    Colors.white.withValues(alpha: 0.0),
+                                    Colors.white.withValues(alpha: 0.42),
+                                    Colors.white.withValues(alpha: 0.12),
+                                    Colors.white.withValues(alpha: 0.0),
+                                  ],
+                                  stops: const [0.0, 0.30, 0.46, 0.58, 1.0],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: Image.asset(
+                                vehicleClassAsset(vc.id),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Icon(
+                                  Icons.directions_car,
+                                  color: isLuxury
+                                      ? const Color(0xFF78350F)
+                                      : GtColors.brand,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              vc.name,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isLuxury
+                                    ? FontWeight.w800
+                                    : (selected ? FontWeight.w700 : FontWeight.w500),
+                                color: isLuxury
+                                    ? const Color(0xFF2E1704)
+                                    : (selected ? GtColors.brand : Colors.black87),
+                                letterSpacing: isLuxury ? -0.2 : 0,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      c == 'suv'
-                          ? 'Black SUV'
-                          : c == 'suv_xl'
-                              ? 'SUV (XL)'
-                              : c == 'van'
-                                  ? 'Minivan (XXL)'
-                                  : c == 'minibus'
-                                      ? 'Mini bus'
-                                      : c[0].toUpperCase() + c.substring(1),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                      if (isLuxury)
+                        Positioned(
+                          top: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 1.5,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFF2E1704),
+                                  Color(0xFF451A03),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x25000000),
+                                  blurRadius: 2,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.star,
+                                  size: 7.5,
+                                  color: Color(0xFFFDE68A),
+                                ),
+                                SizedBox(width: 2),
+                                Text(
+                                  'LUXE',
+                                  style: TextStyle(
+                                    color: Color(0xFFFFFBE8),
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      if (selected)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: isLuxury
+                                ? const Color(0xFFB45309)
+                                : GtColors.brand,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

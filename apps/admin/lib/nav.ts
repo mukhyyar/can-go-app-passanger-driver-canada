@@ -93,6 +93,7 @@ export const NAV: NavGroup[] = [
       { href: '/users', label: 'All Users', permission: 'users.view' },
       { href: '/passengers', label: 'Passengers', permission: 'users.view' },
       { href: '/drivers', label: 'Drivers', permission: 'drivers.view' },
+      { href: '/drivers/cancellations', label: 'Driver Cancellations', permission: 'drivers.view' },
       { href: '/zones', label: 'Zones', permission: 'drivers.view' },
       { href: '/kyc', label: 'KYC', permission: 'kyc.view' },
       { href: '/vehicles', label: 'Vehicles', permission: 'vehicles.view' },
@@ -130,6 +131,7 @@ export const NAV: NavGroup[] = [
     label: 'Pricing',
     items: [
       { href: '/pricing', label: 'Fare Rules', permission: 'pricing.view' },
+      { href: '/pricing#cancellation', label: 'Cancellation Policy', permission: 'pricing.view' },
       { href: '/pricing#services', label: 'Service Types', permission: 'pricing.view' },
       { href: '/pricing#taxes', label: 'Taxes', permission: 'pricing.view' },
       { href: '/promos', label: 'Promotions', permission: 'promos.view' },

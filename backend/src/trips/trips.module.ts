@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { WalletModule } from '../wallet/wallet.module';
+import { MarketplaceModule } from '../marketplace/marketplace.module';
 import { TripService } from './trip.service';
 import { DriverTripController, TripsController } from './trips.controller';
 import { PostRideNotificationService } from './post-ride-notifications.service';
@@ -14,6 +15,7 @@ import { PostRideNotificationScheduler } from './post-ride-notifications.schedul
     NotificationsModule,
     forwardRef(() => TrackingModule),
     WalletModule,
+    forwardRef(() => MarketplaceModule),
   ],
   controllers: [TripsController, DriverTripController],
   providers: [

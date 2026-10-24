@@ -63,7 +63,7 @@ describe('DocumentsExpiryService', () => {
             isActivated: false,
             drivingEnabled: false,
             approvalStatus: DriverApprovalStatus.ACTION_REQUIRED,
-            suspensionReason: expect.stringContaining('Document expired: Driving Licence'),
+            suspensionReason: expect.stringContaining('Document expired: Driver Licence'),
           },
         });
 

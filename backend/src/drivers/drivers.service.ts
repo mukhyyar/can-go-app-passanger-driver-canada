@@ -146,7 +146,7 @@ export class DriversService {
   async uploadDocument(
     userId: string,
     file: Express.Multer.File | undefined,
-    meta: { docType: string; vehicleId?: string; expiresAt?: string },
+    meta: { docType: string; vehicleId?: string; expiresAt?: string; customLabel?: string },
     ip?: string,
   ) {
     const driver = await this.requireDriverProfile(userId);
@@ -200,6 +200,7 @@ export class DriversService {
       stored,
       vehicleId,
       uploadSource: 'DRIVER_APP',
+      customLabel: meta.customLabel?.trim() || current?.customLabel || null,
       expiresAt: meta.expiresAt ? new Date(meta.expiresAt) : current?.expiresAt ?? null,
       uploadedById: userId,
       uploadedByType: 'DRIVER',
@@ -241,6 +242,7 @@ export class DriversService {
         docType: prev.docType,
         vehicleId: prev.vehicleId ?? undefined,
         expiresAt: prev.expiresAt?.toISOString(),
+        customLabel: prev.customLabel ?? undefined,
       },
       ip,
     );

@@ -31,37 +31,37 @@ class DriverWelcomeSlide {
 
 const List<DriverWelcomeSlide> _kDriverSlides = [
   DriverWelcomeSlide(
-    badge: 'DRIVE & EARN',
-    tagline: 'Drive & Earn on Your Terms',
+    badge: 'INTERCITY & AIRPORT',
+    tagline: 'Intercity Travel & Airport Rides, Made Easy',
     description:
-        'Set your own schedule with complete freedom. Accept local trips or long-distance intercity rides across Canada whenever you are ready.',
+        'Take on intercity trips and airport transfers with reliable rides and flexible earning opportunities.',
     assetPath: 'assets/onboarding/slide1.jpg',
     packageAssetPath: 'packages/gt_ui/assets/onboarding/driver_slide1.jpg',
-    highlights: ['Flexible Hours', 'Higher Earnings', 'Local & Long-Distance'],
-    fallbackIcon: Icons.drive_eta_rounded,
+    highlights: ['Intercity Trips', 'Airport Transfers', 'Flexible Hours'],
+    fallbackIcon: Icons.flight_takeoff_rounded,
     imageAlignment: Alignment.center,
   ),
   DriverWelcomeSlide(
-    badge: 'BID YOUR PRICE',
-    tagline: 'Review Requests & Name Your Fare',
+    badge: 'PARCEL DELIVERY',
+    tagline: 'Fast & Reliable Parcel Delivery',
     description:
-        'Browse incoming passenger requests in real time. Submit your own competitive ride offers and choose the customers you want to drive.',
+        'Deliver parcels safely, reach more customers, and earn with every successful delivery.',
     assetPath: 'assets/onboarding/slide2.jpg',
     packageAssetPath: 'packages/gt_ui/assets/onboarding/driver_slide2.jpg',
-    highlights: ['Live Request Feed', 'Custom Fare Bidding', 'Direct Matching'],
-    fallbackIcon: Icons.price_check_rounded,
+    highlights: ['Safe Deliveries', 'More Customers', 'Earn Per Order'],
+    fallbackIcon: Icons.inventory_2_rounded,
     imageAlignment: Alignment.center,
   ),
   DriverWelcomeSlide(
-    badge: 'SECURE & TRANSPARENT',
-    tagline: 'Fast CAD Payouts & In-App Safety',
+    badge: 'FAST PAYOUTS',
+    tagline: 'Fast, Hassle-Free Payouts',
     description:
-        'Track your daily earnings transparently in Canadian Dollars. Enjoy instant payouts, direct in-app messaging with riders, and 24/7 dedicated support.',
+        'Track your earnings and get paid with a smooth, transparent payout experience.',
     assetPath: 'assets/onboarding/slide3.jpg',
     packageAssetPath: 'packages/gt_ui/assets/onboarding/driver_slide3.jpg',
-    highlights: ['Direct CAD Deposits', 'Transparent Platform Fees', 'In-App Secure Chat'],
+    highlights: ['Track Earnings', 'Direct Deposits', 'Transparent Experience'],
     fallbackIcon: Icons.account_balance_wallet_rounded,
-    imageAlignment: Alignment.topCenter,
+    imageAlignment: Alignment.center,
   ),
 ];
 

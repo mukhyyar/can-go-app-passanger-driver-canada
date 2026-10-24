@@ -56,19 +56,20 @@ class InstructionsScreen extends StatelessWidget {
           _group([
             (
               'Vehicle',
-              '1. Valid registration, insurance and inspection certificate.\n'
+              '1. Valid registration, insurance, and vehicle safety inspection certificate (in Alberta: commercial registration/plates and TNC insurance required).\n'
                   '2. Clean, presentable vehicle matching your registered details.\n'
                   '3. No prohibited advertising or company contact info on the vehicle.\n'
                   '4. Smoke-free cabin at all times.'
             ),
             (
               'Driver',
-              '1. Valid driving licence and minimum experience/age required in your jurisdiction.\n'
-                  '2. Safe driving and local traffic-law compliance.\n'
-                  '3. Professional appearance and respectful passenger communication.\n'
-                  '4. Meet with a name sign on request and help with luggage.\n'
-                  '5. No unsafe phone use while driving.\n'
-                  '6. No unauthorized price changes after confirmation.'
+              '1. Driver must hold the class of driver\'s licence required by the applicable jurisdiction and transportation service. In Alberta, eligible TNC drivers must hold a Class 1, 2 or 4 driver\'s licence.\n'
+                  '2. Valid background check (Police Information Check with Vulnerable Sector Screen where applicable).\n'
+                  '3. Safe driving and local traffic-law compliance.\n'
+                  '4. Professional appearance and respectful passenger communication.\n'
+                  '5. Meet with a name sign on request and help with luggage.\n'
+                  '6. No unsafe phone use while driving.\n'
+                  '7. No unauthorized price changes after confirmation.'
             ),
             (
               'Ride service',
@@ -77,6 +78,13 @@ class InstructionsScreen extends StatelessWidget {
                   '3. Complete trips only when the passenger is safely dropped off.\n'
                   '4. Follow passenger no-show and cancellation rules.\n'
                   '5. Use emergency procedures and contact support when needed.'
+            ),
+            (
+              'Safety & Emergencies (Section 15)',
+              '1. Safety overrides completion of a Booking.\n'
+                  '2. Drivers may refuse or stop a trip where there is a legitimate: immediate safety threat, unlawful activity, dangerous passenger conduct, unsafe vehicle condition, emergency, or legal restriction.\n'
+                  '3. For emergencies, call 911 immediately.\n'
+                  '4. CAN-RIDE Support should not be represented as an emergency-response service.'
             ),
           ]),
           const SizedBox(height: 24),

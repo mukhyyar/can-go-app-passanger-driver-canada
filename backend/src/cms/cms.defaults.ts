@@ -118,9 +118,10 @@ Coverage grows with approved drivers. If your city is not listed yet, still send
 
 ## Requirements
 
-- Valid licence and insurance for the vehicle class
+- Driver must hold the class of driver's licence required by the applicable jurisdiction and transportation service. In Alberta, eligible TNC drivers must hold a Class 1, 2 or 4 driver's licence.
+- Valid commercial/TNC insurance, registration, and inspection for the vehicle class
 - Vehicle photos that match what the passenger will see
-- Documents that ops can approve (licence, registration, insurance)
+- Documents that ops can approve (licence, registration, insurance, background check)
 
 Download the CAN-RIDE Driver app to go online. Questions: [partner@can-go.ca](mailto:partner@can-go.ca).`,
   },
@@ -208,7 +209,7 @@ CAN-RIDE operates an online marketplace technology platform connecting passenger
 All users of the CAN-RIDE platform agree to maintain professional courtesy, safety, and mutual respect.
 
 - **Zero Tolerance Policy:** Discrimination, harassment, threatening conduct, violence, carrying unauthorized hazardous materials, or damaging vehicles is strictly forbidden and results in immediate permanent account termination.
-- **Compliance with Laws:** Drivers and passengers must comply with all applicable Canadian federal, provincial, and municipal transportation regulations, including seatbelt usage, child restraint laws, and traffic safety rules.
+- **Compliance with Laws & Licensing:** Drivers and passengers must comply with all applicable Canadian federal, provincial, and municipal transportation regulations, including seatbelt usage, child restraint laws, and traffic safety rules. Driver must hold the class of driver's licence required by the applicable jurisdiction and transportation service. In Alberta, eligible TNC drivers must hold a Class 1, 2 or 4 driver's licence. Drivers must also maintain valid commercial/TNC insurance, vehicle registration, and vehicle safety inspection certificates.
 - **Ratings & Hospitality Score:** Travelers rate drivers on greeting, vehicle cleanliness, luggage assistance, and driving comfort. Disparaging, fraudulent, or retaliatory reviews are reviewed by ops and removed.
 
 ---

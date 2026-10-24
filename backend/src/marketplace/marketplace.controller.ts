@@ -11,6 +11,7 @@ import {
   Res,
   StreamableFile,
   UseGuards,
+  Optional,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
@@ -24,6 +25,8 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { MarketplaceService } from './marketplace.service';
 import { PricingService } from './pricing.service';
+import { CancellationPolicyService } from './cancellation-policy.service';
+import { DriverCancellationService } from './driver-cancellation.service';
 import {
   AddRideTipDto,
   ConfirmPaymentDto,
@@ -49,7 +52,23 @@ export class MarketplaceController {
   constructor(
     private readonly marketplace: MarketplaceService,
     private readonly pricing: PricingService,
+    @Optional() private readonly cancellationPolicy?: CancellationPolicyService,
+    @Optional() private readonly driverCancellation?: DriverCancellationService,
   ) {}
+
+  @Get('marketplace/cancellation-policy')
+  cancellationPolicyPublic() {
+    return this.cancellationPolicy
+      ? this.cancellationPolicy.getPublicPolicy()
+      : { code: 'STANDARD', title: 'Cancellation Terms', tiers: [] };
+  }
+
+  @Get('marketplace/driver-cancellation-reasons')
+  driverCancellationReasons() {
+    return this.driverCancellation
+      ? this.driverCancellation.getActiveReasons()
+      : [];
+  }
 
   @Post('pricing/quote')
   @UseGuards(JwtAuthGuard)
@@ -105,6 +124,16 @@ export class MarketplaceController {
     return this.marketplace.recordRideView(user.id, id);
   }
 
+  @Get('rides/:id/cancellation-quote')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER)
+  cancellationQuote(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.marketplace.getCancellationQuote(user.id, id);
+  }
+
   @Post('rides/:id/cancel')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PASSENGER)
@@ -114,6 +143,28 @@ export class MarketplaceController {
     @Req() req: { ip?: string },
   ) {
     return this.marketplace.cancelRide(user.id, id, req.ip);
+  }
+
+  @Post('rides/:id/attempt-replacement')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  attemptReplacement(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.attemptReplacement(user.id, id, req.ip);
+  }
+
+  @Post('rides/:id/provider-no-show-cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PASSENGER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  cancelProviderNoShow(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.marketplace.cancelProviderNoShow(user.id, id, req.ip);
   }
 
   @Post('rides/:id/change-requests')

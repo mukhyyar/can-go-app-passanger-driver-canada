@@ -34,6 +34,11 @@ export class UploadDocumentMetaDto {
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}/)
   expiresAt?: string;
+
+  /** Custom document description (e.g. Canadian Passport, US B1/B2 Visa) */
+  @IsOptional()
+  @IsString()
+  customLabel?: string;
 }
 
 export class ReviewDocumentDto {

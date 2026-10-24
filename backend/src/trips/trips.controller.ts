@@ -3,12 +3,13 @@ import {
   Controller,
   Get,
   Header,
+  Optional,
   Param,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 import { RideStatus, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -19,6 +20,7 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { TripService } from './trip.service';
 import { PostRideNotificationService } from './post-ride-notifications.service';
+import { DriverCancellationService } from '../marketplace/driver-cancellation.service';
 
 
 class TripTransitionDto {
@@ -39,6 +41,26 @@ class TripTransitionDto {
   @IsOptional()
   @IsString()
   pin?: string;
+
+  @IsOptional()
+  @IsString()
+  reasonCode?: string;
+
+  @IsOptional()
+  @IsString()
+  reasonDetails?: string;
+
+  @IsOptional()
+  @IsNumber()
+  lat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  lng?: number;
+
+  @IsOptional()
+  @IsString()
+  contactMethod?: string;
 }
 
 @Controller('rides')
@@ -47,6 +69,7 @@ export class TripsController {
   constructor(
     private readonly trips: TripService,
     private readonly postRideNotifications: PostRideNotificationService,
+    @Optional() private readonly driverCancellation?: DriverCancellationService,
   ) {}
 
   @Post(':id/transitions')
@@ -56,7 +79,36 @@ export class TripsController {
     @Body() dto: TripTransitionDto,
     @Req() req: { ip?: string },
   ) {
-    return this.trips.transition(user.id, id, dto.status, req.ip, dto.pin);
+    if (
+      dto.status === RideStatus.DRIVER_CANCELLED &&
+      this.driverCancellation &&
+      dto.reasonCode
+    ) {
+      return this.driverCancellation.cancelByDriver({
+        userId: user.id,
+        rideId: id,
+        reasonCode: dto.reasonCode,
+        reasonDetails: dto.reasonDetails,
+        lat: dto.lat,
+        lng: dto.lng,
+        ip: req.ip,
+      });
+    }
+
+    return this.trips.transition(
+      user.id,
+      id,
+      dto.status,
+      req.ip,
+      dto.pin,
+      {
+        reasonCode: dto.reasonCode,
+        reasonDetails: dto.reasonDetails,
+        lat: dto.lat,
+        lng: dto.lng,
+        contactMethod: dto.contactMethod,
+      },
+    );
   }
 
   @Get(':id/invoice')
@@ -79,7 +131,17 @@ export class TripsController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.DRIVER)
 export class DriverTripController {
-  constructor(private readonly trips: TripService) {}
+  constructor(
+    private readonly trips: TripService,
+    @Optional() private readonly driverCancellation?: DriverCancellationService,
+  ) {}
+
+  @Get('cancellation-reasons')
+  cancellationReasons() {
+    return this.driverCancellation
+      ? this.driverCancellation.getActiveReasons()
+      : [];
+  }
 
   @Post(':id/en-route')
   enRoute(
@@ -138,8 +200,80 @@ export class DriverTripController {
   noShow(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Body()
+    body: {
+      lat?: number;
+      lng?: number;
+      contactMethod?: 'CHAT' | 'CALL';
+    },
     @Req() req: { ip?: string },
   ) {
-    return this.trips.transition(user.id, id, RideStatus.NO_SHOW, req.ip);
+    return this.trips.transition(
+      user.id,
+      id,
+      RideStatus.NO_SHOW,
+      req.ip,
+      undefined,
+      {
+        lat: body?.lat,
+        lng: body?.lng,
+        contactMethod: body?.contactMethod,
+      },
+    );
+  }
+
+  @Post(':id/contact-attempt')
+  contactAttempt(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { method?: 'CALL' | 'CHAT'; note?: string },
+  ) {
+    return this.trips.recordContactAttempt(
+      user.id,
+      id,
+      body?.method ?? 'CALL',
+      body?.note,
+    );
+  }
+
+  @Post(':id/cancel')
+  cancel(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      reasonCode: string;
+      reasonDetails?: string;
+      lat?: number;
+      lng?: number;
+    },
+    @Req() req: { ip?: string },
+  ) {
+    if (this.driverCancellation) {
+      return this.driverCancellation.cancelByDriver({
+        userId: user.id,
+        rideId: id,
+        reasonCode: body.reasonCode,
+        reasonDetails: body.reasonDetails,
+        lat: body.lat,
+        lng: body.lng,
+        ip: req.ip,
+      });
+    }
+
+    return this.trips.transition(
+      user.id,
+      id,
+      RideStatus.DRIVER_CANCELLED,
+      req.ip,
+      undefined,
+      {
+        reasonCode: body.reasonCode,
+        reasonDetails: body.reasonDetails,
+        lat: body.lat,
+        lng: body.lng,
+      },
+    );
   }
 }
+

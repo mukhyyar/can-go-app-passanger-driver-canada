@@ -21,6 +21,9 @@ class _DriverLegalScreenState extends State<DriverLegalScreen> {
   void initState() {
     super.initState();
     _activeSlug = widget.initialSlug == 'terms' ? 'terms' : 'privacy';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      GtPolicyUrls.openSlug(_activeSlug);
+    });
   }
 
   Future<Map<String, dynamic>?> _fetchDocument(String slug) async {
@@ -42,6 +45,13 @@ class _DriverLegalScreenState extends State<DriverLegalScreen> {
           _activeSlug == 'terms' ? 'Service Agreement' : 'Privacy Policy',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.open_in_browser_rounded),
+            tooltip: 'Open in browser',
+            onPressed: () => GtPolicyUrls.openSlug(_activeSlug),
+          ),
+        ],
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back',

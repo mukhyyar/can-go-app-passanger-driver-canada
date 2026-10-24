@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api, hasPermission } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { DataGrid } from '../../../components/data-grid';
+import { CancellationPolicyManager } from '../../../components/cancellation-policy-manager';
 
 type FareRow = Record<string, unknown>;
 
@@ -146,10 +147,18 @@ export default function PricingPage() {
 
   return (
     <div>
-      <h1 className="page-title">Fare rules</h1>
+      <h1 className="page-title">Pricing & Policy</h1>
       <p className="page-sub" id="services">
-        Service types, vehicle classes, CAD rates, bid bounds, commission, taxes
+        Service types, vehicle classes, CAD rates, bid bounds, commission, taxes & cancellation policy
       </p>
+      <div style={{ display: 'flex', gap: 10, margin: '14px 0 16px' }}>
+        <a href="#services" className="btn ghost sm" style={{ fontWeight: 700 }}>
+          Fare Rules
+        </a>
+        <a href="#cancellation" className="btn ghost sm" style={{ fontWeight: 700 }}>
+          Cancellation Policy
+        </a>
+      </div>
       {!canEdit && <p className="muted">Read-only — pricing.edit required to save.</p>}
       <DataGrid
         rows={rows}
@@ -366,6 +375,8 @@ export default function PricingPage() {
           },
         ]}
       />
+
+      <CancellationPolicyManager />
     </div>
   );
 }

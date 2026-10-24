@@ -31,16 +31,15 @@ export class DocumentsExpiryScheduler implements OnModuleInit, OnModuleDestroy {
 
   private async tick() {
     try {
-      const enforced = await this.expiryService.enforceExpiredDocuments();
-      if (enforced.deactivatedDrivers > 0) {
+      const result = await this.expiryService.sweepAll();
+      if (result.deactivatedDrivers > 0) {
         this.logger.warn(
-          `Document expiry sweep: deactivated ${enforced.deactivatedDrivers} driver(s) across ${enforced.expiredDocs} expired document(s)`,
+          `Document expiry sweep: deactivated ${result.deactivatedDrivers} driver(s) across ${result.expiredDocs} expired document(s)`,
         );
       }
-      const notified = await this.expiryService.notifyExpiringSoon();
-      if (notified.notifiedCount > 0) {
+      if (result.notifiedCount > 0) {
         this.logger.log(
-          `Document expiry reminder sweep: notified ${notified.notifiedCount} driver(s)`,
+          `Document expiry reminder sweep: notified ${result.notifiedCount} driver(s)`,
         );
       }
     } catch (err) {

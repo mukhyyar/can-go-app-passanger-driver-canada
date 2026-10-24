@@ -248,17 +248,44 @@ class MarketplaceApi {
   Future<Map<String, dynamic>> cancelRide(String rideId) =>
       client.post('/rides/$rideId/cancel', body: {});
 
+  Future<Map<String, dynamic>> attemptReplacement(String rideId) =>
+      client.post('/rides/$rideId/attempt-replacement', body: {});
+
+  Future<Map<String, dynamic>> cancelProviderNoShow(String rideId) =>
+      client.post('/rides/$rideId/provider-no-show-cancel', body: {});
+
   Future<Map<String, dynamic>> cancelBookedRide(String rideId) =>
       client.post(
         '/rides/$rideId/transitions',
         body: {'status': 'PASSENGER_CANCELLED'},
       );
 
-  Future<Map<String, dynamic>> driverCancelBookedRide(String rideId) =>
+  Future<Map<String, dynamic>> driverCancelBookedRide(
+    String rideId, {
+    String? reasonCode,
+    String? reasonDetails,
+    double? lat,
+    double? lng,
+  }) =>
       client.post(
         '/rides/$rideId/transitions',
-        body: {'status': 'DRIVER_CANCELLED'},
+        body: {
+          'status': 'DRIVER_CANCELLED',
+          if (reasonCode != null) 'reasonCode': reasonCode,
+          if (reasonDetails != null) 'reasonDetails': reasonDetails,
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        },
       );
+
+  Future<List<Map<String, dynamic>>> getDriverCancellationReasons() async {
+    final dynamic res = await client.get('/marketplace/driver-cancellation-reasons');
+    if (res is List) {
+      final List list = res;
+      return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    return [];
+  }
 
 
   Future<Map<String, dynamic>> updateRide(

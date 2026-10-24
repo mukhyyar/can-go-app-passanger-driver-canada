@@ -206,18 +206,6 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                   ),
                 ),
               ),
-              if (s.isIndividual != true || s.legalName.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Center(
-                  child: Text(
-                    s.isIndividual ? 'Individual carrier' : 'Legal entity',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: GtColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
               if (ctaRoute != null && ctaLabel != null) ...[
                 const SizedBox(height: 12),
                 GtGreenButton(
@@ -285,12 +273,12 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
               _MenuTile(
                 icon: Icons.shield_outlined,
                 label: 'Privacy Policy',
-                onTap: () => _open('/legal/privacy'),
+                onTap: () => GtPolicyUrls.openPrivacy(),
               ),
               _MenuTile(
                 icon: Icons.gavel_outlined,
                 label: 'Service Agreement',
-                onTap: () => _open('/legal/terms'),
+                onTap: () => GtPolicyUrls.openTerms(),
                 showDivider: false,
               ),
               const SizedBox(height: 16),

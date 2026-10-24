@@ -343,3 +343,126 @@ export class AdminCreateZoneDto extends AdminUpdateZoneDto {
   @MinLength(1)
   driverId!: string;
 }
+
+export class UpdateCancellationPolicyTierDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  minHoursBeforePickup?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  maxHoursBeforePickup?: number | null;
+
+  @IsOptional()
+  @IsIn(['PERCENTAGE', 'FLAT_AMOUNT'])
+  passengerRefundType?: 'PERCENTAGE' | 'FLAT_AMOUNT';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  passengerRefundValue?: number;
+
+  @IsOptional()
+  @IsIn(['PERCENTAGE', 'FLAT_AMOUNT'])
+  providerCompType?: 'PERCENTAGE' | 'FLAT_AMOUNT';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  providerCompValue?: number;
+
+  @IsOptional()
+  @IsIn(['REFUND_TO_PASSENGER', 'RETAIN_BY_PLATFORM'])
+  feeTreatment?: 'REFUND_TO_PASSENGER' | 'RETAIN_BY_PLATFORM';
+
+  @IsOptional()
+  @IsString()
+  passengerDisplayLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  passengerDisplayTerms?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class SimulateCancellationDto {
+  @Type(() => Number)
+  @IsNumber()
+  rideFare!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  marketplaceFee?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  taxes?: number;
+}
+
+export class OverrideCancellationJustificationDto {
+  @IsBoolean()
+  isJustified!: boolean;
+
+  @IsString()
+  @MinLength(3)
+  notes!: string;
+}
+
+export class IssueDriverWarningDto {
+  @IsString()
+  @MinLength(3)
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  details?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+}
+
+export class UpdateProviderReasonDto {
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isJustified?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  requiresDetails?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  sortOrder?: number;
+}
+
+export class TerminateDriverDto {
+  @IsString()
+  @MinLength(3)
+  reason!: string;
+}
+

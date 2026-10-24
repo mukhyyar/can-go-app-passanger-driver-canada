@@ -17,10 +17,22 @@ import { MapPreview } from '../../../components/map-preview';
 import { SiteFooter } from '../../../components/site-footer';
 import { SiteHeader } from '../../../components/site-header';
 
+type CancellationTierItem = {
+  tierKey: string;
+  name: string;
+  windowLabel: string;
+  refundLabel: string;
+  passengerDisplayTerms: string;
+};
+
 type QuoteResponse = {
   paymentQuote: PaymentQuote;
   partialEnabled?: boolean;
-  cancellationPolicy?: { title?: string; body?: string };
+  cancellationPolicy?: {
+    title?: string;
+    body?: string;
+    tiers?: CancellationTierItem[];
+  };
   paymentMethods?: string[];
 };
 
@@ -450,11 +462,107 @@ export default function RideDetailPage() {
                   </p>
                 </>
               )}
-              {quote?.cancellationPolicy?.body && (
-                <p className="muted" style={{ marginTop: 8 }}>
-                  {quote.cancellationPolicy.title ?? 'Cancellation policy'}:{' '}
-                  {quote.cancellationPolicy.body}
-                </p>
+              {quote?.cancellationPolicy && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: '12px 14px',
+                    borderRadius: 8,
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    fontSize: 12.5,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      marginBottom: 8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <span>🛡️</span>
+                    <span>
+                      {quote.cancellationPolicy.title ??
+                        'Cancellation Policy & Refund Terms'}
+                    </span>
+                  </div>
+                  {quote.cancellationPolicy.tiers &&
+                  quote.cancellationPolicy.tiers.length > 0 ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                      }}
+                    >
+                      {quote.cancellationPolicy.tiers.map((t) => (
+                        <div
+                          key={t.tierKey}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'baseline',
+                            borderBottom: '1px dashed #e2e8f0',
+                            paddingBottom: 4,
+                          }}
+                        >
+                          <div>
+                            <span style={{ fontWeight: 600 }}>
+                              {t.windowLabel || t.name}
+                            </span>
+                            {t.passengerDisplayTerms && (
+                              <div
+                                style={{
+                                  color: '#64748b',
+                                  fontSize: 11,
+                                  marginTop: 2,
+                                }}
+                              >
+                                {t.passengerDisplayTerms}
+                              </div>
+                            )}
+                          </div>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              background: t.refundLabel
+                                .toLowerCase()
+                                .includes('full')
+                                ? '#dcfce7'
+                                : t.refundLabel
+                                    .toLowerCase()
+                                    .includes('partial')
+                                ? '#fef3c7'
+                                : '#fee2e2',
+                              color: t.refundLabel
+                                .toLowerCase()
+                                .includes('full')
+                                ? '#166534'
+                                : t.refundLabel
+                                    .toLowerCase()
+                                    .includes('partial')
+                                ? '#92400e'
+                                : '#991b1b',
+                              whiteSpace: 'nowrap',
+                              marginLeft: 8,
+                            }}
+                          >
+                            {t.refundLabel}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted" style={{ margin: 0 }}>
+                      {quote.cancellationPolicy.body}
+                    </p>
+                  )}
+                </div>
               )}
               <button
                 className="cta"

@@ -128,6 +128,27 @@ export function KycQueue() {
     }
   }
 
+  async function triggerScanExpirations() {
+    setBusy(true);
+    try {
+      const res = await api<{
+        deactivatedDrivers: number;
+        expiredDocs: number;
+        notifiedCount: number;
+      }>('/admin/drivers/kyc/scan-expirations', {
+        method: 'POST',
+      });
+      toast.push(
+        `Scan complete: ${res.expiredDocs} expired doc(s), ${res.notifiedCount} notified`,
+      );
+      await load();
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 
@@ -146,6 +167,15 @@ export function KycQueue() {
         <div className="row kyc-head-actions">
           <button className="btn ghost sm" type="button" onClick={() => void load()}>
             Refresh
+          </button>
+          <button
+            className="btn ghost sm"
+            type="button"
+            disabled={busy || !canReview}
+            onClick={() => void triggerScanExpirations()}
+            title="Scan upcoming and expired documents across 30d, 14d, 7d and expired intervals"
+          >
+            Scan Expirations
           </button>
           <button className="btn ghost sm" type="button" onClick={exportCsv} disabled={!rows.length}>
             Export

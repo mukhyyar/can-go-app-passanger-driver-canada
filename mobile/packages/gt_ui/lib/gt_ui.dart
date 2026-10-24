@@ -20,5 +20,7 @@ export 'src/splash.dart';
 export 'src/theme.dart';
 export 'src/widgets.dart';
 export 'src/legal_document_view.dart';
+export 'src/emergency_safety_sheet.dart';
+export 'src/policy_links.dart';
 
 

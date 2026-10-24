@@ -407,4 +407,114 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+      'DocumentsScreen shows US transit checkbox and reveals options on check',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final appState = AppState();
+    appState.hasSeenWelcome = true;
+    appState.loaded = true;
+
+    final router = GoRouter(
+      initialLocation: '/onboarding/documents',
+      routes: [
+        GoRoute(
+          path: '/onboarding/documents',
+          builder: (_, __) => const DocumentsScreen(),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: appState,
+        child: MaterialApp.router(
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Checkbox is present
+    final checkboxFinder = find.byType(CheckboxListTile);
+    expect(checkboxFinder, findsOneWidget);
+    expect(
+      find.text('I want to take rides that transit through the USA'),
+      findsOneWidget,
+    );
+
+    // Initially unchecked, details hidden
+    expect(find.text('Admissible U.S. Transit & Travel Documents'), findsNothing);
+    expect(find.text('Document Description'), findsNothing);
+    expect(find.text('U.S. Transit & Travel Authorization'), findsNothing);
+
+    // Tap checkbox to opt in
+    await tester.tap(checkboxFinder);
+    await tester.pumpAndSettle();
+
+    // Now instructions, text field, and slot are revealed
+    expect(find.text('Admissible U.S. Transit & Travel Documents'), findsOneWidget);
+    expect(find.text('Canadian Passport or NEXUS Card'), findsOneWidget);
+    expect(find.text('Document Description'), findsOneWidget);
+    expect(find.text('U.S. Transit & Travel Authorization'), findsOneWidget);
+
+    // Enter a description
+    await tester.enterText(find.byType(TextField), 'Canadian Passport');
+    await tester.pumpAndSettle();
+    expect(find.text('Canadian Passport'), findsOneWidget);
+  });
+
+  testWidgets(
+      'DocumentsScreen automatically checks US transit and displays customLabel if document exists',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final appState = AppState();
+    appState.hasSeenWelcome = true;
+    appState.loaded = true;
+    appState.documents = [
+      {
+        'id': 'us-doc-1',
+        'docType': 'us_transit_permit',
+        'status': 'APPROVED',
+        'customLabel': 'US B1/B2 Visa',
+        'expiresAt': '2028-12-31T00:00:00Z',
+      },
+    ];
+
+    final router = GoRouter(
+      initialLocation: '/onboarding/documents',
+      routes: [
+        GoRoute(
+          path: '/onboarding/documents',
+          builder: (_, __) => const DocumentsScreen(),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: appState,
+        child: MaterialApp.router(
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Checkbox is automatically checked and options are displayed
+    expect(find.text('Admissible U.S. Transit & Travel Documents'), findsOneWidget);
+    expect(find.text('Document Description'), findsOneWidget);
+    expect(find.text('US B1/B2 Visa'), findsWidgets);
+    expect(find.text('Type: US B1/B2 Visa'), findsOneWidget);
+    expect(find.text('U.S. Transit & Travel Authorization'), findsOneWidget);
+  });
 }

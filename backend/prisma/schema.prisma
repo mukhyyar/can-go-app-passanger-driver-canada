@@ -142,6 +142,21 @@ enum DriverPayoutStatus {
   HELD
 }
 
+enum CancellationWindowType {
+  HOURS_BEFORE_PICKUP
+  DRIVER_ARRIVED_WAITING_EXPIRED
+}
+
+enum FeeTreatmentType {
+  REFUND_TO_PASSENGER
+  RETAIN_BY_PLATFORM
+}
+
+enum AmountRuleType {
+  PERCENTAGE
+  FLAT_AMOUNT
+}
+
 model AdminRole {
   id          String                @id @default(cuid())
   slug        String                @unique
@@ -206,6 +221,8 @@ model User {
   tagAssignments       UserTagAssignment[]
   loginLinksIssued     UserLoginLink[]       @relation("LoginLinkAdmin")
   loginLinksTarget     UserLoginLink[]       @relation("LoginLinkTarget")
+  driverWarningsIssued DriverWarning[]       @relation("AdminWarningsIssued")
+  driverCancellationsReviewed DriverCancellationRecord[] @relation("AdminCancellationReviews")
 }
 
 model OAuthAccount {
@@ -311,6 +328,10 @@ model DriverProfile {
   requestDismissals    RequestDismissal[]
   walletEntries        DriverWalletEntry[]
   payouts              DriverPayout[]
+  cancellationRecords  DriverCancellationRecord[]
+  warnings             DriverWarning[]
+  warningCount         Int                   @default(0)
+  originalRides        Ride[]                @relation("OriginalRideDriver")
 
   @@index([approvalStatus, updatedAt])
   @@index([kycAssignedToId])
@@ -479,6 +500,9 @@ model Ride {
   selectedOfferId String?    @unique
   selectedOffer   Offer?     @relation("SelectedOffer", fields: [selectedOfferId], references: [id])
   assignedDriverId String?
+  /// Retains the original driver if replacement is attempted after provider fails to arrive
+  originalDriverId String?
+  originalDriver   DriverProfile? @relation("OriginalRideDriver", fields: [originalDriverId], references: [id], onDelete: SetNull)
   /// 4-digit ride start verification PIN provided to passenger upon booking.
   startPin        String?
   /// Secure token for live trip sharing with friends/family.
@@ -502,12 +526,14 @@ model Ride {
   offerHistory    OfferHistory[]
   walletEntries   DriverWalletEntry[]
   financial       RideFinancial?
+  driverCancellation DriverCancellationRecord?
 
   @@index([createdAt])
   @@index([status, createdAt])
   @@index([serviceType, createdAt])
   @@index([passengerId, createdAt])
   @@index([assignedDriverId, createdAt])
+  @@index([originalDriverId])
   @@index([promoCode])
   @@index([shareToken])
 }
@@ -1306,3 +1332,97 @@ model CatalogItem {
 
   @@index([serviceType, active])
 }
+
+/// Passenger cancellation policy tiers (Admin-configurable commercial policy).
+model CancellationPolicyTier {
+  id                    String                 @id @default(cuid())
+  tierKey               String                 @unique
+  name                  String
+  windowType            CancellationWindowType @default(HOURS_BEFORE_PICKUP)
+  minHoursBeforePickup  Float?
+  maxHoursBeforePickup  Float?
+  passengerRefundType   AmountRuleType         @default(PERCENTAGE)
+  passengerRefundValue  Decimal                @default(100.0) @db.Decimal(6, 2)
+  providerCompType      AmountRuleType         @default(PERCENTAGE)
+  providerCompValue     Decimal                @default(0.0) @db.Decimal(6, 2)
+  feeTreatment          FeeTreatmentType       @default(REFUND_TO_PASSENGER)
+  passengerDisplayLabel String
+  passengerDisplayTerms String
+  isActive              Boolean                @default(true)
+  sortOrder             Int                    @default(0)
+  updatedByAdminId      String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+/// Configurable structured reasons for Provider (Driver) cancellations.
+model ProviderCancellationReason {
+  id               String   @id @default(cuid())
+  code             String   @unique // e.g. VEHICLE_BREAKDOWN, DRIVER_EMERGENCY
+  label            String   // e.g. "Vehicle Breakdown"
+  description      String?  // Guidance text for driver
+  isJustified      Boolean  @default(false) // Whether cancellations under this code count as justified
+  requiresDetails  Boolean  @default(false) // Whether driver must provide text explanation
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  cancellations    DriverCancellationRecord[]
+
+  @@index([isActive, sortOrder])
+}
+
+/// Audit record created whenever a driver cancels an accepted/active ride.
+model DriverCancellationRecord {
+  id                       String                     @id @default(cuid())
+  rideId                   String                     @unique
+  ride                     Ride                       @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  driverId                 String
+  driver                   DriverProfile              @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  reasonCode               String
+  reason                   ProviderCancellationReason @relation(fields: [reasonCode], references: [code])
+  reasonLabel              String                     // Snapshot of label at cancellation time
+  reasonDetails            String?                    // Driver explanation/comment
+  isJustified              Boolean                    // Snapshot of isJustified at cancellation time
+  
+  // Driver state at cancellation
+  rideStatusAtCancel       RideStatus                 // e.g. BOOKED, DRIVER_EN_ROUTE, DRIVER_ARRIVED
+  driverLat                Float?
+  driverLng                Float?
+
+  // Admin Compliance Review & Pardon
+  adminReviewed            Boolean                    @default(false)
+  adminOverriddenJustified Boolean?                   // Admin can override to true (pardon) or false
+  adminReviewNotes         String?
+  reviewedByAdminId        String?
+  reviewedByAdmin          User?                      @relation("AdminCancellationReviews", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+  reviewedAt               DateTime?
+
+  createdAt                DateTime                   @default(now())
+
+  @@index([driverId, createdAt])
+  @@index([reasonCode, createdAt])
+  @@index([isJustified, createdAt])
+  @@index([adminReviewed])
+}
+
+/// Formal warning issued to a driver for repeated unjustified cancellations or policy violations.
+model DriverWarning {
+  id              String        @id @default(cuid())
+  driverId        String
+  driver          DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  issuedByAdminId String
+  issuedByAdmin   User          @relation("AdminWarningsIssued", fields: [issuedByAdminId], references: [id], onDelete: Restrict)
+  category        String        @default("CANCELLATIONS") // CANCELLATIONS, CONDUCT, SAFETY
+  warningNumber   Int           @default(1) // 1st warning, 2nd warning, etc.
+  reason          String        // e.g. "Repeated unjustified cancellations (3 in past 30 days)"
+  details         String?       // Additional instructions / probation terms
+  acknowledgedAt  DateTime?     // When driver acknowledged in mobile app
+  createdAt       DateTime      @default(now())
+
+  @@index([driverId, createdAt])
+}
+

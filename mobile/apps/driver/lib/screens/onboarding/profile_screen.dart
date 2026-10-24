@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_ui/gt_ui.dart';
@@ -16,20 +17,19 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _name;
-  late final TextEditingController _legal;
-  late final TextEditingController _reg;
   late final TextEditingController _tax;
   late final TextEditingController _address;
   late final TextEditingController _referral;
+  late final TapGestureRecognizer _contractRecognizer;
   bool _loaded = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _contractRecognizer = TapGestureRecognizer()
+      ..onTap = () => GtPolicyUrls.openTerms();
     _name = TextEditingController();
-    _legal = TextEditingController();
-    _reg = TextEditingController();
     _tax = TextEditingController();
     _address = TextEditingController();
     _referral = TextEditingController();
@@ -42,8 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
       if (!mounted) return;
       _name.text = s.fullName;
-      _legal.text = s.legalName;
-      _reg.text = s.registrationNumber;
       _tax.text = s.taxpayerId;
       _address.text = s.address;
       _referral.text = s.referralCode;
@@ -53,9 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _contractRecognizer.dispose();
     _name.dispose();
-    _legal.dispose();
-    _reg.dispose();
     _tax.dispose();
     _address.dispose();
     _referral.dispose();
@@ -65,8 +62,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _sync(AppState s) {
     s.updateProfile(
       fullName: _name.text,
-      legalName: _legal.text,
-      registrationNumber: _reg.text,
       taxpayerId: _tax.text,
       address: _address.text,
       referralCode: _referral.text,
@@ -214,36 +209,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     children: [
-                      _entityTile(
-                        selected: s.isIndividual,
-                        title: 'Individual',
-                        subtitle: 'Private person / sole driver',
-                        onTap: () => s.setIndividual(true),
-                      ),
-                      const SizedBox(height: 8),
-                      _entityTile(
-                        selected: !s.isIndividual,
-                        title: 'Legal entity',
-                        subtitle: 'Company or sole proprietor',
-                        onTap: () => s.setIndividual(false),
-                      ),
-                      const SizedBox(height: 16),
                       GtUnderlineField(
-                        hint: s.isIndividual
-                            ? 'Full legal name'
-                            : "Contact person's full name",
+                        hint: 'Full legal name',
                         controller: _name,
                       ),
-                      if (!s.isIndividual) ...[
-                        GtUnderlineField(
-                          hint: 'Business / legal name',
-                          controller: _legal,
-                        ),
-                        GtUnderlineField(
-                          hint: 'Registration / company number',
-                          controller: _reg,
-                        ),
-                      ],
                       GtUnderlineField(
                         hint: 'Taxpayer identification number',
                         controller: _tax,
@@ -335,15 +304,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           controlAffinity: ListTileControlAffinity.leading,
                           value: s.acceptedTerms,
                           activeColor: GtColors.brand,
-                          title: const Text.rich(
+                          title: Text.rich(
                             TextSpan(
                               text: 'I have read and accepted ',
                               children: [
                                 TextSpan(
                                   text: 'CAN-RIDE Service License Contract',
-                                  style: TextStyle(
+                                  style: const TextStyle(
+                                    color: GtColors.brand,
+                                    fontWeight: FontWeight.w600,
                                     decoration: TextDecoration.underline,
                                   ),
+                                  recognizer: _contractRecognizer,
                                 ),
                               ],
                             ),
@@ -370,53 +342,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-    );
-  }
-
-  Widget _entityTile({
-    required bool selected,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? GtColors.brand : GtColors.border,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: selected ? GtColors.brand : GtColors.textMuted,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: GtColors.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

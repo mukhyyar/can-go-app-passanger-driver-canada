@@ -220,6 +220,9 @@ describe('Overdue and Stalled Rides Feature', () => {
         user: {
           findUnique: jest.fn().mockResolvedValue({ id: 'user_pax_1' }),
         },
+        ride: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'ride_123', assignedDriverId: 'driver_1' }),
+        },
         refund: {
           create: jest.fn().mockResolvedValue({ id: 'ref_1' }),
         },

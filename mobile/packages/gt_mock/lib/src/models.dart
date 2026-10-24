@@ -552,6 +552,9 @@ class RideRequest {
     this.shareUrl,
     this.pickupAt,
     this.isOverdue = false,
+    this.originalDriverId,
+    this.originalDriverName,
+    this.originalDriverPhone,
   });
 
   final String id;
@@ -583,6 +586,9 @@ class RideRequest {
   String? shareUrl;
   final DateTime? pickupAt;
   final bool isOverdue;
+  final String? originalDriverId;
+  final String? originalDriverName;
+  final String? originalDriverPhone;
 
   bool get isOverdueBooking {
     if (isOverdue) return true;
@@ -632,6 +638,43 @@ class RideRequest {
     if (status == RideStatus.cancelled) return true;
     final s = (serverStatus ?? '').toUpperCase();
     return s.contains('CANCEL') || s == 'EXPIRED' || s == 'NO_SHOW';
+  }
+
+  bool get isOngoingTrip {
+    final s = (serverStatus ?? '').toUpperCase();
+    return const {
+      'DRIVER_EN_ROUTE',
+      'EN_ROUTE',
+      'DRIVER_ARRIVED',
+      'ARRIVED',
+      'TRIP_STARTED',
+      'IN_PROGRESS',
+    }.contains(s);
+  }
+
+  bool get isFutureBooking {
+    if (isOngoingTrip || isCancelled) return false;
+    final s = (serverStatus ?? '').toUpperCase();
+    if (s == 'COMPLETED') return false;
+    if (timeBadge == 'Pickup now') return false;
+    if (pickupAt != null) {
+      return pickupAt!.isAfter(DateTime.now().add(const Duration(minutes: 30)));
+    }
+    return false;
+  }
+
+  bool get isImminentOrActive {
+    if (isCancelled) return false;
+    final s = (serverStatus ?? '').toUpperCase();
+    if (s == 'COMPLETED') return false;
+    if (isOngoingTrip) return true;
+    if (isOverdueBooking) return true;
+    if (isBooked) {
+      if (timeBadge == 'Pickup now') return true;
+      if (pickupAt == null) return true;
+      return !pickupAt!.isAfter(DateTime.now().add(const Duration(minutes: 30)));
+    }
+    return false;
   }
 }
 
@@ -896,9 +939,11 @@ class DriverRequest {
     this.startPin,
     this.tipAmount,
     this.isOverdue = false,
+    this.originalDriverId,
   });
 
   final String id;
+  final String? originalDriverId;
   final String datetimeLabel;
   final String from;
   final String to;

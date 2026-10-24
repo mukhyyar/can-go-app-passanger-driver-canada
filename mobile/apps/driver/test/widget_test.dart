@@ -14,7 +14,7 @@ void main() {
     await tester.pumpWidget(DriverApp(appState: state));
     await tester.pumpAndSettle();
     expect(find.text('CAN-RIDE DRIVER'), findsOneWidget);
-    expect(find.text('Drive & Earn on Your Terms'), findsOneWidget);
+    expect(find.text('Intercity Travel & Airport Rides, Made Easy'), findsOneWidget);
   });
 
   testWidgets('Driver app navigates to auth if welcome already seen', (tester) async {

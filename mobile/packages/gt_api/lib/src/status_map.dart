@@ -214,6 +214,14 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     shareUrl: json['shareUrl']?.toString(),
     pickupAt: pickupAt,
     isOverdue: isOverdue,
+    originalDriverId: json['originalDriverId']?.toString() ??
+        (json['originalDriver'] is Map ? (json['originalDriver'] as Map)['id']?.toString() : null),
+    originalDriverName: json['originalDriver'] is Map
+        ? (json['originalDriver'] as Map)['fullName']?.toString()
+        : null,
+    originalDriverPhone: json['originalDriver'] is Map
+        ? (json['originalDriver'] as Map)['phoneE164']?.toString()
+        : null,
   );
 }
 
@@ -863,6 +871,7 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
         ? asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip'])
         : null,
     isOverdue: isOverdue,
+    originalDriverId: json['originalDriverId']?.toString(),
   );
 }
 

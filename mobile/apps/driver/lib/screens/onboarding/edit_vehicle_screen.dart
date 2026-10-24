@@ -41,7 +41,7 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
   final _plate = TextEditingController();
   final _color = TextEditingController();
   final _year = TextEditingController();
-  String _class = 'sedan';
+  String _class = 'economy';
   int _seats = 4;
   int _luggage = 2;
   int _before = 10;
@@ -119,9 +119,10 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
     _plate.text = vehicle.plate;
     _color.text = vehicle.color;
     _year.text = vehicle.year?.toString() ?? '';
-    _class = kVehicleClasses.contains(vehicle.vehicleClass)
-        ? vehicle.vehicleClass
-        : 'sedan';
+    final vc = vehicle.vehicleClass.toLowerCase().trim();
+    _class = kVehicleClasses.contains(vc)
+        ? vc
+        : (vc == 'sedan' ? 'economy' : (kVehicleClasses.firstOrNull ?? 'economy'));
     _seats = vehicle.passengerSeats ?? 4;
     _luggage = vehicle.luggagePlaces ?? 2;
     _before = vehicle.autocancelBefore;

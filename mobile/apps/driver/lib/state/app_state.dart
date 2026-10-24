@@ -850,10 +850,10 @@ class AppState extends ChangeNotifier {
         ? Map<String, dynamic>.from(profile['accountStatus'] as Map)
         : null;
 
-    isIndividual = profile['isIndividual'] != false;
+    isIndividual = true;
     fullName = profile['fullName'] as String? ?? fullName;
-    legalName = profile['legalName'] as String? ?? '';
-    registrationNumber = profile['registrationNumber'] as String? ?? '';
+    legalName = '';
+    registrationNumber = '';
     taxpayerId = profile['taxpayerId'] as String? ?? '';
     address = profile['address'] as String? ??
         profile['addressLine1'] as String? ??
@@ -908,9 +908,9 @@ class AppState extends ChangeNotifier {
       final addressLine1 = address.trim();
       await api.driver.updateMe({
         'fullName': fullName.trim(),
-        'legalName': legalName.trim(),
-        'isIndividual': isIndividual,
-        'registrationNumber': registrationNumber.trim(),
+        'legalName': '',
+        'isIndividual': true,
+        'registrationNumber': '',
         'taxpayerId': taxpayerId.trim(),
         'addressLine1': addressLine1,
         'postalCode': postalCode.trim(),
@@ -1183,6 +1183,9 @@ class AppState extends ChangeNotifier {
     }
     return null;
   }
+
+  Map<String, dynamic>? get usTransitDocument => documentForType('us_transit_permit');
+  bool get hasUsTransitDocument => usTransitDocument != null;
 
   Map<String, dynamic>? vehicleDocumentForType(String? vehicleId, String docType) {
     for (final d in documents) {
@@ -1537,6 +1540,7 @@ class AppState extends ChangeNotifier {
     required String filename,
     String? vehicleId,
     String? expiresAt,
+    String? customLabel,
   }) async {
     final resolvedVehicleId = vehicleId ?? primaryVehicleId;
     if (docType == 'vehicle_photo' &&
@@ -1549,6 +1553,7 @@ class AppState extends ChangeNotifier {
       filename: filename,
       vehicleId: resolvedVehicleId,
       expiresAt: expiresAt,
+      customLabel: customLabel,
     );
     if (docType == 'selfie') selfieUploaded = true;
     if (docType == 'license') licenseUploaded = true;
@@ -1584,6 +1589,7 @@ class AppState extends ChangeNotifier {
     required String filename,
     String? vehicleId,
     String? expiresAt,
+    String? customLabel,
   }) async {
     final resolvedVehicleId = vehicleId ?? primaryVehicleId;
     try {
@@ -1592,6 +1598,7 @@ class AppState extends ChangeNotifier {
         bytes: bytes,
         filename: filename,
         expiresAt: expiresAt,
+        customLabel: customLabel,
       );
     } catch (e) {
       debugPrint('reuploadDocument endpoint fallback to uploadDocument: $e');
@@ -1601,6 +1608,7 @@ class AppState extends ChangeNotifier {
         filename: filename,
         vehicleId: resolvedVehicleId,
         expiresAt: expiresAt,
+        customLabel: customLabel,
       );
     }
     if (docType == 'selfie') selfieUploaded = true;
@@ -1626,7 +1634,7 @@ class AppState extends ChangeNotifier {
     final v = await api.driver.createVehicle(
       name: 'Primary',
       plate: 'TEMP-${DateTime.now().millisecondsSinceEpoch % 100000}',
-      vehicleClass: 'sedan',
+      vehicleClass: 'economy',
       isDefault: true,
     );
     primaryVehicleId = v['id'] as String?;
@@ -1874,8 +1882,8 @@ class AppState extends ChangeNotifier {
   }
 
   void setIndividual(bool value) {
-    isIndividual = value;
-    repo.driver.isIndividual = value;
+    isIndividual = true;
+    repo.driver.isIndividual = true;
     notifyListeners();
   }
 
@@ -2254,11 +2262,10 @@ class AppState extends ChangeNotifier {
   }
 
   String get carrierProfileSummary {
-    final type = isIndividual ? 'Individual' : 'Legal entity';
     final verified = isActivated || approvalStatus.toUpperCase() == 'APPROVED'
         ? 'Verified'
         : approvalStatus.replaceAll('_', ' ').toLowerCase();
-    return '$type · $verified';
+    return 'Personal · $verified';
   }
 
   String get operatingZoneSummary {
@@ -2298,7 +2305,7 @@ class AppState extends ChangeNotifier {
           id: primaryVehicleId ?? 'local-1',
           name: 'Primary',
           plate: '—',
-          vehicleClass: 'sedan',
+          vehicleClass: 'economy',
           amenities: Map<String, dynamic>.from(amenities),
         ),
       ];
@@ -2446,8 +2453,20 @@ class AppState extends ChangeNotifier {
     return next is String ? next : null;
   }
 
-  Future<void> cancelRide(String rideId) async {
-    await api.marketplace.driverCancelBookedRide(rideId);
+  Future<void> cancelRide(
+    String rideId, {
+    String? reasonCode,
+    String? reasonDetails,
+    double? lat,
+    double? lng,
+  }) async {
+    await api.marketplace.driverCancelBookedRide(
+      rideId,
+      reasonCode: reasonCode,
+      reasonDetails: reasonDetails,
+      lat: lat,
+      lng: lng,
+    );
     await refreshMyRides();
   }
 
@@ -2568,6 +2587,34 @@ class AppState extends ChangeNotifier {
     stopTripLocationTracking();
     final res = await api.driver.completeTrip(rideId);
     await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> tripNoShow(
+    String rideId, {
+    double? lat,
+    double? lng,
+    String? contactMethod,
+  }) async {
+    stopTripLocationTracking();
+    final res = await api.driver.noShow(
+      rideId,
+      lat: lat,
+      lng: lng,
+      contactMethod: contactMethod,
+    );
+    await refreshMyRides();
+    notifyListeners();
+    return res;
+  }
+
+  Future<Map<String, dynamic>> recordContactAttempt(
+    String rideId, {
+    String method = 'CALL',
+    String? note,
+  }) async {
+    final res = await api.driver.contactAttempt(rideId, method: method, note: note);
     notifyListeners();
     return res;
   }

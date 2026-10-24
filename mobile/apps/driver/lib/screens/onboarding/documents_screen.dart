@@ -21,10 +21,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   bool _submitted = false;
   final Map<String, Uint8List> _previewBytes = {};
   final Set<String> _previewFailed = {};
+  late final TextEditingController _usDocDescController;
+  bool _optInUsTransit = false;
+  bool _initializedUsTransit = false;
 
   @override
   void initState() {
     super.initState();
+    _usDocDescController = TextEditingController();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final s = context.read<AppState>();
       if (s.isAuthenticated) await s.syncDocumentsStatus();
@@ -32,9 +36,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _usDocDescController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadPreviews() async {
     final s = context.read<AppState>();
-    for (final slot in const ['selfie', 'license']) {
+    for (final slot in const ['selfie', 'license', 'us_transit_permit']) {
       final doc = s.documentForType(slot);
       final id = doc?['id']?.toString();
       if (id == null) continue;
@@ -118,6 +128,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       final existingDoc = app.documentForType(docType);
       final existingId = existingDoc?['id']?.toString();
       final isReupload = app.isDocumentReuploadRequested(existingDoc);
+      final customLabel = docType == 'us_transit_permit'
+          ? (_usDocDescController.text.trim().isNotEmpty
+              ? _usDocDescController.text.trim()
+              : null)
+          : null;
 
       if (isReupload && existingId != null) {
         await app.reuploadKycBytes(
@@ -126,6 +141,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           bytes: bytes,
           filename: file.name,
           expiresAt: expiresAt,
+          customLabel: customLabel,
         );
       } else {
         await app.uploadKycBytes(
@@ -133,6 +149,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           bytes: bytes,
           filename: file.name,
           expiresAt: expiresAt,
+          customLabel: customLabel,
         );
       }
       final id = app.documentForType(docType)?['id']?.toString() ?? existingId;
@@ -248,6 +265,17 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
+    if (!_initializedUsTransit) {
+      final existingUsDoc = s.documentForType('us_transit_permit');
+      if (existingUsDoc != null) {
+        _optInUsTransit = true;
+        final label = existingUsDoc['customLabel']?.toString();
+        if (label != null && label.isNotEmpty && _usDocDescController.text.isEmpty) {
+          _usDocDescController.text = label;
+        }
+      }
+      _initializedUsTransit = true;
+    }
     // Sticky local submit flag must not keep the under-review banner after KYC approval.
     if (_submitted && s.approvalStatus.toUpperCase() == 'APPROVED') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -518,6 +546,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   isUnderReview: isSlotUnderReview(s.documentForType('license')),
                   feedback: s.documentFeedback(s.documentForType('license')),
                 ),
+                const SizedBox(height: 16),
+                _buildUsTransitSection(s, isSlotUnderReview),
               ],
             ),
           ),
@@ -563,6 +593,131 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     ),
   );
 }
+
+  Widget _buildUsTransitSection(
+    AppState s,
+    bool Function(Map<String, dynamic>?) isSlotUnderReview,
+  ) {
+    final transitDoc = s.documentForType('us_transit_permit');
+    final hasDoc = transitDoc != null;
+    final isLocked = hasDoc && s.isDocumentLocked(transitDoc);
+
+    return GtCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text(
+              'I want to take rides that transit through the USA',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            subtitle: const Text(
+              'Required for faster cross-provincial routes (e.g. Toronto ↔ Western Canada) passing through U.S. highways.',
+              style: TextStyle(fontSize: 12, color: GtColors.textSecondary),
+            ),
+            value: _optInUsTransit,
+            onChanged: isLocked
+                ? null
+                : (val) {
+                    setState(() {
+                      _optInUsTransit = val ?? false;
+                    });
+                  },
+          ),
+          if (_optInUsTransit) ...[
+            const Divider(height: 20),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 16, color: GtColors.brand),
+                      SizedBox(width: 8),
+                      Text(
+                        'Admissible U.S. Transit & Travel Documents',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildBulletItem('Canadian Passport or NEXUS Card'),
+                  _buildBulletItem('U.S. Passport or U.S. Lawful Permanent Resident Card (Green Card)'),
+                  _buildBulletItem('Foreign Passport with approved U.S. B1/B2 Visitor Visa or ESTA'),
+                  _buildBulletItem('Canadian PR Card + Foreign Passport with valid U.S. Visa'),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Note: All passengers booked on routes crossing into the U.S. must also possess valid travel documentation.',
+                    style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: GtColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _usDocDescController,
+              decoration: const InputDecoration(
+                labelText: 'Document Description',
+                hintText: 'e.g., Canadian Passport, US B1/B2 Visa, NEXUS',
+                helperText: 'State your document type (e.g. Canadian/US Passport, Visa, NEXUS)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _DocSlot(
+              title: 'U.S. Transit & Travel Authorization',
+              doc: transitDoc,
+              previewBytes: _previewBytes[transitDoc?['id']],
+              previewFailed: _previewFailed
+                  .contains(transitDoc?['id']?.toString()),
+              busy: _busy,
+              onUpload: () => _pickAndUpload('us_transit_permit'),
+              onReplace: () => _pickAndUpload('us_transit_permit'),
+              onResubmit: () => _confirmAndResubmit(
+                'us_transit_permit',
+                'U.S. Transit Document',
+              ),
+              onDelete: (doc) => _deleteDoc(doc),
+              onPreview: _openPreview,
+              isLocked: isLocked,
+              isUnderReview: isSlotUnderReview(transitDoc),
+              feedback: s.documentFeedback(transitDoc),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildBulletItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '• ',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: GtColors.brand),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12, color: GtColors.text),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DocSlot extends StatelessWidget {
@@ -638,6 +793,18 @@ class _DocSlot extends StatelessWidget {
                       title,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
+                    if (doc?['customLabel'] != null &&
+                        (doc!['customLabel'].toString()).trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Type: ${doc!['customLabel']}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: GtColors.textSecondary,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                     if (expiryFormatted != null) ...[
                       const SizedBox(height: 2),
                       Text(

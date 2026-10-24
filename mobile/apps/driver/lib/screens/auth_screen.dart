@@ -78,9 +78,9 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     _privacyRecognizer = TapGestureRecognizer()
-      ..onTap = () => context.push('/legal/privacy');
+      ..onTap = () => GtPolicyUrls.openPrivacy();
     _termsRecognizer = TapGestureRecognizer()
-      ..onTap = () => context.push('/legal/terms');
+      ..onTap = () => GtPolicyUrls.openTerms();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOAuthConfig();
       _loadCredentialPrefs();

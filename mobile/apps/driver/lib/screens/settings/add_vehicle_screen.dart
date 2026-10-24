@@ -23,7 +23,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _year = TextEditingController();
   int _seats = 4;
   int _luggage = 2;
-  String _class = 'sedan';
+  String _class = 'economy';
   bool _saving = false;
   String? _error;
   String? _makeError;

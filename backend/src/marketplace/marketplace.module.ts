@@ -10,6 +10,8 @@ import { MarketplaceController } from './marketplace.controller';
 import { MarketplaceScheduler } from './marketplace.scheduler';
 import { RideLifecycleService } from './ride-lifecycle.service';
 import { OfferPresentationService } from './offer-presentation.service';
+import { CancellationPolicyService } from './cancellation-policy.service';
+import { DriverCancellationService } from './driver-cancellation.service';
 
 @Module({
   imports: [
@@ -24,9 +26,17 @@ import { OfferPresentationService } from './offer-presentation.service';
     PricingService,
     RideLifecycleService,
     OfferPresentationService,
+    CancellationPolicyService,
+    DriverCancellationService,
     MarketplaceService,
     MarketplaceScheduler,
   ],
-  exports: [MarketplaceService, PricingService, RideLifecycleService],
+  exports: [
+    MarketplaceService,
+    PricingService,
+    RideLifecycleService,
+    CancellationPolicyService,
+    DriverCancellationService,
+  ],
 })
 export class MarketplaceModule {}

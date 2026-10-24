@@ -97,6 +97,10 @@ export class EditDocumentMetadataDto {
   @IsString()
   sourceReference?: string;
 
+  @IsOptional()
+  @IsString()
+  status?: string;
+
   @IsString()
   @MinLength(3)
   reason!: string;

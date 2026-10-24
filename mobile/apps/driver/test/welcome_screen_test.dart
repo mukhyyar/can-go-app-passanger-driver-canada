@@ -26,24 +26,24 @@ void main() {
     // Initial slide 1
     expect(find.text('CAN-RIDE DRIVER'), findsOneWidget);
     expect(find.text('Skip'), findsOneWidget);
-    expect(find.text('Drive & Earn on Your Terms'), findsOneWidget);
-    expect(find.text('DRIVE & EARN'), findsOneWidget);
+    expect(find.text('Intercity Travel & Airport Rides, Made Easy'), findsOneWidget);
+    expect(find.text('INTERCITY & AIRPORT'), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
 
     // Advance to slide 2
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Review Requests & Name Your Fare'), findsOneWidget);
-    expect(find.text('BID YOUR PRICE'), findsOneWidget);
-    expect(find.text('Live Request Feed'), findsOneWidget);
+    expect(find.text('Fast & Reliable Parcel Delivery'), findsOneWidget);
+    expect(find.text('PARCEL DELIVERY'), findsOneWidget);
+    expect(find.text('Safe Deliveries'), findsOneWidget);
 
     // Advance to slide 3
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Fast CAD Payouts & In-App Safety'), findsOneWidget);
-    expect(find.text('SECURE & TRANSPARENT'), findsOneWidget);
+    expect(find.text('Fast, Hassle-Free Payouts'), findsOneWidget);
+    expect(find.text('FAST PAYOUTS'), findsOneWidget);
     expect(find.text('Get Started'), findsOneWidget);
 
     // Tap Get Started sets hasSeenWelcome to true

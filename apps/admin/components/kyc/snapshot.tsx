@@ -260,6 +260,11 @@ export function DriverSnapshot({
                   <DocGlyph indicator={d.status === 'APPROVED' ? 'approved' : d.status === 'REJECTED' ? 'rejected' : 'pending'} />
                   <span>
                     {d.label}
+                    {d.customLabel ? (
+                      <span className="muted" style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'normal' }}>
+                        {d.customLabel}
+                      </span>
+                    ) : null}
                     <span className="kyc-ver-badge sm">V{d.versionNumber}</span>
                   </span>
                   <span className="muted">{d.status.replace(/_/g, ' ')}</span>

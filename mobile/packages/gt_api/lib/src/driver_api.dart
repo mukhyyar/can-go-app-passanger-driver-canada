@@ -104,6 +104,7 @@ class DriverApi {
     String contentType = 'image/jpeg',
     String? vehicleId,
     String? expiresAt,
+    String? customLabel,
   }) {
     return client.postMultipart(
       '/driver/documents',
@@ -111,6 +112,8 @@ class DriverApi {
         'docType': docType,
         if (vehicleId != null) 'vehicleId': vehicleId,
         if (expiresAt != null) 'expiresAt': expiresAt,
+        if (customLabel != null && customLabel.trim().isNotEmpty)
+          'customLabel': customLabel.trim(),
       },
       files: [
         http.MultipartFile.fromBytes(
@@ -127,11 +130,14 @@ class DriverApi {
     required Uint8List bytes,
     required String filename,
     String? expiresAt,
+    String? customLabel,
   }) {
     return client.postMultipart(
       '/driver/documents/$documentId/reupload',
       fields: {
         if (expiresAt != null) 'expiresAt': expiresAt,
+        if (customLabel != null && customLabel.trim().isNotEmpty)
+          'customLabel': customLabel.trim(),
       },
       files: [
         http.MultipartFile.fromBytes(
@@ -324,6 +330,34 @@ class DriverApi {
 
   Future<Map<String, dynamic>> completeTrip(String rideId) =>
       client.post('/driver/rides/$rideId/complete', body: {});
+
+  Future<Map<String, dynamic>> noShow(
+    String rideId, {
+    double? lat,
+    double? lng,
+    String? contactMethod,
+  }) =>
+      client.post(
+        '/driver/rides/$rideId/no-show',
+        body: {
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+          if (contactMethod != null) 'contactMethod': contactMethod,
+        },
+      );
+
+  Future<Map<String, dynamic>> contactAttempt(
+    String rideId, {
+    String method = 'CALL',
+    String? note,
+  }) =>
+      client.post(
+        '/driver/rides/$rideId/contact-attempt',
+        body: {
+          'method': method,
+          if (note != null) 'note': note,
+        },
+      );
 
   Future<Map<String, dynamic>> pushLocation({
     required double lat,

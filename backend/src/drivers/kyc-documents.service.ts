@@ -572,6 +572,13 @@ export class KycDocumentsService {
     if (dto.customLabel !== undefined) data.customLabel = dto.customLabel;
     if (dto.adminNote !== undefined) data.adminNote = dto.adminNote;
     if (dto.sourceReference !== undefined) data.sourceReference = dto.sourceReference;
+    if (dto.status !== undefined) {
+      data.status = dto.status as DocumentReviewStatus;
+      if (dto.status === DocumentReviewStatus.APPROVED) {
+        data.reviewedAt = new Date();
+        data.reviewedById = actor.id;
+      }
+    }
 
     const updated = await this.prisma.driverDocument.update({
       where: { id: documentId },

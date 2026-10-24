@@ -139,6 +139,21 @@ export const KycDecisionPanel = forwardRef<
         ))}
       </ul>
 
+      <details className="kyc-jurisdiction-hint" style={{ marginTop: '0.75rem', marginBottom: '0.75rem', fontSize: '0.8125rem' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #666)' }}>
+          Jurisdictional & Alberta Guidelines ▾
+        </summary>
+        <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-subtle, #f5f5f5)', borderRadius: '6px', lineHeight: 1.4 }}>
+          <p style={{ margin: '0 0 0.25rem 0', fontWeight: 600 }}>Alberta TNC Requirements:</p>
+          <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+            <li>Class 1, 2, or 4 Driver&apos;s Licence</li>
+            <li>Police Information Check with Vulnerable Sector Screen</li>
+            <li>Approved commercial/TNC vehicle insurance</li>
+            <li>Commercial registration/plates &amp; vehicle inspection certificate</li>
+          </ul>
+        </div>
+      </details>
+
       <div className="kyc-decision-status">
         <div>
           <span className="muted">KYC Status</span>

@@ -98,22 +98,25 @@ export function DocumentViewer({
 
   const meta = useMemo(() => {
     if (!doc) return [];
+    const docTypeName = doc.label || DOC_TYPE_LABELS[doc.docType as DocType] || doc.docType;
     const rows: Array<{ label: string; value: string }> = [
+      { label: 'Document Type', value: docTypeName },
+      { label: 'Issue Date', value: doc.issueDate ? formatWhen(doc.issueDate) : 'Not specified' },
+      { label: 'Expiry Date', value: doc.expiresAt ? formatWhen(doc.expiresAt) : 'No expiration' },
+      { label: 'Verification Status', value: doc.status },
+      { label: 'Admin Note', value: doc.adminNote || 'None' },
       { label: 'Uploaded', value: formatWhen(doc.createdAt) },
-      { label: 'Type', value: doc.mimeType },
+      { label: 'File Type', value: doc.mimeType },
       { label: 'Size', value: bytesLabel(doc.sizeBytes) },
-      { label: 'Status', value: doc.status },
       { label: 'Lifecycle', value: kycStatusLabel(doc.lifecycleStatus) },
       { label: 'Source', value: sourceLabel(doc.uploadSource) },
       { label: 'Version', value: `V${doc.versionNumber}` },
     ];
+    if (doc.customLabel) rows.push({ label: 'Description', value: doc.customLabel });
     if (doc.originalFilename) rows.push({ label: 'Filename', value: doc.originalFilename });
     if (doc.documentNumber) rows.push({ label: 'Doc #', value: doc.documentNumber });
-    if (doc.issueDate) rows.push({ label: 'Issued', value: formatWhen(doc.issueDate) });
-    if (doc.expiresAt) rows.push({ label: 'Expiry', value: formatWhen(doc.expiresAt) });
     if (doc.issuingJurisdiction) rows.push({ label: 'Jurisdiction', value: doc.issuingJurisdiction });
     if (doc.sourceReference) rows.push({ label: 'Source ref', value: doc.sourceReference });
-    if (doc.adminNote) rows.push({ label: 'Admin note', value: doc.adminNote });
     if (doc.rejectionReason) rows.push({ label: 'Reviewer note', value: doc.rejectionReason });
     if (doc.checksumSha256) rows.push({ label: 'Checksum', value: doc.checksumSha256.slice(0, 16) + '…' });
     return rows;
@@ -140,6 +143,11 @@ export function DocumentViewer({
       <header className="kyc-viewer-head">
         <div>
           <h2>{doc.label || DOC_TYPE_LABELS[doc.docType as DocType] || doc.docType}</h2>
+          {doc.customLabel && (
+            <p className="muted" style={{ margin: '2px 0 0', fontSize: '0.875rem' }}>
+              <strong>Description:</strong> {doc.customLabel}
+            </p>
+          )}
           <div className="row kyc-viewer-badges">
             <KycStatusBadge status={doc.status} />
             <span className="kyc-ver-badge">V{doc.versionNumber}</span>

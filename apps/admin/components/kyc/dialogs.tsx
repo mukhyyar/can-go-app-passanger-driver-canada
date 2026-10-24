@@ -691,6 +691,7 @@ export function EditDocumentMetadataDialog({
   const [customLabel, setCustomLabel] = useState(doc.customLabel ?? '');
   const [adminNote, setAdminNote] = useState(doc.adminNote ?? '');
   const [sourceReference, setSourceReference] = useState(doc.sourceReference ?? '');
+  const [status, setStatus] = useState(doc.status);
   const [reason, setReason] = useState('');
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -745,6 +746,15 @@ export function EditDocumentMetadataDialog({
           Source reference
           <input className="field" value={sourceReference} onChange={(e) => mark(setSourceReference)(e.target.value)} />
         </label>
+        <label className="kyc-label">
+          Verification status
+          <select className="field" value={status} onChange={(e) => mark(setStatus)(e.target.value)}>
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="NEEDS_RESUBMISSION">Needs resubmission</option>
+          </select>
+        </label>
       </div>
       <label className="kyc-label">
         Admin note
@@ -773,6 +783,7 @@ export function EditDocumentMetadataDialog({
                   issuingJurisdiction: issuingJurisdiction.trim() || undefined,
                   sourceReference: sourceReference.trim() || undefined,
                   adminNote: adminNote.trim() || undefined,
+                  status: status !== doc.status ? status : undefined,
                   reason: reason.trim(),
                 });
                 setDirty(false);

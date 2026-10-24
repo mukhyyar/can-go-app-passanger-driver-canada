@@ -12,6 +12,7 @@ import {
   Req,
   StreamableFile,
   UseGuards,
+  Optional,
 } from '@nestjs/common';
 import { UserRole, SupportCaseStatus, SupportCaseType } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -23,6 +24,8 @@ import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.deco
 import { AdminOpsService } from './admin.service';
 import { AdminRbacService } from './rbac.service';
 import { DriverWalletService } from '../wallet/driver-wallet.service';
+import { CancellationPolicyService } from '../marketplace/cancellation-policy.service';
+import { DriverCancellationService } from '../marketplace/driver-cancellation.service';
 import {
   BroadcastDto,
   BulkSuspendDto,
@@ -44,6 +47,12 @@ import {
   WalletReleaseDto,
   AdminCreateZoneDto,
   AdminUpdateZoneDto,
+  UpdateCancellationPolicyTierDto,
+  SimulateCancellationDto,
+  OverrideCancellationJustificationDto,
+  IssueDriverWarningDto,
+  UpdateProviderReasonDto,
+  TerminateDriverDto,
 } from './admin.dto';
 
 @Controller('admin')
@@ -54,6 +63,10 @@ export class AdminOpsController {
     private readonly ops: AdminOpsService,
     private readonly rbac: AdminRbacService,
     private readonly wallet: DriverWalletService,
+    @Optional()
+    private readonly cancellationPolicyService?: CancellationPolicyService,
+    @Optional()
+    private readonly driverCancellationService?: DriverCancellationService,
   ) {}
 
   @Get('dashboard/kpis')
@@ -528,6 +541,129 @@ export class AdminOpsController {
     @Req() req: { ip?: string },
   ) {
     return this.ops.upsertFareRule(user.id, id, dto as never, req.ip);
+  }
+
+  @Get('cancellation-policy')
+  @RequirePermission('pricing.view')
+  cancellationPolicy() {
+    return this.cancellationPolicyService ? this.cancellationPolicyService.listTiers() : [];
+  }
+
+  @Put('cancellation-policy/:tierKey')
+  @RequirePermission('pricing.edit')
+  updateCancellationTier(
+    @CurrentUser() user: AuthUser,
+    @Param('tierKey') tierKey: string,
+    @Body() dto: UpdateCancellationPolicyTierDto,
+  ) {
+    return this.cancellationPolicyService?.updateTier(tierKey, dto as never, user.id);
+  }
+
+  @Post('cancellation-policy/simulate')
+  @RequirePermission('pricing.view')
+  simulateCancellation(
+    @Body() dto: SimulateCancellationDto,
+  ) {
+    return this.cancellationPolicyService?.simulate(dto);
+  }
+
+  @Get('driver-cancellations/report')
+  @RequirePermission('drivers.view')
+  driverCancellationsReport(
+    @Query('windowDays') windowDays?: string,
+    @Query('threshold') threshold?: string,
+  ) {
+    return this.driverCancellationService?.getRepeatOffendersReport({
+      windowDays: windowDays ? parseInt(windowDays, 10) : undefined,
+      threshold: threshold ? parseInt(threshold, 10) : undefined,
+    });
+  }
+
+  @Get('driver-cancellations/records')
+  @RequirePermission('drivers.view')
+  driverCancellationRecords(
+    @Query('driverId') driverId?: string,
+    @Query('reasonCode') reasonCode?: string,
+    @Query('isJustified') isJustified?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.driverCancellationService?.getCancellationRecords({
+      driverId,
+      reasonCode,
+      isJustified:
+        isJustified === 'true'
+          ? true
+          : isJustified === 'false'
+            ? false
+            : undefined,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  @Post('driver-cancellations/records/:id/override')
+  @RequirePermission('drivers.suspend')
+  overrideCancellationJustification(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: OverrideCancellationJustificationDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.driverCancellationService?.overrideJustification(
+      user.id,
+      id,
+      { ...dto, ip: req.ip },
+    );
+  }
+
+  @Get('driver-cancellations/reasons')
+  @RequirePermission('pricing.view')
+  driverCancellationReasons() {
+    return this.driverCancellationService?.getActiveReasons() ?? [];
+  }
+
+  @Put('driver-cancellations/reasons/:code')
+  @RequirePermission('pricing.edit')
+  updateDriverCancellationReason(
+    @CurrentUser() user: AuthUser,
+    @Param('code') code: string,
+    @Body() dto: UpdateProviderReasonDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.driverCancellationService?.updateReason(user.id, code, {
+      ...dto,
+      ip: req.ip,
+    });
+  }
+
+  @Post('drivers/:driverId/warnings')
+  @RequirePermission('drivers.suspend')
+  issueDriverWarning(
+    @CurrentUser() user: AuthUser,
+    @Param('driverId') driverId: string,
+    @Body() dto: IssueDriverWarningDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.driverCancellationService?.issueWarning(user.id, driverId, {
+      ...dto,
+      ip: req.ip,
+    });
+  }
+
+  @Post('drivers/:driverId/terminate')
+  @RequirePermission('users.suspend')
+  terminateDriver(
+    @CurrentUser() user: AuthUser,
+    @Param('driverId') driverId: string,
+    @Body() dto: TerminateDriverDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.driverCancellationService?.terminateDriver(
+      user.id,
+      driverId,
+      { ...dto, ip: req.ip },
+    );
   }
 
   @Patch('promos/:id')
