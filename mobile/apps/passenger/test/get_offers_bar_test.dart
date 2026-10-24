@@ -43,7 +43,7 @@ void main() {
     expect(initialButton.onPressed, isNotNull);
 
     // Now test that when terms are toggled, termsAccepted updates
-    await tester.tap(find.text('I agree to the terms of service'));
+    await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
     expect(state.termsAccepted, isTrue);
   });

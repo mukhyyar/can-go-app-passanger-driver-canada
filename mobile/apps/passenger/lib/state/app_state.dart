@@ -987,6 +987,18 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> attemptReplacement(String rideId) async {
+    await api.marketplace.attemptReplacement(rideId);
+    await refreshRide(rideId);
+    notifyListeners();
+  }
+
+  Future<void> cancelProviderNoShow(String rideId) async {
+    await api.marketplace.cancelProviderNoShow(rideId);
+    await refreshRide(rideId);
+    notifyListeners();
+  }
+
   Future<Map<String, dynamic>> updateRide(
     String rideId, {
     String? fromLabel,
@@ -1978,18 +1990,33 @@ class AppState extends ChangeNotifier {
 
   RideRequest? get activeBookedRide {
     try {
-      final ongoing = repo.rides.where((r) {
-        final s = (r.serverStatus ?? '').toUpperCase();
-        return s == 'DRIVER_EN_ROUTE' ||
-            s == 'DRIVER_ARRIVED' ||
-            s == 'TRIP_STARTED' ||
-            s == 'IN_PROGRESS';
-      });
+      // 1. Ongoing trip where driver is en route, arrived, or trip in progress
+      final ongoing = repo.rides.where((r) => r.isOngoingTrip);
       if (ongoing.isNotEmpty) return ongoing.first;
 
+      // 2. Overdue booking requiring attention / replacement
+      final overdue = repo.rides.where((r) => r.isOverdueBooking);
+      if (overdue.isNotEmpty) return overdue.first;
+
+      // 3. Imminent booked ride (pickupNow or pickup within imminent 30-min window)
       return repo.rides.firstWhere(
-        (r) => r.isBooked && (r.serverStatus ?? '').toUpperCase() != 'COMPLETED',
+        (r) => r.isImminentOrActive,
       );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  RideRequest? get upcomingScheduledRide {
+    try {
+      final scheduled = repo.rides.where((r) => r.isFutureBooking).toList();
+      if (scheduled.isEmpty) return null;
+      scheduled.sort((a, b) {
+        final aTime = a.pickupAt ?? DateTime.now();
+        final bTime = b.pickupAt ?? DateTime.now();
+        return aTime.compareTo(bTime);
+      });
+      return scheduled.first;
     } catch (_) {
       return null;
     }

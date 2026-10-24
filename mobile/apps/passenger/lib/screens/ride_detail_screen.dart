@@ -233,6 +233,131 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     }
   }
 
+  Future<void> _attemptReplacement() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Find Replacement Driver?'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your provider has not arrived. CAN-RIDE will unassign them and immediately search for a replacement driver.',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            SizedBox(height: 10),
+            Text(
+              '• Your existing payment is held safely in escrow.\n'
+              '• You will NOT be charged twice.\n'
+              '• The original provider remains recorded in your booking history.',
+              style: TextStyle(fontSize: 13, height: 1.4, color: GtColors.textSecondary),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep waiting'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GtColors.brand,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Find Replacement'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _actionBusy = true);
+    try {
+      await context.read<AppState>().attemptReplacement(widget.rideId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Finding replacement driver. Original driver unassigned.'),
+            backgroundColor: Color(0xFF2563EB),
+          ),
+        );
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Replacement request failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _confirmProviderNoShowCancel() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Booking (Provider No-Show)?'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your provider failed to arrive at the scheduled pickup location.',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            SizedBox(height: 10),
+            Text(
+              '• 100% Full Refund guaranteed to your original payment method.\n'
+              '• Zero cancellation fee.\n'
+              '• Fare, platform fee, and tips are refunded in full.\n'
+              '• Provider account will be flagged for compliance review.',
+              style: TextStyle(fontSize: 13, height: 1.4, color: GtColors.textSecondary),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Go back'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Cancel & 100% Refund'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _actionBusy = true);
+    try {
+      await context.read<AppState>().cancelProviderNoShow(widget.rideId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Booking cancelled. 100% full refund processed.'),
+            backgroundColor: Color(0xFF16A34A),
+          ),
+        );
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cancellation error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
   Future<void> _showRatingSheet() async {
     if (_alreadyRated) return;
     var overall = 5;
@@ -488,6 +613,23 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       );
       setState(() {});
     }
+  }
+
+  void _showEmergencySafetySheet(RideRequest ride) {
+    final info = EmergencyTripInfo(
+      rideId: ride.shortId ?? ride.id,
+      pickupAddress: ride.from,
+      dropoffAddress: ride.to,
+    );
+
+    EmergencySafetySheet.show(
+      context,
+      tripInfo: info,
+      isDriver: false,
+      onContactSupport: () {
+        context.push('/support');
+      },
+    );
   }
 
   Future<void> _showShareSheet(RideRequest ride) async {
@@ -2140,6 +2282,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
 
   Widget _buildOverdueBanner(RideRequest ride) {
     final isStalled = _serverStatus == 'TRIP_STARTED' || _serverStatus == 'IN_PROGRESS';
+    final hasDriver = ride.selectedOfferId != null;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -2165,7 +2309,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isStalled ? 'Trip stalled or delayed' : 'Scheduled ride delayed',
+                      isStalled ? 'Trip stalled or delayed' : 'Provider delayed / Has not arrived',
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -2175,8 +2319,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     const SizedBox(height: 4),
                     Text(
                       isStalled
-                          ? 'This trip appears delayed or stopped. Why are you not moving or having an issue? Please confirm status, reschedule, or cancel for a full refund.'
-                          : 'Pickup was scheduled for ${ride.datetimeLabel}. Why are you not moving or having trouble? Please reschedule or cancel for a full refund.',
+                          ? 'This trip appears delayed or stopped. Please confirm status, reschedule, or cancel for a full refund.'
+                          : 'Pickup was scheduled for ${ride.datetimeLabel}. Your driver has not arrived at the pickup location. You can contact your provider, find a replacement driver, or cancel for a 100% full refund.',
                       style: const TextStyle(
                         fontSize: 12,
                         color: Color(0xFF78350F),
@@ -2188,30 +2332,47 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          if (hasDriver && _canChat) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _actionBusy ? null : () => context.push('/ride/${widget.rideId}/chat'),
+              icon: const Icon(Icons.chat_bubble_outline, size: 16),
+              label: const Text('Contact Provider (Chat)'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 38),
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF92400E),
+                side: const BorderSide(color: Color(0xFFD97706)),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _actionBusy ? null : _showRescheduleForm,
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF92400E),
-                    side: const BorderSide(color: Color(0xFFD97706)),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                  child: const Text(
-                    'Reschedule',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              if (hasDriver) ...[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _actionBusy ? null : _attemptReplacement,
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF1D4ED8),
+                      side: const BorderSide(color: Color(0xFF3B82F6)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    child: const Text(
+                      'Find Replacement',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: ElevatedButton(
                   onPressed: _actionBusy
                       ? null
-                      : () => _confirmCancel(isOverdue: true),
+                      : () => _confirmProviderNoShowCancel(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFDC2626),
                     foregroundColor: Colors.white,
@@ -2219,8 +2380,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                   child: const Text(
-                    'Cancel & Refund',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    'Cancel & 100% Refund',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                   ),
                 ),
               ),
@@ -2333,12 +2494,18 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           ),
           actions: [
             if (ride != null) ...[
-              if (!isCompleted && !isCancelled)
+              if (!isCompleted && !isCancelled) ...[
+                IconButton(
+                  icon: const Icon(Icons.shield_outlined, color: Colors.red),
+                  tooltip: 'Emergency & Safety (911)',
+                  onPressed: () => _showEmergencySafetySheet(ride),
+                ),
                 IconButton(
                   icon: const Icon(Icons.share_outlined),
                   tooltip: 'Share trip with friend',
                   onPressed: _actionBusy ? null : () => _showShareSheet(ride),
                 ),
+              ],
               IconButton(
                 icon: const Icon(Icons.flag_outlined),
                 tooltip: 'Report ride',
@@ -2691,6 +2858,36 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               ),
                             ),
                           ],
+                          if (ride.originalDriverName != null &&
+                              ride.originalDriverName!.trim().isNotEmpty &&
+                              ride.originalDriverName != offer.driverName) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF3C7),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFFCD34D)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.history, size: 16, color: Color(0xFF92400E)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Original Provider: ${ride.originalDriverName} (Failed to arrive · Replaced)',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF92400E),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           Text(
                             formatMoney(
@@ -2705,6 +2902,49 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               fontWeight: FontWeight.w800,
                               fontSize: 18,
                               color: GtColors.brand,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (ride.originalDriverName != null &&
+                      ride.originalDriverName!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _Section(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Provider History',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFFCD34D)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.history, size: 16, color: Color(0xFF92400E)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Original Provider: ${ride.originalDriverName} (Failed to arrive)',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF92400E),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
@@ -15,6 +16,20 @@ class GetOffersBar extends StatefulWidget {
 
 class _GetOffersBarState extends State<GetOffersBar> {
   bool _isSubmitting = false;
+  late final TapGestureRecognizer _termsRecognizer;
+
+  @override
+  void initState() {
+    super.initState();
+    _termsRecognizer = TapGestureRecognizer()
+      ..onTap = () => GtPolicyUrls.openTerms();
+  }
+
+  @override
+  void dispose() {
+    _termsRecognizer.dispose();
+    super.dispose();
+  }
 
   AppState get state => widget.state;
 
@@ -212,12 +227,25 @@ class _GetOffersBarState extends State<GetOffersBar> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'I agree to the terms of service',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: GtColors.textSecondary,
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        text: 'I agree to the ',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: GtColors.textSecondary,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: 'terms of service',
+                            style: const TextStyle(
+                              color: GtColors.brand,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: _termsRecognizer,
+                          ),
+                        ],
                       ),
                     ),
                   ),

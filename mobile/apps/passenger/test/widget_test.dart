@@ -25,24 +25,24 @@ void main() {
     // Initial slide 1
     expect(find.text('CAN-RIDE'), findsOneWidget);
     expect(find.text('Skip'), findsOneWidget);
-    expect(find.text('Request a Ride in Seconds'), findsOneWidget);
-    expect(find.text('FAST & CONVENIENT'), findsOneWidget);
+    expect(find.text('Intercity Travel, Your Way'), findsOneWidget);
+    expect(find.text('INTERCITY TRAVEL'), findsOneWidget);
     expect(find.text('Continue'), findsOneWidget);
 
     // Advance to slide 2
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Choose Your Fare & Driver'), findsOneWidget);
-    expect(find.text('TRANSPARENT PRICING'), findsOneWidget);
-    expect(find.text('Upfront CAD Fares'), findsOneWidget);
+    expect(find.text('Airport Transfers, Without the Stress'), findsOneWidget);
+    expect(find.text('AIRPORT TRANSFERS'), findsOneWidget);
+    expect(find.text('Reliable Pickups'), findsOneWidget);
 
     // Advance to slide 3
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Safe Journeys, Every Mile'), findsOneWidget);
-    expect(find.text('SAFETY & PEACE OF MIND'), findsOneWidget);
+    expect(find.text('Fast & Reliable Parcel Delivery'), findsOneWidget);
+    expect(find.text('PARCEL DELIVERY'), findsOneWidget);
     expect(find.text('Get Started'), findsOneWidget);
   });
 }

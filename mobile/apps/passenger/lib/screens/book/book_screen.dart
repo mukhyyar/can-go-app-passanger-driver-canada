@@ -178,7 +178,7 @@ class _ActiveBookedRideCard extends StatelessWidget {
                 ? 'Driver has arrived'
                 : status == 'IN_PROGRESS' || status == 'TRIP_STARTED'
                     ? 'Trip in progress'
-                    : 'Booked ride active';
+                    : 'Driver confirmed · Pickup imminent';
 
     final bgColor =
         isOverdue ? const Color(0xFFFEF3C7) : const Color(0xFFF0FDF4);

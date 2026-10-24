@@ -29,36 +29,36 @@ class OnboardingSlide {
 
 const List<OnboardingSlide> _kSlides = [
   OnboardingSlide(
-    badge: 'FAST & CONVENIENT',
-    tagline: 'Request a Ride in Seconds',
+    badge: 'INTERCITY TRAVEL',
+    tagline: 'Intercity Travel, Your Way',
     description:
-        'Set your pickup and destination to connect with nearby professional drivers ready to pick you up in minutes.',
+        'Travel between cities comfortably with convenient rides that fit your plans.',
     assetPath: 'assets/onboarding/slide1.jpg',
     packageAssetPath: 'packages/gt_ui/assets/onboarding/slide1.jpg',
-    highlights: ['Instant Pickup', 'Live Driver ETA', 'Verified Drivers'],
-    fallbackIcon: Icons.local_taxi_rounded,
-    imageAlignment: Alignment.topCenter,
-  ),
-  OnboardingSlide(
-    badge: 'TRANSPARENT PRICING',
-    tagline: 'Choose Your Fare & Driver',
-    description:
-        'Receive instant competitive offers with upfront pricing in CAD. Select the vehicle class and driver that suits you best.',
-    assetPath: 'assets/onboarding/slide2.jpg',
-    packageAssetPath: 'packages/gt_ui/assets/onboarding/slide2.jpg',
-    highlights: ['Upfront CAD Fares', 'Multiple Car Classes', 'No Hidden Fees'],
-    fallbackIcon: Icons.request_quote_rounded,
+    highlights: ['City-to-City', 'Comfortable Rides', 'Flexible Plans'],
+    fallbackIcon: Icons.alt_route_rounded,
     imageAlignment: Alignment.center,
   ),
   OnboardingSlide(
-    badge: 'SAFETY & PEACE OF MIND',
-    tagline: 'Safe Journeys, Every Mile',
+    badge: 'AIRPORT TRANSFERS',
+    tagline: 'Airport Transfers, Without the Stress',
     description:
-        'Track your driver live on the interactive map, communicate securely via in-app chat, and pay effortlessly with digital wallet or card.',
+        'Enjoy reliable airport pickups and drop-offs for a smoother journey.',
+    assetPath: 'assets/onboarding/slide2.jpg',
+    packageAssetPath: 'packages/gt_ui/assets/onboarding/slide2.jpg',
+    highlights: ['Reliable Pickups', 'Direct Drop-offs', 'Smooth Journeys'],
+    fallbackIcon: Icons.flight_takeoff_rounded,
+    imageAlignment: Alignment.center,
+  ),
+  OnboardingSlide(
+    badge: 'PARCEL DELIVERY',
+    tagline: 'Fast & Reliable Parcel Delivery',
+    description:
+        'Send packages with ease and get them where they need to go.',
     assetPath: 'assets/onboarding/slide3.jpg',
     packageAssetPath: 'packages/gt_ui/assets/onboarding/slide3.jpg',
-    highlights: ['Live GPS Tracking', 'Secure In-App Chat', 'Cashless Payments'],
-    fallbackIcon: Icons.shield_rounded,
+    highlights: ['Easy Package Sending', 'Door-to-Door Delivery', 'Fast & Reliable'],
+    fallbackIcon: Icons.inventory_2_rounded,
     imageAlignment: Alignment.center,
   ),
 ];

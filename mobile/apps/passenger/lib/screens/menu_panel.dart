@@ -220,11 +220,11 @@ class _MenuPanelState extends State<MenuPanel>
                 child: _LegalGroup(
                   onPrivacy: () {
                     if (widget.inDrawer) Navigator.of(context).pop();
-                    context.push('/legal/privacy');
+                    GtPolicyUrls.openPrivacy();
                   },
                   onTerms: () {
                     if (widget.inDrawer) Navigator.of(context).pop();
-                    context.push('/legal/terms');
+                    GtPolicyUrls.openTerms();
                   },
                 ),
               ),

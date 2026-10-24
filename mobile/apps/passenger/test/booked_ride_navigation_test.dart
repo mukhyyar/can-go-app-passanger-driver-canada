@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_mock/gt_mock.dart';
+import 'package:passenger/screens/book/book_screen.dart';
 import 'package:passenger/screens/booking_confirmed_screen.dart';
 import 'package:passenger/screens/waiting_screen.dart';
 import 'package:passenger/state/app_state.dart';
@@ -392,6 +393,106 @@ void main() {
       state.repo.rides.add(activeRide);
 
       expect(state.activeBookedRide?.id, equals('ride-live-now'));
+    });
+
+    test('activeBookedRide does NOT return future scheduled ride (pickup > 30 mins away)', () {
+      final state = AppState();
+      final futureRide = RideRequest(
+        id: 'ride-future-tomorrow',
+        datetimeLabel: 'Tomorrow, 3:00 PM',
+        from: '35 Masters Drive Southeast',
+        to: 'Calgary International Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        pickupAt: DateTime.now().add(const Duration(hours: 24)),
+      );
+      state.repo.rides.add(futureRide);
+
+      expect(futureRide.isFutureBooking, isTrue);
+      expect(futureRide.isImminentOrActive, isFalse);
+      expect(state.activeBookedRide, isNull);
+      expect(state.upcomingScheduledRide?.id, equals('ride-future-tomorrow'));
+    });
+
+    test('activeBookedRide returns imminent ride (pickup <= 30 mins away)', () {
+      final state = AppState();
+      final imminentRide = RideRequest(
+        id: 'ride-imminent-15m',
+        datetimeLabel: 'In 15 minutes',
+        from: 'Downtown',
+        to: 'Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        pickupAt: DateTime.now().add(const Duration(minutes: 15)),
+      );
+      state.repo.rides.add(imminentRide);
+
+      expect(imminentRide.isFutureBooking, isFalse);
+      expect(imminentRide.isImminentOrActive, isTrue);
+      expect(state.activeBookedRide?.id, equals('ride-imminent-15m'));
+    });
+  });
+
+  group('BookScreen active ride banner tests', () {
+    testWidgets('BookScreen does NOT show active banner for future scheduled ride',
+        (tester) async {
+      final state = AppState();
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const MaterialApp(
+            home: BookScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final futureRide = RideRequest(
+        id: 'ride-10064422',
+        datetimeLabel: 'Tomorrow, 3:00 PM',
+        from: '35 Masters Drive Southeast',
+        to: 'Calgary International Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        pickupAt: DateTime.now().add(const Duration(hours: 24)),
+      );
+      state.repo.rides.add(futureRide);
+      state.notifyListeners();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Booked ride active'), findsNothing);
+      expect(find.textContaining('Driver confirmed'), findsNothing);
+      expect(find.text('35 Masters Drive Southeast'), findsNothing);
+    });
+
+    testWidgets('BookScreen shows active banner for ongoing trip',
+        (tester) async {
+      final state = AppState();
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: state,
+          child: const MaterialApp(
+            home: BookScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final activeRide = RideRequest(
+        id: 'ride-10064423',
+        datetimeLabel: 'Now',
+        from: '35 Masters Drive Southeast',
+        to: 'Calgary International Airport',
+        status: RideStatus.booked,
+        serverStatus: 'DRIVER_EN_ROUTE',
+        pickupAt: DateTime.now(),
+      );
+      state.repo.rides.add(activeRide);
+      state.notifyListeners();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Driver is on the way'), findsOneWidget);
+      expect(find.text('#10064423'), findsOneWidget);
     });
   });
 }

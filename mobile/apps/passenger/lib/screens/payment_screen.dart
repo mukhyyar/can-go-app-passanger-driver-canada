@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gt_api/gt_api.dart';
@@ -30,10 +31,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? _error;
   Map<String, dynamic>? _quote;
   String? _idempotencyKey;
+  late final TapGestureRecognizer _termsRecognizer;
+  late final TapGestureRecognizer _cancellationRecognizer;
 
   @override
   void initState() {
     super.initState();
+    _termsRecognizer = TapGestureRecognizer()
+      ..onTap = () => GtPolicyUrls.openTerms();
+    _cancellationRecognizer = TapGestureRecognizer()
+      ..onTap = () => GtPolicyUrls.openCancellation();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final app = context.read<AppState>();
@@ -42,6 +49,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
       _loadQuote();
     });
+  }
+
+  @override
+  void dispose() {
+    _termsRecognizer.dispose();
+    _cancellationRecognizer.dispose();
+    super.dispose();
   }
 
   Future<void> _loadQuote({String? mode}) async {
@@ -673,9 +687,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     onChanged: _paying
                         ? null
                         : (v) => setState(() => _termsAccepted = v ?? false),
-                    title: const Text(
-                      'I accept the terms of service and cancellation policy',
-                      style: TextStyle(fontSize: 14),
+                    title: Text.rich(
+                      TextSpan(
+                        text: 'I accept the ',
+                        style: const TextStyle(fontSize: 14),
+                        children: [
+                          TextSpan(
+                            text: 'terms of service',
+                            style: const TextStyle(
+                              color: GtColors.brand,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: _termsRecognizer,
+                          ),
+                          const TextSpan(text: ' and '),
+                          TextSpan(
+                            text: 'cancellation policy',
+                            style: const TextStyle(
+                              color: GtColors.brand,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: _cancellationRecognizer,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -823,15 +860,39 @@ class _PaymentScreenState extends State<PaymentScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Icon(Icons.shield_outlined, size: 18, color: GtColors.brand),
-              SizedBox(width: 8),
-              Text(
-                'Cancellation Terms & Refund Policy',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13.5,
-                  color: GtColors.text,
+            children: [
+              const Icon(Icons.shield_outlined, size: 18, color: GtColors.brand),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Cancellation Terms & Refund Policy',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                    color: GtColors.text,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () => GtPolicyUrls.openCancellation(),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text(
+                        'Online',
+                        style: TextStyle(
+                          color: GtColors.brand,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(width: 2),
+                      Icon(Icons.open_in_new, size: 13, color: GtColors.brand),
+                    ],
+                  ),
                 ),
               ),
             ],
