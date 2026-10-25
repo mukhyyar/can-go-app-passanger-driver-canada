@@ -889,6 +889,8 @@ class AppState extends ChangeNotifier {
           'partialEnabled': raw['partialEnabled'],
         if (raw['stripePublishableKey'] != null)
           'stripePublishableKey': raw['stripePublishableKey'],
+        if (raw['stripeMerchantId'] != null)
+          'stripeMerchantId': raw['stripeMerchantId'],
         if (raw['paymentProvider'] != null)
           'paymentProvider': raw['paymentProvider'],
       };

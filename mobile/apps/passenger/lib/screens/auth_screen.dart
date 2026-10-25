@@ -9,6 +9,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../state/app_state.dart';
 import '../utils/error_utils.dart';
@@ -279,6 +280,10 @@ class _AuthScreenState extends State<AuthScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = cleanErrorMessage(e));
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (!mounted) return;
+      if (e.code == AuthorizationErrorCode.canceled) return;
+      setState(() => _error = e.message);
     } on GoogleSignInException catch (e) {
       if (!mounted) return;
       // User dismissed the picker / reauth prompt — not an error to show.
@@ -387,23 +392,63 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _onApple() async {
+    final app = context.read<AppState>();
     await _run(() async {
       if (_oauthConfigLoading) {
         throw Exception('Still loading sign-in options — try again in a moment.');
       }
-      if (_oauthConfigError != null) {
-        throw Exception(
-          'Could not reach the server for Apple sign-in. Check your connection and try again.',
-        );
+      if (_oauthConfigError != null || _oauthConfig == null) {
+        try {
+          final cfg = await app.loadOAuthConfig();
+          if (mounted) {
+            setState(() {
+              _oauthConfig = cfg;
+              _oauthConfigError = null;
+            });
+          }
+        } catch (_) {
+          throw Exception(
+            'Could not reach the server for Apple sign-in. Check your connection and try again.',
+          );
+        }
       }
       final cfg = _oauthConfig?.apple;
       if (cfg == null || !cfg.enabled) {
         throw Exception('Apple sign-in is not available right now.');
       }
-      setState(() {
-        _oauthProvider = 'apple';
-        _step = _AuthStep.oauthLocal;
-      });
+
+      // Local Nest mock: collect email/name without a real Apple ID token.
+      if (cfg.localMock) {
+        setState(() {
+          _oauthProvider = 'apple';
+          _step = _AuthStep.oauthLocal;
+        });
+        return;
+      }
+
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+
+      final idToken = credential.identityToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('Apple did not return an identity token.');
+      }
+
+      final fullNameParts = [
+        credential.givenName,
+        credential.familyName,
+      ].where((s) => s != null && s.trim().isNotEmpty).join(' ');
+
+      final result = await app.oauthApple(
+        idToken: idToken,
+        email: credential.email,
+        fullName: fullNameParts.isNotEmpty ? fullNameParts : null,
+      );
+      await _handleOAuthResult(result);
     });
   }
 

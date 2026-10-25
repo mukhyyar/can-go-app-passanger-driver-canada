@@ -14,9 +14,12 @@ export class ProvidersController {
   status() {
     const publishableKey =
       this.config.get<string>('stripe.publishableKey')?.trim() || null;
+    const merchantId =
+      this.config.get<string>('stripe.merchantId')?.trim() || null;
     return {
       ...this.launchGate.status,
       stripePublishableKey: publishableKey,
+      stripeMerchantId: merchantId,
     };
   }
 }

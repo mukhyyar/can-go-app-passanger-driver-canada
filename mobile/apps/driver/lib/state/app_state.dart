@@ -243,6 +243,32 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
+  Future<OAuthResult> oauthApple({
+    String? idToken,
+    String? email,
+    String? fullName,
+  }) async {
+    final result = await api.auth.oauthApple(
+      idToken: idToken,
+      email: email,
+      fullName: fullName,
+      role: 'DRIVER',
+    );
+    if (!result.requiresPhoneLink) {
+      isAuthenticated = true;
+      await refreshMe();
+      await refreshDriverSettings(force: true);
+      if (isActivated) {
+        await refreshOpenRequests();
+        await refreshMyRides();
+        await startMarketplaceRealtime();
+      }
+      await syncPushToken?.call();
+      notifyListeners();
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> linkOAuthPhone({
     required String linkToken,
     required String phoneE164,

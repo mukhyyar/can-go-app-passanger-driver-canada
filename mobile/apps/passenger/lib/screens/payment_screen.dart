@@ -162,6 +162,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         result['stripePublishableKey']?.toString() ??
             _quote?['stripePublishableKey']?.toString(),
       );
+      final merchantId = StripePaymentService.resolveMerchantIdentifier(
+        result['stripeMerchantId']?.toString() ??
+            _quote?['stripeMerchantId']?.toString(),
+      );
 
       // Never treat create-intent alone as paid (blocks unpaid DevPayment booking).
       if (provider == 'dev' ||
@@ -205,6 +209,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           clientSecret: clientSecret,
           publishableKey: publishableKey,
           currency: currency,
+          merchantIdentifier: merchantId,
         );
       } catch (e) {
         if (StripePaymentService.isUserCancelled(e)) {

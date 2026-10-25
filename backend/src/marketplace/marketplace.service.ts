@@ -103,13 +103,16 @@ export class MarketplaceService {
     this.payTtlMs = loadRideLifecycleConfig().paymentTtlMs;
   }
 
-  /** Public Stripe pk_* for PaymentSheet — never the secret key. */
+  /** Public Stripe client configuration for PaymentSheet — never the secret key. */
   private stripeClientConfig() {
     const publishableKey =
       this.config.get<string>('stripe.publishableKey')?.trim() || null;
+    const merchantId =
+      this.config.get<string>('stripe.merchantId')?.trim() || null;
     return {
       paymentProvider: this.payments.name,
       stripePublishableKey: publishableKey,
+      stripeMerchantId: merchantId,
     };
   }
 

@@ -1117,10 +1117,14 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             'Stripe is not configured for this app (missing publishable key).',
           );
         }
+        final merchantId = StripePaymentService.resolveMerchantIdentifier(
+          result['stripeMerchantId']?.toString(),
+        );
         await StripePaymentService.presentPaymentSheet(
           clientSecret: clientSecret,
           publishableKey: publishableKey,
           currency: currency,
+          merchantIdentifier: merchantId,
         );
       }
 

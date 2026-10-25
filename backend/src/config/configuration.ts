@@ -35,7 +35,7 @@ export default () => ({
     appleClientIds: (
       process.env.APPLE_CLIENT_IDS ??
       process.env.APPLE_CLIENT_ID ??
-      ''
+      'com.canride.passenger,com.canride.driver'
     )
       .split(',')
       .map((s) => s.trim())
@@ -58,6 +58,8 @@ export default () => ({
     /** Public pk_test_ / pk_live_ — safe to expose to mobile/web clients. */
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    /** Apple Pay merchant identifier (e.g. merchant.com.canride.passenger) */
+    merchantId: process.env.STRIPE_MERCHANT_ID,
   },
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID,

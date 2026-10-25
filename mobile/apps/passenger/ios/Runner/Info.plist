@@ -78,6 +78,16 @@
 				<string>com.googleusercontent.apps.400688849973-kmbvas6jpqfvn1o07psss2o9e9cdbqrs</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.canride.passenger</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>canride</string>
+			</array>
+		</dict>
 	</array>
 	<key>GoogleMapsApiKey</key>
 	<string>AIzaSyB7DSFU5Y360jRuiqNmVsii_ZU2oESncmg</string>
