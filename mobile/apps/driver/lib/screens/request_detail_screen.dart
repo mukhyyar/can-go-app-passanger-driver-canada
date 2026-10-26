@@ -123,6 +123,16 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             _retCtrl.text = _draft.returnPrice!.toStringAsFixed(0);
           }
         }
+        if (vehicles.isNotEmpty) {
+          final isVehicleValid = _draft.vehicleId != null &&
+              vehicles.any((v) => v.id == _draft.vehicleId);
+          if (!isVehicleValid) {
+            _draft.vehicleId = (s.primaryVehicleId != null &&
+                    vehicles.any((v) => v.id == s.primaryVehicleId))
+                ? s.primaryVehicleId
+                : vehicles.first.id;
+          }
+        }
         final saved = s.offerDraftFor(widget.requestId);
         if (saved != null && existing == null) {
           _draft = saved.copy();
@@ -297,6 +307,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       final vehicle =
           _vehicles.where((v) => v.id == _draft.vehicleId).firstOrNull ??
               (_vehicles.isNotEmpty ? _vehicles.first : null);
+      if (vehicle != null) {
+        _draft.vehicleId = vehicle.id;
+      }
       final submitted = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => OfferReviewScreen(
@@ -1445,7 +1458,10 @@ class _RouteBlock extends StatelessWidget {
     final rawDistance = routeDist ?? request.distance;
     final rawDuration = routeDur ?? request.duration;
 
-    final distanceLabel = (rawDistance.isNotEmpty && rawDistance != '—')
+    final distanceLabel = (rawDistance.isNotEmpty &&
+            rawDistance != '—' &&
+            rawDistance != '0 km' &&
+            rawDistance != '0.0 km')
         ? (request.isRoundTrip
             ? (rawDistance.contains('×') ? rawDistance : '$rawDistance × 2')
             : rawDistance)
@@ -1537,13 +1553,52 @@ class _RouteBlock extends StatelessWidget {
             const _Marker(letter: 'B', color: Colors.black),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                request.to,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  height: 1.3,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    request.to.trim().isNotEmpty
+                        ? request.to.trim()
+                        : (request.isRoundTrip
+                            ? 'Return to ${request.from}'
+                            : 'As directed'),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      height: 1.3,
+                      color: request.to.trim().isEmpty && request.isRoundTrip
+                          ? const Color(0xFF6B5000)
+                          : null,
+                    ),
+                  ),
+                  if (request.isRoundTrip && request.to.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(
+                            Icons.keyboard_return_rounded,
+                            size: 14,
+                            color: Color(0xFF8A6900),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Return to ${request.from}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF6B5000),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

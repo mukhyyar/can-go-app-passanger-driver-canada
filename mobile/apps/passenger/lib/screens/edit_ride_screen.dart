@@ -534,18 +534,37 @@ class _EditRideScreenState extends State<EditRideScreen> {
                           if (isPerHour) ...[
                             const Divider(),
                             Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Expanded(
-                                    child: Text(
-                                      'Duration',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Duration',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: GtColors.text,
+                                        ),
                                       ),
-                                    ),
+                                      Text(
+                                        _hours == 0.5
+                                            ? '30 min'
+                                            : (_hours == 1.0
+                                                ? '1 hour'
+                                                : '${_hours.toInt() == _hours ? _hours.toInt() : _hours} hours'),
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: GtColors.brand,
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                  const SizedBox(height: 8),
                                   SingleChildScrollView(
                                     scrollDirection: Axis.horizontal,
                                     child: Row(
@@ -559,20 +578,35 @@ class _EditRideScreenState extends State<EditRideScreen> {
                                           (6.0, '6h'),
                                         ])
                                           Padding(
-                                            padding: const EdgeInsets.only(left: 6),
+                                            padding:
+                                                const EdgeInsets.only(right: 8),
                                             child: ChoiceChip(
+                                              showCheckmark: false,
                                               label: Text(label),
                                               selected: _hours == h,
                                               onSelected: (val) {
-                                                if (val) setState(() => _hours = h);
+                                                if (val) {
+                                                  setState(() => _hours = h);
+                                                }
                                               },
                                               selectedColor: GtColors.brand,
+                                              backgroundColor:
+                                                  const Color(0xFFF2F2F7),
+                                              side: BorderSide(
+                                                color: _hours == h
+                                                    ? GtColors.brand
+                                                    : GtColors.border,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
                                               labelStyle: TextStyle(
                                                 color: _hours == h
                                                     ? Colors.white
                                                     : GtColors.text,
                                                 fontWeight: FontWeight.w600,
-                                                fontSize: 12,
+                                                fontSize: 13,
                                               ),
                                             ),
                                           ),
@@ -726,13 +760,16 @@ class _EditRideScreenState extends State<EditRideScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Vehicle preferences',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
+                              const Expanded(
+                                child: Text(
+                                  'Vehicle preferences',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Text(
                                 '${_vehicleClassIds.length} of ${MockData.vehicleClasses.length} selected',
                                 style: const TextStyle(

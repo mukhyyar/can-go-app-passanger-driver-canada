@@ -24,6 +24,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _loading = true;
   bool _sending = false;
   String? _error;
+  bool _chatLocked = false;
+  String? _lockReason;
   Timer? _poll;
 
   String get _rideId => widget.threadId;
@@ -57,19 +59,30 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
     try {
       final raw = await app.getChat(_rideId);
+      final isLockedRaw = raw['isLocked'] == true;
+      final lockReasonRaw = raw['lockReason']?.toString();
       final meId = app.me?['id']?.toString() ?? app.authUserId;
       final list = (raw['messages'] as List?) ?? const [];
       final parsed = list.whereType<Map>().map((m) {
         final senderId =
             m['senderId']?.toString() ?? m['authorId']?.toString();
+        final role = m['senderRole']?.toString().toUpperCase();
+        DateTime? createdAt;
+        if (m['createdAt'] != null) {
+          createdAt = DateTime.tryParse(m['createdAt'].toString())?.toLocal();
+        }
         return _Msg(
           text: m['body']?.toString() ?? '',
           mine: senderId != null && meId != null && senderId == meId,
+          senderRole: role,
+          createdAt: createdAt,
         );
       }).toList();
       if (!mounted) return;
       final grew = parsed.length != _messages.length;
       setState(() {
+        _chatLocked = isLockedRaw;
+        _lockReason = lockReasonRaw;
         _messages
           ..clear()
           ..addAll(parsed);
@@ -96,7 +109,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   String _friendlyError(Object e) {
     final s = e.toString().toLowerCase();
-    if (s.contains('unavailable') || s.contains('status')) {
+    if (s.contains('locked') || s.contains('cancel') || s.contains('completed') || s.contains('unavailable') || s.contains('status')) {
+      if (s.contains('cancel')) return 'Chat locked — ride cancelled';
       return 'Chat locked — ride completed';
     }
     if (s.contains('forbidden') || s.contains('participant')) {
@@ -132,10 +146,32 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final ride = app.myRides.cast<dynamic>().where((r) => r.id == _rideId);
-    final isCompleted = ride.isNotEmpty &&
-        ['COMPLETED', 'CANCELLED', 'NO_SHOW'].contains((ride.first.status?.toString() ?? '').toUpperCase());
+    final status = ride.isNotEmpty ? (ride.first.status?.toString() ?? '') : '';
+    final statusUpper = status.toUpperCase();
+    final isTerminal = _chatLocked ||
+        statusUpper == 'COMPLETED' ||
+        statusUpper.contains('CANCEL') ||
+        statusUpper == 'NO_SHOW' ||
+        statusUpper == 'EXPIRED' ||
+        statusUpper == 'PAYMENT_FAILED';
+
+    final isLocked = _chatLocked ||
+        isTerminal ||
+        (_error != null && _error!.toLowerCase().contains('locked'));
+
+    String lockBannerText = 'Chat locked — ride completed';
+    if (_lockReason == 'RIDE_CANCELLED' ||
+        statusUpper.contains('CANCEL') ||
+        (_error != null && _error!.toLowerCase().contains('cancel'))) {
+      lockBannerText = 'Chat locked — ride cancelled';
+    } else if (_lockReason == 'RIDE_COMPLETED' || statusUpper == 'COMPLETED') {
+      lockBannerText = 'Chat locked — ride completed';
+    } else if (statusUpper == 'NO_SHOW') {
+      lockBannerText = 'Chat locked — no show';
+    }
+
     final title = ride.isNotEmpty
-        ? (!isCompleted && ride.first.passengerName?.toString().isNotEmpty == true
+        ? (!isTerminal && ride.first.passengerName?.toString().isNotEmpty == true
             ? ride.first.passengerName as String
             : 'Ride ${ride.first.displayId}')
         : 'Chat';
@@ -193,34 +229,149 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                             itemCount: _messages.length,
                             itemBuilder: (_, i) {
                               final m = _messages[i];
+                              final isSupport = m.senderRole == 'SUPPORT';
+                              final timeStr = _formatTime(m.createdAt);
+                              final roleLabel = m.mine
+                                  ? 'Driver (You)'
+                                  : (isSupport ? 'Can-Ride Support' : 'Rider');
+                              final roleIcon = m.mine
+                                  ? Icons.drive_eta
+                                  : (isSupport
+                                      ? Icons.support_agent
+                                      : Icons.person_outline);
+
                               return Align(
                                 alignment: m.mine
                                     ? Alignment.centerRight
                                     : Alignment.centerLeft,
                                 child: Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
+                                  margin: const EdgeInsets.only(bottom: 12),
                                   constraints: BoxConstraints(
                                     maxWidth:
                                         MediaQuery.of(context).size.width *
-                                            0.75,
+                                            0.78,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
                                   ),
                                   decoration: BoxDecoration(
                                     color: m.mine
-                                        ? GtColors.soft
-                                        : GtColors.white,
-                                    borderRadius: BorderRadius.circular(12),
+                                        ? GtColors.brand
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: const Radius.circular(16),
+                                      topRight: const Radius.circular(16),
+                                      bottomLeft: Radius.circular(
+                                          m.mine ? 16 : 4),
+                                      bottomRight: Radius.circular(
+                                          m.mine ? 4 : 16),
+                                    ),
                                     border: Border.all(
                                       color: m.mine
                                           ? GtColors.brand
-                                              .withValues(alpha: 0.14)
-                                          : GtColors.border,
+                                          : const Color(0xFFE2E8F0),
+                                      width: 1,
                                     ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                            alpha: m.mine ? 0.08 : 0.04),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
-                                  child: Text(m.text),
+                                  child: Column(
+                                    crossAxisAlignment: m.mine
+                                        ? CrossAxisAlignment.end
+                                        : CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Sender Role Badge Pill
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 3,
+                                        ),
+                                        margin:
+                                            const EdgeInsets.only(bottom: 6),
+                                        decoration: BoxDecoration(
+                                          color: m.mine
+                                              ? Colors.white
+                                                  .withValues(alpha: 0.22)
+                                              : (isSupport
+                                                  ? const Color(0xFFFEF3C7)
+                                                  : const Color(0xFFEFF6FF)),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: m.mine
+                                              ? null
+                                              : Border.all(
+                                                  color: isSupport
+                                                      ? const Color(0xFFFDE68A)
+                                                      : const Color(
+                                                          0xFFBFDBFE),
+                                                  width: 0.8,
+                                                ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              roleIcon,
+                                              size: 12,
+                                              color: m.mine
+                                                  ? Colors.white
+                                                  : (isSupport
+                                                      ? const Color(0xFFB45309)
+                                                      : const Color(
+                                                          0xFF1D4ED8)),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              roleLabel,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: m.mine
+                                                    ? Colors.white
+                                                    : (isSupport
+                                                        ? const Color(
+                                                            0xFFB45309)
+                                                        : const Color(
+                                                            0xFF1D4ED8)),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      // Message Text
+                                      Text(
+                                        m.text,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          height: 1.35,
+                                          color: m.mine
+                                              ? Colors.white
+                                              : const Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      if (timeStr.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          timeStr,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: m.mine
+                                                ? Colors.white
+                                                    .withValues(alpha: 0.75)
+                                                : GtColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               );
                             },
@@ -228,9 +379,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
           SafeArea(
             top: false,
-            child: (_error != null &&
-                    _error!.toLowerCase().contains('locked')) ||
-                    isCompleted
+            child: isLocked
                 ? Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -238,10 +387,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       color: Colors.white,
                       border: Border(top: BorderSide(color: GtColors.border)),
                     ),
-                    child: const Text(
-                      'Chat locked — ride completed',
+                    child: Text(
+                      lockBannerText,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         color: GtColors.textSecondary,
                       ),
@@ -299,8 +448,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 }
 
+String _formatTime(DateTime? dt) {
+  if (dt == null) return '';
+  final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+  final minute = dt.minute.toString().padLeft(2, '0');
+  final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+  return '$hour:$minute $ampm';
+}
+
 class _Msg {
-  _Msg({required this.text, required this.mine});
+  _Msg({
+    required this.text,
+    required this.mine,
+    this.senderRole,
+    this.createdAt,
+  });
   final String text;
   final bool mine;
+  final String? senderRole;
+  final DateTime? createdAt;
 }

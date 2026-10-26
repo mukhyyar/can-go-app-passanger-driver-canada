@@ -39,8 +39,20 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
   double get _driverReceives =>
       ((_offeredFare - _platformFee) * 100).roundToDouble() / 100.0;
 
+  bool get _isRideCancelled {
+    final s = (widget.request.status ?? '').toUpperCase();
+    return s.contains('CANCEL') || s == 'EXPIRED' || s == 'COMPLETED';
+  }
+
   Future<void> _submit() async {
     if (_submitting) return;
+    if (_isRideCancelled) {
+      setState(() {
+        _error =
+            'This ride request has been cancelled and is no longer open for offers.';
+      });
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -387,7 +399,33 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
             ),
           ),
 
-          if (_error != null) ...[
+          if (_isRideCancelled) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDE8E8),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: GtColors.red.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.cancel_rounded, color: GtColors.red, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This ride request was cancelled and is no longer open for offers.',
+                      style: TextStyle(
+                        color: GtColors.red,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_error != null) ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -405,7 +443,12 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
           ],
 
           const SizedBox(height: 24),
-          if (_submitting)
+          if (_isRideCancelled)
+            GtGreenButton(
+              label: 'Back to Dashboard',
+              onPressed: () => context.go('/'),
+            )
+          else if (_submitting)
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(16),

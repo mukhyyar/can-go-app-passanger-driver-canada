@@ -76,7 +76,7 @@ describe('ChatService with Ride Reports and Support Cases', () => {
       );
     });
 
-    it('allows chat when ride is COMPLETED but has active support case / ride report', async () => {
+    it('rejects chat when ride is COMPLETED', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'passenger-1', role: UserRole.PASSENGER });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
@@ -85,32 +85,46 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         supportCases: [{ id: 'case-1', status: SupportCaseStatus.OPEN }],
         status: RideStatus.COMPLETED,
       });
-      mockPrisma.supportCase.findMany.mockResolvedValue([{ id: 'case-1' }]);
 
-      const msg = await service.send('passenger-1', 'ride-1', 'Need help with this ride');
-      expect(msg.body).toBe('Need help with this ride');
-      expect(mockNotifications.notifyAdmins).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: expect.stringContaining('New chat on Ride'),
-          body: 'Need help with this ride',
-          templateKey: 'admin.chat_message',
-        }),
+      await expect(service.send('passenger-1', 'ride-1', 'Hello')).rejects.toThrow(
+        BadRequestException,
       );
     });
 
-    it('rejects chat when ride is COMPLETED and has no active support case', async () => {
+    it('rejects chat when ride is CANCELLED', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'passenger-1', role: UserRole.PASSENGER });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
         passenger: { userId: 'passenger-1' },
         selectedOffer: { driver: { userId: 'driver-1' } },
-        supportCases: [{ id: 'case-old', status: SupportCaseStatus.RESOLVED }],
-        status: RideStatus.COMPLETED,
+        supportCases: [],
+        status: RideStatus.PASSENGER_CANCELLED,
       });
 
       await expect(service.send('passenger-1', 'ride-1', 'Hello')).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('marks thread as locked and includes lockReason in getOrCreateThread for terminal rides', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'passenger-1', role: UserRole.PASSENGER });
+      mockPrisma.ride.findUnique.mockResolvedValue({
+        id: 'ride-1',
+        passenger: { userId: 'passenger-1' },
+        selectedOffer: { driver: { userId: 'driver-1' } },
+        supportCases: [],
+        status: RideStatus.DRIVER_CANCELLED,
+      });
+      mockPrisma.chatThread.upsert.mockResolvedValue({
+        id: 'thread-1',
+        rideId: 'ride-1',
+        messages: [],
+      });
+
+      const thread = await service.getOrCreateThread('passenger-1', 'ride-1');
+      expect(thread.isLocked).toBe(true);
+      expect(thread.lockReason).toBe('RIDE_CANCELLED');
+      expect(thread.rideStatus).toBe(RideStatus.DRIVER_CANCELLED);
     });
   });
 

@@ -7,6 +7,7 @@ import {
 import { Prisma, RideStatus, SupportCaseStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TERMINAL_RIDE_STATUSES } from '../marketplace/ride-lifecycle';
 
 const MAX_BODY = 2000;
 const ALLOWED_STATUSES: RideStatus[] = [
@@ -59,23 +60,24 @@ export class ChatService {
     if (!isAdmin && !isPassenger && !isDriver) {
       throw new ForbiddenException('Not a chat participant');
     }
-    const hasActiveSupport = ride.supportCases.some(
-      (c) => c.status !== SupportCaseStatus.RESOLVED,
-    );
-    if (
-      enforceActive &&
-      !isAdmin &&
-      !ALLOWED_STATUSES.includes(ride.status) &&
-      !hasActiveSupport
-    ) {
-      throw new BadRequestException('Chat unavailable for this ride status');
+    const isTerminal = TERMINAL_RIDE_STATUSES.includes(ride.status);
+    if (enforceActive && !isAdmin && (!ALLOWED_STATUSES.includes(ride.status) || isTerminal)) {
+      const reason =
+        ride.status === RideStatus.PASSENGER_CANCELLED ||
+        ride.status === RideStatus.DRIVER_CANCELLED ||
+        ride.status === RideStatus.ADMIN_CANCELLED
+          ? 'Chat locked — ride cancelled'
+          : ride.status === RideStatus.COMPLETED
+            ? 'Chat locked — ride completed'
+            : 'Chat locked — ride has ended';
+      throw new BadRequestException(reason);
     }
     return ride;
   }
 
   async getOrCreateThread(userId: string, rideId: string) {
-    await this.assertParticipant(userId, rideId);
-    return this.prisma.chatThread.upsert({
+    const ride = await this.assertParticipant(userId, rideId);
+    const thread = await this.prisma.chatThread.upsert({
       where: { rideId },
       create: { rideId },
       update: {},
@@ -87,6 +89,55 @@ export class ChatService {
         },
       },
     });
+    const isTerminal = TERMINAL_RIDE_STATUSES.includes(ride.status);
+    const isLocked = !ALLOWED_STATUSES.includes(ride.status) || isTerminal;
+    let lockReason: string | null = null;
+    if (isLocked) {
+      if (
+        ride.status === RideStatus.PASSENGER_CANCELLED ||
+        ride.status === RideStatus.DRIVER_CANCELLED ||
+        ride.status === RideStatus.ADMIN_CANCELLED
+      ) {
+        lockReason = 'RIDE_CANCELLED';
+      } else if (ride.status === RideStatus.COMPLETED) {
+        lockReason = 'RIDE_COMPLETED';
+      } else {
+        lockReason = 'RIDE_ENDED';
+      }
+    }
+
+    const passengerUserId = ride.passenger.userId;
+    let driverUserId = ride.selectedOffer?.driver.userId ?? null;
+    if (!driverUserId && ride.assignedDriverId) {
+      const assigned = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      driverUserId = assigned?.userId ?? null;
+    }
+
+    const messages = thread.messages.map((m) => {
+      let senderRole: 'PASSENGER' | 'DRIVER' | 'SUPPORT' = 'SUPPORT';
+      if (m.senderId === passengerUserId) {
+        senderRole = 'PASSENGER';
+      } else if (m.senderId === driverUserId) {
+        senderRole = 'DRIVER';
+      }
+      return {
+        ...m,
+        senderRole,
+      };
+    });
+
+    return {
+      ...thread,
+      messages,
+      passengerUserId,
+      driverUserId,
+      rideStatus: ride.status,
+      isLocked,
+      lockReason,
+    };
   }
 
   /** Other party's verified phone — only for booked ride participants. */
@@ -255,7 +306,17 @@ export class ChatService {
       }
     }
 
-    return msg;
+    const senderRole =
+      userId === passengerUserId
+        ? 'PASSENGER'
+        : userId === driverUserId
+          ? 'DRIVER'
+          : 'SUPPORT';
+
+    return {
+      ...msg,
+      senderRole,
+    };
   }
 
   async softDelete(userId: string, messageId: string) {

@@ -1,8 +1,10 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 
 import 'package:driver/offer/offer_helpers.dart';
+import 'package:driver/screens/offer_review_screen.dart';
 
 void main() {
   group('MoneyFormat', () {
@@ -185,6 +187,47 @@ void main() {
       expect(v.name, 'Honda City');
       expect(v.plate, 'BW238J');
       expect(v.amenities['Free Wi-Fi'], isTrue);
+    });
+  });
+
+  group('OfferReviewScreen on Cancelled Ride', () {
+    testWidgets('shows cancellation banner and Back to Dashboard button',
+        (tester) async {
+      final req = driverRequestFromServer({
+        'id': 'req-cancelled',
+        'fromLabel': 'A',
+        'toLabel': 'B',
+        'status': 'PASSENGER_CANCELLED',
+      });
+      final draft = OfferDraft(outboundPrice: 45);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: OfferReviewScreen(
+            request: req,
+            draft: draft,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text(
+            'This ride request was cancelled and is no longer open for offers.'),
+        100,
+      );
+      expect(
+        find.text(
+            'This ride request was cancelled and is no longer open for offers.'),
+        findsOneWidget,
+      );
+
+      await tester.scrollUntilVisible(
+        find.text('Back to Dashboard'),
+        100,
+      );
+      expect(find.text('Back to Dashboard'), findsOneWidget);
+      expect(find.text('Submit offer to customer'), findsNothing);
     });
   });
 }

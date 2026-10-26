@@ -296,7 +296,7 @@ class _OffersScreenState extends State<OffersScreen> {
                   fontSize: 14,
                 ),
               ),
-              if (ride.to != null) ...[
+              if (ride.to != null && ride.to!.trim().isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(
                   ride.to!,
@@ -304,6 +304,36 @@ class _OffersScreenState extends State<OffersScreen> {
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                   ),
+                ),
+              ],
+              if (ride.hasReturnTrip) ...[
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(
+                        Icons.swap_vert_rounded,
+                        size: 14,
+                        color: Color(0xFF8A6900),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        ride.returnLabel != null &&
+                                ride.returnLabel!.trim().isNotEmpty
+                            ? 'Return: ${ride.returnLabel} · Return to ${ride.from}'
+                            : 'Return to ${ride.from}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6B5000),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
               const SizedBox(height: 10),
@@ -623,6 +653,22 @@ class _OffersScreenState extends State<OffersScreen> {
     final images = offer.imageUrls;
     final primaryUrl = images.isNotEmpty ? images.first : offer.imageUrl;
 
+    Widget fallbackImage() {
+      if (asset != null && asset.isNotEmpty) {
+        return Image.asset(
+          asset,
+          package: 'gt_ui',
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Center(
+            child: Icon(Icons.directions_car, size: 36, color: Colors.black45),
+          ),
+        );
+      }
+      return const Center(
+        child: Icon(Icons.directions_car, size: 36, color: Colors.black45),
+      );
+    }
+
     return Stack(
       children: [
         ClipRRect(
@@ -635,13 +681,9 @@ class _OffersScreenState extends State<OffersScreen> {
                 ? AuthNetworkImage(
                     url: primaryUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Image.asset(
-                      asset!,
-                      package: 'gt_ui',
-                      fit: BoxFit.contain,
-                    ),
+                    errorBuilder: (_, __, ___) => fallbackImage(),
                   )
-                : Image.asset(asset!, package: 'gt_ui', fit: BoxFit.contain),
+                : fallbackImage(),
           ),
         ),
         if (images.length > 1)

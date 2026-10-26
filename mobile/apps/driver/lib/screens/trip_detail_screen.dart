@@ -303,17 +303,26 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
     if (submitted == true && mounted) {
       await app.refreshMyRides();
+      final isTerm = (r.status ?? '').toUpperCase() == 'COMPLETED' ||
+          (r.status ?? '').toUpperCase().contains('CANCEL') ||
+          (r.status ?? '').toUpperCase() == 'NO_SHOW' ||
+          (r.status ?? '').toUpperCase() == 'EXPIRED' ||
+          (r.status ?? '').toUpperCase() == 'PAYMENT_FAILED';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text(
-            'Report submitted. Admin notified & support chat enabled.',
+          content: Text(
+            isTerm
+                ? 'Report submitted. Admin notified.'
+                : 'Report submitted. Admin notified & support chat enabled.',
           ),
           backgroundColor: GtColors.brand,
-          action: SnackBarAction(
-            label: 'Open Chat',
-            textColor: Colors.white,
-            onPressed: () => context.push('/chat/${r.id}'),
-          ),
+          action: isTerm
+              ? null
+              : SnackBarAction(
+                  label: 'Open Chat',
+                  textColor: Colors.white,
+                  onPressed: () => context.push('/chat/${r.id}'),
+                ),
         ),
       );
       setState(() {});
@@ -633,17 +642,25 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
-  void _onBack() {
+  bool get _isTerminal {
     final r = _ride;
-    final isCompleted = _serverStatus.toUpperCase() == 'COMPLETED' ||
-        (r?.status ?? '').toUpperCase() == 'COMPLETED';
-    final isTerminal = isCompleted ||
-        _serverStatus.contains('CANCEL') ||
-        (r?.status ?? '').toUpperCase().contains('CANCEL') ||
-        _serverStatus == 'NO_SHOW' ||
-        (r?.status ?? '').toUpperCase() == 'NO_SHOW';
+    final statusUpper = _serverStatus.toUpperCase();
+    final rStatusUpper = (r?.status ?? '').toUpperCase();
+    final isCompleted = statusUpper == 'COMPLETED' || rStatusUpper == 'COMPLETED';
+    return isCompleted ||
+        statusUpper.contains('CANCEL') ||
+        rStatusUpper.contains('CANCEL') ||
+        statusUpper == 'NO_SHOW' ||
+        rStatusUpper == 'NO_SHOW' ||
+        statusUpper == 'EXPIRED' ||
+        rStatusUpper == 'EXPIRED' ||
+        statusUpper == 'PAYMENT_FAILED' ||
+        rStatusUpper == 'PAYMENT_FAILED' ||
+        r?.isChatLocked == true;
+  }
 
-    if (isTerminal) {
+  void _onBack() {
+    if (_isTerminal) {
       context.read<AppState>().refreshOpenRequests();
       context.go('/');
     } else if (context.canPop()) {
@@ -656,16 +673,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final r = _ride;
-    final isCompleted = _serverStatus.toUpperCase() == 'COMPLETED' ||
-        (r?.status ?? '').toUpperCase() == 'COMPLETED';
+    final statusUpper = _serverStatus.toUpperCase();
+    final rStatusUpper = (r?.status ?? '').toUpperCase();
+    final isCompleted = statusUpper == 'COMPLETED' || rStatusUpper == 'COMPLETED';
     if (isCompleted && !_alreadyRated && !_ratingPromptShown) {
       _maybeShowRating();
     }
-    final isTerminal = isCompleted ||
-        _serverStatus.contains('CANCEL') ||
-        (r?.status ?? '').toUpperCase().contains('CANCEL') ||
-        _serverStatus == 'NO_SHOW' ||
-        (r?.status ?? '').toUpperCase() == 'NO_SHOW';
+    final isTerminal = _isTerminal;
 
     return PopScope(
       canPop: !isTerminal,
@@ -1075,7 +1089,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 10),
-                                    if (!isCompleted &&
+                                    if (!isTerminal &&
                                         (r.passengerName ?? '')
                                             .trim()
                                             .isNotEmpty) ...[
@@ -1112,9 +1126,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                                 'Return flight ${r.returnFlight!.trim()}',
                                             icon: Icons.flight_land,
                                           ),
-                                        if ((r.signage ?? '')
-                                            .trim()
-                                            .isNotEmpty)
+                                        if (!isTerminal &&
+                                            (r.signage ?? '')
+                                                .trim()
+                                                .isNotEmpty)
                                           _TripChip(
                                             label:
                                                 'Name sign: ${r.signage!.trim()}',
@@ -1162,7 +1177,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   currentIndex: _timelineIndex(_serverStatus),
                                 ),
                               ),
-                              if ((r.comment ?? '').trim().isNotEmpty) ...[
+                              if (!isTerminal && (r.comment ?? '').trim().isNotEmpty) ...[
                                 const SizedBox(height: 16),
                                 GtCard(
                                   child: Column(
@@ -1314,7 +1329,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     icon: const Icon(Icons.flag_outlined, size: 18),
                                     label: const Text('Report an issue'),
                                   ),
-                                  if (r.hasReportedRide || r.hasActiveSupport) ...[
+                                  if (!isTerminal && (r.hasReportedRide || r.hasActiveSupport)) ...[
                                     const SizedBox(height: 8),
                                     OutlinedButton.icon(
                                       onPressed: () => context.push('/chat/${r.id}'),
@@ -1342,7 +1357,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     icon: const Icon(Icons.flag_outlined, size: 18),
                                     label: const Text('Report an issue'),
                                   ),
-                                  if (r.hasReportedRide || r.hasActiveSupport) ...[
+                                  if (!isTerminal && (r.hasReportedRide || r.hasActiveSupport)) ...[
                                     const SizedBox(height: 8),
                                     OutlinedButton.icon(
                                       onPressed: () => context.push('/chat/${r.id}'),
@@ -1892,21 +1907,22 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                         launchUrl(Uri.parse('sms:${lost.contactPhone}')),
                   ),
                 ],
-                ActionChip(
-                  avatar: const Icon(Icons.chat_outlined,
-                      size: 16, color: GtColors.brand),
-                  label: const Text(
-                    'Chat in App',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: GtColors.brand,
+                if (!_isTerminal)
+                  ActionChip(
+                    avatar: const Icon(Icons.chat_outlined,
+                        size: 16, color: GtColors.brand),
+                    label: const Text(
+                      'Chat in App',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: GtColors.brand,
+                      ),
                     ),
+                    backgroundColor: const Color(0xFFECFDF5),
+                    side: const BorderSide(color: Color(0xFFA7F3D0)),
+                    onPressed: () => context.push('/chat/${r.id}'),
                   ),
-                  backgroundColor: const Color(0xFFECFDF5),
-                  side: const BorderSide(color: Color(0xFFA7F3D0)),
-                  onPressed: () => context.push('/chat/${r.id}'),
-                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -2709,12 +2725,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 ? 'Reasonable contact attempt verified'
                 : 'Attempt contact with passenger',
             isComplete: isContactDone,
-            actionLabel: 'Chat with passenger',
-            onActionTap: () {
-              setState(() => _contactAttemptMade = true);
-              context.read<AppState>().recordContactAttempt(r.id, method: 'CHAT');
-              context.push('/chat/${r.id}');
-            },
+            actionLabel: _isTerminal ? null : 'Chat with passenger',
+            onActionTap: _isTerminal
+                ? null
+                : () {
+                    setState(() => _contactAttemptMade = true);
+                    context.read<AppState>().recordContactAttempt(r.id, method: 'CHAT');
+                    context.push('/chat/${r.id}');
+                  },
           ),
           const SizedBox(height: 6),
           _buildCheckItem(

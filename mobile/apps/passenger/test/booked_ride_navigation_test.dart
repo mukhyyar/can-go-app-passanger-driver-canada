@@ -431,6 +431,45 @@ void main() {
       expect(imminentRide.isImminentOrActive, isTrue);
       expect(state.activeBookedRide?.id, equals('ride-imminent-15m'));
     });
+    test('activeBookedRide does NOT return scheduled ride even if pickupAt is null', () {
+      final state = AppState();
+      final scheduledRide = RideRequest(
+        id: 'ride-scheduled-no-pickupat',
+        datetimeLabel: 'Tomorrow, 3:00 PM',
+        from: '35 Masters Drive',
+        to: 'Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        timeBadge: 'Scheduled',
+        pickupAt: null,
+      );
+      state.repo.rides.add(scheduledRide);
+
+      expect(scheduledRide.isFutureBooking, isTrue);
+      expect(scheduledRide.isImminentOrActive, isFalse);
+      expect(state.activeBookedRide, isNull);
+    });
+
+    test('RideRequest.copyWith correctly preserves pickupAt and other fields', () {
+      final pickup = DateTime.now().add(const Duration(days: 2));
+      final original = RideRequest(
+        id: 'ride-orig',
+        datetimeLabel: 'In 2 days',
+        from: 'Home',
+        to: 'Airport',
+        status: RideStatus.booked,
+        serverStatus: 'BOOKED',
+        timeBadge: 'Scheduled',
+        pickupAt: pickup,
+      );
+
+      final updated = original.copyWith(offerCount: 5);
+      expect(updated.id, equals('ride-orig'));
+      expect(updated.offerCount, equals(5));
+      expect(updated.pickupAt, equals(pickup));
+      expect(updated.timeBadge, equals('Scheduled'));
+      expect(updated.isFutureBooking, isTrue);
+    });
   });
 
   group('BookScreen active ride banner tests', () {

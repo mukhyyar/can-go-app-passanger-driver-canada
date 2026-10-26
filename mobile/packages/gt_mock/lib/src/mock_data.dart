@@ -129,17 +129,21 @@ class MockData {
   /// Asset path in `gt_ui` for a vehicle class name/id, or null.
   static String? vehicleImageAsset(String classNameOrId) {
     final key = classNameOrId.trim().toLowerCase();
+    if (key.isEmpty) return 'assets/vehicles/economy.png';
     for (final vc in vehicleClasses) {
       if (vc.id == key || vc.name.toLowerCase() == key) return vc.imageAsset;
     }
-    if (key == 'sedan') return 'assets/vehicles/premium.png';
-    if (key == 'suv_xl' || key == 'suv (xl)' || key == 'suv xl') return 'assets/vehicles/suv_xl.png';
-    if (key == 'van' || key == 'minivan' || key == 'minivan (xxl)' || key == 'mini van') return 'assets/vehicles/van.png';
-    if (key == 'minibus' || key == 'mini bus') return 'assets/vehicles/minibus.png';
+    if (key == 'sedan' || key.contains('sedan')) return 'assets/vehicles/premium.png';
+    if (key == 'suv_xl' || key == 'suv (xl)' || key == 'suv xl' || key.contains('suv_xl')) return 'assets/vehicles/suv_xl.png';
+    if (key.contains('suv')) return 'assets/vehicles/suv.png';
+    if (key == 'van' || key == 'minivan' || key == 'minivan (xxl)' || key == 'mini van' || key.contains('van')) return 'assets/vehicles/van.png';
+    if (key == 'minibus' || key == 'mini bus' || key.contains('bus')) return 'assets/vehicles/minibus.png';
     if (key == 'business') return 'assets/vehicles/business.png';
-    if (key == 'vip') return 'assets/vehicles/vip.png';
-    if (key == 'bus') return 'assets/vehicles/bus.png';
-    return null;
+    if (key == 'vip' || key.contains('vip')) return 'assets/vehicles/vip.png';
+    if (key.contains('comfort')) return 'assets/vehicles/comfort.png';
+    if (key.contains('economy') || key.contains('standard')) return 'assets/vehicles/economy.png';
+    if (key.contains('premium') || key.contains('luxury')) return 'assets/vehicles/premium.png';
+    return 'assets/vehicles/economy.png';
   }
 
   static List<Offer> offersFor(String requestId) => [

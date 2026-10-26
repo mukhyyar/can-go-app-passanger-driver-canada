@@ -754,33 +754,18 @@ class AppState extends ChangeNotifier {
               ? LostItemDetails.fromJson(
                   Map<String, dynamic>.from(raw['lostItem'] as Map))
               : existing?.lostItem,
+          pickupAt: existing?.pickupAt,
+          isOverdue: existing?.isOverdue ?? false,
+          isChatLocked: existing?.isChatLocked ?? false,
+          originalDriverId: existing?.originalDriverId,
+          originalDriverName: existing?.originalDriverName,
+          originalDriverPhone: existing?.originalDriverPhone,
         );
       }
 
       // Keep offerCount in sync with parsed offers when possible.
       if (parsedOffers.isNotEmpty && ride.offerCount != parsedOffers.length) {
-        ride = RideRequest(
-          id: ride.id,
-          datetimeLabel: ride.datetimeLabel,
-          from: ride.from,
-          to: ride.to,
-          distance: ride.distance,
-          duration: ride.duration,
-          timeBadge: ride.timeBadge,
-          status: ride.status,
-          offerCount: parsedOffers.length,
-          returnLabel: ride.returnLabel,
-          isRoundTrip: ride.isRoundTrip,
-          selectedOfferId: ride.selectedOfferId,
-          serverStatus: ride.serverStatus,
-          shortId: ride.shortId,
-          createdAtLabel: ride.createdAtLabel,
-          viewCount: ride.viewCount,
-          currency: ride.currency,
-          hasLostItemRequest: ride.hasLostItemRequest,
-          hasReportedRide: ride.hasReportedRide,
-          lostItem: ride.lostItem,
-        );
+        ride = ride.copyWith(offerCount: parsedOffers.length);
       }
 
       final idx = repo.rides.indexWhere((r) => r.id == rideId);
@@ -1186,24 +1171,7 @@ class AppState extends ChangeNotifier {
       final idx = repo.rides.indexWhere((r) => r.id == rideId);
       if (idx >= 0) {
         final existing = repo.rides[idx];
-        repo.rides[idx] = RideRequest(
-          id: existing.id,
-          datetimeLabel: existing.datetimeLabel,
-          from: existing.from,
-          to: existing.to,
-          distance: existing.distance,
-          duration: existing.duration,
-          timeBadge: existing.timeBadge,
-          status: existing.status,
-          offerCount: existing.offerCount,
-          returnLabel: existing.returnLabel,
-          isRoundTrip: existing.isRoundTrip,
-          selectedOfferId: existing.selectedOfferId,
-          serverStatus: existing.serverStatus,
-          shortId: existing.shortId,
-          createdAtLabel: existing.createdAtLabel,
-          viewCount: existing.viewCount,
-          currency: existing.currency,
+        repo.rides[idx] = existing.copyWith(
           hasLostItemRequest: true,
           lostItem: LostItemDetails(
             caseId: res['id']?.toString() ?? '',
@@ -1269,26 +1237,7 @@ class AppState extends ChangeNotifier {
         final idx = repo.rides.indexWhere((r) => r.id == rideId);
         if (idx >= 0) {
           final existing = repo.rides[idx];
-          repo.rides[idx] = RideRequest(
-            id: existing.id,
-            datetimeLabel: existing.datetimeLabel,
-            from: existing.from,
-            to: existing.to,
-            distance: existing.distance,
-            duration: existing.duration,
-            timeBadge: existing.timeBadge,
-            status: existing.status,
-            offerCount: existing.offerCount,
-            returnLabel: existing.returnLabel,
-            isRoundTrip: existing.isRoundTrip,
-            selectedOfferId: existing.selectedOfferId,
-            serverStatus: existing.serverStatus,
-            shortId: existing.shortId,
-            createdAtLabel: existing.createdAtLabel,
-            viewCount: count,
-            currency: existing.currency,
-            hasLostItemRequest: existing.hasLostItemRequest,
-          );
+          repo.rides[idx] = existing.copyWith(viewCount: count);
           notifyListeners();
         }
       }
@@ -2002,7 +1951,7 @@ class AppState extends ChangeNotifier {
 
       // 3. Imminent booked ride (pickupNow or pickup within imminent 30-min window)
       return repo.rides.firstWhere(
-        (r) => r.isImminentOrActive,
+        (r) => r.isImminentOrActive && !r.isFutureBooking,
       );
     } catch (_) {
       return null;
@@ -2134,8 +2083,8 @@ class AppState extends ChangeNotifier {
 
       final childSeatsPayload =
           childSeats.total > 0 ? childSeats.toJson() : null;
-      final isRoundTrip = returnEnabled;
-      if (returnEnabled) {
+      final isRoundTrip = serviceType == ServiceType.ride && returnEnabled;
+      if (isRoundTrip) {
         if (returnDateTime == null) {
           returnDateTime = effectivePickup.add(const Duration(hours: 3));
         }
@@ -2180,25 +2129,12 @@ class AppState extends ChangeNotifier {
       if (timeBadge != null) {
         // preserve UI badge via local overlay fields on copy
       }
-      final local = RideRequest(
-        id: ride.id,
-        datetimeLabel: ride.datetimeLabel,
+      final local = ride.copyWith(
         from: fromLabel,
         to: toLabel,
-        distance: ride.distance,
-        duration: ride.duration,
         timeBadge: timeBadge ?? ride.timeBadge,
-        status: ride.status,
-        offerCount: ride.offerCount,
         returnLabel: returnLabel ?? ride.returnLabel,
         isRoundTrip: isRoundTrip || ride.isRoundTrip,
-        selectedOfferId: ride.selectedOfferId,
-        serverStatus: ride.serverStatus,
-        shortId: ride.shortId,
-        createdAtLabel: ride.createdAtLabel,
-        viewCount: ride.viewCount,
-        currency: ride.currency,
-        hasLostItemRequest: ride.hasLostItemRequest,
       );
       final idx = repo.rides.indexWhere((r) => r.id == local.id);
       if (idx >= 0) {

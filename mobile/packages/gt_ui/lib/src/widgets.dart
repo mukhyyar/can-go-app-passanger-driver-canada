@@ -167,13 +167,16 @@ class GtRouteRow extends StatelessWidget {
     final isReturn = isRoundTrip ||
         (returnLabel != null && returnLabel!.trim().isNotEmpty);
 
+    final hasTo = to != null && to!.trim().isNotEmpty;
+    final showB = hasTo || isReturn;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Column(
           children: [
             const GtPointLabel(letter: 'A'),
-            if (isReturn && to != null) ...[
+            if (isReturn && showB) ...[
               Container(
                 width: 2,
                 height: 6,
@@ -207,12 +210,12 @@ class GtRouteRow extends StatelessWidget {
             ] else ...[
               Container(
                 width: 2,
-                height: to == null ? 28 : (useChips ? 20 : 36),
+                height: !showB ? 28 : (useChips ? 20 : 36),
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 color: GtColors.border,
               ),
             ],
-            if (to != null)
+            if (showB)
               const GtPointLabel(letter: 'B')
             else if (timeBadge != null)
               const Icon(Icons.access_time, color: GtColors.orange, size: 20),
@@ -248,9 +251,45 @@ class GtRouteRow extends StatelessWidget {
                   ],
                 ),
               ],
-              if (to != null) ...[
+              if (showB) ...[
                 SizedBox(height: isReturn ? 12 : (useChips ? 12 : 10)),
-                Text(to!, style: const TextStyle(fontSize: 14, height: 1.3)),
+                Text(
+                  hasTo ? to! : 'Return to $from',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.3,
+                    color: hasTo ? GtColors.text : const Color(0xFF6B5000),
+                    fontWeight: hasTo ? FontWeight.normal : FontWeight.w600,
+                  ),
+                ),
+                if (isReturn && hasTo) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Icon(
+                          Icons.keyboard_return_rounded,
+                          size: 14,
+                          color: Color(0xFF8A6900),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Return to $from',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF6B5000),
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ] else if (timeBadge != null && !useChips) ...[
                 const SizedBox(height: 10),
                 Container(
@@ -268,7 +307,9 @@ class GtRouteRow extends StatelessWidget {
                   (isReturn ||
                       (distance != null &&
                           distance!.isNotEmpty &&
-                          distance != '—') ||
+                          distance != '—' &&
+                          distance != '0 km' &&
+                          distance != '0.0 km') ||
                       (duration != null &&
                           duration!.isNotEmpty &&
                           duration != '—') ||
@@ -315,7 +356,9 @@ class GtRouteRow extends StatelessWidget {
                       ),
                     if (distance != null &&
                         distance!.isNotEmpty &&
-                        distance != '—')
+                        distance != '—' &&
+                        distance != '0 km' &&
+                        distance != '0.0 km')
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),

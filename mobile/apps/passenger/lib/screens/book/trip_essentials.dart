@@ -558,12 +558,14 @@ class _ReturnTripRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    'Tap to schedule return',
-                    style: TextStyle(
+                  Text(
+                    'Return to: ${state.from?.label ?? 'pickup location'}',
+                    style: const TextStyle(
                       fontSize: 12,
                       color: GtColors.textSecondary,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),

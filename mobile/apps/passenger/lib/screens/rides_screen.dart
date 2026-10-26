@@ -41,11 +41,17 @@ class _RidesScreenState extends State<RidesScreen>
     final rides = context.watch<AppState>().repo.rides;
     final upcoming = rides
         .where((r) =>
-            r.status != RideStatus.past && r.status != RideStatus.cancelled)
+            !r.isCancelled &&
+            !isTerminalRideStatus(r.serverStatus) &&
+            r.status != RideStatus.past &&
+            r.status != RideStatus.cancelled)
         .toList();
     final past = rides
         .where((r) =>
-            r.status == RideStatus.past || r.status == RideStatus.cancelled)
+            r.isCancelled ||
+            isTerminalRideStatus(r.serverStatus) ||
+            r.status == RideStatus.past ||
+            r.status == RideStatus.cancelled)
         .toList();
 
     return Scaffold(
@@ -173,19 +179,30 @@ class _RideList extends StatelessWidget {
               offerId != null ? app.offerByIds(r.id, offerId) : null;
           String? driverSubtitle;
           if (offer != null) {
-            final isCompleted = r.status == RideStatus.past ||
-                (r.serverStatus ?? '').toUpperCase() == 'COMPLETED';
-            final name = !isCompleted ? (offer.driverName ?? '').trim() : '';
-            final plate = (offer.plate ?? '').trim();
-            if (name.isNotEmpty && plate.isNotEmpty) {
-              driverSubtitle = '$name · ${plate.toUpperCase()}';
-            } else if (name.isNotEmpty) {
-              driverSubtitle = name;
-            } else if (plate.isNotEmpty) {
-              driverSubtitle = '${offer.displayName} · ${plate.toUpperCase()}';
-            } else if (r.status == RideStatus.booked ||
-                r.status == RideStatus.past) {
-              driverSubtitle = offer.displayName;
+            final serverUpper = (r.serverStatus ?? '').toUpperCase();
+            final isTerminal = r.status == RideStatus.past ||
+                r.status == RideStatus.cancelled ||
+                r.isChatLocked ||
+                serverUpper == 'COMPLETED' ||
+                serverUpper.contains('CANCEL') ||
+                serverUpper == 'NO_SHOW' ||
+                serverUpper == 'EXPIRED' ||
+                serverUpper == 'PAYMENT_FAILED';
+
+            if (!isTerminal) {
+              final name = (offer.driverName ?? '').trim();
+              final plate = (offer.plate ?? '').trim();
+              if (name.isNotEmpty && plate.isNotEmpty) {
+                driverSubtitle = '$name · ${plate.toUpperCase()}';
+              } else if (name.isNotEmpty) {
+                driverSubtitle = name;
+              } else if (plate.isNotEmpty) {
+                driverSubtitle = '${offer.displayName} · ${plate.toUpperCase()}';
+              } else {
+                driverSubtitle = offer.displayName;
+              }
+            } else {
+              driverSubtitle = offer.displayName.isNotEmpty ? offer.displayName : null;
             }
           }
           return GtCard(

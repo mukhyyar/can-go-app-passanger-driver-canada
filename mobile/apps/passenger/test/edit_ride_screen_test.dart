@@ -324,5 +324,64 @@ void main() {
           {'infant': 1, 'convertible': 0, 'booster': 0});
       expect(updatedRidePayload!['vehicleClassIds'], ['economy']);
     });
+
+    testWidgets('Hourly ride edit displays Duration cleanly without text wrapping',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final mockHttpClient = MockClient((request) async {
+        if (request.url.path.endsWith('/rides/hourly-123')) {
+          return http.Response(
+            jsonEncode({
+              'id': 'hourly-123',
+              'status': 'WAITING_FOR_OFFERS',
+              'serviceType': 'PER_HOUR',
+              'fromLabel': 'Toronto Pearson International Airport (YYZ)',
+              'fromLat': 43.6777,
+              'fromLng': -79.6248,
+              'pickupAt': '2026-10-23T22:40:00.000Z',
+              'vehicleClassIds': ['economy'],
+              'priceSnapshot': {'hours': 1.0},
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('{}', 200,
+            headers: {'content-type': 'application/json'});
+      });
+
+      final session =
+          CanGoSession(client: ApiClient(httpClient: mockHttpClient));
+      final appState = AppState(session: session);
+      addTearDown(appState.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: appState,
+            child: const EditRideScreen(rideId: 'hourly-123'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Duration'), findsOneWidget);
+      expect(find.text('1 hour'), findsOneWidget);
+      expect(find.text('30m'), findsOneWidget);
+      expect(find.text('1h'), findsOneWidget);
+      expect(find.text('2h'), findsOneWidget);
+
+      // Select 2h
+      await tester.tap(find.text('2h'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2 hours'), findsOneWidget);
+    });
   });
 }

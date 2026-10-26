@@ -2530,26 +2530,34 @@ class AppState extends ChangeNotifier {
           }
         }
 
+        final resolvedVehicleId = (draft.vehicleId != null &&
+                vehicles.any((v) => v.id == draft.vehicleId))
+            ? draft.vehicleId
+            : (primaryVehicleId != null &&
+                    vehicles.any((v) => v.id == primaryVehicleId))
+                ? primaryVehicleId
+                : (vehicles.isNotEmpty ? vehicles.first.id : primaryVehicleId);
+
         if (existing != null) {
           await api.driver.updateOffer(
             requestId,
             existing.id,
             outboundPrice: outbound,
             returnPrice: draft.returnPrice,
-            vehicleId: draft.vehicleId ?? primaryVehicleId,
+            vehicleId: resolvedVehicleId,
             validForSeconds: draft.validForSeconds,
             selectedOptions: draft.selectedOptions.toList(),
             idempotencyKey: idem,
           );
         } else {
-          if (draft.vehicleId == null && primaryVehicleId == null) {
+          if (resolvedVehicleId == null) {
             await ensureVehicle();
           }
           await api.driver.createOffer(
             requestId,
             outboundPrice: outbound,
             returnPrice: draft.returnPrice,
-            vehicleId: draft.vehicleId ?? primaryVehicleId,
+            vehicleId: resolvedVehicleId,
             validForSeconds: draft.validForSeconds ?? 30 * 60,
             selectedOptions: draft.selectedOptions.toList(),
             currency: currency ?? 'CAD',

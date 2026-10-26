@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:driver/screens/driver_cancellation_sheet.dart';
+import 'package:gt_ui/gt_ui.dart';
 
 void main() {
   testWidgets('DriverCancellationSheet renders all 6 structured reasons and warning banner',
@@ -179,5 +180,44 @@ void main() {
     expect(result, isNotNull);
     expect(result!['reasonCode'], equals('VEHICLE_BREAKDOWN'));
     expect(result!['reasonDetails'], isNull);
+  });
+
+  testWidgets('renders emergency banner cleanly on standard mobile screen without overflow', (tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: GtTheme.light(),
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => ElevatedButton(
+              onPressed: () => showModalBottomSheet(
+                context: ctx,
+                isScrollControlled: true,
+                builder: (_) => const DriverCancellationSheet(),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    final textRect = tester.getRect(find.text('For emergencies, call 911 immediately'));
+    expect(textRect.width, greaterThan(150.0));
+
+    expect(find.widgetWithText(ElevatedButton, '911'), findsOneWidget);
+    expect(
+      find.text('CAN-RIDE Support should not be represented as an emergency-response service.'),
+      findsOneWidget,
+    );
   });
 }

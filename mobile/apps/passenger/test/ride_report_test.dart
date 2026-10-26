@@ -152,10 +152,9 @@ void main() {
       expect(reportedReasons, contains('Dangerous / Reckless driving'));
       expect(reportedDetails, 'Driver was constantly speeding and tailgating.');
       expect(
-        find.text('Report submitted. Admin notified & support chat enabled.'),
+        find.text('Report submitted. Admin notified.'),
         findsOneWidget,
       );
-      expect(find.text('Open Chat'), findsOneWidget);
     });
   });
 }

@@ -118,9 +118,14 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                 const SizedBox(height: 8),
                             itemBuilder: (_, i) {
                               final c = chats[i];
-                              final isCompleted =
-                                  (c.status ?? '').toUpperCase() == 'COMPLETED';
-                              final name = !isCompleted
+                              final statusUpper = (c.status ?? '').toUpperCase();
+                              final isTerminal = c.isChatLocked ||
+                                  statusUpper == 'COMPLETED' ||
+                                  statusUpper.contains('CANCEL') ||
+                                  statusUpper == 'NO_SHOW' ||
+                                  statusUpper == 'EXPIRED' ||
+                                  statusUpper == 'PAYMENT_FAILED';
+                              final name = !isTerminal
                                   ? (c.passengerName ?? '').trim()
                                   : '';
                               final title = name.isNotEmpty
@@ -189,15 +194,28 @@ class _ChatsScreenState extends State<ChatsScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        Text(
-                                          (c.status ?? '').replaceAll(
-                                            '_',
-                                            ' ',
-                                          ),
-                                          style: const TextStyle(
-                                            color: GtColors.textMuted,
-                                            fontSize: 11,
-                                          ),
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (isTerminal) ...[
+                                              const Icon(
+                                                Icons.lock_outline,
+                                                size: 13,
+                                                color: GtColors.textMuted,
+                                              ),
+                                              const SizedBox(width: 4),
+                                            ],
+                                            Text(
+                                              (c.status ?? '').replaceAll(
+                                                '_',
+                                                ' ',
+                                              ),
+                                              style: const TextStyle(
+                                                color: GtColors.textMuted,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),

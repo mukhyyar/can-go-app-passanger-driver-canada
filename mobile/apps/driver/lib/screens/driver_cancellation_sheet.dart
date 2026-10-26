@@ -224,16 +224,17 @@ class _DriverCancellationSheetState extends State<DriverCancellationSheet> {
                   border: Border.all(color: Colors.red.shade200),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.local_police_rounded,
-                        color: Colors.red.shade700, size: 24),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Icon(Icons.local_police_rounded,
+                            color: Colors.red.shade700, size: 22),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
                             'For emergencies, call 911 immediately',
                             style: TextStyle(
                               fontSize: 13,
@@ -241,32 +242,35 @@ class _DriverCancellationSheetState extends State<DriverCancellationSheet> {
                               color: Colors.red,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'CAN-RIDE Support should not be represented as an emergency-response service.',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.red.shade900,
-                              height: 1.3,
-                            ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: _call911,
+                          icon: const Icon(Icons.phone, size: 14),
+                          label: const Text('911',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800, fontSize: 13)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(0, 32),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            elevation: 0,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
-                      onPressed: _call911,
-                      icon: const Icon(Icons.phone, size: 14),
-                      label: const Text('911',
-                          style: TextStyle(fontWeight: FontWeight.w800)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade700,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                        elevation: 0,
+                    const SizedBox(height: 6),
+                    Text(
+                      'CAN-RIDE Support should not be represented as an emergency-response service.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.red.shade900,
+                        height: 1.3,
                       ),
                     ),
                   ],

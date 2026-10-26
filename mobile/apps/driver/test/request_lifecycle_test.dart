@@ -1,4 +1,5 @@
 import 'package:driver/screens/request_detail_screen.dart';
+import 'package:driver/screens/requests_screen.dart';
 import 'package:driver/state/app_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -163,5 +164,60 @@ void main() {
 
       expect(find.text('This ride request has expired'), findsOneWidget);
     });
+
+    testWidgets(
+        'RequestsScreen renders "Expires in 60 min" with timer icon and suppresses 0 km distance chip',
+        (tester) async {
+      final appState = _TestAppState();
+      appState.hasSeenWelcome = true;
+      appState.loaded = true;
+
+      final req = const DriverRequest(
+        id: 'test_request_ttl_60',
+        datetimeLabel: 'Fri 23 Oct, 22:43',
+        from: 'Toronto Pearson International Airport (YYZ)',
+        to: 'Toronto Zoo',
+        distance: '0 km',
+        duration: '~ 2 h',
+        vehicleNeed: 'Economy, Comfort',
+        passengers: 1,
+        ttlLabel: '60 min',
+      );
+      appState.openRequests = [req];
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: appState,
+          child: const MaterialApp(
+            home: RequestsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Header should explicitly show "Expires in 60 min" with timer icon
+      expect(find.text('Expires in 60 min'), findsOneWidget);
+      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+
+      // Duration "~ 2 h" should be rendered
+      expect(find.text('~ 2 h'), findsOneWidget);
+
+      // Broken / misleading "0 km" chip should NOT be rendered
+      expect(find.text('0 km'), findsNothing);
+    });
   });
+}
+
+class _TestAppState extends AppState {
+  @override
+  bool get isAuthenticated => true;
+
+  @override
+  Future<void> refreshOpenRequests({bool fromPush = false}) async {}
+
+  @override
+  Future<void> refreshMyRides() async {}
+
+  @override
+  Future<void> startMarketplaceRealtime() async {}
 }

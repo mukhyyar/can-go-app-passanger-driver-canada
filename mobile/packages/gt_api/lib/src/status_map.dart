@@ -32,6 +32,17 @@ RideStatus mapServerRideStatus(String? status) {
   }
 }
 
+/// Checks if a ride status is terminal (completed, cancelled, no-show, expired, etc.).
+bool isTerminalRideStatus(String? status) {
+  if (status == null) return false;
+  final s = status.toUpperCase();
+  return s == 'COMPLETED' ||
+      s.contains('CANCEL') ||
+      s == 'NO_SHOW' ||
+      s == 'EXPIRED' ||
+      s == 'PAYMENT_FAILED';
+}
+
 LostItemDetails? _parseLostItem(dynamic raw) {
   if (raw is! Map) return null;
   final map = raw.map((key, value) => MapEntry(key.toString(), value));
@@ -214,14 +225,21 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     shareUrl: json['shareUrl']?.toString(),
     pickupAt: pickupAt,
     isOverdue: isOverdue,
-    originalDriverId: json['originalDriverId']?.toString() ??
-        (json['originalDriver'] is Map ? (json['originalDriver'] as Map)['id']?.toString() : null),
-    originalDriverName: json['originalDriver'] is Map
-        ? (json['originalDriver'] as Map)['fullName']?.toString()
-        : null,
-    originalDriverPhone: json['originalDriver'] is Map
-        ? (json['originalDriver'] as Map)['phoneE164']?.toString()
-        : null,
+    isChatLocked: json['isChatLocked'] == true || isTerminalRideStatus(json['status']?.toString()),
+    originalDriverId: isTerminalRideStatus(json['status']?.toString())
+        ? null
+        : (json['originalDriverId']?.toString() ??
+            (json['originalDriver'] is Map ? (json['originalDriver'] as Map)['id']?.toString() : null)),
+    originalDriverName: isTerminalRideStatus(json['status']?.toString())
+        ? null
+        : (json['originalDriver'] is Map
+            ? (json['originalDriver'] as Map)['fullName']?.toString()
+            : null),
+    originalDriverPhone: isTerminalRideStatus(json['status']?.toString())
+        ? null
+        : (json['originalDriver'] is Map
+            ? (json['originalDriver'] as Map)['phoneE164']?.toString()
+            : null),
   );
 }
 
@@ -348,9 +366,10 @@ Offer offerFromServer(Map<String, dynamic> json) {
   final driverMap = driver is Map ? asStringKeyedMap(driver) : null;
   final driverName = driverMap?['fullName']?.toString().trim();
   final offerStatus = json['status']?.toString();
-  final isOfferCompleted = (offerStatus ?? '').toUpperCase() == 'COMPLETED';
+  final isOfferTerminal = isTerminalRideStatus(offerStatus) ||
+      isTerminalRideStatus(json['rideStatus']?.toString());
   final driverNameOrNull =
-      (!isOfferCompleted && driverName != null && driverName.isNotEmpty)
+      (!isOfferTerminal && driverName != null && driverName.isNotEmpty)
           ? driverName
           : null;
 
@@ -407,7 +426,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
     color: pres['color']?.toString(),
     vehicleDisplayName: pres['vehicleDisplayName']?.toString() ??
         vehicleMap?['name']?.toString(),
-    plate: pres['plate']?.toString() ?? vehicleMap?['plate']?.toString(),
+    plate: isOfferTerminal ? null : (pres['plate']?.toString() ?? vehicleMap?['plate']?.toString()),
     driverName: driverNameOrNull,
   );
 }
@@ -809,8 +828,8 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     }
   }
   final reqStatus = json['status']?.toString();
-  final isReqCompleted = (reqStatus ?? '').toUpperCase() == 'COMPLETED';
-  if (isReqCompleted || (passengerName != null && passengerName.isEmpty)) {
+  final isReqTerminal = isTerminalRideStatus(reqStatus);
+  if (isReqTerminal || (passengerName != null && passengerName.isEmpty)) {
     passengerName = null;
   }
 
@@ -845,8 +864,8 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     isRoundTrip: isRoundTrip,
     pickupWaitMin: pickupWait,
     returnWaitMin: returnWait,
-    comment: json['comment']?.toString(),
-    signage: json['signage']?.toString(),
+    comment: isReqTerminal ? null : json['comment']?.toString(),
+    signage: isReqTerminal ? null : json['signage']?.toString(),
     flight: flight,
     returnFlight: json['returnFlight']?.toString(),
     requiredOptions: requiredOptions,
@@ -871,7 +890,8 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
         ? asDouble(snapMap?['tip'] ?? snapMap?['tipAmount'] ?? json['tipAmount'] ?? json['tip'])
         : null,
     isOverdue: isOverdue,
-    originalDriverId: json['originalDriverId']?.toString(),
+    isChatLocked: json['isChatLocked'] == true || isReqTerminal,
+    originalDriverId: isReqTerminal ? null : json['originalDriverId']?.toString(),
   );
 }
 

@@ -839,6 +839,21 @@ export class MarketplaceService {
         cancelledAt: new Date().toISOString(),
       },
     });
+    const activeOffers = await this.prisma.offer.findMany({
+      where: {
+        rideId,
+        status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] },
+      },
+      include: { driver: { select: { userId: true } } },
+    });
+    const offeringDriverUserIds = [
+      ...new Set(
+        activeOffers
+          .map((o) => o.driver?.userId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+
     await this.prisma.offer.updateMany({
       where: { rideId, status: OfferStatus.ACTIVE },
       data: { status: OfferStatus.WITHDRAWN },
@@ -982,6 +997,30 @@ export class MarketplaceService {
       title: 'Ride cancelled',
       body: cancelBody,
       targetRole: ['PASSENGER', 'PASSENGER_WEB'],
+    });
+
+    if (offeringDriverUserIds.length > 0) {
+      this.tracking?.emitToDrivers(
+        offeringDriverUserIds,
+        'ride.status.changed',
+        {
+          rideId,
+          status: RideStatus.PASSENGER_CANCELLED,
+        },
+      );
+      void this.notifications.notifyRideStatus({
+        userIds: offeringDriverUserIds,
+        rideId,
+        status: RideStatus.PASSENGER_CANCELLED,
+        title: 'Ride cancelled by passenger',
+        body: `Passenger cancelled ride request ${ride.id.slice(0, 8)}.`,
+        targetRole: ['DRIVER'],
+      });
+    }
+
+    this.tracking?.broadcastToRide(rideId, 'ride.status.changed', {
+      rideId,
+      status: RideStatus.PASSENGER_CANCELLED,
     });
 
     if (providerCompAmount > 0.01 && ride.assignedDriverId) {
@@ -1941,7 +1980,11 @@ export class MarketplaceService {
     const rides = await this.prisma.ride.findMany({
       where:
         matchedIds.length > 0
-          ? { id: { in: matchedIds.filter((id) => !dismissed.has(id)) } }
+          ? {
+              id: { in: matchedIds.filter((id) => !dismissed.has(id)) },
+              status: { in: openStatuses },
+              requestExpiresAt: { gt: new Date() },
+            }
           : {
               status: { in: openStatuses },
               requestExpiresAt: { gt: new Date() },
@@ -4178,6 +4221,17 @@ export class MarketplaceService {
           )
         : this.serializeOffer(ride.selectedOffer as Record<string, unknown>)
       : null;
+    const isTerminal = (
+      [
+        RideStatus.COMPLETED,
+        RideStatus.PASSENGER_CANCELLED,
+        RideStatus.DRIVER_CANCELLED,
+        RideStatus.ADMIN_CANCELLED,
+        RideStatus.NO_SHOW,
+        RideStatus.EXPIRED,
+        RideStatus.PAYMENT_FAILED,
+      ] as RideStatus[]
+    ).includes(status);
     const isCompleted = status === RideStatus.COMPLETED;
     const offerObj = selectedOffer as Record<string, unknown> | null;
     const supportCases = Array.isArray(ride.supportCases)
@@ -4246,8 +4300,8 @@ export class MarketplaceService {
       childSeatsJson: ride.childSeatsJson,
       flight: ride.flight,
       returnFlight: ride.returnFlight,
-      signage: ride.signage,
-      comment: ride.comment,
+      signage: isTerminal ? null : ride.signage,
+      comment: isTerminal ? null : ride.comment,
       requiredOptions: ride.requiredOptions ?? [],
       currency: ride.currency,
       priceSnapshot: ride.priceSnapshot,
@@ -4273,7 +4327,7 @@ export class MarketplaceService {
       selectedOfferId: ride.selectedOfferId,
       assignedDriverId: ride.assignedDriverId,
       originalDriverId: (ride.originalDriverId as string | null) ?? null,
-      originalDriver: ride.originalDriver
+      originalDriver: (ride.originalDriver && !isTerminal)
         ? {
             id: (ride.originalDriver as Record<string, unknown>).id,
             fullName: (ride.originalDriver as Record<string, unknown>).fullName,
@@ -4327,9 +4381,10 @@ export class MarketplaceService {
         ),
       },
 
+      isChatLocked: isTerminal,
       scheduledPickupAt: ride.pickupAt,
       offers,
-      selectedOffer: isCompleted && offerObj
+      selectedOffer: isTerminal && offerObj
         ? {
             ...offerObj,
             driver: offerObj.driver
@@ -4344,10 +4399,18 @@ export class MarketplaceService {
                   driverName: null,
                 }
               : offerObj.presentation,
+            vehicle: offerObj.vehicle
+              ? {
+                  ...(offerObj.vehicle as Record<string, unknown>),
+                  licensePlate: null,
+                  plate: null,
+                }
+              : null,
+            plate: null,
           }
         : selectedOffer,
       payments: ride.payments,
-      passenger: isCompleted
+      passenger: isTerminal
         ? (ride.passenger
             ? {
                 ...(ride.passenger as Record<string, unknown>),
@@ -4552,9 +4615,20 @@ export class MarketplaceService {
       }
       vehicle = this.assertVehicleClass(fallback, ride);
     } else {
-      const v = await this.prisma.vehicle.findFirst({
+      let v = await this.prisma.vehicle.findFirst({
         where: { id: vehicleId, driverId },
       });
+      if (!v) {
+        v = await this.prisma.vehicle.findFirst({
+          where: { driverId, isActive: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (v) {
+          this.logger.warn(
+            `Requested vehicle ${vehicleId} not found for driver ${driverId}; fell back to active vehicle ${v.id}`,
+          );
+        }
+      }
       if (!v) {
         throw new ForbiddenException('Vehicle not found for this driver');
       }

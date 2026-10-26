@@ -142,7 +142,19 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     return (ride?.serverStatus ?? '').toUpperCase();
   }
 
+  bool get _isTerminal {
+    final status = _serverStatus;
+    final ride = context.read<AppState>().rideById(widget.rideId);
+    return ride?.isChatLocked == true ||
+        status == 'COMPLETED' ||
+        status.contains('CANCEL') ||
+        status == 'NO_SHOW' ||
+        status == 'EXPIRED' ||
+        status == 'PAYMENT_FAILED';
+  }
+
   bool get _canChat {
+    if (_isTerminal) return false;
     final ride = context.read<AppState>().rideById(widget.rideId);
     if (ride?.hasReportedRide == true ||
         ride?.hasLostItemRequest == true ||
@@ -600,15 +612,19 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       await app.refreshRide(widget.rideId);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text(
-            'Report submitted. Admin notified & support chat enabled.',
+          content: Text(
+            _isTerminal
+                ? 'Report submitted. Admin notified.'
+                : 'Report submitted. Admin notified & support chat enabled.',
           ),
           backgroundColor: GtColors.brand,
-          action: SnackBarAction(
-            label: 'Open Chat',
-            textColor: Colors.white,
-            onPressed: () => context.push('/ride/${widget.rideId}/chat'),
-          ),
+          action: _isTerminal
+              ? null
+              : SnackBarAction(
+                  label: 'Open Chat',
+                  textColor: Colors.white,
+                  onPressed: () => context.push('/ride/${widget.rideId}/chat'),
+                ),
         ),
       );
       setState(() {});
@@ -2184,19 +2200,21 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.push('/ride/${r.id}/chat'),
-                    icon: const Icon(Icons.chat_outlined, size: 16),
-                    label: const Text('Chat with Driver'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: GtColors.brand,
-                      side: const BorderSide(color: GtColors.brand),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+                if (!_isTerminal) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.push('/ride/${r.id}/chat'),
+                      icon: const Icon(Icons.chat_outlined, size: 16),
+                      label: const Text('Chat with Driver'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: GtColors.brand,
+                        side: const BorderSide(color: GtColors.brand),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
+                  const SizedBox(width: 10),
+                ],
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _actionBusy
@@ -2214,7 +2232,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 ),
               ],
             ),
-          ] else if (isReported) ...[
+          ] else if (isReported && !_isTerminal) ...[
             const SizedBox(height: 10),
             Row(
               children: [
@@ -2715,7 +2733,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (offer.imageUrl != null)
+                              if (!_isTerminal && offer.imageUrl != null)
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
                                   child: AuthNetworkImage(
@@ -2750,9 +2768,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if ((offer.driverName ?? '')
-                                        .trim()
-                                        .isNotEmpty)
+                                    if (!_isTerminal &&
+                                        (offer.driverName ?? '')
+                                            .trim()
+                                            .isNotEmpty)
                                       Text(
                                         offer.driverName!.trim(),
                                         style: const TextStyle(
@@ -2785,9 +2804,10 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                         ),
                                       ],
                                     ),
-                                    if ((offer.driverName ?? '')
-                                        .trim()
-                                        .isNotEmpty) ...[
+                                    if (!_isTerminal &&
+                                        (offer.driverName ?? '')
+                                            .trim()
+                                            .isNotEmpty) ...[
                                       const SizedBox(height: 6),
                                       Text(
                                         offer.displayName,
@@ -2814,7 +2834,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               ),
                             ],
                           ),
-                          if (offer.plate != null &&
+                          if (!_isTerminal &&
+                              offer.plate != null &&
                               offer.plate!.trim().isNotEmpty) ...[
                             const SizedBox(height: 14),
                             Container(
@@ -2862,7 +2883,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               ),
                             ),
                           ],
-                          if (ride.originalDriverName != null &&
+                          if (!_isTerminal &&
+                              ride.originalDriverName != null &&
                               ride.originalDriverName!.trim().isNotEmpty &&
                               ride.originalDriverName != offer.driverName) ...[
                             const SizedBox(height: 12),
@@ -3183,8 +3205,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                       label: const Text('Report an issue'),
                     ),
-                    if (ride.hasReportedRide == true ||
-                        ride.hasActiveSupport == true) ...[
+                    if (!_isTerminal &&
+                        (ride.hasReportedRide == true ||
+                            ride.hasActiveSupport == true)) ...[
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: _actionBusy

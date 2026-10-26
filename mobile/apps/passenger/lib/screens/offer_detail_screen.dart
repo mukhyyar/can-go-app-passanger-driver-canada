@@ -100,9 +100,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     if (type == 'offer.updated' && !matches && eventOfferId == null) return;
 
     _handlingEvent = true;
-    app.clearPendingOfferDetailEvent();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      app.clearPendingOfferDetailEvent();
       if (!mounted) {
         _handlingEvent = false;
         return;

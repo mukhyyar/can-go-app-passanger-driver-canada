@@ -42,4 +42,12 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
   end
+
+  # Ensure FlutterGeneratedPluginSwiftPackage targets iOS 15.0+ required by Firebase and Stripe
+  package_swift = File.join(__dir__, 'Flutter', 'ephemeral', 'Packages', 'FlutterGeneratedPluginSwiftPackage', 'Package.swift')
+  if File.exist?(package_swift)
+    content = File.read(package_swift)
+    updated = content.gsub('.iOS("13.0")', '.iOS("15.0")')
+    File.write(package_swift, updated) if content != updated
+  end
 end

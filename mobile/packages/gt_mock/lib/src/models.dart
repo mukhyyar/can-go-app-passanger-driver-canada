@@ -552,6 +552,7 @@ class RideRequest {
     this.shareUrl,
     this.pickupAt,
     this.isOverdue = false,
+    this.isChatLocked = false,
     this.originalDriverId,
     this.originalDriverName,
     this.originalDriverPhone,
@@ -586,6 +587,7 @@ class RideRequest {
   String? shareUrl;
   final DateTime? pickupAt;
   final bool isOverdue;
+  final bool isChatLocked;
   final String? originalDriverId;
   final String? originalDriverName;
   final String? originalDriverPhone;
@@ -660,6 +662,9 @@ class RideRequest {
     if (pickupAt != null) {
       return pickupAt!.isAfter(DateTime.now().add(const Duration(minutes: 30)));
     }
+    if (isBooked && (timeBadge == 'Scheduled' || (timeBadge != null && timeBadge != 'Pickup now'))) {
+      return true;
+    }
     return false;
   }
 
@@ -671,10 +676,80 @@ class RideRequest {
     if (isOverdueBooking) return true;
     if (isBooked) {
       if (timeBadge == 'Pickup now') return true;
-      if (pickupAt == null) return true;
-      return !pickupAt!.isAfter(DateTime.now().add(const Duration(minutes: 30)));
+      if (pickupAt != null) {
+        return !pickupAt!.isAfter(DateTime.now().add(const Duration(minutes: 30)));
+      }
+      return false;
     }
     return false;
+  }
+
+  RideRequest copyWith({
+    String? id,
+    String? datetimeLabel,
+    String? from,
+    String? to,
+    String? distance,
+    String? duration,
+    String? timeBadge,
+    RideStatus? status,
+    int? offerCount,
+    String? returnLabel,
+    bool? isRoundTrip,
+    String? selectedOfferId,
+    String? serverStatus,
+    String? shortId,
+    String? createdAtLabel,
+    int? viewCount,
+    String? currency,
+    bool? hasLostItemRequest,
+    bool? hasReportedRide,
+    bool? hasActiveSupport,
+    LostItemDetails? lostItem,
+    String? startPin,
+    double? tipAmount,
+    String? shareToken,
+    String? shareUrl,
+    DateTime? pickupAt,
+    bool? isOverdue,
+    bool? isChatLocked,
+    String? originalDriverId,
+    String? originalDriverName,
+    String? originalDriverPhone,
+  }) {
+    return RideRequest(
+      id: id ?? this.id,
+      datetimeLabel: datetimeLabel ?? this.datetimeLabel,
+      from: from ?? this.from,
+      to: to ?? this.to,
+      distance: distance ?? this.distance,
+      duration: duration ?? this.duration,
+      timeBadge: timeBadge ?? this.timeBadge,
+      status: status ?? this.status,
+      offerCount: offerCount ?? this.offerCount,
+      returnLabel: returnLabel ?? this.returnLabel,
+      isRoundTrip: isRoundTrip ?? this.isRoundTrip,
+      selectedOfferId: selectedOfferId ?? this.selectedOfferId,
+      serverStatus: serverStatus ?? this.serverStatus,
+      shortId: shortId ?? this.shortId,
+      createdAtLabel: createdAtLabel ?? this.createdAtLabel,
+      viewCount: viewCount ?? this.viewCount,
+      currency: currency ?? this.currency,
+      hasLostItemRequest: hasLostItemRequest ?? this.hasLostItemRequest,
+      hasReportedRide: hasReportedRide ?? this.hasReportedRide,
+      hasActiveSupport: hasActiveSupport ?? this.hasActiveSupport,
+      lostItem: lostItem ?? this.lostItem,
+      startPin: startPin ?? this.startPin,
+      tipAmount: tipAmount ?? this.tipAmount,
+      shareToken: shareToken ?? this.shareToken,
+      shareUrl: shareUrl ?? this.shareUrl,
+      pickupAt: pickupAt ?? this.pickupAt,
+      isOverdue: isOverdue ?? this.isOverdue,
+      isChatLocked: isChatLocked ?? this.isChatLocked,
+      originalDriverId: originalDriverId ?? this.originalDriverId,
+      originalDriverName: originalDriverName ?? this.originalDriverName,
+      originalDriverPhone: originalDriverPhone ?? this.originalDriverPhone,
+    );
   }
 }
 
@@ -939,6 +1014,7 @@ class DriverRequest {
     this.startPin,
     this.tipAmount,
     this.isOverdue = false,
+    this.isChatLocked = false,
     this.originalDriverId,
   });
 
@@ -991,6 +1067,7 @@ class DriverRequest {
   final String? startPin;
   final double? tipAmount;
   final bool isOverdue;
+  final bool isChatLocked;
 
   bool get isOverdueBooking {
     if (isOverdue) return true;
@@ -1027,6 +1104,7 @@ class DriverRequest {
     LostItemDetails? lostItem,
     double? tipAmount,
     bool? isOverdue,
+    bool? isChatLocked,
   }) {
     return DriverRequest(
       id: id,
@@ -1073,6 +1151,7 @@ class DriverRequest {
       startPin: startPin,
       tipAmount: tipAmount ?? this.tipAmount,
       isOverdue: isOverdue ?? this.isOverdue,
+      isChatLocked: isChatLocked ?? this.isChatLocked,
     );
   }
 }

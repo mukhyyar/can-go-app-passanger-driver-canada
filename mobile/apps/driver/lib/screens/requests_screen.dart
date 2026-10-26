@@ -843,13 +843,26 @@ class _RequestCard extends StatelessWidget {
                       color: GtColors.brand.withValues(alpha: 0.14),
                     ),
                   ),
-                  child: Text(
-                    request.ttlLabel,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: GtColors.brand,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.timer_outlined,
+                        size: 13,
+                        color: GtColors.brand,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        request.ttlLabel == 'Expired'
+                            ? 'Expired'
+                            : 'Expires in ${request.ttlLabel}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: GtColors.brand,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -908,7 +921,10 @@ class _RequestCard extends StatelessWidget {
                         : 'Return trip',
                     isAmber: true,
                   ),
-                if (request.distance.isNotEmpty && request.distance != '—')
+                if (request.distance.isNotEmpty &&
+                    request.distance != '—' &&
+                    request.distance != '0 km' &&
+                    request.distance != '0.0 km')
                   _MetaChip(
                     icon: Icons.straighten_rounded,
                     label: isReturn
@@ -1149,14 +1165,47 @@ class _RouteSegment extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 3),
                 child: Text(
-                  to,
-                  style: const TextStyle(
+                  to.trim().isNotEmpty
+                      ? to.trim()
+                      : (isReturn ? 'Return to $from' : 'As directed'),
+                  style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w500,
                     height: 1.3,
+                    color: to.trim().isEmpty && isReturn
+                        ? const Color(0xFF6B5000)
+                        : null,
                   ),
                 ),
               ),
+              if (isReturn && to.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(
+                        Icons.keyboard_return_rounded,
+                        size: 14,
+                        color: Color(0xFF8A6900),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'Return to $from',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6B5000),
+                          height: 1.25,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
