@@ -56,8 +56,8 @@ export default () => ({
   providers: {
     payment: process.env.PAYMENT_PROVIDER ?? 'dev',
     payout: process.env.PAYOUT_PROVIDER ?? 'dev',
-    sms: process.env.SMS_PROVIDER ?? 'mock',
-    otp: process.env.OTP_PROVIDER ?? 'mock',
+    sms: process.env.SMS_PROVIDER ?? 'twilio',
+    otp: process.env.OTP_PROVIDER ?? 'prisma',
   },
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY,

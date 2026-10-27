@@ -50,7 +50,9 @@ export class PrismaOtpProvider implements OtpProvider {
     );
 
     const debugCode =
-      process.env.NODE_ENV === 'local' || process.env.NODE_ENV === 'development'
+      (process.env.NODE_ENV === 'local' ||
+        process.env.NODE_ENV === 'development') &&
+      this.sms.name === 'mock'
         ? code
         : undefined;
 

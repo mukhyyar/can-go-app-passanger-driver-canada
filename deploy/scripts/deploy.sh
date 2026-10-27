@@ -39,6 +39,15 @@ if [[ -f .env ]]; then
   else
     echo 'APPLE_CLIENT_ID=com.canride.passenger,com.canride.driver' >> .env
   fi
+  for pair in "SMS_PROVIDER=twilio" "OTP_PROVIDER=prisma"; do
+    k="${pair%%=*}"
+    v="${pair#*=}"
+    if grep -q "^${k}=" .env; then
+      sed -i "s|^${k}=.*|${k}=${v}|" .env || true
+    else
+      echo "${k}=${v}" >> .env
+    fi
+  done
 fi
 if [[ -d node_modules ]]; then
   chmod -R u+w node_modules || true
