@@ -34,6 +34,11 @@ echo "==> Backend"
 cd "$APP_ROOT/backend"
 if [[ -f .env ]]; then
   sed -i 's|^GOOGLE_OAUTH_CLIENT_ID=.*|GOOGLE_OAUTH_CLIENT_ID=400688849973-d3h2obnaoghc3ags7gsuo5j4a81drhr1.apps.googleusercontent.com|' .env || true
+  if grep -q '^APPLE_CLIENT_ID=' .env; then
+    sed -i 's|^APPLE_CLIENT_ID=.*|APPLE_CLIENT_ID=com.canride.passenger,com.canride.driver|' .env || true
+  else
+    echo 'APPLE_CLIENT_ID=com.canride.passenger,com.canride.driver' >> .env
+  fi
 fi
 if [[ -d node_modules ]]; then
   chmod -R u+w node_modules || true

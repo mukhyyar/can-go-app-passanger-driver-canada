@@ -32,14 +32,20 @@ export default () => ({
           .filter(Boolean),
       ]),
     ),
-    appleClientIds: (
-      process.env.APPLE_CLIENT_IDS ??
-      process.env.APPLE_CLIENT_ID ??
-      'com.canride.passenger,com.canride.driver'
-    )
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
+    appleClientIds: Array.from(
+      new Set([
+        'com.canride.passenger',
+        'com.canride.driver',
+        ...(
+          process.env.APPLE_CLIENT_IDS ??
+          process.env.APPLE_CLIENT_ID ??
+          ''
+        )
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ]),
+    ),
     /** Local/dev only — never enabled when NODE_ENV is production. */
     localMock:
       process.env.NODE_ENV !== 'production' &&

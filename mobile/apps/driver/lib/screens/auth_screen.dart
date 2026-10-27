@@ -403,17 +403,26 @@ class _AuthScreenState extends State<AuthScreen> {
         }
       }
       final cfg = _oauthConfig?.apple;
-      if (cfg == null || !cfg.enabled) {
-        throw Exception('Apple sign-in is not available right now.');
-      }
-
       // Local Nest mock: collect email/name without a real Apple ID token.
-      if (cfg.localMock) {
+      if (cfg?.localMock == true) {
         setState(() {
           _oauthProvider = 'apple';
           _step = _AuthStep.oauthLocal;
         });
         return;
+      }
+
+      final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS;
+      if (!isApplePlatform && (cfg == null || !cfg.enabled)) {
+        throw Exception('Apple sign-in is not available right now.');
+      }
+
+      if (isApplePlatform) {
+        final isAvailable = await SignInWithApple.isAvailable();
+        if (!isAvailable) {
+          throw Exception('Apple sign-in is not supported on this device.');
+        }
       }
 
       final credential = await SignInWithApple.getAppleIDCredential(

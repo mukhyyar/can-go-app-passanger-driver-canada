@@ -10,5 +10,7 @@
 	<array>
 		<string>merchant.com.canride.passenger</string>
 	</array>
+	<key>aps-environment</key>
+	<string>development</string>
 </dict>
 </plist>
