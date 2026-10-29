@@ -303,26 +303,10 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
     if (submitted == true && mounted) {
       await app.refreshMyRides();
-      final isTerm = (r.status ?? '').toUpperCase() == 'COMPLETED' ||
-          (r.status ?? '').toUpperCase().contains('CANCEL') ||
-          (r.status ?? '').toUpperCase() == 'NO_SHOW' ||
-          (r.status ?? '').toUpperCase() == 'EXPIRED' ||
-          (r.status ?? '').toUpperCase() == 'PAYMENT_FAILED';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isTerm
-                ? 'Report submitted. Admin notified.'
-                : 'Report submitted. Admin notified & support chat enabled.',
-          ),
+        const SnackBar(
+          content: Text('Report submitted. Admin notified.'),
           backgroundColor: GtColors.brand,
-          action: isTerm
-              ? null
-              : SnackBarAction(
-                  label: 'Open Chat',
-                  textColor: Colors.white,
-                  onPressed: () => context.push('/chat/${r.id}'),
-                ),
         ),
       );
       setState(() {});
@@ -732,7 +716,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       children: [
                         Expanded(
                           child: ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
                             children: [
                               if (r.originalDriverId != null &&
                                   (r.status == 'WAITING_FOR_OFFERS' ||
@@ -1299,7 +1283,19 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                               16,
                               12 + MediaQuery.paddingOf(context).bottom,
                             ),
-                            color: Colors.white,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: const Border(
+                                top: BorderSide(color: GtColors.border, width: 1.2),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.06),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, -3),
+                                ),
+                              ],
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -1329,7 +1325,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     icon: const Icon(Icons.flag_outlined, size: 18),
                                     label: const Text('Report an issue'),
                                   ),
-                                  if (!isTerminal && (r.hasReportedRide || r.hasActiveSupport)) ...[
+                                  if (r.hasReportedRide || r.hasActiveSupport) ...[
                                     const SizedBox(height: 8),
                                     OutlinedButton.icon(
                                       onPressed: () => context.push('/chat/${r.id}'),
@@ -1357,7 +1353,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     icon: const Icon(Icons.flag_outlined, size: 18),
                                     label: const Text('Report an issue'),
                                   ),
-                                  if (!isTerminal && (r.hasReportedRide || r.hasActiveSupport)) ...[
+                                  if (r.hasReportedRide || r.hasActiveSupport) ...[
                                     const SizedBox(height: 8),
                                     OutlinedButton.icon(
                                       onPressed: () => context.push('/chat/${r.id}'),
@@ -1554,7 +1550,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _acting ? null : () => _showNotFoundDialog(r),
                       icon: const Icon(Icons.search_off, size: 18),
-                      label: const Text('Not found Anything'),
+                      label: const Text('Item not in vehicle'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF64748B),
                         side: const BorderSide(color: Color(0xFFCBD5E1)),
@@ -1577,6 +1573,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final isFound = status == 'FOUND';
     final isNotFound = status == 'NOT_FOUND';
     final isReturned = status == 'RETURNED';
+    final hasChips = (lost?.contactPhone != null &&
+            lost!.contactPhone!.trim().isNotEmpty) ||
+        !_isTerminal;
 
     Color bgColor;
     Color borderColor;
@@ -1686,7 +1685,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               ],
             ),
             if (lost?.itemDescription != null &&
-                lost!.itemDescription!.trim().isNotEmpty) ...[
+                lost!.itemDescription!.trim().isNotEmpty &&
+                !lost.itemDescription!.trim().startsWith('Type:') &&
+                lost.itemDescription!.trim() != 'LOST_ITEM') ...[
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
@@ -1709,7 +1710,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      lost.itemDescription!,
+                      lost.itemDescription!.trim(),
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -1867,64 +1868,66 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 ),
               ),
             ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (lost?.contactPhone != null &&
-                    lost!.contactPhone!.trim().isNotEmpty) ...[
-                  ActionChip(
-                    avatar: const Icon(Icons.phone,
-                        size: 16, color: Color(0xFF1E40AF)),
-                    label: Text(
-                      'Call (${lost.contactPhone})',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E40AF),
+            if (hasChips) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (lost?.contactPhone != null &&
+                      lost!.contactPhone!.trim().isNotEmpty) ...[
+                    ActionChip(
+                      avatar: const Icon(Icons.phone,
+                          size: 16, color: Color(0xFF1E40AF)),
+                      label: Text(
+                        'Call (${lost.contactPhone})',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E40AF),
+                        ),
                       ),
+                      backgroundColor: const Color(0xFFEFF6FF),
+                      side: const BorderSide(color: Color(0xFFBFDBFE)),
+                      onPressed: () =>
+                          launchUrl(Uri.parse('tel:${lost.contactPhone}')),
                     ),
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    side: const BorderSide(color: Color(0xFFBFDBFE)),
-                    onPressed: () =>
-                        launchUrl(Uri.parse('tel:${lost.contactPhone}')),
-                  ),
-                  ActionChip(
-                    avatar: const Icon(Icons.sms_outlined,
-                        size: 16, color: Color(0xFF1E40AF)),
-                    label: const Text(
-                      'SMS',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E40AF),
+                    ActionChip(
+                      avatar: const Icon(Icons.sms_outlined,
+                          size: 16, color: Color(0xFF1E40AF)),
+                      label: const Text(
+                        'SMS',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E40AF),
+                        ),
                       ),
+                      backgroundColor: const Color(0xFFEFF6FF),
+                      side: const BorderSide(color: Color(0xFFBFDBFE)),
+                      onPressed: () =>
+                          launchUrl(Uri.parse('sms:${lost.contactPhone}')),
                     ),
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    side: const BorderSide(color: Color(0xFFBFDBFE)),
-                    onPressed: () =>
-                        launchUrl(Uri.parse('sms:${lost.contactPhone}')),
-                  ),
+                  ],
+                  if (!_isTerminal)
+                    ActionChip(
+                      avatar: const Icon(Icons.chat_outlined,
+                          size: 16, color: GtColors.brand),
+                      label: const Text(
+                        'Chat in App',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: GtColors.brand,
+                        ),
+                      ),
+                      backgroundColor: const Color(0xFFECFDF5),
+                      side: const BorderSide(color: Color(0xFFA7F3D0)),
+                      onPressed: () => context.push('/chat/${r.id}'),
+                    ),
                 ],
-                if (!_isTerminal)
-                  ActionChip(
-                    avatar: const Icon(Icons.chat_outlined,
-                        size: 16, color: GtColors.brand),
-                    label: const Text(
-                      'Chat in App',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: GtColors.brand,
-                      ),
-                    ),
-                    backgroundColor: const Color(0xFFECFDF5),
-                    side: const BorderSide(color: Color(0xFFA7F3D0)),
-                    onPressed: () => context.push('/chat/${r.id}'),
-                  ),
-              ],
-            ),
+              ),
+            ],
             const SizedBox(height: 14),
             if (isReported) ...[
               Row(
@@ -1950,7 +1953,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     child: OutlinedButton.icon(
                       onPressed: _acting ? null : () => _showNotFoundDialog(r),
                       icon: const Icon(Icons.close, size: 18),
-                      label: const Text('Not found Anything'),
+                      label: const Text('Item not in vehicle'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF64748B),
                         side: const BorderSide(color: Color(0xFFCBD5E1)),
@@ -1979,13 +1982,22 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 ),
               ),
             ] else if (isNotFound) ...[
-              Center(
-                child: TextButton.icon(
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
                   onPressed: _acting ? null : () => _showFoundDialog(r),
                   icon: const Icon(Icons.search, size: 16),
-                  label: const Text('Found it later? Tap here to report found'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: GtColors.brand,
+                  label: const Text('Found item later? Report here'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF334155),
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 11,
+                      horizontal: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),

@@ -169,6 +169,7 @@ class AppState extends ChangeNotifier {
     }
 
     loaded = true;
+    unawaited(loadOAuthConfig());
     notifyListeners();
   }
 
@@ -215,7 +216,36 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<OAuthConfig> loadOAuthConfig() => api.auth.oauthConfig();
+  OAuthConfig? _cachedOAuthConfig;
+  Future<OAuthConfig>? _loadingOAuthConfig;
+
+  OAuthConfig? get cachedOAuthConfig => _cachedOAuthConfig;
+
+  Future<OAuthConfig> loadOAuthConfig({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedOAuthConfig != null) {
+      return _cachedOAuthConfig!;
+    }
+    if (!forceRefresh && _loadingOAuthConfig != null) {
+      return _loadingOAuthConfig!;
+    }
+    final future = () async {
+      try {
+        final cfg = await api.auth.oauthConfig();
+        _cachedOAuthConfig = cfg;
+        return cfg;
+      } catch (_) {
+        if (_cachedOAuthConfig != null) return _cachedOAuthConfig!;
+        return OAuthConfig(
+          google: OAuthProviderConfig(enabled: true),
+          apple: OAuthProviderConfig(enabled: true),
+        );
+      } finally {
+        _loadingOAuthConfig = null;
+      }
+    }();
+    _loadingOAuthConfig = future;
+    return future;
+  }
 
   Future<OAuthResult> oauthGoogle({
     String? idToken,

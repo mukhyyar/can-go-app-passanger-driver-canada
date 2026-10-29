@@ -16,9 +16,28 @@ class DocumentsScreen extends StatefulWidget {
   State<DocumentsScreen> createState() => _DocumentsScreenState();
 }
 
+class _StagedDoc {
+  final String docType;
+  final Uint8List bytes;
+  final String filename;
+  final String? expiresAt;
+  final String? customLabel;
+  final bool isResubmission;
+
+  const _StagedDoc({
+    required this.docType,
+    required this.bytes,
+    required this.filename,
+    this.expiresAt,
+    this.customLabel,
+    this.isResubmission = false,
+  });
+}
+
 class _DocumentsScreenState extends State<DocumentsScreen> {
   bool _busy = false;
   bool _submitted = false;
+  final Map<String, _StagedDoc> _stagedDocs = {};
   final Map<String, Uint8List> _previewBytes = {};
   final Set<String> _previewFailed = {};
   late final TextEditingController _usDocDescController;
@@ -94,11 +113,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       ),
     );
     if (confirmed == true && mounted) {
-      await _pickAndUpload(docType, isResubmission: true);
+      await _pickDocument(docType, isResubmission: true);
     }
   }
 
-  Future<void> _pickAndUpload(String docType, {bool isResubmission = false}) async {
+  Future<void> _pickDocument(String docType, {bool isResubmission = false}) async {
     final picker = ImagePicker();
     final file = await picker.pickImage(
       source: ImageSource.gallery,
@@ -121,55 +140,99 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           '${pickedDate.year.toString().padLeft(4, '0')}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
     }
 
-    final app = context.read<AppState>();
-    setState(() => _busy = true);
     try {
       final bytes = await file.readAsBytes();
-      final existingDoc = app.documentForType(docType);
-      final existingId = existingDoc?['id']?.toString();
-      final isReupload = app.isDocumentReuploadRequested(existingDoc);
+      if (!mounted) return;
       final customLabel = docType == 'us_transit_permit'
           ? (_usDocDescController.text.trim().isNotEmpty
               ? _usDocDescController.text.trim()
               : null)
           : null;
 
-      if (isReupload && existingId != null) {
-        await app.reuploadKycBytes(
-          docType: docType,
-          documentId: existingId,
-          bytes: bytes,
-          filename: file.name,
-          expiresAt: expiresAt,
-          customLabel: customLabel,
-        );
-      } else {
-        await app.uploadKycBytes(
+      setState(() {
+        _stagedDocs[docType] = _StagedDoc(
           docType: docType,
           bytes: bytes,
           filename: file.name,
           expiresAt: expiresAt,
           customLabel: customLabel,
+          isResubmission: isResubmission,
         );
-      }
-      final id = app.documentForType(docType)?['id']?.toString() ?? existingId;
-      if (id != null && mounted) {
-        app.rememberDocumentPreview(id, bytes);
-        setState(() {
-          _previewBytes[id] = bytes;
-          _previewFailed.remove(id);
-          _submitted = false;
-        });
-      }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Document selected. Tap "Save documents (${_stagedDocs.length})" at the bottom to upload.',
+          ),
+        ),
+      );
+    } catch (e) {
       if (mounted) {
-        final snackMsg = isResubmission
-            ? 'Document resubmitted for review. Your profile is on hold.'
-            : (isReupload ? 'Re-uploaded $docType' : 'Uploaded $docType');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(snackMsg)),
+          SnackBar(content: Text('Failed to read selected file: ${cleanErrorMessage(e)}')),
         );
-        await _loadPreviews();
       }
+    }
+  }
+
+  Future<void> _saveAllStaged() async {
+    if (_stagedDocs.isEmpty) return;
+    final app = context.read<AppState>();
+    setState(() => _busy = true);
+    try {
+      final docKeys = _stagedDocs.keys.toList();
+      for (final key in docKeys) {
+        final staged = _stagedDocs[key]!;
+        final existingDoc = app.documentForType(staged.docType);
+        final existingId = existingDoc?['id']?.toString();
+        final isReupload = app.isDocumentReuploadRequested(existingDoc);
+        final customLabel = staged.docType == 'us_transit_permit'
+            ? (_usDocDescController.text.trim().isNotEmpty
+                ? _usDocDescController.text.trim()
+                : staged.customLabel)
+            : staged.customLabel;
+
+        if (isReupload && existingId != null) {
+          await app.reuploadKycBytes(
+            docType: staged.docType,
+            documentId: existingId,
+            bytes: staged.bytes,
+            filename: staged.filename,
+            expiresAt: staged.expiresAt,
+            customLabel: customLabel,
+          );
+        } else {
+          await app.uploadKycBytes(
+            docType: staged.docType,
+            bytes: staged.bytes,
+            filename: staged.filename,
+            expiresAt: staged.expiresAt,
+            customLabel: customLabel,
+          );
+        }
+
+        final id = app.documentForType(staged.docType)?['id']?.toString() ?? existingId;
+        if (id != null && mounted) {
+          app.rememberDocumentPreview(id, staged.bytes);
+          setState(() {
+            _previewBytes[id] = staged.bytes;
+            _previewFailed.remove(id);
+          });
+        }
+        _stagedDocs.remove(key);
+      }
+
+      setState(() => _submitted = true);
+      await app.syncDocumentsStatus();
+      if (!mounted) return;
+      await _loadPreviews();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Documents uploaded and submitted for review.'),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -183,6 +246,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
 
   Future<void> _deleteDoc(Map<String, dynamic> doc) async {
     final id = doc['id']?.toString();
+    final docType = doc['docType']?.toString();
     if (id == null) return;
     final ok = await showDialog<bool>(
       context: context,
@@ -203,6 +267,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     setState(() => _busy = true);
     try {
       await context.read<AppState>().deleteDocument(id);
+      if (docType != null) {
+        _stagedDocs.remove(docType);
+      }
       _previewBytes.remove(id);
       _previewFailed.remove(id);
       if (mounted) {
@@ -249,7 +316,33 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  void _handleBack() {
+  Future<void> _handleBack() async {
+    if (_stagedDocs.isNotEmpty) {
+      final shouldDiscard = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Discard unsaved documents?'),
+          content: const Text(
+            'You have selected documents that have not been uploaded yet. Leaving will discard them.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep Editing'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Discard & Exit'),
+            ),
+          ],
+        ),
+      );
+      if (shouldDiscard != true || !mounted) return;
+      setState(() => _stagedDocs.clear());
+    }
+
+    if (!mounted) return;
     if (context.canPop()) {
       context.pop();
     } else {
@@ -497,11 +590,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        isAllUnderReview
-                            ? 'Tap a photo to preview full screen. All documents are currently locked under review.'
-                            : s.hasReuploadRequest
-                                ? 'Please re-upload the requested document(s) with clear, legible photos.'
-                                : 'Tap a photo to preview full screen. Upload all required documents to submit.',
+                        _stagedDocs.isNotEmpty
+                            ? 'You have ${_stagedDocs.length} unsaved document(s). Tap "Save documents" below to upload them.'
+                            : isAllUnderReview
+                                ? 'Tap a photo to preview full screen. All documents are currently locked under review.'
+                                : s.hasReuploadRequest
+                                    ? 'Please re-upload the requested document(s) with clear, legible photos.'
+                                    : 'Tap a photo to preview full screen. Upload all required documents to submit.',
                         style: const TextStyle(
                           color: GtColors.textSecondary,
                           fontSize: 13,
@@ -514,12 +609,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 _DocSlot(
                   title: 'Selfie with driving license',
                   doc: s.documentForType('selfie'),
+                  stagedDoc: _stagedDocs['selfie'],
+                  onRemoveStaged: () => setState(() => _stagedDocs.remove('selfie')),
                   previewBytes: _previewBytes[s.documentForType('selfie')?['id']],
                   previewFailed: _previewFailed
                       .contains(s.documentForType('selfie')?['id']?.toString()),
                   busy: _busy,
-                  onUpload: () => _pickAndUpload('selfie'),
-                  onReplace: () => _pickAndUpload('selfie'),
+                  onUpload: () => _pickDocument('selfie'),
+                  onReplace: () => _pickDocument('selfie'),
                   onResubmit: () => _confirmAndResubmit('selfie', 'Selfie with driving license'),
                   onDelete: (doc) => _deleteDoc(doc),
                   onPreview: _openPreview,
@@ -532,12 +629,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 _DocSlot(
                   title: 'Driving license',
                   doc: s.documentForType('license'),
+                  stagedDoc: _stagedDocs['license'],
+                  onRemoveStaged: () => setState(() => _stagedDocs.remove('license')),
                   previewBytes: _previewBytes[s.documentForType('license')?['id']],
                   previewFailed: _previewFailed
                       .contains(s.documentForType('license')?['id']?.toString()),
                   busy: _busy,
-                  onUpload: () => _pickAndUpload('license'),
-                  onReplace: () => _pickAndUpload('license'),
+                  onUpload: () => _pickDocument('license'),
+                  onReplace: () => _pickDocument('license'),
                   onResubmit: () => _confirmAndResubmit('license', 'Driving license'),
                   onDelete: (doc) => _deleteDoc(doc),
                   onPreview: _openPreview,
@@ -553,40 +652,47 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: isAllUnderReview
-                ? const GtGreenButton(
-                    label: 'Documents under review',
-                    onPressed: null,
+            child: _stagedDocs.isNotEmpty
+                ? GtGreenButton(
+                    label: _busy
+                        ? 'Uploading...'
+                        : 'Save documents (${_stagedDocs.length})',
+                    onPressed: _busy ? null : _saveAllStaged,
                   )
-                : s.hasReuploadRequest
+                : isAllUnderReview
                     ? const GtGreenButton(
-                        label: 'Re-upload requested document(s)',
+                        label: 'Documents under review',
                         onPressed: null,
                       )
-                    : GtGreenButton(
-                        label: s.hasAllRequiredDocuments ? 'Submit documents' : 'Save',
-                        onPressed: _busy
-                            ? null
-                            : () async {
-                                if (s.hasAllRequiredDocuments) {
-                                  setState(() => _submitted = true);
-                                  await s.syncDocumentsStatus();
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Documents submitted for review'),
-                                      ),
-                                    );
-                                  }
-                                } else {
-                                  if (context.canPop()) {
-                                    context.pop();
-                                  } else {
-                                    context.go('/');
-                                  }
-                                }
-                              },
-                      ),
+                    : s.hasReuploadRequest
+                        ? const GtGreenButton(
+                            label: 'Re-upload requested document(s)',
+                            onPressed: null,
+                          )
+                        : GtGreenButton(
+                            label: s.hasAllRequiredDocuments ? 'Submit documents' : 'Save',
+                            onPressed: _busy
+                                ? null
+                                : () async {
+                                    if (s.hasAllRequiredDocuments) {
+                                      setState(() => _submitted = true);
+                                      await s.syncDocumentsStatus();
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Documents submitted for review'),
+                                        ),
+                                      );
+                                    } else {
+                                      if (!context.mounted) return;
+                                      if (context.canPop()) {
+                                        context.pop();
+                                      } else {
+                                        context.go('/');
+                                      }
+                                    }
+                                  },
+                          ),
           ),
         ],
       ),
@@ -623,6 +729,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 : (val) {
                     setState(() {
                       _optInUsTransit = val ?? false;
+                      if (!_optInUsTransit) {
+                        _stagedDocs.remove('us_transit_permit');
+                      }
                     });
                   },
           ),
@@ -676,12 +785,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             _DocSlot(
               title: 'U.S. Transit & Travel Authorization',
               doc: transitDoc,
+              stagedDoc: _stagedDocs['us_transit_permit'],
+              onRemoveStaged: () => setState(() => _stagedDocs.remove('us_transit_permit')),
               previewBytes: _previewBytes[transitDoc?['id']],
               previewFailed: _previewFailed
                   .contains(transitDoc?['id']?.toString()),
               busy: _busy,
-              onUpload: () => _pickAndUpload('us_transit_permit'),
-              onReplace: () => _pickAndUpload('us_transit_permit'),
+              onUpload: () => _pickDocument('us_transit_permit'),
+              onReplace: () => _pickDocument('us_transit_permit'),
               onResubmit: () => _confirmAndResubmit(
                 'us_transit_permit',
                 'U.S. Transit Document',
@@ -735,6 +846,8 @@ class _DocSlot extends StatelessWidget {
     this.onResubmit,
     this.isUnderReview = false,
     this.feedback,
+    this.stagedDoc,
+    this.onRemoveStaged,
   });
 
   final String title;
@@ -750,14 +863,17 @@ class _DocSlot extends StatelessWidget {
   final VoidCallback? onResubmit;
   final bool isUnderReview;
   final String? feedback;
+  final _StagedDoc? stagedDoc;
+  final VoidCallback? onRemoveStaged;
 
   @override
   Widget build(BuildContext context) {
+    final hasStaged = stagedDoc != null;
     final hasDoc = doc != null;
     final s = context.watch<AppState>();
     final isExpired = s.isDocumentExpired(doc);
     final isExpiring = s.isDocumentExpiringSoon(doc);
-    final expiresAtStr = doc?['expiresAt']?.toString();
+    final expiresAtStr = stagedDoc?.expiresAt ?? doc?['expiresAt']?.toString();
     final expiryFormatted = expiresAtStr != null && expiresAtStr.length >= 10
         ? expiresAtStr.substring(0, 10)
         : null;
@@ -767,17 +883,21 @@ class _DocSlot extends StatelessWidget {
     final isRejected = status == 'REJECTED' || isNeedsResubmission;
     final slotUnderReview = isUnderReview && !isExpired && !isRejected;
 
-    final statusColor = isExpired
-        ? Colors.red.shade700
-        : status == 'APPROVED'
-            ? GtColors.brand
-            : isNeedsResubmission
-                ? Colors.amber.shade900
-                : isRejected
-                    ? Colors.orange.shade800
-                    : slotUnderReview || status == 'PENDING'
-                        ? Colors.amber.shade900
-                        : GtColors.textSecondary;
+    final statusColor = hasStaged
+        ? Colors.amber.shade900
+        : isExpired
+            ? Colors.red.shade700
+            : status == 'APPROVED'
+                ? GtColors.brand
+                : isNeedsResubmission
+                    ? Colors.amber.shade900
+                    : isRejected
+                        ? Colors.orange.shade800
+                        : slotUnderReview || status == 'PENDING'
+                            ? Colors.amber.shade900
+                            : GtColors.textSecondary;
+
+    final customLabel = stagedDoc?.customLabel ?? doc?['customLabel']?.toString();
 
     return GtCard(
       child: Column(
@@ -793,11 +913,10 @@ class _DocSlot extends StatelessWidget {
                       title,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    if (doc?['customLabel'] != null &&
-                        (doc!['customLabel'].toString()).trim().isNotEmpty) ...[
+                    if (customLabel != null && customLabel.trim().isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        'Type: ${doc!['customLabel']}',
+                        'Type: $customLabel',
                         style: const TextStyle(
                           fontSize: 12,
                           color: GtColors.textSecondary,
@@ -808,22 +927,27 @@ class _DocSlot extends StatelessWidget {
                     if (expiryFormatted != null) ...[
                       const SizedBox(height: 2),
                       Text(
-                        isExpired
-                            ? 'Expired: $expiryFormatted'
-                            : 'Expires: $expiryFormatted',
+                        hasStaged
+                            ? 'Expires: $expiryFormatted'
+                            : isExpired
+                                ? 'Expired: $expiryFormatted'
+                                : 'Expires: $expiryFormatted',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isExpired
-                              ? Colors.red.shade700
-                              : isExpiring
-                                  ? Colors.orange.shade800
-                                  : GtColors.textSecondary,
+                          color: hasStaged
+                              ? GtColors.textSecondary
+                              : isExpired
+                                  ? Colors.red.shade700
+                                  : isExpiring
+                                      ? Colors.orange.shade800
+                                      : GtColors.textSecondary,
                           fontWeight:
-                              isExpired ? FontWeight.w600 : FontWeight.normal,
+                              (!hasStaged && isExpired) ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ],
-                    if (isRejected &&
+                    if (!hasStaged &&
+                        isRejected &&
                         feedback != null &&
                         feedback!.isNotEmpty) ...[
                       const SizedBox(height: 6),
@@ -862,7 +986,24 @@ class _DocSlot extends StatelessWidget {
                   ],
                 ),
               ),
-              if (hasDoc)
+              if (hasStaged)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    border: Border.all(color: Colors.amber.shade300),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Selected (Pending save)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                )
+              else if (hasDoc)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
@@ -912,9 +1053,11 @@ class _DocSlot extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InkWell(
-                onTap: previewBytes != null && !busy
-                    ? () => onPreview(previewBytes!, title)
-                    : (hasDoc || slotUnderReview ? null : (busy ? null : onUpload)),
+                onTap: hasStaged
+                    ? () => onPreview(stagedDoc!.bytes, title)
+                    : previewBytes != null && !busy
+                        ? () => onPreview(previewBytes!, title)
+                        : (hasDoc || slotUnderReview ? null : (busy ? null : onUpload)),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   width: 96,
@@ -922,11 +1065,27 @@ class _DocSlot extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: GtColors.bgGrey,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: GtColors.border),
+                    border: Border.all(
+                      color: hasStaged ? Colors.amber.shade400 : GtColors.border,
+                      width: hasStaged ? 1.5 : 1.0,
+                    ),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: previewBytes != null
-                      ? Image.memory(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (hasStaged)
+                        Image.memory(
+                          stagedDoc!.bytes,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.broken_image_outlined,
+                            size: 36,
+                            color: GtColors.textMuted,
+                          ),
+                        )
+                      else if (previewBytes != null)
+                        Image.memory(
                           previewBytes!,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(
@@ -935,27 +1094,47 @@ class _DocSlot extends StatelessWidget {
                             color: GtColors.textMuted,
                           ),
                         )
-                      : hasDoc
-                          ? (previewFailed
-                              ? const Icon(
-                                  Icons.broken_image_outlined,
-                                  size: 36,
-                                  color: GtColors.textMuted,
-                                )
-                              : const Center(
-                                  child: SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
+                      else if (hasDoc)
+                        (previewFailed
+                            ? const Icon(
+                                Icons.broken_image_outlined,
+                                size: 36,
+                                color: GtColors.textMuted,
+                              )
+                            : const Center(
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
                                   ),
-                                ))
-                          : const Icon(
-                              Icons.add,
-                              size: 36,
-                              color: GtColors.textMuted,
+                                ),
+                              ))
+                      else
+                        const Icon(
+                          Icons.add,
+                          size: 36,
+                          color: GtColors.textMuted,
+                        ),
+                      if (hasStaged || previewBytes != null)
+                        Positioned(
+                          right: 4,
+                          bottom: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(4),
                             ),
+                            child: const Icon(
+                              Icons.zoom_in,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -963,7 +1142,23 @@ class _DocSlot extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (isLocked) ...[
+                    if (hasStaged) ...[
+                      OutlinedButton.icon(
+                        onPressed: busy ? null : onReplace,
+                        icon: const Icon(Icons.swap_horiz, size: 18),
+                        label: const Text('Replace file'),
+                      ),
+                      const SizedBox(height: 6),
+                      TextButton.icon(
+                        onPressed: busy ? null : onRemoveStaged,
+                        icon: const Icon(Icons.close, size: 18),
+                        label: const Text('Remove file'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red.shade700,
+                        ),
+                      ),
+                    ]
+                    else if (isLocked) ...[
                       const Text(
                         'Approved — locked by admin',
                         style: TextStyle(

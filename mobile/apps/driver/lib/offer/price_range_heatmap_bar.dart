@@ -145,52 +145,62 @@ class PriceRangeHeatmapBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header row: Title & Real-time Status Badge
-          Row(
-            children: [
-              const Icon(
-                Icons.analytics_outlined,
-                size: 16,
-                color: GtColors.textSecondary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  isRoundTrip
-                      ? 'Total eligible price range'
-                      : 'Eligible price range',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: GtColors.text,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: statusBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: statusColor.withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Row(
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(statusIcon, size: 12, color: statusColor),
-                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.analytics_outlined,
+                      size: 16,
+                      color: GtColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
                     Text(
-                      statusText,
-                      style: TextStyle(
-                        fontSize: 11,
+                      isRoundTrip
+                          ? 'Total eligible price range'
+                          : 'Eligible price range',
+                      style: const TextStyle(
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: statusColor,
+                        color: GtColors.text,
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, size: 12, color: statusColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
 

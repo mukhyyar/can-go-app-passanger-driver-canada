@@ -36,9 +36,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   late OfferDraft _draft;
   final _outCtrl = TextEditingController();
   final _retCtrl = TextEditingController();
-  final NoteTranslationService _translator = PassthroughNoteTranslation();
-  String? _translatedNote;
-  bool _translating = false;
   Timer? _refreshTimer;
 
   @override
@@ -328,24 +325,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     }
   }
 
-  Future<void> _translate() async {
-    final note = _request?.comment;
-    if (note == null || note.isEmpty) return;
-    setState(() => _translating = true);
-    final result = await _translator.translate(note);
-    if (!mounted) return;
-    setState(() {
-      _translating = false;
-      _translatedNote = result;
-    });
-    if (result == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Translation service is not configured yet'),
-        ),
-      );
-    }
-  }
 
   Future<void> _withdraw() async {
     final offer = _request?.myOffer;
@@ -471,7 +450,35 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         ? _availableRoutes[_selectedRouteIndex]
         : null;
     final String currentDistanceLabel;
-    if (selectedRoute != null) {
+    final hasReqDistance = req.distance.isNotEmpty &&
+        req.distance != '—' &&
+        req.distance != '0 km' &&
+        req.distance != '0.0 km';
+    final hasReqDuration = req.duration.isNotEmpty && req.duration != '—';
+
+    if (_selectedRouteIndex > 0 && selectedRoute != null) {
+      final km = selectedRoute.distanceKm;
+      final kmStr = km == km.roundToDouble()
+          ? '${km.round()} km'
+          : '${km.toStringAsFixed(1)} km';
+      final mins = selectedRoute.durationMin;
+      final durStr = mins >= 60
+          ? '~ ${mins ~/ 60} h ${mins % 60} min'
+          : '~ $mins min';
+      if (req.isRoundTrip) {
+        currentDistanceLabel = '$kmStr × 2 · $durStr × 2';
+      } else {
+        currentDistanceLabel = '$kmStr · $durStr';
+      }
+    } else if (hasReqDistance && hasReqDuration) {
+      final d = req.isRoundTrip && !req.distance.contains('×')
+          ? '${req.distance} × 2'
+          : req.distance;
+      final t = req.isRoundTrip && !req.duration.contains('×')
+          ? '${req.duration} × 2'
+          : req.duration;
+      currentDistanceLabel = '$d · $t';
+    } else if (selectedRoute != null) {
       final km = selectedRoute.distanceKm;
       final kmStr = km == km.roundToDouble()
           ? '${km.round()} km'
@@ -608,7 +615,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   const SizedBox(height: 14),
                   _RouteBlock(
                     request: req,
-                    selectedRoute: selectedRoute,
+                    selectedRoute: _selectedRouteIndex > 0 ? selectedRoute : null,
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -652,35 +659,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: GtColors.border),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_translatedNote ?? req.comment!),
-                          const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: _translating ? null : _translate,
-                            icon: _translating
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.translate,
-                                    color: GtColors.brand,
-                                    size: 18,
-                                  ),
-                            label: const Text(
-                              'Translate',
-                              style: TextStyle(
-                                color: GtColors.brand,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        req.comment!.trim(),
+                        style: const TextStyle(fontSize: 14),
                       ),
                     ),
                   ],
@@ -1455,8 +1436,18 @@ class _RouteBlock extends StatelessWidget {
             : '~ ${selectedRoute!.durationMin} min')
         : null;
 
-    final rawDistance = routeDist ?? request.distance;
-    final rawDuration = routeDur ?? request.duration;
+    final hasReqDist = request.distance.isNotEmpty &&
+        request.distance != '—' &&
+        request.distance != '0 km' &&
+        request.distance != '0.0 km';
+    final hasReqDur = request.duration.isNotEmpty && request.duration != '—';
+
+    final rawDistance = (selectedRoute != null && routeDist != null)
+        ? routeDist
+        : (hasReqDist ? request.distance : (routeDist ?? '—'));
+    final rawDuration = (selectedRoute != null && routeDur != null)
+        ? routeDur
+        : (hasReqDur ? request.duration : (routeDur ?? '—'));
 
     final distanceLabel = (rawDistance.isNotEmpty &&
             rawDistance != '—' &&

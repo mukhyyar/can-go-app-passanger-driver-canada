@@ -216,13 +216,15 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
+                    Flexible(
                       child: Text(
                         widget.request.datetimeLabel,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -233,7 +235,7 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        'Ride #${widget.request.id}',
+                        'Ride #${widget.request.displayId}',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,

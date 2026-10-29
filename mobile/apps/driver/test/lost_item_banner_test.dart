@@ -76,5 +76,31 @@ void main() {
       final untouched = updated.copyWith(status: 'COMPLETED');
       expect(untouched.hasLostItemRequest, isTrue);
     });
+
+    test('driverRequestFromServer maps lostItem with NOT_FOUND status and driver note', () {
+      final json = {
+        'id': 'trip-completed-lost-1',
+        'pickupAt': '2026-10-29T16:00:00.000Z',
+        'fromLabel': 'Toronto Pearson Airport',
+        'toLabel': 'Downtown',
+        'status': 'COMPLETED',
+        'hasLostItemRequest': true,
+        'lostItem': {
+          'caseId': 'case-1',
+          'status': 'NOT_FOUND',
+          'itemDescription': null,
+          'driverNote': 'not found anything',
+          'returnFeeAmount': 20.0,
+          'returnFeePaid': false,
+        },
+      };
+
+      final req = driverRequestFromServer(json);
+      expect(req.lostItem, isNotNull);
+      expect(req.lostItem!.status, equals('NOT_FOUND'));
+      expect(req.lostItem!.isNotFound, isTrue);
+      expect(req.lostItem!.itemDescription, isNull);
+      expect(req.lostItem!.driverNote, equals('not found anything'));
+    });
   });
 }

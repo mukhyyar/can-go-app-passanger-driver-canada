@@ -205,6 +205,41 @@ void main() {
       // Broken / misleading "0 km" chip should NOT be rendered
       expect(find.text('0 km'), findsNothing);
     });
+
+    testWidgets('RequestDetailScreen uses canonical request distance and duration matching passenger app',
+        (tester) async {
+      final appState = _TestAppState();
+      appState.hasSeenWelcome = true;
+      appState.loaded = true;
+
+      final req = const DriverRequest(
+        id: 'req_match_passenger',
+        datetimeLabel: 'Wed 28 Oct, 23:50',
+        from: 'Toronto Islands',
+        to: 'Creative Playzone',
+        distance: '25.5 km',
+        duration: '~ 37 min',
+        vehicleNeed: 'Economy',
+        passengers: 1,
+        status: 'WAITING_FOR_OFFERS',
+      );
+      appState.openRequests = [req];
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: appState,
+          child: const MaterialApp(
+            home: RequestDetailScreen(requestId: 'req_match_passenger'),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // Top route block must strictly render the canonical request duration (~ 37 min) and distance (25.5 km)
+      expect(find.text('~ 37 min'), findsAtLeastNWidgets(1));
+      expect(find.text('25.5 km'), findsAtLeastNWidgets(1));
+    });
   });
 }
 
@@ -220,4 +255,14 @@ class _TestAppState extends AppState {
 
   @override
   Future<void> startMarketplaceRealtime() async {}
+
+  @override
+  Future<DriverRequest> loadRequestDetail(String id) async {
+    return openRequests.firstWhere((r) => r.id == id);
+  }
+
+  @override
+  Future<List<DriverVehicle>> loadDriverVehicles() async {
+    return const [];
+  }
 }

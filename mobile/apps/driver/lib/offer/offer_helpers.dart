@@ -105,15 +105,3 @@ class OfferDraft {
   @Deprecated('Use driverReceives')
   double get customerTotal => driverReceives;
 }
-
-/// Translation provider abstraction — no fake translations.
-abstract class NoteTranslationService {
-  Future<String?> translate(String text, {String targetLocale = 'en'});
-}
-
-class PassthroughNoteTranslation implements NoteTranslationService {
-  @override
-  Future<String?> translate(String text, {String targetLocale = 'en'}) async {
-    return null;
-  }
-}
