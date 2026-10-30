@@ -57,20 +57,48 @@ class _RideChatScreenState extends State<RideChatScreen> {
       final raw = await app.getChat(widget.rideId);
       final isLockedRaw = raw['isLocked'] == true;
       final lockReasonRaw = raw['lockReason']?.toString();
-      final meId = app.me?['id']?.toString();
+      final meId = app.authUserId ??
+          app.me?['id']?.toString() ??
+          app.me?['user']?['id']?.toString();
+      final passengerUserId = raw['passengerUserId']?.toString();
+      final driverUserId = raw['driverUserId']?.toString();
       final list = (raw['messages'] as List?) ?? const [];
       final parsed = list.whereType<Map>().map((m) {
         final senderId =
             m['senderId']?.toString() ?? m['authorId']?.toString();
-        final role = m['senderRole']?.toString();
+        final role = m['senderRole']?.toString().toUpperCase();
         final rawDt = m['createdAt'];
         DateTime? dt;
         if (rawDt is String) {
           dt = DateTime.tryParse(rawDt)?.toLocal();
         }
+
+        final isPassenger = role == 'PASSENGER';
+        final isDriver = role == 'DRIVER';
+        final isSupport = role == 'SUPPORT';
+
+        final bool isMine;
+        if (isPassenger) {
+          isMine = true;
+        } else if (isDriver || isSupport) {
+          isMine = false;
+        } else if (passengerUserId != null &&
+            senderId == passengerUserId &&
+            passengerUserId != driverUserId) {
+          isMine = true;
+        } else if (driverUserId != null &&
+            senderId == driverUserId &&
+            driverUserId != passengerUserId) {
+          isMine = false;
+        } else if (meId != null && senderId == meId) {
+          isMine = true;
+        } else {
+          isMine = false;
+        }
+
         return _ChatMsg(
           text: m['body']?.toString() ?? '',
-          mine: senderId != null && senderId == meId,
+          mine: isMine,
           senderRole: role,
           createdAt: dt,
         );
@@ -166,9 +194,18 @@ class _RideChatScreenState extends State<RideChatScreen> {
       lockBannerText = 'Chat locked — no show';
     }
 
-    final title = !isTerminal && offer != null
+    final driverName = offer?.driverName?.trim();
+    final vehicleName = offer != null
         ? '${offer.vehicleBrand} ${offer.vehicleModel}'.trim()
-        : (ride?.shortId != null ? 'Ride #${ride!.shortId}' : 'Ride chat');
+        : '';
+    final isVehicleGeneric = vehicleName.isEmpty ||
+        vehicleName.toLowerCase() == 'primary' ||
+        vehicleName.toLowerCase() == 'vehicle';
+    final title = !isTerminal && driverName != null && driverName.isNotEmpty
+        ? driverName
+        : (!isTerminal && !isVehicleGeneric
+            ? vehicleName
+            : (ride?.shortId != null ? 'Ride #${ride!.shortId}' : 'Ride chat'));
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
@@ -221,7 +258,7 @@ class _RideChatScreenState extends State<RideChatScreen> {
                               final isSupport = m.senderRole == 'SUPPORT';
                               final timeStr = _formatTime(m.createdAt);
                               final roleLabel = m.mine
-                                  ? 'Rider (You)'
+                                  ? 'Passenger (You)'
                                   : (isSupport ? 'Can-Ride Support' : 'Driver');
                               final roleIcon = m.mine
                                   ? Icons.person

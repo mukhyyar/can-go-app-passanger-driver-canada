@@ -448,7 +448,7 @@ export class MarketplaceController {
 
   @Post('rides/:rideId/lost-item/pay-fee')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.PASSENGER)
+  @Roles(UserRole.PASSENGER, UserRole.DRIVER)
   payLostItemFee(
     @CurrentUser() user: AuthUser,
     @Param('rideId') rideId: string,

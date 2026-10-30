@@ -82,7 +82,51 @@ String _cleanRawString(String raw, {required String fallback}) {
     return fallback;
   }
 
+  // Handle illegal transition errors into user-friendly messages
+  if (cleaned.contains('Illegal transition') ||
+      cleaned.contains('Cannot update trip status')) {
+    final upper = cleaned.toUpperCase();
+    if (upper.contains('IN_PROGRESS') ||
+        upper.contains('TRIP_STARTED') ||
+        cleaned.toLowerCase().contains('in progress')) {
+      return 'This trip is already in progress.';
+    }
+    if (upper.contains('COMPLETED') ||
+        cleaned.toLowerCase().contains('completed')) {
+      return 'This trip has already been completed.';
+    }
+  }
+
+  // Replace any raw status enums (e.g. IN_PROGRESS -> In progress)
+  cleaned = _humanizeStatusEnums(cleaned);
+
   return cleaned;
+}
+
+String _humanizeStatusEnums(String text) {
+  var result = text;
+  final statusMap = <String, String>{
+    'IN_PROGRESS': 'In progress',
+    'TRIP_STARTED': 'Trip started',
+    'DRIVER_ARRIVED': 'Driver arrived',
+    'DRIVER_EN_ROUTE': 'Driver en route',
+    'WAITING_FOR_OFFERS': 'Waiting for offers',
+    'OFFER_SELECTION': 'Offer selection',
+    'PAYMENT_PENDING': 'Payment pending',
+    'BOOKED': 'Booked',
+    'COMPLETED': 'Completed',
+    'NO_SHOW': 'No-show',
+    'PASSENGER_CANCELLED': 'Cancelled by passenger',
+    'DRIVER_CANCELLED': 'Cancelled by driver',
+    'ADMIN_CANCELLED': 'Cancelled by admin',
+    'PAYMENT_FAILED': 'Payment failed',
+    'EXPIRED': 'Expired',
+  };
+
+  for (final entry in statusMap.entries) {
+    result = result.replaceAll(entry.key, entry.value);
+  }
+  return result;
 }
 
 /// Extension on [BuildContext] to show clean, user-friendly error SnackBars.

@@ -162,7 +162,7 @@ class MockData {
           carrierId: '439529',
           passengers: 7,
           reviews: const [
-            Review(stars: 5, text: 'Punctual driver', fromLanguage: 'French'),
+            Review(stars: 5, text: 'Punctual driver'),
           ],
         ),
         Offer(
@@ -181,7 +181,7 @@ class MockData {
           passengers: 3,
           yearsWithPlatform: 2,
           reviews: const [
-            Review(stars: 5, text: 'Punctual driver', fromLanguage: 'French'),
+            Review(stars: 5, text: 'Punctual driver'),
             Review(stars: 5, text: 'Clean car and polite'),
           ],
         ),

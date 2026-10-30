@@ -31,6 +31,21 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
   Map<String, dynamic>? _tracking;
   Timer? _trackingPoll;
 
+  int? _extractRatingStars(Map<String, dynamic>? myRating) {
+    if (myRating == null) return null;
+    final comm = myRating['communicationStars'];
+    final drv = myRating['driverStars'];
+    final veh = myRating['vehicleStars'];
+    final parsedComm = comm is int ? comm : int.tryParse('$comm');
+    final parsedDrv = drv is int ? drv : int.tryParse('$drv');
+    final parsedVeh = veh is int ? veh : int.tryParse('$veh');
+    if (parsedComm != null && parsedDrv != null && parsedVeh != null) {
+      return ((parsedComm + parsedDrv + parsedVeh) / 3.0).round().clamp(1, 5);
+    }
+    final s = myRating['stars'];
+    return s is int ? s : int.tryParse('$s');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -98,8 +113,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       _loading = false;
       if (myRating != null) {
         _alreadyRated = true;
-        final s = myRating['stars'];
-        _myRatingStars = s is int ? s : int.tryParse('$s');
+        _myRatingStars = _extractRatingStars(myRating);
       }
     });
     _ensureTrackingPoll();
@@ -124,8 +138,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
           if (myRating != null) {
             setState(() {
               _alreadyRated = true;
-              final s = myRating['stars'];
-              _myRatingStars = s is int ? s : int.tryParse('$s');
+              _myRatingStars = _extractRatingStars(myRating);
             });
             return;
           }
@@ -429,6 +442,29 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               );
             }
 
+            void updateOverall(int newOverall) {
+              if (overall != newOverall) {
+                overall = newOverall;
+                selectedSuggestions.clear();
+                commentCtrl.clear();
+              }
+            }
+
+            void setOverallAndCategories(int newOverall) {
+              overall = newOverall;
+              communication = newOverall;
+              driver = newOverall;
+              vehicle = newOverall;
+              selectedSuggestions.clear();
+              commentCtrl.clear();
+            }
+
+            void recomputeOverallFromCategories() {
+              final newOverall =
+                  ((communication + driver + vehicle) / 3.0).round().clamp(1, 5);
+              updateOverall(newOverall);
+            }
+
             return SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -477,11 +513,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                         ),
                         onPressed: () => setLocal(() {
                           final newOverall = i + 1;
-                          if (overall != newOverall) {
-                            overall = newOverall;
-                            selectedSuggestions.clear();
-                            commentCtrl.clear();
-                          }
+                          setOverallAndCategories(newOverall);
                         }),
                       );
                     }),
@@ -490,17 +522,26 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   starRow(
                     label: 'Communication',
                     value: communication,
-                    onChanged: (v) => setLocal(() => communication = v),
+                    onChanged: (v) => setLocal(() {
+                      communication = v;
+                      recomputeOverallFromCategories();
+                    }),
                   ),
                   starRow(
                     label: 'Driver',
                     value: driver,
-                    onChanged: (v) => setLocal(() => driver = v),
+                    onChanged: (v) => setLocal(() {
+                      driver = v;
+                      recomputeOverallFromCategories();
+                    }),
                   ),
                   starRow(
                     label: 'Vehicle',
                     value: vehicle,
-                    onChanged: (v) => setLocal(() => vehicle = v),
+                    onChanged: (v) => setLocal(() {
+                      vehicle = v;
+                      recomputeOverallFromCategories();
+                    }),
                   ),
                   const SizedBox(height: 12),
                   GtReviewSuggestions(
@@ -549,10 +590,12 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               : null);
     commentCtrl.dispose();
     if (submitted != true || !mounted) return;
+    final effectiveStars =
+        ((communication + driver + vehicle) / 3.0).round().clamp(1, 5);
     try {
       await context.read<AppState>().rateRide(
         widget.rideId,
-        stars: overall,
+        stars: effectiveStars,
         communicationStars: communication,
         driverStars: driver,
         vehicleStars: vehicle,
@@ -562,7 +605,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       if (mounted) {
         setState(() {
           _alreadyRated = true;
-          _myRatingStars = overall;
+          _myRatingStars = effectiveStars;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Thanks for your feedback')),
@@ -580,7 +623,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       if (msg.contains('already rated')) {
         setState(() {
           _alreadyRated = true;
-          _myRatingStars ??= overall;
+          _myRatingStars ??= effectiveStars;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You already rated this ride')),
@@ -593,6 +636,211 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
         ).showSnackBar(SnackBar(content: Text(displayMsg)));
       }
     }
+  }
+
+  String _friendlyVehicleName(Offer offer) {
+    final raw = offer.displayName.trim();
+    final lower = raw.toLowerCase();
+    if (lower == 'primary' || lower == 'vehicle' || lower.isEmpty) {
+      final vc = offer.vehicleClass.trim();
+      if (vc.isNotEmpty) {
+        return '${vc[0].toUpperCase()}${vc.substring(1).toLowerCase()}';
+      }
+      return 'Standard Vehicle';
+    }
+    return raw;
+  }
+
+  Widget _buildFallbackVehicleBadge(Offer offer) {
+    return Container(
+      width: 76,
+      height: 76,
+      decoration: BoxDecoration(
+        color: GtColors.brand.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: GtColors.border),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.directions_car_rounded,
+            size: 32,
+            color: GtColors.brand,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            offer.vehicleClass.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              color: GtColors.textSecondary,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showReviews(Offer offer) async {
+    final app = context.read<AppState>();
+    var reviews = offer.reviews;
+    if (reviews.isEmpty) {
+      reviews = await app.fetchOfferReviews(offer.id);
+    }
+    if (!mounted) return;
+    showGtSheet(
+      context: context,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.star, color: GtColors.warn, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Driver Reviews · ${offer.rating.toStringAsFixed(1)}${offer.ratingCount > 0 ? ' (${offer.ratingCount})' : ''}',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (reviews.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    'No written reviews yet for this driver.',
+                    style: TextStyle(color: GtColors.textMuted),
+                  ),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: reviews.length,
+                  separatorBuilder: (_, __) => const Divider(height: 20),
+                  itemBuilder: (_, i) {
+                    final r = reviews[i];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            ...List.generate(
+                              r.stars.clamp(0, 5),
+                              (_) => const Icon(
+                                Icons.star,
+                                size: 14,
+                                color: GtColors.star,
+                              ),
+                            ),
+                            if (r.createdAt != null) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                '${r.createdAt!.day}/${r.createdAt!.month}/${r.createdAt!.year}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: GtColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (r.communicationStars != null ||
+                            r.driverStars != null ||
+                            r.vehicleStars != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            [
+                              if (r.communicationStars != null)
+                                'Comm ★${r.communicationStars}',
+                              if (r.driverStars != null)
+                                'Driver ★${r.driverStars}',
+                              if (r.vehicleStars != null)
+                                'Vehicle ★${r.vehicleStars}',
+                            ].join(' · '),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: GtColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                        if (r.text.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            r.text,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              color: GtColors.text,
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVehiclePhotos(Offer offer) {
+    final urls = offer.imageUrls;
+    if (urls.isEmpty) return;
+    showGtSheet(
+      context: context,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.directions_car, color: GtColors.brand, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  '${_friendlyVehicleName(offer)} (${urls.length} photo${urls.length == 1 ? '' : 's'})',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 220,
+              child: PageView.builder(
+                itemCount: urls.length,
+                itemBuilder: (ctx, idx) => ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AuthNetworkImage(
+                    url: urls[idx],
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _showReportSheet() async {
@@ -611,20 +859,9 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     if (submitted == true && mounted) {
       await app.refreshRide(widget.rideId);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isTerminal
-                ? 'Report submitted. Admin notified.'
-                : 'Report submitted. Admin notified & support chat enabled.',
-          ),
+        const SnackBar(
+          content: Text('Report submitted. Admin notified.'),
           backgroundColor: GtColors.brand,
-          action: _isTerminal
-              ? null
-              : SnackBarAction(
-                  label: 'Open Chat',
-                  textColor: Colors.white,
-                  onPressed: () => context.push('/ride/${widget.rideId}/chat'),
-                ),
         ),
       );
       setState(() {});
@@ -1596,40 +1833,163 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
     noteCtrl.dispose();
   }
 
+  void _openFullScreenPhoto({
+    Uint8List? bytes,
+    String? url,
+    String? title,
+  }) {
+    if (bytes == null && (url == null || url.trim().isEmpty)) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (previewCtx) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            title: Text(
+              title ?? 'Photo Preview',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.of(previewCtx).pop(),
+              ),
+            ],
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: bytes != null
+                  ? Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 64,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    )
+                  : Image.network(
+                      resolveOfferImageUrl(url!),
+                      fit: BoxFit.contain,
+                      loadingBuilder: (ctx, child, progress) {
+                        if (progress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 64,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPhotoThumbnail(String? photoUrl, {String? label}) {
     if (photoUrl == null || photoUrl.trim().isEmpty)
       return const SizedBox.shrink();
     final trimmed = photoUrl.trim();
-    Widget imgWidget;
+
+    Uint8List? imageBytes;
     if (trimmed.startsWith('data:image')) {
       final comma = trimmed.indexOf(',');
       if (comma != -1) {
+        final cleanBase64 = trimmed
+            .substring(comma + 1)
+            .replaceAll(RegExp(r'\s+'), '');
         try {
-          final bytes = base64Decode(trimmed.substring(comma + 1));
-          imgWidget = Image.memory(
-            bytes,
-            height: 140,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          );
-        } catch (_) {
-          imgWidget = const SizedBox.shrink();
+          imageBytes = base64Decode(cleanBase64);
+        } catch (e) {
+          debugPrint('Error decoding base64 image: $e');
         }
-      } else {
-        imgWidget = const SizedBox.shrink();
       }
-    } else {
-      imgWidget = Image.network(
-        trimmed,
-        height: 140,
-        width: double.infinity,
-        fit: BoxFit.cover,
+    } else if (trimmed.startsWith('/9j/') || trimmed.startsWith('iVBORw')) {
+      try {
+        final cleanBase64 = trimmed.replaceAll(RegExp(r'\s+'), '');
+        imageBytes = base64Decode(cleanBase64);
+      } catch (_) {}
+    }
+
+    Widget contentWidget;
+    if (imageBytes != null) {
+      contentWidget = Image.memory(
+        imageBytes,
+        fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => Container(
-          height: 140,
-          color: Colors.grey.shade100,
+          color: const Color(0xFF1E293B),
           child: const Center(
-            child: Icon(Icons.broken_image, color: Colors.grey),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.broken_image_outlined, color: Colors.white54, size: 36),
+                SizedBox(height: 6),
+                Text(
+                  'Invalid photo format',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
           ),
+        ),
+      );
+    } else if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('/')) {
+      final resolvedUrl = resolveOfferImageUrl(trimmed);
+      contentWidget = Image.network(
+        resolvedUrl,
+        fit: BoxFit.contain,
+        loadingBuilder: (ctx, child, progress) {
+          if (progress == null) return child;
+          return const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: GtColors.brand,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (_, __, ___) => Container(
+          color: const Color(0xFF1E293B),
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.broken_image_outlined, color: Colors.white54, size: 36),
+                SizedBox(height: 6),
+                Text(
+                  'Unable to load photo',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      contentWidget = Container(
+        color: const Color(0xFF1E293B),
+        child: const Center(
+          child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 36),
         ),
       );
     }
@@ -1639,6 +1999,70 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (label != null) ...[
+            Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+                color: Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          InkWell(
+            onTap: () => _openFullScreenPhoto(
+              bytes: imageBytes,
+              url: (imageBytes == null && !trimmed.startsWith('data:image')) ? trimmed : null,
+              title: label?.replaceAll(':', '').trim() ?? 'Photo Preview',
+            ),
+            borderRadius: BorderRadius.circular(8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: double.infinity,
+                height: 180,
+                color: const Color(0xFF0F172A),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(child: contentWidget),
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white24, width: 0.8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'Tap to zoom',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
           if (label != null) ...[
             Text(
               label,
@@ -1950,7 +2374,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.12),
+                  color: iconColor.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(headerIcon, color: iconColor, size: 22),
@@ -1992,7 +2416,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: borderColor.withOpacity(0.7)),
+                border: Border.all(color: borderColor.withValues(alpha: 0.7)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2041,7 +2465,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: borderColor.withOpacity(0.6)),
+                  border: Border.all(color: borderColor.withValues(alpha: 0.6)),
                 ),
                 child: Row(
                   children: [
@@ -2173,7 +2597,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'Uber-style returned item fee to compensate your driver for their time and travel to return your item.',
+                      'Standard returned item fee to compensate your driver for their time and travel to return your item.',
                       style: TextStyle(fontSize: 11.5, color: Colors.black54),
                     ),
                     const SizedBox(height: 8),
@@ -2733,36 +3157,78 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (!_isTerminal && offer.imageUrl != null)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: AuthNetworkImage(
-                                    url: offer.imageUrl!,
-                                    width: 72,
-                                    height: 72,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.directions_car,
-                                      size: 48,
-                                      color: GtColors.textMuted,
-                                    ),
-                                  ),
-                                )
-                              else
-                                Container(
-                                  width: 72,
-                                  height: 72,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: GtColors.bgGrey,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(
-                                    Icons.directions_car,
-                                    size: 40,
-                                    color: GtColors.textMuted,
-                                  ),
-                                ),
+                              Builder(
+                                builder: (_) {
+                                  final vehicleImageUrl = offer.imageUrls.isNotEmpty
+                                      ? offer.imageUrls.first
+                                      : offer.imageUrl;
+                                  final hasPhoto = vehicleImageUrl != null &&
+                                      vehicleImageUrl.trim().isNotEmpty;
+                                  if (!_isTerminal && hasPhoto) {
+                                    return GestureDetector(
+                                      onTap: () => _showVehiclePhotos(offer),
+                                      child: Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            child: AuthNetworkImage(
+                                              url: vehicleImageUrl,
+                                              width: 76,
+                                              height: 76,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  _buildFallbackVehicleBadge(
+                                                offer,
+                                              ),
+                                            ),
+                                          ),
+                                          if (offer.images.length > 1)
+                                            Positioned(
+                                              right: 4,
+                                              bottom: 4,
+                                              child: Container(
+                                                padding: const EdgeInsets
+                                                    .symmetric(
+                                                  horizontal: 5,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black
+                                                      .withOpacity(0.65),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.photo_library,
+                                                      color: Colors.white,
+                                                      size: 10,
+                                                    ),
+                                                    const SizedBox(width: 3),
+                                                    Text(
+                                                      '${offer.images.length}',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 10,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                  return _buildFallbackVehicleBadge(offer);
+                                },
+                              ),
                               const SizedBox(width: 14),
                               Expanded(
                                 child: Column(
@@ -2781,7 +3247,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                       )
                                     else
                                       Text(
-                                        offer.displayName,
+                                        _friendlyVehicleName(offer),
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w800,
                                           fontSize: 17,
@@ -2790,16 +3256,58 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                     const SizedBox(height: 4),
                                     Row(
                                       children: [
-                                        const Icon(
-                                          Icons.star,
-                                          size: 16,
-                                          color: GtColors.warn,
+                                        InkWell(
+                                          onTap: () => _showReviews(offer),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons.star,
+                                                size: 16,
+                                                color: GtColors.warn,
+                                              ),
+                                              Text(
+                                                ' ${offer.rating.toStringAsFixed(1)}'
+                                                '${offer.ratingCount > 0 ? ' (${offer.ratingCount})' : ''}',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 13.5,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                        Text(
-                                          ' ${offer.rating.toStringAsFixed(1)}'
-                                          '${offer.ratingCount > 0 ? ' (${offer.ratingCount})' : ''}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
+                                        const SizedBox(width: 8),
+                                        InkWell(
+                                          onTap: () => _showReviews(offer),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          child: const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 4,
+                                              vertical: 2,
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  'Show reviews',
+                                                  style: TextStyle(
+                                                    color: GtColors.brand,
+                                                    fontSize: 12.5,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                SizedBox(width: 2),
+                                                Icon(
+                                                  Icons.chevron_right,
+                                                  size: 14,
+                                                  color: GtColors.brand,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -2810,7 +3318,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                                             .isNotEmpty) ...[
                                       const SizedBox(height: 6),
                                       Text(
-                                        offer.displayName,
+                                        _friendlyVehicleName(offer),
                                         style: const TextStyle(
                                           color: GtColors.textSecondary,
                                           fontWeight: FontWeight.w600,
@@ -2834,6 +3342,43 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                               ),
                             ],
                           ),
+                          if (!_isTerminal && offer.images.length > 1) ...[
+                            const SizedBox(height: 10),
+                            InkWell(
+                              onTap: () => _showVehiclePhotos(offer),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: GtColors.bgGrey,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: GtColors.border),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.photo_library_outlined,
+                                      size: 15,
+                                      color: GtColors.brand,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'View all vehicle photos (${offer.images.length})',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: GtColors.brand,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                           if (!_isTerminal &&
                               offer.plate != null &&
                               offer.plate!.trim().isNotEmpty) ...[

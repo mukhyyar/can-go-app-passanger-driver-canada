@@ -303,6 +303,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
     if (submitted == true && mounted) {
       await app.refreshMyRides();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Report submitted. Admin notified.'),
@@ -389,7 +390,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         isInProgress: _isInProgress,
       ),
     );
-    if (result == null) return;
+    if (!mounted || result == null) return;
     setState(() => _acting = true);
     try {
       await context.read<AppState>().cancelRide(
@@ -1255,6 +1256,26 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                       _isInProgress ? 'Stop Trip for Safety' : 'Cancel ride',
                                     ),
                                   ),
+                                  const SizedBox(height: 4),
+                                  Center(
+                                    child: InkWell(
+                                      onTap: () => showDriverCancellationPolicyDialog(context),
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 4,
+                                          horizontal: 8,
+                                        ),
+                                        child: Text(
+                                          'View cancellation policy',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: GtColors.textSecondary,
+                                            decoration: TextDecoration.underline,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ],
                                 if (_isActiveTrip) ...[
                                   const SizedBox(height: 8),
@@ -1290,7 +1311,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.06),
+                                  color: Colors.black.withValues(alpha: 0.06),
                                   blurRadius: 8,
                                   offset: const Offset(0, -3),
                                 ),
@@ -1405,34 +1426,162 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     return out;
   }
 
+  void _openFullScreenPhoto({
+    Uint8List? bytes,
+    String? url,
+    String? title,
+  }) {
+    if (bytes == null && (url == null || url.trim().isEmpty)) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (previewCtx) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            title: Text(
+              title ?? 'Photo Preview',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.of(previewCtx).pop(),
+              ),
+            ],
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: bytes != null
+                  ? Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 64,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    )
+                  : Image.network(
+                      resolveOfferImageUrl(url!),
+                      fit: BoxFit.contain,
+                      loadingBuilder: (ctx, child, progress) {
+                        if (progress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 64,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPhotoThumbnail(String? photoUrl, {String? label}) {
     if (photoUrl == null || photoUrl.trim().isEmpty) return const SizedBox.shrink();
     final trimmed = photoUrl.trim();
-    Widget imgWidget;
+
+    Uint8List? imageBytes;
     if (trimmed.startsWith('data:image')) {
       final comma = trimmed.indexOf(',');
       if (comma != -1) {
+        final cleanBase64 = trimmed
+            .substring(comma + 1)
+            .replaceAll(RegExp(r'\s+'), '');
         try {
-          final bytes = base64Decode(trimmed.substring(comma + 1));
-          imgWidget = Image.memory(bytes, height: 140, width: double.infinity, fit: BoxFit.cover);
-        } catch (_) {
-          imgWidget = const SizedBox.shrink();
+          imageBytes = base64Decode(cleanBase64);
+        } catch (e) {
+          debugPrint('Error decoding base64 image: $e');
         }
-      } else {
-        imgWidget = const SizedBox.shrink();
       }
-    } else {
-      imgWidget = Image.network(
-        trimmed,
-        height: 140,
-        width: double.infinity,
-        fit: BoxFit.cover,
+    } else if (trimmed.startsWith('/9j/') || trimmed.startsWith('iVBORw')) {
+      try {
+        final cleanBase64 = trimmed.replaceAll(RegExp(r'\s+'), '');
+        imageBytes = base64Decode(cleanBase64);
+      } catch (_) {}
+    }
+
+    Widget contentWidget;
+    if (imageBytes != null) {
+      contentWidget = Image.memory(
+        imageBytes,
+        fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => Container(
-          height: 140,
-          color: Colors.grey.shade100,
+          color: const Color(0xFF1E293B),
           child: const Center(
-            child: Icon(Icons.broken_image, color: Colors.grey),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.broken_image_outlined, color: Colors.white54, size: 36),
+                SizedBox(height: 6),
+                Text(
+                  'Invalid photo format',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
           ),
+        ),
+      );
+    } else if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('/')) {
+      final resolvedUrl = resolveOfferImageUrl(trimmed);
+      contentWidget = Image.network(
+        resolvedUrl,
+        fit: BoxFit.contain,
+        loadingBuilder: (ctx, child, progress) {
+          if (progress == null) return child;
+          return const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: GtColors.brand,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (_, __, ___) => Container(
+          color: const Color(0xFF1E293B),
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.broken_image_outlined, color: Colors.white54, size: 36),
+                SizedBox(height: 6),
+                Text(
+                  'Unable to load photo',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else {
+      contentWidget = Container(
+        color: const Color(0xFF1E293B),
+        child: const Center(
+          child: Icon(Icons.broken_image_outlined, color: Colors.white54, size: 36),
         ),
       );
     }
@@ -1453,9 +1602,54 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             ),
             const SizedBox(height: 4),
           ],
-          ClipRRect(
+          InkWell(
+            onTap: () => _openFullScreenPhoto(
+              bytes: imageBytes,
+              url: (imageBytes == null && !trimmed.startsWith('data:image')) ? trimmed : null,
+              title: label?.replaceAll(':', '').trim() ?? 'Photo Preview',
+            ),
             borderRadius: BorderRadius.circular(8),
-            child: imgWidget,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: double.infinity,
+                height: 180,
+                color: const Color(0xFF0F172A),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(child: contentWidget),
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white24, width: 0.8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'Tap to zoom',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -1476,7 +1670,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -1493,7 +1687,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: GtColors.brand.withOpacity(0.12),
+                      color: GtColors.brand.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.inventory_2_outlined,
@@ -1635,7 +1829,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         border: Border.all(color: borderColor, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -1652,7 +1846,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.12),
+                    color: iconColor.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(headerIcon, color: iconColor, size: 22),
@@ -1695,7 +1889,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: borderColor.withOpacity(0.7)),
+                  border: Border.all(color: borderColor.withValues(alpha: 0.7)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1737,7 +1931,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: borderColor.withOpacity(0.7)),
+                  border: Border.all(color: borderColor.withValues(alpha: 0.7)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1771,7 +1965,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: borderColor.withOpacity(0.7)),
+                  border: Border.all(color: borderColor.withValues(alpha: 0.7)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1816,7 +2010,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                             size: 18, color: GtColors.brand),
                         onPressed: () => launchUrl(
                           Uri.parse(
-                            'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(lost!.pickupLocation!)}',
+                            'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(lost.pickupLocation!)}',
                           ),
                           mode: LaunchMode.externalApplication,
                         ),
@@ -1855,7 +2049,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                 ? '✓ Return fee credited to your driver wallet via Stripe.'
                                 : (lost?.returnFeePaid == true
                                     ? '✓ Paid by customer via Stripe. Credited to your wallet.'
-                                    : 'Uber-style return fee compensated to you via Stripe upon return handover.'),
+                                    : 'Return fee compensated to you via Stripe upon return handover.'),
                             style: const TextStyle(
                               fontSize: 11.5,
                               color: Color(0xFF166534),
@@ -2334,7 +2528,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    'Upload a picture handing over the item as proof of return. A standard Uber-style return fee of \$20.00 CAD will be credited to your driver wallet.',
+                    'Upload a picture handing over the item as proof of return. A standard return fee of \$20.00 CAD will be credited to your driver wallet.',
                     style: TextStyle(
                         fontSize: 13, color: GtColors.textSecondary, height: 1.35),
                   ),
@@ -3063,6 +3257,15 @@ class _StartPinSheetState extends State<_StartPinSheet> {
     } catch (e) {
       if (!mounted) return;
       final msg = cleanErrorMessage(e);
+      final lowerMsg = msg.toLowerCase();
+      // If the trip is already started or in progress, pop the sheet to refresh screen
+      if (lowerMsg.contains('already in progress') ||
+          lowerMsg.contains('in_progress') ||
+          lowerMsg.contains('trip_started') ||
+          lowerMsg.contains('trip is already')) {
+        Navigator.of(context).pop(true);
+        return;
+      }
       setState(() {
         _submitting = false;
         _status = GtOtpStatus.error;

@@ -101,6 +101,28 @@ export class TripService {
       }
     }
 
+    // Idempotent: If the trip is already started or in progress and driver calls start
+    if (
+      isAssignedDriver &&
+      toStatus === RideStatus.TRIP_STARTED &&
+      (ride.status === RideStatus.TRIP_STARTED ||
+        ride.status === RideStatus.IN_PROGRESS)
+    ) {
+      return {
+        id: ride.id,
+        status: ride.status,
+        fromStatus: ride.status,
+      };
+    }
+
+    if (ride.status === toStatus) {
+      return {
+        id: ride.id,
+        status: ride.status,
+        fromStatus: ride.status,
+      };
+    }
+
     this.assertTransitionAllowed(
       ride.status,
       toStatus,
@@ -730,9 +752,60 @@ export class TripService {
     if (isAssignedDriver && driverNext[from]?.includes(to)) return;
     if (isPassenger && passengerNext[from]?.includes(to)) return;
 
+    if (from === RideStatus.TRIP_STARTED || from === RideStatus.IN_PROGRESS) {
+      throw new BadRequestException('This trip is already in progress.');
+    }
+    if (from === RideStatus.COMPLETED) {
+      throw new BadRequestException('This trip has already been completed.');
+    }
+    if (from === RideStatus.NO_SHOW) {
+      throw new BadRequestException('This trip was recorded as a no-show.');
+    }
+    if (
+      from === RideStatus.PASSENGER_CANCELLED ||
+      from === RideStatus.DRIVER_CANCELLED ||
+      from === RideStatus.ADMIN_CANCELLED
+    ) {
+      throw new BadRequestException('This trip has been cancelled.');
+    }
+
     throw new BadRequestException(
-      `Illegal transition ${from} → ${to} for this actor`,
+      `Cannot update trip status from ${this.formatStatusLabel(from)} to ${this.formatStatusLabel(to)}.`,
     );
+  }
+
+  private formatStatusLabel(status: RideStatus): string {
+    switch (status) {
+      case RideStatus.WAITING_FOR_OFFERS:
+        return 'Waiting for Offers';
+      case RideStatus.OFFER_SELECTION:
+        return 'Offer Selection';
+      case RideStatus.PAYMENT_PENDING:
+        return 'Payment Pending';
+      case RideStatus.BOOKED:
+        return 'Booked';
+      case RideStatus.DRIVER_EN_ROUTE:
+        return 'Driver En Route';
+      case RideStatus.DRIVER_ARRIVED:
+        return 'Driver Arrived';
+      case RideStatus.TRIP_STARTED:
+      case RideStatus.IN_PROGRESS:
+        return 'In Progress';
+      case RideStatus.COMPLETED:
+        return 'Completed';
+      case RideStatus.NO_SHOW:
+        return 'No-Show';
+      case RideStatus.PASSENGER_CANCELLED:
+      case RideStatus.DRIVER_CANCELLED:
+      case RideStatus.ADMIN_CANCELLED:
+        return 'Cancelled';
+      case RideStatus.EXPIRED:
+        return 'Expired';
+      case RideStatus.PAYMENT_FAILED:
+        return 'Payment Failed';
+      default:
+        return String(status).replaceAll('_', ' ');
+    }
   }
 
   private titleFor(status: RideStatus) {

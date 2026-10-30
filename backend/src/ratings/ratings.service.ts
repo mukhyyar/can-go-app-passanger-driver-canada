@@ -54,7 +54,33 @@ export class RatingsService {
       throw new ForbiddenException('Only ride participants can rate');
     }
 
-    if (isPassenger) {
+    let ratingRole: 'PASSENGER' | 'DRIVER';
+    if (dto.role === 'DRIVER') {
+      ratingRole = 'DRIVER';
+    } else if (dto.role === 'PASSENGER') {
+      ratingRole = 'PASSENGER';
+    } else if (
+      dto.communicationStars != null ||
+      dto.driverStars != null ||
+      dto.vehicleStars != null
+    ) {
+      ratingRole = 'PASSENGER';
+    } else if (isDriver && !isPassenger) {
+      ratingRole = 'DRIVER';
+    } else if (isPassenger && !isDriver) {
+      ratingRole = 'PASSENGER';
+    } else if (isDriver) {
+      ratingRole = 'DRIVER';
+    } else {
+      ratingRole = 'PASSENGER';
+    }
+
+    if (ratingRole === 'PASSENGER') {
+      if (!isPassenger) {
+        throw new ForbiddenException(
+          'Only the passenger can submit a passenger rating',
+        );
+      }
       if (
         dto.communicationStars == null ||
         dto.driverStars == null ||
@@ -64,15 +90,22 @@ export class RatingsService {
           'Passenger ratings require communication, driver, and vehicle scores',
         );
       }
+    } else {
+      if (!isDriver) {
+        throw new ForbiddenException(
+          'Only the driver can submit a driver rating',
+        );
+      }
     }
 
-    const toUserId = isPassenger
-      ? (driverUserId ?? (isDriver ? userId : undefined))
-      : ride.passenger?.userId;
+    const toUserId =
+      ratingRole === 'PASSENGER'
+        ? (driverUserId ?? (isDriver ? userId : undefined))
+        : ride.passenger?.userId;
 
     if (!toUserId) {
       throw new BadRequestException(
-        isPassenger
+        ratingRole === 'PASSENGER'
           ? 'Driver not found for this ride'
           : 'Passenger not found for this ride',
       );
@@ -84,16 +117,38 @@ export class RatingsService {
       ? RatingModerationStatus.PENDING_REVIEW
       : RatingModerationStatus.VISIBLE;
 
+    const starsToSave =
+      ratingRole === 'PASSENGER' &&
+      dto.communicationStars != null &&
+      dto.driverStars != null &&
+      dto.vehicleStars != null
+        ? Math.min(
+            5,
+            Math.max(
+              1,
+              Math.round(
+                (dto.communicationStars +
+                  dto.driverStars +
+                  dto.vehicleStars) /
+                  3,
+              ),
+            ),
+          )
+        : dto.stars;
+
     try {
       const rating = await this.prisma.rating.create({
         data: {
           rideId,
           fromUserId: userId,
           toUserId,
-          stars: dto.stars,
-          communicationStars: isPassenger ? dto.communicationStars! : null,
-          driverStars: isPassenger ? dto.driverStars! : null,
-          vehicleStars: isPassenger ? dto.vehicleStars! : null,
+          stars: starsToSave,
+          communicationStars:
+            ratingRole === 'PASSENGER' ? dto.communicationStars! : null,
+          driverStars:
+            ratingRole === 'PASSENGER' ? dto.driverStars! : null,
+          vehicleStars:
+            ratingRole === 'PASSENGER' ? dto.vehicleStars! : null,
           comment: trimmedComment,
           moderationStatus,
         },
@@ -106,7 +161,7 @@ export class RatingsService {
           resourceId: rating.id,
           meta: {
             rideId,
-            stars: dto.stars,
+            stars: starsToSave,
             communicationStars: rating.communicationStars,
             driverStars: rating.driverStars,
             vehicleStars: rating.vehicleStars,
@@ -120,6 +175,32 @@ export class RatingsService {
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === 'P2002'
       ) {
+        if (
+          ride.passenger?.userId === driverUserId &&
+          typeof (this.prisma.rating as any).findFirst === 'function' &&
+          typeof (this.prisma.rating as any).update === 'function'
+        ) {
+          const existing = await (this.prisma.rating as any).findFirst({
+            where: { rideId, fromUserId: userId },
+          });
+          if (existing) {
+            const updated = await (this.prisma.rating as any).update({
+              where: { id: existing.id },
+              data: {
+                stars: starsToSave,
+                communicationStars:
+                  ratingRole === 'PASSENGER' ? dto.communicationStars! : null,
+                driverStars:
+                  ratingRole === 'PASSENGER' ? dto.driverStars! : null,
+                vehicleStars:
+                  ratingRole === 'PASSENGER' ? dto.vehicleStars! : null,
+                comment: trimmedComment,
+                moderationStatus,
+              },
+            });
+            return updated;
+          }
+        }
         throw new BadRequestException('You already rated this ride');
       }
       throw err;
@@ -148,9 +229,29 @@ export class RatingsService {
     const allowed = isPassenger || isDriver || isAdmin;
     if (!allowed) throw new ForbiddenException();
 
-    return this.prisma.rating.findMany({
+    const ratings = await this.prisma.rating.findMany({
       where: { rideId },
       orderBy: { createdAt: 'asc' },
+    });
+
+    return ratings.map((r) => {
+      if (
+        r.communicationStars != null &&
+        r.driverStars != null &&
+        r.vehicleStars != null
+      ) {
+        const computed = Math.min(
+          5,
+          Math.max(
+            1,
+            Math.round(
+              (r.communicationStars + r.driverStars + r.vehicleStars) / 3,
+            ),
+          ),
+        );
+        return { ...r, stars: computed };
+      }
+      return r;
     });
   }
 

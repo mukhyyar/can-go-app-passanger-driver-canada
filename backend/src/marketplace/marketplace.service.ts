@@ -1695,26 +1695,6 @@ export class MarketplaceService {
       },
     });
 
-    // Ensure ChatThread exists and link to support case
-    const reportThread = await this.prisma.chatThread.upsert({
-      where: { rideId },
-      create: { rideId },
-      update: {},
-    });
-
-    await this.prisma.supportCase.update({
-      where: { id: row.id },
-      data: { chatThreadId: reportThread.id },
-    });
-
-    // Add initial message to chat thread
-    await this.prisma.chatMessage.create({
-      data: {
-        threadId: reportThread.id,
-        senderId: userId,
-        body: `[Ride Report Filed] ${primaryReason}${dto.details ? ': ' + dto.details : ''}. Support team has been notified and chat is enabled.`,
-      },
-    });
 
     // Notify Admins
     const reportCode = shortIdFrom(rideId);
@@ -1772,7 +1752,6 @@ export class MarketplaceService {
     return {
       ok: true,
       caseId: row.id,
-      chatThreadId: reportThread.id,
       title: row.title,
       type: row.type,
       status: row.status,
@@ -4975,14 +4954,14 @@ export class MarketplaceService {
       }
       if (!photoUrl) {
         const pMatch =
-          body.match(/\[LOST_ITEM_PHOTO\]\s*([^\n\r]+)/i) ||
-          body.match(/Item Photo:\s*([^\n\r]+)/i);
+          body.match(/\[LOST_ITEM_PHOTO\]\s*([\s\S]+?)(?=\n\[|\nNote:|$)/i) ||
+          body.match(/Item Photo:\s*([\s\S]+?)(?=\n\[|\nNote:|$)/i);
         if (pMatch) photoUrl = pMatch[1].trim();
       }
       if (!handoverPhotoUrl) {
         const hMatch =
-          body.match(/\[HANDOVER_PHOTO\]\s*([^\n\r]+)/i) ||
-          body.match(/Handover Photo:\s*([^\n\r]+)/i);
+          body.match(/\[HANDOVER_PHOTO\]\s*([\s\S]+?)(?=\n\[|\nNote:|$)/i) ||
+          body.match(/Handover Photo:\s*([\s\S]+?)(?=\n\[|\nNote:|$)/i);
         if (hMatch) handoverPhotoUrl = hMatch[1].trim();
       }
       if (!pickupLocation) {
@@ -4997,25 +4976,38 @@ export class MarketplaceService {
         if (payIdMatch) returnFeePaymentId = payIdMatch[1].trim();
       }
       if (!itemDescription) {
-        const descMatch = body.match(/Note:\s*([^\n\r]+)/i);
+        const descMatch = body.match(
+          /(?:^|\n)Note:\s*([\s\S]+?)(?=\n[A-Z_]+:|\n\[|$)/i,
+        );
         if (
           descMatch &&
           !body.includes('[LOST_ITEM_') &&
           !body.includes('[HANDOVER_PHOTO]')
         ) {
-          itemDescription = descMatch[1].trim();
+          const candidate = descMatch[1].trim();
+          if (
+            candidate.length > 0 &&
+            !candidate.startsWith('Type:') &&
+            candidate !== 'LOST_ITEM'
+          ) {
+            itemDescription = candidate;
+          }
         } else if (
+          !body.startsWith('Type:') &&
           !body.startsWith('Passenger contact phone:') &&
           !body.includes('[LOST_ITEM_') &&
           !body.includes('[HANDOVER_PHOTO]') &&
-          body.trim().length > 0
+          body.trim().length > 0 &&
+          body.trim() !== 'Type: LOST_ITEM' &&
+          body.trim() !== 'LOST_ITEM'
         ) {
           itemDescription = body.trim();
         }
       }
       if (body.includes('[LOST_ITEM_RETURNED]')) {
         status = 'RETURNED';
-        const match = body.match(/\[LOST_ITEM_RETURNED\](?:\s*Note:\s*)?(.*)/i);
+        const noteMatch = body.match(/(?:^|\n)Note:\s*([^\n\r]+)/i);
+        const match = noteMatch || body.match(/\[LOST_ITEM_RETURNED\](?:\s*Note:\s*)?(.*)/i);
         if (
           match &&
           match[1]?.trim() &&
@@ -5025,7 +5017,8 @@ export class MarketplaceService {
         }
       } else if (body.includes('[LOST_ITEM_FOUND]') && status !== 'RETURNED') {
         status = 'FOUND';
-        const match = body.match(/\[LOST_ITEM_FOUND\](?:\s*Note:\s*)?(.*)/i);
+        const noteMatch = body.match(/(?:^|\n)Note:\s*([^\n\r]+)/i);
+        const match = noteMatch || body.match(/\[LOST_ITEM_FOUND\](?:\s*Note:\s*)?(.*)/i);
         if (
           match &&
           match[1]?.trim() &&
@@ -5038,7 +5031,8 @@ export class MarketplaceService {
         status !== 'RETURNED'
       ) {
         status = 'NOT_FOUND';
-        const match = body.match(
+        const noteMatch = body.match(/(?:^|\n)Note:\s*([^\n\r]+)/i);
+        const match = noteMatch || body.match(
           /\[LOST_ITEM_NOT_FOUND\](?:\s*Note:\s*)?(.*)/i,
         );
         if (match && match[1]?.trim()) driverNote = match[1].trim();
@@ -5050,6 +5044,14 @@ export class MarketplaceService {
       lostItemCase.status === SupportCaseStatus.RESOLVED
     ) {
       status = 'RETURNED';
+    }
+
+    if (
+      itemDescription?.startsWith('Type:') ||
+      itemDescription === 'LOST_ITEM' ||
+      itemDescription?.trim() === ''
+    ) {
+      itemDescription = null;
     }
 
     return {
@@ -5393,34 +5395,50 @@ export class MarketplaceService {
       },
     });
 
-    const existingWalletEntry = await this.prisma.driverWalletEntry.findFirst({
-      where: {
-        driverId,
-        rideId: ride.id,
-        type: WalletEntryType.ADJUSTMENT,
-        description: { contains: 'Lost item return fee' },
-      },
-    });
-    if (!existingWalletEntry) {
-      await this.prisma.driverWalletEntry.create({
-        data: {
+    try {
+      const existingWalletEntry = await this.prisma.driverWalletEntry.findFirst({
+        where: {
           driverId,
           type: WalletEntryType.ADJUSTMENT,
-          direction: WalletDirection.CREDIT,
-          amount: new Prisma.Decimal(amount),
-          currency: (ride.currency || 'CAD').toUpperCase(),
-          status: WalletEntryStatus.POSTED,
-          rideId: ride.id,
-          availableAt: null,
-          description: `Lost item return fee · Ride #${shortIdFrom(ride.id)}`,
-          metaJson: {
-            isLostItemFee: true,
-            amount,
-            bookingRef: ride.id,
-            paidAt: new Date().toISOString(),
-          } as Prisma.InputJsonValue,
+          OR: [
+            { rideId: ride.id, description: { contains: 'Lost item return fee' } },
+            { description: { contains: shortIdFrom(ride.id) } },
+          ],
         },
       });
+      if (!existingWalletEntry) {
+        const hasExistingRideAdjustment = await this.prisma.driverWalletEntry.findFirst({
+          where: {
+            driverId,
+            rideId: ride.id,
+            type: WalletEntryType.ADJUSTMENT,
+          },
+        });
+        await this.prisma.driverWalletEntry.create({
+          data: {
+            driverId,
+            type: WalletEntryType.ADJUSTMENT,
+            direction: WalletDirection.CREDIT,
+            amount: new Prisma.Decimal(amount),
+            currency: (ride.currency || 'CAD').toUpperCase(),
+            status: WalletEntryStatus.POSTED,
+            // If another adjustment already exists on this ride (e.g. Tip), set rideId to null
+            // to satisfy @@unique([driverId, rideId, type]), preserving ride link in metaJson.
+            rideId: hasExistingRideAdjustment ? null : ride.id,
+            availableAt: null,
+            description: `Lost item return fee · Ride #${shortIdFrom(ride.id)}`,
+            metaJson: {
+              isLostItemFee: true,
+              amount,
+              rideId: ride.id,
+              bookingRef: ride.id,
+              paidAt: new Date().toISOString(),
+            } as Prisma.InputJsonValue,
+          },
+        });
+      }
+    } catch (walletErr) {
+      this.logger.warn(`Failed to credit driver wallet for return fee on ride ${ride.id}: ${walletErr}`);
     }
 
     await this.prisma.supportCaseNote.create({
@@ -5546,35 +5564,51 @@ export class MarketplaceService {
 
     const driverId = ride.assignedDriverId ?? ride.selectedOffer?.driverId;
     if (driverId) {
-      const existingWalletEntry = await this.prisma.driverWalletEntry.findFirst({
-        where: {
-          driverId,
-          rideId: ride.id,
-          type: WalletEntryType.ADJUSTMENT,
-          description: { contains: 'Lost item return fee' },
-        },
-      });
-      if (!existingWalletEntry) {
-        await this.prisma.driverWalletEntry.create({
-          data: {
+      try {
+        const existingWalletEntry = await this.prisma.driverWalletEntry.findFirst({
+          where: {
             driverId,
             type: WalletEntryType.ADJUSTMENT,
-            direction: WalletDirection.CREDIT,
-            amount: new Prisma.Decimal(20.0),
-            currency: (ride.currency || 'CAD').toUpperCase(),
-            status: WalletEntryStatus.POSTED,
-            rideId: ride.id,
-            availableAt: null,
-            description: `Lost item return fee · Ride #${shortIdFrom(ride.id)}`,
-            metaJson: {
-              isLostItemFee: true,
-              amount: 20.0,
-              bookingRef: ride.id,
-              handoverPhoto: handoverPhoto || null,
-              returnedAt: new Date().toISOString(),
-            } as Prisma.InputJsonValue,
+            OR: [
+              { rideId: ride.id, description: { contains: 'Lost item return fee' } },
+              { description: { contains: shortIdFrom(ride.id) } },
+            ],
           },
         });
+        if (!existingWalletEntry) {
+          const hasExistingRideAdjustment = await this.prisma.driverWalletEntry.findFirst({
+            where: {
+              driverId,
+              rideId: ride.id,
+              type: WalletEntryType.ADJUSTMENT,
+            },
+          });
+          await this.prisma.driverWalletEntry.create({
+            data: {
+              driverId,
+              type: WalletEntryType.ADJUSTMENT,
+              direction: WalletDirection.CREDIT,
+              amount: new Prisma.Decimal(20.0),
+              currency: (ride.currency || 'CAD').toUpperCase(),
+              status: WalletEntryStatus.POSTED,
+              rideId: hasExistingRideAdjustment ? null : ride.id,
+              availableAt: null,
+              description: `Lost item return fee · Ride #${shortIdFrom(ride.id)}`,
+              metaJson: {
+                isLostItemFee: true,
+                amount: 20.0,
+                rideId: ride.id,
+                bookingRef: ride.id,
+                handoverPhoto: handoverPhoto || null,
+                returnedAt: new Date().toISOString(),
+              } as Prisma.InputJsonValue,
+            },
+          });
+        }
+      } catch (walletErr) {
+        this.logger.warn(
+          `Failed to record driver wallet adjustment in markLostItemReturned for ride ${ride.id}: ${walletErr}`,
+        );
       }
     }
 

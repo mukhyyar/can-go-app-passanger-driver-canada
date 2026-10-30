@@ -16,6 +16,10 @@ export class CreateRatingDto {
   @Max(5)
   stars!: number;
 
+  @IsOptional()
+  @IsIn(['PASSENGER', 'DRIVER'])
+  role?: 'PASSENGER' | 'DRIVER';
+
   /** Passenger→driver only; optional so drivers can rate with overall only. */
   @IsOptional()
   @Type(() => Number)

@@ -76,5 +76,15 @@ void main() {
         'Custom fallback',
       );
     });
+
+    test('replaces illegal transition IN_PROGRESS with human friendly message', () {
+      const err = 'Illegal transition IN_PROGRESS -> TRIP_STARTED for this actor';
+      expect(cleanErrorMessage(err), 'This trip is already in progress.');
+    });
+
+    test('humanizes raw enum status values in general error messages', () {
+      const err = 'Ride cannot be cancelled while DRIVER_ARRIVED';
+      expect(cleanErrorMessage(err), 'Ride cannot be cancelled while Driver arrived');
+    });
   });
 }

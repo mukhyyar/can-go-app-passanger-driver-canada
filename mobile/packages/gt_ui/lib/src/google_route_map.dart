@@ -259,77 +259,138 @@ class _GtGoogleRouteMapState extends State<GtGoogleRouteMap> {
               },
             ),
 
-            // 2. Top-Left: Route & Interactive Badges
+            // 2. Responsive Top Overlay (Route badge, Distance badge, and Map Action buttons)
             Positioned(
               left: 10,
-              top: 10,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.onBack != null) ...[
-                    _MapIconButton(
-                      icon: Icons.arrow_back_rounded,
-                      tooltip: 'Back',
-                      onTap: widget.onBack!,
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  _Chip(
-                    icon: Icons.place,
-                    label: _hasRoute ? 'A → B route' : 'A · Pickup',
-                  ),
-                  if (isExpanded) ...[
-                    const SizedBox(width: 6),
-                    const _Chip(
-                      icon: Icons.touch_app_rounded,
-                      label: 'Interactive',
-                      accentColor: Color(0xFF34C759),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // 3. Top-Right: Distance Badge, Recenter, Fullscreen, Expand/Collapse Toggle
-            Positioned(
               right: 10,
               top: 10,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.distanceLabel != null)
-                    _Chip(
-                      icon: Icons.straighten,
-                      label: widget.distanceLabel!,
-                      emphasize: true,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final actionButtons = <Widget>[
+                    if (isExpanded) ...[
+                      _MapIconButton(
+                        icon: Icons.center_focus_strong_rounded,
+                        tooltip: 'Recenter route',
+                        onTap: () => _mapController.recenter(),
+                      ),
+                    ],
+                    if (widget.onFullscreen != null) ...[
+                      if (isExpanded) const SizedBox(width: 6),
+                      _MapIconButton(
+                        icon: Icons.fullscreen_rounded,
+                        tooltip: 'Full screen',
+                        onTap: widget.onFullscreen!,
+                      ),
+                    ],
+                    if (canExpand) ...[
+                      if (isExpanded || widget.onFullscreen != null)
+                        const SizedBox(width: 6),
+                      _MapIconButton(
+                        icon: isExpanded
+                            ? Icons.close_fullscreen_rounded
+                            : Icons.open_in_full_rounded,
+                        tooltip: isExpanded ? 'Collapse map' : 'Expand map',
+                        onTap: () => _setExpanded(!isExpanded),
+                      ),
+                    ],
+                  ];
+
+                  final leftWidgets = <Widget>[
+                    if (widget.onBack != null) ...[
+                      _MapIconButton(
+                        icon: Icons.arrow_back_rounded,
+                        tooltip: 'Back',
+                        onTap: widget.onBack!,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Flexible(
+                      child: _Chip(
+                        icon: Icons.place,
+                        label: _hasRoute ? 'A → B route' : 'A · Pickup',
+                      ),
                     ),
-                  if (isExpanded) ...[
-                    const SizedBox(width: 6),
-                    _MapIconButton(
-                      icon: Icons.center_focus_strong_rounded,
-                      tooltip: 'Recenter route',
-                      onTap: () => _mapController.recenter(),
-                    ),
-                  ],
-                  if (widget.onFullscreen != null) ...[
-                    const SizedBox(width: 6),
-                    _MapIconButton(
-                      icon: Icons.fullscreen_rounded,
-                      tooltip: 'Full screen',
-                      onTap: widget.onFullscreen!,
-                    ),
-                  ],
-                  if (canExpand) ...[
-                    const SizedBox(width: 6),
-                    _MapIconButton(
-                      icon: isExpanded
-                          ? Icons.close_fullscreen_rounded
-                          : Icons.open_in_full_rounded,
-                      tooltip: isExpanded ? 'Collapse map' : 'Expand map',
-                      onTap: () => _setExpanded(!isExpanded),
-                    ),
-                  ],
-                ],
+                    if (isExpanded) ...[
+                      const SizedBox(width: 6),
+                      const _Chip(
+                        icon: Icons.touch_app_rounded,
+                        label: 'Interactive',
+                        accentColor: Color(0xFF34C759),
+                      ),
+                    ],
+                  ];
+
+                  final hasDistance = widget.distanceLabel != null &&
+                      widget.distanceLabel!.trim().isNotEmpty;
+                  final distanceLen =
+                      hasDistance ? widget.distanceLabel!.length : 0;
+                  final estimatedDistanceWidth =
+                      hasDistance ? (distanceLen * 7.5 + 44) : 0;
+                  final estimatedLeftWidth = (widget.onBack != null ? 38 : 0) +
+                      (_hasRoute ? 105 : 90) +
+                      (isExpanded ? 100 : 0);
+                  final estimatedRightWidth = actionButtons.length * 38;
+                  final fitsOnOneRow = constraints.maxWidth >=
+                      (estimatedLeftWidth +
+                          estimatedDistanceWidth +
+                          estimatedRightWidth +
+                          16);
+
+                  if (fitsOnOneRow) {
+                    return Row(
+                      children: [
+                        ...leftWidgets,
+                        const Spacer(),
+                        if (hasDistance) ...[
+                          _Chip(
+                            icon: Icons.straighten,
+                            label: widget.distanceLabel!,
+                            emphasize: true,
+                          ),
+                          if (actionButtons.isNotEmpty)
+                            const SizedBox(width: 6),
+                        ],
+                        ...actionButtons,
+                      ],
+                    );
+                  }
+
+                  // Responsive 2-tier layout: Route indicator and actions on Row 1, Distance badge on Row 2
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: leftWidgets,
+                            ),
+                          ),
+                          if (actionButtons.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: actionButtons,
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (hasDistance) ...[
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _Chip(
+                            icon: Icons.straighten,
+                            label: widget.distanceLabel!,
+                            emphasize: true,
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
 
@@ -537,12 +598,16 @@ class _Chip extends StatelessWidget {
             color: emphasize ? Colors.white : (accentColor ?? GtColors.brand),
           ),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: fgColor,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: fgColor,
+              ),
             ),
           ),
         ],

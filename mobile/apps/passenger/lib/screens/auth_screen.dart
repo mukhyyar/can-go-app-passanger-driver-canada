@@ -83,6 +83,11 @@ class _AuthScreenState extends State<AuthScreen> {
       ..onTap = () => GtPolicyUrls.openPrivacy();
     _termsRecognizer = TapGestureRecognizer()
       ..onTap = () => GtPolicyUrls.openTerms();
+    final cached = context.read<AppState>().cachedOAuthConfig;
+    if (cached != null) {
+      _oauthConfig = cached;
+      _oauthConfigLoading = false;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOAuthConfig();
       _loadCredentialPrefs();
@@ -172,10 +177,12 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _loadOAuthConfig() async {
     if (!mounted) return;
-    setState(() {
-      _oauthConfigLoading = true;
-      _oauthConfigError = null;
-    });
+    if (_oauthConfig == null) {
+      setState(() {
+        _oauthConfigLoading = true;
+        _oauthConfigError = null;
+      });
+    }
     try {
       final cfg = await context.read<AppState>().loadOAuthConfig();
       if (!mounted) return;
@@ -187,7 +194,6 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _oauthConfig = null;
         _oauthConfigLoading = false;
         _oauthConfigError = e.toString();
       });
@@ -319,27 +325,18 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _onGoogle() async {
+    final app = context.read<AppState>();
     await _run(() async {
-      if (_oauthConfigLoading) {
-        throw Exception('Still loading sign-in options — try again in a moment.');
+      final config = _oauthConfig ?? await app.loadOAuthConfig();
+      if (mounted) {
+        setState(() {
+          _oauthConfig = config;
+          _oauthConfigLoading = false;
+          _oauthConfigError = null;
+        });
       }
-      if (_oauthConfigError != null || _oauthConfig == null) {
-        try {
-          final cfg = await context.read<AppState>().loadOAuthConfig();
-          if (mounted) {
-            setState(() {
-              _oauthConfig = cfg;
-              _oauthConfigError = null;
-            });
-          }
-        } catch (_) {
-          throw Exception(
-            'Could not reach the server for Google sign-in. Check your connection and try again.',
-          );
-        }
-      }
-      final cfg = _oauthConfig?.google;
-      if (cfg == null || !cfg.enabled) {
+      final cfg = config.google;
+      if (!cfg.enabled) {
         throw Exception('Google sign-in is not available right now.');
       }
 
@@ -361,7 +358,6 @@ class _AuthScreenState extends State<AuthScreen> {
           ? clientId
           : defaultServerClientId;
 
-      final app = context.read<AppState>();
       final signIn = GoogleSignIn.instance;
       const iosClientId =
           '400688849973-kmbvas6jpqfvn1o07psss2o9e9cdbqrs.apps.googleusercontent.com';
@@ -394,27 +390,21 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _onApple() async {
     final app = context.read<AppState>();
     await _run(() async {
-      if (_oauthConfigLoading) {
-        throw Exception('Still loading sign-in options — try again in a moment.');
+      final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS;
+
+      final config = _oauthConfig ?? await app.loadOAuthConfig();
+      if (mounted) {
+        setState(() {
+          _oauthConfig = config;
+          _oauthConfigLoading = false;
+          _oauthConfigError = null;
+        });
       }
-      if (_oauthConfigError != null || _oauthConfig == null) {
-        try {
-          final cfg = await app.loadOAuthConfig();
-          if (mounted) {
-            setState(() {
-              _oauthConfig = cfg;
-              _oauthConfigError = null;
-            });
-          }
-        } catch (_) {
-          throw Exception(
-            'Could not reach the server for Apple sign-in. Check your connection and try again.',
-          );
-        }
-      }
-      final cfg = _oauthConfig?.apple;
+      final cfg = config.apple;
+
       // Local Nest mock: collect email/name without a real Apple ID token.
-      if (cfg?.localMock == true) {
+      if (cfg.localMock == true) {
         setState(() {
           _oauthProvider = 'apple';
           _step = _AuthStep.oauthLocal;
@@ -422,9 +412,7 @@ class _AuthScreenState extends State<AuthScreen> {
         return;
       }
 
-      final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.macOS;
-      if (!isApplePlatform && (cfg == null || !cfg.enabled)) {
+      if (!isApplePlatform && !cfg.enabled) {
         throw Exception('Apple sign-in is not available right now.');
       }
 

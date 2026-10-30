@@ -23,6 +23,8 @@
     "test:unit": "jest --testPathPattern=pricing.service.spec|launch-gate.logic.spec|ride-lifecycle.spec|analytics.metrics.spec",
     "repair:ride-expiry": "node scripts/repair-incorrect-ride-expiry.js",
     "repair:ride-expiry:apply": "node scripts/repair-incorrect-ride-expiry.js --apply",
+    "repair:wallet-earnings": "node scripts/repair-wallet-earnings.js",
+    "repair:wallet-earnings:apply": "node scripts/repair-wallet-earnings.js --apply",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",

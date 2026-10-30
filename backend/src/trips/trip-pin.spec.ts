@@ -125,4 +125,60 @@ describe('TripService PIN validation on TRIP_STARTED', () => {
     expect(result.id).toBe(rideId);
     expect(mockNotifications.notifyRideStatus).toHaveBeenCalled();
   });
+
+  it('idempotently succeeds when ride is already IN_PROGRESS', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(mockDriverUser);
+    mockPrisma.ride.findUnique.mockResolvedValue({
+      ...mockRide,
+      status: RideStatus.IN_PROGRESS,
+    });
+
+    const result = await tripService.transition(
+      driverUserId,
+      rideId,
+      RideStatus.TRIP_STARTED,
+      '127.0.0.1',
+      correctPin,
+    );
+
+    expect(result.id).toBe(rideId);
+    expect(result.status).toBe(RideStatus.IN_PROGRESS);
+  });
+
+  it('idempotently succeeds when ride is already TRIP_STARTED', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(mockDriverUser);
+    mockPrisma.ride.findUnique.mockResolvedValue({
+      ...mockRide,
+      status: RideStatus.TRIP_STARTED,
+    });
+
+    const result = await tripService.transition(
+      driverUserId,
+      rideId,
+      RideStatus.TRIP_STARTED,
+      '127.0.0.1',
+      correctPin,
+    );
+
+    expect(result.id).toBe(rideId);
+    expect(result.status).toBe(RideStatus.TRIP_STARTED);
+  });
+
+  it('provides friendly user message instead of raw enum when illegal transition is attempted', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(mockDriverUser);
+    mockPrisma.ride.findUnique.mockResolvedValue({
+      ...mockRide,
+      status: RideStatus.IN_PROGRESS,
+    });
+
+    // Attempting an invalid driver transition from IN_PROGRESS (e.g. to DRIVER_ARRIVED)
+    await expect(
+      tripService.transition(
+        driverUserId,
+        rideId,
+        RideStatus.DRIVER_ARRIVED,
+        '127.0.0.1',
+      ),
+    ).rejects.toThrow('This trip is already in progress.');
+  });
 });

@@ -61,7 +61,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final raw = await app.getChat(_rideId);
       final isLockedRaw = raw['isLocked'] == true;
       final lockReasonRaw = raw['lockReason']?.toString();
-      final meId = app.me?['id']?.toString() ?? app.authUserId;
+      final meId = app.authUserId ??
+          app.me?['id']?.toString() ??
+          app.me?['user']?['id']?.toString();
+      final passengerUserId = raw['passengerUserId']?.toString();
+      final driverUserId = raw['driverUserId']?.toString();
       final list = (raw['messages'] as List?) ?? const [];
       final parsed = list.whereType<Map>().map((m) {
         final senderId =
@@ -71,9 +75,33 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         if (m['createdAt'] != null) {
           createdAt = DateTime.tryParse(m['createdAt'].toString())?.toLocal();
         }
+
+        final isDriver = role == 'DRIVER';
+        final isPassenger = role == 'PASSENGER';
+        final isSupport = role == 'SUPPORT';
+
+        final bool isMine;
+        if (isDriver) {
+          isMine = true;
+        } else if (isPassenger || isSupport) {
+          isMine = false;
+        } else if (driverUserId != null &&
+            senderId == driverUserId &&
+            driverUserId != passengerUserId) {
+          isMine = true;
+        } else if (passengerUserId != null &&
+            senderId == passengerUserId &&
+            passengerUserId != driverUserId) {
+          isMine = false;
+        } else if (meId != null && senderId == meId) {
+          isMine = true;
+        } else {
+          isMine = false;
+        }
+
         return _Msg(
           text: m['body']?.toString() ?? '',
-          mine: senderId != null && meId != null && senderId == meId,
+          mine: isMine,
           senderRole: role,
           createdAt: createdAt,
         );
@@ -233,7 +261,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                               final timeStr = _formatTime(m.createdAt);
                               final roleLabel = m.mine
                                   ? 'Driver (You)'
-                                  : (isSupport ? 'Can-Ride Support' : 'Rider');
+                                  : (isSupport ? 'Can-Ride Support' : 'Passenger');
                               final roleIcon = m.mine
                                   ? Icons.drive_eta
                                   : (isSupport

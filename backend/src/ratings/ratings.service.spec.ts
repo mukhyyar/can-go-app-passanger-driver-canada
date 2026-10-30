@@ -204,6 +204,49 @@ describe('RatingsService', () => {
       );
     });
 
+    it('computes stars defensively from category scores for passenger rating even if client sent 5', async () => {
+      mockPrisma.ride.findUnique.mockResolvedValue({
+        id: rideId,
+        status: RideStatus.COMPLETED,
+        passenger: { userId: passengerUserId },
+        selectedOffer: { driver: { userId: driverUserId } },
+      });
+      mockPrisma.driverProfile.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ userId: driverUserId });
+
+      mockPrisma.rating.create.mockResolvedValue({
+        id: 'rating-1star',
+        rideId,
+        fromUserId: passengerUserId,
+        toUserId: driverUserId,
+        stars: 1,
+        communicationStars: 1,
+        driverStars: 1,
+        vehicleStars: 1,
+        moderationStatus: RatingModerationStatus.VISIBLE,
+      });
+
+      const res = await ratingsService.create(passengerUserId, rideId, {
+        stars: 5, // Client sent 5, but category scores are all 1
+        communicationStars: 1,
+        driverStars: 1,
+        vehicleStars: 1,
+      });
+
+      expect(res.stars).toBe(1);
+      expect(mockPrisma.rating.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            stars: 1,
+            communicationStars: 1,
+            driverStars: 1,
+            vehicleStars: 1,
+          }),
+        }),
+      );
+    });
+
     it('throws BadRequestException if passenger rating misses category stars', async () => {
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: rideId,
@@ -253,6 +296,75 @@ describe('RatingsService', () => {
         ratingsService.create(driverUserId, rideId, { stars: 5 }),
       ).rejects.toThrow('Connection lost');
     });
+
+    it('allows dual-role user (same passenger and driver userId) to rate as driver without requiring category stars', async () => {
+      const dualUserId = 'user-dual-1';
+      mockPrisma.ride.findUnique.mockResolvedValue({
+        id: rideId,
+        status: RideStatus.COMPLETED,
+        passenger: { userId: dualUserId },
+        selectedOffer: { driver: { userId: dualUserId } },
+      });
+      mockPrisma.driverProfile.findUnique.mockResolvedValue({ id: 'driver-prof-dual' });
+      mockPrisma.rating.create.mockResolvedValue({
+        id: 'rating-driver-dual',
+        stars: 5,
+        fromUserId: dualUserId,
+        toUserId: dualUserId,
+        communicationStars: null,
+        driverStars: null,
+        vehicleStars: null,
+      });
+
+      const res = await ratingsService.create(dualUserId, rideId, {
+        stars: 5,
+        role: 'DRIVER',
+      });
+      expect(res).toBeDefined();
+      expect(mockPrisma.rating.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            stars: 5,
+            communicationStars: null,
+            driverStars: null,
+            vehicleStars: null,
+          }),
+        }),
+      );
+    });
+
+    it('infers DRIVER role for dual-role user when role is omitted and category stars are absent', async () => {
+      const dualUserId = 'user-dual-1';
+      mockPrisma.ride.findUnique.mockResolvedValue({
+        id: rideId,
+        status: RideStatus.COMPLETED,
+        passenger: { userId: dualUserId },
+        selectedOffer: { driver: { userId: dualUserId } },
+      });
+      mockPrisma.driverProfile.findUnique.mockResolvedValue({ id: 'driver-prof-dual' });
+      mockPrisma.rating.create.mockResolvedValue({
+        id: 'rating-driver-dual-inferred',
+        stars: 4,
+        fromUserId: dualUserId,
+        toUserId: dualUserId,
+        communicationStars: null,
+        driverStars: null,
+        vehicleStars: null,
+      });
+
+      const res = await ratingsService.create(dualUserId, rideId, { stars: 4 });
+      expect(res).toBeDefined();
+      expect(mockPrisma.rating.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            stars: 4,
+            communicationStars: null,
+            driverStars: null,
+            vehicleStars: null,
+          }),
+        }),
+      );
+    });
   });
 
   describe('listForRide', () => {
@@ -274,6 +386,31 @@ describe('RatingsService', () => {
 
       const list = await ratingsService.listForRide(driverUserId, rideId);
       expect(list).toHaveLength(1);
+    });
+
+    it('normalizes stars from category scores in listForRide', async () => {
+      mockPrisma.ride.findUnique.mockResolvedValue({
+        id: rideId,
+        passenger: { userId: passengerUserId },
+        selectedOffer: { driver: { userId: driverUserId } },
+      });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: passengerUserId,
+        role: UserRole.PASSENGER,
+      });
+      mockPrisma.rating.findMany.mockResolvedValue([
+        {
+          id: 'r-old',
+          stars: 5, // Old stored value was 5
+          communicationStars: 1,
+          driverStars: 1,
+          vehicleStars: 1,
+        },
+      ]);
+
+      const list = await ratingsService.listForRide(passengerUserId, rideId);
+      expect(list).toHaveLength(1);
+      expect(list[0].stars).toBe(1); // Normalized to 1
     });
 
     it('allows admin to list ratings', async () => {

@@ -171,4 +171,298 @@ describe('Lost & Found Change Request', () => {
     expect(details?.returnFeePaid).toBe(true);
     expect(details?.returnFeePaymentId).toBe('pay-999');
   });
+
+  it('does not leak "Type: LOST_ITEM" as itemDescription when passenger provided no note', () => {
+    const service = new MarketplaceService(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    const casesWithoutNote = [
+      {
+        id: 'case-no-note',
+        title: 'Lost item inquiry',
+        status: SupportCaseStatus.ASSIGNED,
+        createdAt: new Date('2026-10-29T10:00:00Z'),
+        notes: [
+          { body: 'Type: LOST_ITEM' },
+          { body: '[LOST_ITEM_NOT_FOUND]\nNote: not found anything' },
+        ],
+      },
+    ];
+
+    const details = service.extractLostItemDetails(casesWithoutNote);
+    expect(details).not.toBeNull();
+    expect(details?.caseId).toBe('case-no-note');
+    expect(details?.status).toBe('NOT_FOUND');
+    expect(details?.driverNote).toBe('not found anything');
+    expect(details?.itemDescription).toBeNull();
+  });
+
+  it('correctly extracts description and phone when passenger provided a note starting with Type: LOST_ITEM', () => {
+    const service = new MarketplaceService(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    const casesWithNote = [
+      {
+        id: 'case-with-note',
+        title: 'Lost item inquiry',
+        status: SupportCaseStatus.ASSIGNED,
+        createdAt: new Date('2026-10-29T10:00:00Z'),
+        notes: [
+          {
+            body: 'Type: LOST_ITEM\nPassenger contact phone: +14035559876\nNote: Black umbrella in door pocket',
+          },
+        ],
+      },
+    ];
+
+    const details = service.extractLostItemDetails(casesWithNote);
+    expect(details).not.toBeNull();
+    expect(details?.contactPhone).toBe('+14035559876');
+    expect(details?.itemDescription).toBe('Black umbrella in door pocket');
+  });
+
+  it('correctly extracts multiline base64 photoUrl and handoverPhotoUrl without line-break truncation', () => {
+    const service = new MarketplaceService(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    const multilineDataUri =
+      'data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8\n' +
+      'z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\n' +
+      'extra_chunk_after_line_break==';
+
+    const handoverMultilineUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk\n' +
+      '+A8AAQUBAScY42YAAAAASUVORK5CYII==';
+
+    const cases = [
+      {
+        id: 'case-multiline-photo',
+        title: 'Lost item inquiry',
+        status: SupportCaseStatus.RESOLVED,
+        createdAt: new Date('2026-10-30T10:00:00Z'),
+        notes: [
+          {
+            body: `[LOST_ITEM_FOUND]\n[LOST_ITEM_PHOTO] ${multilineDataUri}\nNote: Found under rear passenger seat`,
+          },
+          {
+            body: `[LOST_ITEM_RETURNED]\n[HANDOVER_PHOTO] ${handoverMultilineUri}\nNote: Handed directly to passenger`,
+          },
+        ],
+      },
+    ];
+
+    const details = service.extractLostItemDetails(cases);
+    expect(details).not.toBeNull();
+    expect(details?.status).toBe('RETURNED');
+    expect(details?.photoUrl).toBe(multilineDataUri);
+    expect(details?.handoverPhotoUrl).toBe(handoverMultilineUri);
+    expect(details?.driverNote).toBe('Handed directly to passenger');
+  });
+
+  it('markLostItemReturned safely handles existing wallet adjustment (e.g. Tip) without failing on unique constraint', async () => {
+    const mockPrisma: any = {
+      driverProfile: {
+        findUnique: jest.fn().mockResolvedValue({ userId: 'driver-user-1' }),
+      },
+      ride: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'ride-123',
+          status: RideStatus.COMPLETED,
+          passengerId: 'pass-profile-1',
+          assignedDriverId: 'driver-profile-1',
+          passenger: { userId: 'passenger-user-1' },
+          selectedOffer: { driver: { id: 'driver-profile-1', userId: 'driver-user-1' } },
+          supportCases: [
+            {
+              id: 'case-1',
+              title: 'Lost item inquiry',
+              notes: [],
+            },
+          ],
+        }),
+      },
+      supportCaseNote: {
+        create: jest.fn().mockResolvedValue({ id: 'note-1' }),
+      },
+      supportCase: {
+        update: jest.fn().mockResolvedValue({ id: 'case-1' }),
+      },
+      driverWalletEntry: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 'existing-tip-entry' }),
+        create: jest.fn().mockResolvedValue({ id: 'wallet-entry-1' }),
+      },
+      rideEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'event-1' }),
+      },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+      },
+    };
+
+    const mockNotifications: any = {
+      notifyRideStatus: jest.fn().mockResolvedValue(undefined),
+    };
+    const mockTracking: any = {
+      emitToDrivers: jest.fn(),
+      emitRideEvent: jest.fn(),
+    };
+
+    const service = new MarketplaceService(
+      mockPrisma,
+      {} as any,
+      {} as any,
+      mockNotifications,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      mockTracking,
+    );
+
+    const result = await service.markLostItemReturned(
+      'passenger-user-1',
+      'ride-123',
+      { note: 'Item safely received' },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockPrisma.driverWalletEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          driverId: 'driver-profile-1',
+          rideId: null,
+          metaJson: expect.objectContaining({
+            isLostItemFee: true,
+            rideId: 'ride-123',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('payLostItemReturnFee safely handles existing wallet adjustment (e.g. Tip) without failing on unique constraint', async () => {
+    const mockPrisma: any = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'passenger-user-1',
+          passengerProfile: { id: 'pass-profile-1' },
+          phoneVerifiedAt: new Date(),
+          isSuspended: false,
+        }),
+      },
+      ride: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'ride-123',
+          status: RideStatus.COMPLETED,
+          passengerId: 'pass-profile-1',
+          assignedDriverId: 'driver-profile-1',
+          currency: 'CAD',
+          passenger: { id: 'pass-profile-1', userId: 'passenger-user-1' },
+          selectedOffer: { driver: { id: 'driver-profile-1', userId: 'driver-user-1' } },
+          supportCases: [
+            {
+              id: 'case-1',
+              title: 'Lost item inquiry',
+              notes: [],
+            },
+          ],
+        }),
+      },
+      payment: {
+        upsert: jest.fn().mockResolvedValue({ id: 'payment-1', status: 'requires_payment_method' }),
+      },
+      driverWalletEntry: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 'existing-tip-entry' }),
+        create: jest.fn().mockResolvedValue({ id: 'wallet-entry-1' }),
+      },
+      supportCaseNote: {
+        create: jest.fn().mockResolvedValue({ id: 'note-1' }),
+      },
+      auditLog: {
+        create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
+      },
+    };
+
+    const mockPayments: any = {
+      createIntent: jest.fn().mockResolvedValue({
+        provider: 'stripe',
+        intentId: 'pi_test_123',
+        status: 'requires_payment_method',
+        clientSecret: 'secret_123',
+      }),
+    };
+
+    const mockNotifications: any = {
+      notifyRideStatus: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const service = new MarketplaceService(
+      mockPrisma,
+      {} as any,
+      mockPayments,
+      mockNotifications,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+
+    const result = await service.payLostItemReturnFee(
+      'passenger-user-1',
+      'ride-123',
+      { paymentMethod: 'CARD' },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockPrisma.driverWalletEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          driverId: 'driver-profile-1',
+          rideId: null,
+          metaJson: expect.objectContaining({
+            isLostItemFee: true,
+            rideId: 'ride-123',
+          }),
+        }),
+      }),
+    );
+  });
 });

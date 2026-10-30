@@ -390,7 +390,6 @@ class Review {
   const Review({
     required this.stars,
     required this.text,
-    this.fromLanguage,
     this.createdAt,
     this.communicationStars,
     this.driverStars,
@@ -398,7 +397,6 @@ class Review {
   });
   final int stars;
   final String text;
-  final String? fromLanguage;
   final DateTime? createdAt;
   final int? communicationStars;
   final int? driverStars;

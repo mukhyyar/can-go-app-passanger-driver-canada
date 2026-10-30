@@ -305,7 +305,96 @@ class _DriverCancellationSheetState extends State<DriverCancellationSheet> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
+
+              // Driver Cancellation Policy Card
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.policy_outlined,
+                          size: 18,
+                          color: Color(0xFF0F172A),
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Driver Cancellation Policy',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => showDriverCancellationPolicyDialog(context),
+                          borderRadius: BorderRadius.circular(4),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Full Policy',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: GtColors.brand,
+                                  ),
+                                ),
+                                SizedBox(width: 2),
+                                Icon(Icons.open_in_new, size: 12, color: GtColors.brand),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _policyRuleRow(
+                      icon: Icons.payments_outlined,
+                      title: '100% Passenger Refund',
+                      desc: 'Customer receives an immediate full refund to their payment method.',
+                    ),
+                    const SizedBox(height: 6),
+                    _policyRuleRow(
+                      icon: Icons.money_off_rounded,
+                      title: 'Zero Payout (\$0.00 CAD)',
+                      desc: 'No earnings or compensation are paid for cancelled rides.',
+                    ),
+                    const SizedBox(height: 6),
+                    _policyRuleRow(
+                      icon: Icons.verified_user_outlined,
+                      title: 'Safety Concerns Protected',
+                      desc: 'Justified safety stops or refusals do not penalize your driver rating.',
+                    ),
+                    const SizedBox(height: 6),
+                    _policyRuleRow(
+                      icon: Icons.warning_amber_rounded,
+                      title: 'Repeated Unjustified Cancels',
+                      desc: 'Unjustified cancellations affect account standing and dispatch eligibility.',
+                    ),
+                  ],
+                ),
+              ),
 
               // Reason Radio Cards
               const Text(
@@ -507,4 +596,140 @@ class _DriverCancellationSheetState extends State<DriverCancellationSheet> {
       ),
     );
   }
+
+  Widget _policyRuleRow({
+    required IconData icon,
+    required String title,
+    required String desc,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 15, color: const Color(0xFF475569)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: Color(0xFF334155),
+                height: 1.35,
+              ),
+              children: [
+                TextSpan(
+                  text: '$title: ',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                TextSpan(text: desc),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Displays an informational dialog explaining CAN-RIDE's Driver Cancellation & Refund Policy.
+Future<void> showDriverCancellationPolicyDialog(BuildContext context) {
+  return showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.policy_outlined, color: GtColors.brand, size: 22),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Driver Cancellation Policy',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Please review the cancellation rules and terms that apply to drivers before cancelling a booking:',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: GtColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _dialogPolicySection(
+              title: '1. Passenger Refund & Earnings Forfeiture',
+              body:
+                  'When you cancel an accepted or ongoing trip, the passenger receives an immediate 100% full refund to their payment card. The driver receives \$0.00 CAD earnings for the trip.',
+            ),
+            const SizedBox(height: 10),
+            _dialogPolicySection(
+              title: '2. Section 15 Safety & Protection Rights',
+              body:
+                  'Safety strictly overrides completion of a booking. Drivers may refuse or halt a trip where there is a legitimate safety threat, unlawful activity, passenger hostility, compromised vehicle condition, or severe weather. Justified safety cancellations are protected and do not lower your driver rating or account standing.',
+            ),
+            const SizedBox(height: 10),
+            _dialogPolicySection(
+              title: '3. Unjustified Cancellations & Penalties',
+              body:
+                  'Cancelling without valid safety, emergency, or legal grounds (e.g. personal convenience or refusing accepted rates) is considered unjustified. Repeated unjustified cancellations lower your completion rating and can lead to dispatch pauses or account review.',
+            ),
+            const SizedBox(height: 10),
+            _dialogPolicySection(
+              title: '4. Passenger No-Show Procedure',
+              body:
+                  'If the passenger fails to appear at pickup after the included waiting period (15 minutes for standard trips, 60 minutes for airports/ports), do NOT cancel the trip here. Instead, select "Passenger No-Show" to protect your compensation and earn the eligible no-show fee.',
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () => GtPolicyUrls.openCancellation(),
+          icon: const Icon(Icons.open_in_browser, size: 16),
+          label: const Text('Online Policy'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(ctx),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: GtColors.brand,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Understood'),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _dialogPolicySection({required String title, required String body}) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF0F172A),
+        ),
+      ),
+      const SizedBox(height: 3),
+      Text(
+        body,
+        style: const TextStyle(
+          fontSize: 12,
+          color: Color(0xFF475569),
+          height: 1.35,
+        ),
+      ),
+    ],
+  );
 }

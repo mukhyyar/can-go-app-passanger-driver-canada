@@ -135,7 +135,7 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         id: 'ride-1',
         passenger: { userId: 'passenger-1' },
         selectedOffer: { driver: { userId: 'driver-1' } },
-        supportCases: [{ id: 'case-1', status: SupportCaseStatus.IN_PROGRESS }],
+        supportCases: [{ id: 'case-1', status: SupportCaseStatus.ASSIGNED }],
         status: RideStatus.COMPLETED,
       });
 
@@ -146,6 +146,72 @@ describe('ChatService with Ride Reports and Support Cases', () => {
           userId: 'passenger-1',
           title: 'Support message from Can-Ride',
           body: 'We are reviewing your report.',
+        }),
+      );
+    });
+  });
+
+  describe('Role preservation & Zigzag alignment', () => {
+    it('preserves distinct PASSENGER and DRIVER roles even when passenger and driver share the same userId', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'shared-user', role: UserRole.PASSENGER });
+      mockPrisma.ride.findUnique.mockResolvedValue({
+        id: 'ride-shared',
+        passenger: { userId: 'shared-user' },
+        selectedOffer: { driver: { userId: 'shared-user' } },
+        supportCases: [],
+        status: RideStatus.IN_PROGRESS,
+      });
+      mockPrisma.chatThread.upsert.mockResolvedValue({
+        id: 'thread-shared',
+        rideId: 'ride-shared',
+        messages: [
+          {
+            id: 'msg-1',
+            threadId: 'thread-shared',
+            senderId: 'shared-user',
+            body: '<!--role:PASSENGER-->im ready',
+            createdAt: new Date('2026-10-30T10:00:00Z'),
+          },
+          {
+            id: 'msg-2',
+            threadId: 'thread-shared',
+            senderId: 'shared-user',
+            body: '<!--role:DRIVER-->arrived',
+            createdAt: new Date('2026-10-30T10:05:00Z'),
+          },
+        ],
+      });
+
+      const thread = await service.getOrCreateThread('shared-user', 'ride-shared');
+      expect(thread.messages).toHaveLength(2);
+
+      const m1 = thread.messages[0];
+      expect(m1.body).toBe('im ready');
+      expect(m1.senderRole).toBe('PASSENGER');
+
+      const m2 = thread.messages[1];
+      expect(m2.body).toBe('arrived');
+      expect(m2.senderRole).toBe('DRIVER');
+    });
+
+    it('stores role tag when sending as PASSENGER or DRIVER', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: UserRole.PASSENGER });
+      mockPrisma.ride.findUnique.mockResolvedValue({
+        id: 'ride-1',
+        passenger: { userId: 'user-1' },
+        selectedOffer: { driver: { userId: 'driver-2' } },
+        supportCases: [],
+        status: RideStatus.IN_PROGRESS,
+      });
+
+      const sentPassenger = await service.send('user-1', 'ride-1', 'I am here', 'PASSENGER');
+      expect(sentPassenger.body).toBe('I am here');
+      expect(sentPassenger.senderRole).toBe('PASSENGER');
+      expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            body: '<!--role:PASSENGER-->I am here',
+          }),
         }),
       );
     });

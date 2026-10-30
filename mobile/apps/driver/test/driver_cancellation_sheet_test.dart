@@ -50,6 +50,14 @@ void main() {
       findsOneWidget,
     );
 
+    // Verify Driver Cancellation Policy Card is present before ride cancel
+    expect(find.text('Driver Cancellation Policy'), findsOneWidget);
+    expect(find.text('100% Passenger Refund'), findsOneWidget);
+    expect(find.text('Zero Payout (\$0.00 CAD)'), findsOneWidget);
+    expect(find.text('Safety Concerns Protected'), findsOneWidget);
+    expect(find.text('Repeated Unjustified Cancels'), findsOneWidget);
+    expect(find.text('Full Policy'), findsOneWidget);
+
     // Verify all Section 15 safety reasons are present
     expect(find.text('Immediate Safety Threat'), findsOneWidget);
     expect(find.text('Unlawful Activity'), findsOneWidget);
@@ -219,5 +227,53 @@ void main() {
       find.text('CAN-RIDE Support should not be represented as an emergency-response service.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('tapping Full Policy opens detailed Driver Cancellation Policy dialog', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: GtTheme.light(),
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => ElevatedButton(
+              onPressed: () => showModalBottomSheet(
+                context: ctx,
+                isScrollControlled: true,
+                builder: (_) => const DriverCancellationSheet(),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    // Tap "Full Policy"
+    expect(find.text('Full Policy'), findsOneWidget);
+    await tester.tap(find.text('Full Policy'));
+    await tester.pumpAndSettle();
+
+    // Verify dialog content
+    expect(find.text('1. Passenger Refund & Earnings Forfeiture'), findsOneWidget);
+    expect(find.text('2. Section 15 Safety & Protection Rights'), findsOneWidget);
+    expect(find.text('3. Unjustified Cancellations & Penalties'), findsOneWidget);
+    expect(find.text('4. Passenger No-Show Procedure'), findsOneWidget);
+    expect(find.text('Understood'), findsOneWidget);
+
+    // Close dialog
+    await tester.tap(find.text('Understood'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1. Passenger Refund & Earnings Forfeiture'), findsNothing);
   });
 }

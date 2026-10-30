@@ -176,12 +176,9 @@ describe('Ride Report Functionality', () => {
           }),
         }),
       );
-      expect(res.chatThreadId).toBe('thread-1');
-      expect(mockPrisma.chatThread.upsert).toHaveBeenCalledWith({
-        where: { rideId: 'ride-1' },
-        create: { rideId: 'ride-1' },
-        update: {},
-      });
+      expect((res as any).chatThreadId).toBeUndefined();
+      expect(mockPrisma.chatMessage.create).not.toHaveBeenCalled();
+      expect(mockPrisma.chatThread.upsert).not.toHaveBeenCalled();
       expect(mockNotifications.notifyAdmins).toHaveBeenCalledWith(
         expect.objectContaining({
           title: expect.stringContaining('Reckless / Speeding'),
@@ -246,6 +243,9 @@ describe('Ride Report Functionality', () => {
           }),
         }),
       );
+      expect((res as any).chatThreadId).toBeUndefined();
+      expect(mockPrisma.chatMessage.create).not.toHaveBeenCalled();
+      expect(mockPrisma.chatThread.upsert).not.toHaveBeenCalled();
     });
   });
 });

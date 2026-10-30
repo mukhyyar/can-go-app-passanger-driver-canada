@@ -102,5 +102,32 @@ void main() {
       expect(req.lostItem!.itemDescription, isNull);
       expect(req.lostItem!.driverNote, equals('not found anything'));
     });
+
+    test('driverRequestFromServer maps lostItem with FOUND status, photoUrl, and pickupLocation', () {
+      final json = {
+        'id': 'trip-completed-lost-found',
+        'pickupAt': '2026-10-30T16:00:00.000Z',
+        'fromLabel': 'Toronto Pearson Airport',
+        'toLabel': 'Downtown',
+        'status': 'COMPLETED',
+        'hasLostItemRequest': true,
+        'lostItem': {
+          'caseId': 'case-found-1',
+          'status': 'FOUND',
+          'itemDescription': 'Black wallet',
+          'photoUrl': 'data:image/jpeg;base64,samplephoto==',
+          'pickupLocation': 'Westin Lobby',
+          'returnFeeAmount': 20.0,
+          'returnFeePaid': false,
+        },
+      };
+
+      final req = driverRequestFromServer(json);
+      expect(req.lostItem, isNotNull);
+      expect(req.lostItem!.status, equals('FOUND'));
+      expect(req.lostItem!.isFound, isTrue);
+      expect(req.lostItem!.photoUrl, equals('data:image/jpeg;base64,samplephoto=='));
+      expect(req.lostItem!.pickupLocation, equals('Westin Lobby'));
+    });
   });
 }

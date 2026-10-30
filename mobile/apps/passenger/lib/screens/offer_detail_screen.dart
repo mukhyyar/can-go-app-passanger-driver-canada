@@ -253,16 +253,6 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                               ),
                             ),
                           ],
-                          if (r.fromLanguage != null) ...[
-                            const SizedBox(width: 8),
-                            Text(
-                              'from ${r.fromLanguage}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: GtColors.textMuted,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                       if (r.communicationStars != null ||
@@ -773,39 +763,47 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Expanded(
-                            child: Text(
-                              offer.priceLabel,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                              ),
+                          Text(
+                            offer.priceLabel,
+                            softWrap: false,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
-                          InkWell(
-                            onTap: () => setState(
-                              () => _breakdownOpen = !_breakdownOpen,
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  breakdown?.includesNote ??
-                                      'Taxes & fees included',
-                                  style: const TextStyle(
-                                    color: GtColors.green,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: InkWell(
+                              onTap: () => setState(
+                                () => _breakdownOpen = !_breakdownOpen,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      breakdown?.includesNote ??
+                                          'Taxes & fees included',
+                                      style: const TextStyle(
+                                        color: GtColors.green,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
-                                ),
-                                Icon(
-                                  _breakdownOpen
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                  color: GtColors.green,
-                                  size: 20,
-                                ),
-                              ],
+                                  Icon(
+                                    _breakdownOpen
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                    color: GtColors.green,
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -864,7 +862,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                       ),
                       subtitle: Text(
                         offer.waitingTimeSummary!,
-                        maxLines: 2,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
                       onTap: () => _showWaiting(offer.waitingTimeSummary!),
@@ -1050,12 +1048,17 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
       child: Row(
         children: [
           SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                color: GtColors.textSecondary,
+            width: 120,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: GtColors.textSecondary,
+                ),
               ),
             ),
           ),

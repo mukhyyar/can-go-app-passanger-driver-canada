@@ -339,7 +339,6 @@ Offer offerFromServer(Map<String, dynamic> json) {
         Review(
           stars: _asInt(r['stars']),
           text: r['text']?.toString() ?? '',
-          fromLanguage: r['translatedFrom']?.toString(),
           createdAt: created,
           communicationStars: r['communicationStars'] == null
               ? null

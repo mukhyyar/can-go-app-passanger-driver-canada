@@ -83,7 +83,10 @@ export class ChatService {
       update: {},
       include: {
         messages: {
-          where: { deletedAt: null },
+          where: {
+            deletedAt: null,
+            NOT: { body: { startsWith: '[Ride Report Filed]' } },
+          },
           orderBy: { createdAt: 'asc' },
           take: 200,
         },
@@ -117,14 +120,24 @@ export class ChatService {
     }
 
     const messages = thread.messages.map((m) => {
+      const roleMatch = m.body.match(/^<!--role:(PASSENGER|DRIVER|SUPPORT)-->/);
       let senderRole: 'PASSENGER' | 'DRIVER' | 'SUPPORT' = 'SUPPORT';
-      if (m.senderId === passengerUserId) {
+      let cleanBody = m.body;
+
+      if (roleMatch) {
+        senderRole = roleMatch[1] as 'PASSENGER' | 'DRIVER' | 'SUPPORT';
+        cleanBody = m.body.slice(roleMatch[0].length);
+      } else if (m.senderId === passengerUserId && m.senderId !== driverUserId) {
         senderRole = 'PASSENGER';
-      } else if (m.senderId === driverUserId) {
+      } else if (m.senderId === driverUserId && m.senderId !== passengerUserId) {
         senderRole = 'DRIVER';
+      } else if (m.senderId === passengerUserId) {
+        senderRole = 'PASSENGER';
       }
+
       return {
         ...m,
+        body: cleanBody,
         senderRole,
       };
     });
@@ -186,20 +199,63 @@ export class ChatService {
     };
   }
 
-  async send(userId: string, rideId: string, rawBody: string) {
+  async send(
+    userId: string,
+    rideId: string,
+    rawBody: string,
+    senderRole?: string,
+  ) {
     const ride = await this.assertParticipant(userId, rideId, true);
     const body = this.sanitize(rawBody ?? '');
     if (!body) throw new BadRequestException('Message body required');
     if (body.length > MAX_BODY) {
       throw new BadRequestException(`Message max ${MAX_BODY} characters`);
     }
+
+    const passengerUserId = ride.passenger.userId;
+    let driverUserId = ride.selectedOffer?.driver.userId ?? null;
+    if (!driverUserId && ride.assignedDriverId) {
+      const assigned = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        select: { userId: true },
+      });
+      driverUserId = assigned?.userId ?? null;
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const isAdmin =
+      user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
+
+    let roleTag = '';
+    const normalizedRole = senderRole?.toUpperCase();
+    if (
+      isAdmin ||
+      normalizedRole === 'ADMIN' ||
+      normalizedRole === 'SUPER_ADMIN' ||
+      normalizedRole === 'SUPPORT'
+    ) {
+      roleTag = '<!--role:SUPPORT-->';
+    } else if (normalizedRole === 'DRIVER') {
+      roleTag = '<!--role:DRIVER-->';
+    } else if (normalizedRole === 'PASSENGER') {
+      roleTag = '<!--role:PASSENGER-->';
+    } else {
+      const isPassenger = passengerUserId === userId;
+      const isDriver = driverUserId === userId;
+      if (isDriver && !isPassenger) {
+        roleTag = '<!--role:DRIVER-->';
+      } else if (isPassenger) {
+        roleTag = '<!--role:PASSENGER-->';
+      }
+    }
+
     const thread = await this.prisma.chatThread.upsert({
       where: { rideId },
       create: { rideId },
       update: {},
     });
     const msg = await this.prisma.chatMessage.create({
-      data: { threadId: thread.id, senderId: userId, body },
+      data: { threadId: thread.id, senderId: userId, body: `${roleTag}${body}` },
     });
     await this.prisma.auditLog.create({
       data: {
@@ -211,21 +267,9 @@ export class ChatService {
       },
     });
 
-    const passengerUserId = ride.passenger.userId;
-    let driverUserId = ride.selectedOffer?.driver.userId ?? null;
-    if (!driverUserId && ride.assignedDriverId) {
-      const assigned = await this.prisma.driverProfile.findUnique({
-        where: { id: ride.assignedDriverId },
-        select: { userId: true },
-      });
-      driverUserId = assigned?.userId ?? null;
-    }
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const isAdmin =
-      user?.role === UserRole.ADMIN || user?.role === UserRole.SUPER_ADMIN;
     const preview = body.length > 120 ? `${body.slice(0, 117)}…` : body;
 
-    if (isAdmin) {
+    if (isAdmin || roleTag === '<!--role:SUPPORT-->') {
       // Admin sent message: notify ride participants
       const targets = [passengerUserId, driverUserId].filter(Boolean) as string[];
       for (const tId of targets) {
@@ -248,13 +292,15 @@ export class ChatService {
           .catch(() => undefined);
       }
     } else {
-      // Customer sent message: notify the other ride participant
-      const recipientId =
-        userId === passengerUserId
-          ? driverUserId
-          : userId === driverUserId
-            ? passengerUserId
-            : null;
+      // Customer or driver sent message: notify the other ride participant
+      const isPassengerSender =
+        normalizedRole === 'PASSENGER' ||
+        (normalizedRole !== 'DRIVER' && userId === passengerUserId);
+      const recipientId = isPassengerSender
+        ? driverUserId
+        : userId === driverUserId
+          ? passengerUserId
+          : passengerUserId;
       if (recipientId) {
         const isPassengerRecipient = recipientId === passengerUserId;
         void this.notifications
@@ -306,16 +352,21 @@ export class ChatService {
       }
     }
 
-    const senderRole =
-      userId === passengerUserId
-        ? 'PASSENGER'
-        : userId === driverUserId
-          ? 'DRIVER'
-          : 'SUPPORT';
+    const effectiveRole =
+      normalizedRole === 'PASSENGER' ||
+      normalizedRole === 'DRIVER' ||
+      normalizedRole === 'SUPPORT'
+        ? normalizedRole
+        : userId === passengerUserId
+          ? 'PASSENGER'
+          : userId === driverUserId
+            ? 'DRIVER'
+            : 'SUPPORT';
 
     return {
       ...msg,
-      senderRole,
+      body,
+      senderRole: effectiveRole,
     };
   }
 

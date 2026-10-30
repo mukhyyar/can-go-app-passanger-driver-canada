@@ -165,8 +165,27 @@ export class DriverWalletService {
         ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
           ? (ride.priceSnapshot as Record<string, unknown>)
           : {};
-      const rawEarning =
-        snap.bidAmount ?? snap.driverEarning ?? snap.subtotal;
+      let rawEarning: number | string | Decimal | null = null;
+      if (snap.driverEarning !== null && snap.driverEarning !== undefined) {
+        const tip = Number(snap.tipAmount ?? snap.tip ?? 0);
+        const earnNum = Number(snap.driverEarning);
+        if (Number.isFinite(earnNum)) {
+          // Trip EARNING entry is for the net ride fare earning. Tips are credited via separate ADJUSTMENT entries.
+          rawEarning = Number(Math.max(0, earnNum - tip).toFixed(2));
+        } else {
+          rawEarning = snap.driverEarning as number | string | Decimal;
+        }
+      } else if (
+        (snap.subtotal !== null && snap.subtotal !== undefined) ||
+        (snap.bidAmount !== null && snap.bidAmount !== undefined)
+      ) {
+        const fare = Number(snap.subtotal ?? snap.bidAmount);
+        const fee = Number(snap.platformFee ?? snap.marketplaceFee ?? (fare * 0.2));
+        if (Number.isFinite(fare) && Number.isFinite(fee)) {
+          rawEarning = Number(Math.max(0, fare - fee).toFixed(2));
+        }
+      }
+
       if (rawEarning === null || rawEarning === undefined) {
         await this.audit(
           opts?.actorId,

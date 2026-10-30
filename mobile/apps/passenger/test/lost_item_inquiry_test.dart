@@ -195,7 +195,7 @@ void main() {
       await tester.tap(find.text('Find lost item'));
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify privacy explanation is shown (Uber / GetTransfer pattern)
+      // Verify privacy explanation is shown
       expect(
         find.textContaining('To protect your privacy, you don\'t need to describe personal items'),
         findsOneWidget,
@@ -207,6 +207,49 @@ void main() {
       expect(find.text('Contact phone number'), findsNothing);
       expect(find.text('Location in vehicle (optional)'), findsOneWidget);
       expect(find.text('Notify driver'), findsOneWidget);
+    });
+
+    testWidgets('renders photo thumbnail with "Tap to zoom" when photoUrl is present', (tester) async {
+      final appState = createMockAppState();
+      const testBase64Png =
+          'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+      final ride = RideRequest(
+        id: 'ride-with-photo',
+        datetimeLabel: 'Today, 2:00 PM',
+        from: '123 Main St',
+        to: '456 Queen St',
+        status: RideStatus.past,
+        serverStatus: 'COMPLETED',
+        hasLostItemRequest: true,
+        lostItem: const LostItemDetails(
+          caseId: 'case-photo-1',
+          status: 'FOUND',
+          itemDescription: 'Found black leather wallet',
+          photoUrl: testBase64Png,
+          returnFeeAmount: 20.0,
+          returnFeePaid: false,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ChangeNotifierProvider<AppState>.value(
+            value: appState,
+            child: const RideDetailScreen(rideId: 'ride-with-photo'),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      appState.repo.rides.clear();
+      appState.repo.rides.add(ride);
+      appState.notifyListeners();
+      await tester.pumpAndSettle();
+
+      // Verify the found item photo thumbnail and tap-to-zoom badge are displayed
+      expect(find.text('Driver Photo of Found Item:'), findsOneWidget);
+      expect(find.text('Tap to zoom'), findsOneWidget);
     });
   });
 }

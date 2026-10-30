@@ -7,7 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -21,6 +21,10 @@ class SendChatDto {
   @MinLength(1)
   @MaxLength(2000)
   body!: string;
+
+  @IsOptional()
+  @IsString()
+  senderRole?: string;
 }
 
 @Controller('rides/:rideId/chat')
@@ -40,7 +44,8 @@ export class ChatController {
     @Param('rideId') rideId: string,
     @Body() dto: SendChatDto,
   ) {
-    return this.chat.send(user.id, rideId, dto.body);
+    const role = dto.senderRole || user.role;
+    return this.chat.send(user.id, rideId, dto.body, role);
   }
 
   @Delete('messages/:messageId')

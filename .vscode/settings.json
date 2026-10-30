@@ -1,0 +1,8 @@
+{
+  "dart.analysisExcludedFolders": [
+    "mobile/apps/driver/build",
+    "mobile/apps/passenger/build",
+    "backend"
+  ]
+}
+

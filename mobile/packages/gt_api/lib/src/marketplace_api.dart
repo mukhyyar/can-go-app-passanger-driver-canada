@@ -343,8 +343,18 @@ class MarketplaceApi {
   Future<Map<String, dynamic>> getChatThread(String rideId) =>
       client.get('/rides/$rideId/chat');
 
-  Future<Map<String, dynamic>> sendChatMessage(String rideId, String body) =>
-      client.post('/rides/$rideId/chat/messages', body: {'body': body});
+  Future<Map<String, dynamic>> sendChatMessage(
+    String rideId,
+    String body, {
+    String? senderRole,
+  }) =>
+      client.post(
+        '/rides/$rideId/chat/messages',
+        body: {
+          'body': body,
+          if (senderRole != null) 'senderRole': senderRole,
+        },
+      );
 
   Future<Map<String, dynamic>> getRideContact(String rideId) =>
       client.get('/rides/$rideId/contact');
@@ -426,6 +436,7 @@ class MarketplaceApi {
   Future<Map<String, dynamic>> rateRide(
     String rideId, {
     required int stars,
+    String? role,
     int? communicationStars,
     int? driverStars,
     int? vehicleStars,
@@ -435,6 +446,7 @@ class MarketplaceApi {
         '/rides/$rideId/ratings',
         body: {
           'stars': stars,
+          if (role != null) 'role': role,
           if (communicationStars != null)
             'communicationStars': communicationStars,
           if (driverStars != null) 'driverStars': driverStars,

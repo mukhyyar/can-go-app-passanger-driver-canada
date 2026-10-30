@@ -90,6 +90,9 @@ class AppState extends ChangeNotifier {
   int get completedRideCount =>
       repo.rides.where((r) => r.status == RideStatus.past).length;
 
+  String? get authUserId =>
+      me?['id']?.toString() ?? me?['user']?['id']?.toString();
+
   String get _placeHistoryUserKey {
     final id = me?['id']?.toString();
     if (id != null && id.isNotEmpty) return id;
@@ -129,6 +132,7 @@ class AppState extends ChangeNotifier {
       _stopOpenRidePolling();
     }
     await _loadPlaceSearchHistory();
+    unawaited(loadOAuthConfig());
     ready = true;
     notifyListeners();
   }
@@ -225,7 +229,36 @@ class AppState extends ChangeNotifier {
     return api.auth.sendOtp(phoneE164: phoneE164, purpose: purpose);
   }
 
-  Future<OAuthConfig> loadOAuthConfig() => api.auth.oauthConfig();
+  OAuthConfig? _cachedOAuthConfig;
+  Future<OAuthConfig>? _loadingOAuthConfig;
+
+  OAuthConfig? get cachedOAuthConfig => _cachedOAuthConfig;
+
+  Future<OAuthConfig> loadOAuthConfig({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedOAuthConfig != null) {
+      return _cachedOAuthConfig!;
+    }
+    if (!forceRefresh && _loadingOAuthConfig != null) {
+      return _loadingOAuthConfig!;
+    }
+    final future = () async {
+      try {
+        final cfg = await api.auth.oauthConfig();
+        _cachedOAuthConfig = cfg;
+        return cfg;
+      } catch (_) {
+        if (_cachedOAuthConfig != null) return _cachedOAuthConfig!;
+        return OAuthConfig(
+          google: OAuthProviderConfig(enabled: true),
+          apple: OAuthProviderConfig(enabled: true),
+        );
+      } finally {
+        _loadingOAuthConfig = null;
+      }
+    }();
+    _loadingOAuthConfig = future;
+    return future;
+  }
 
   Future<OAuthResult> oauthGoogle({
     String? idToken,
@@ -926,8 +959,6 @@ class AppState extends ChangeNotifier {
         return Review(
           stars: (r['stars'] as num?)?.toInt() ?? 0,
           text: r['text']?.toString() ?? '',
-          fromLanguage: r['translatedFrom']?.toString() ??
-              r['fromLanguage']?.toString(),
           createdAt: created,
         );
       }).toList();
@@ -1050,6 +1081,7 @@ class AppState extends ChangeNotifier {
     final res = await api.marketplace.rateRide(
       rideId,
       stars: stars,
+      role: 'PASSENGER',
       communicationStars: communicationStars,
       driverStars: driverStars,
       vehicleStars: vehicleStars,
@@ -1128,10 +1160,17 @@ class AppState extends ChangeNotifier {
 
   /// Returns the current user's rating for [rideId], or null if not rated yet.
   Future<Map<String, dynamic>?> myRideRating(String rideId) async {
-    final uid = me?['id']?.toString();
+    final uid = me?['id']?.toString() ?? authUserId;
     if (uid == null || uid.isEmpty) return null;
     try {
       final list = await listRideRatings(rideId);
+      // In dual-role scenarios, prioritize rating given as passenger (with communicationStars)
+      for (final r in list) {
+        if (r['fromUserId']?.toString() == uid &&
+            r['communicationStars'] != null) {
+          return r;
+        }
+      }
       for (final r in list) {
         if (r['fromUserId']?.toString() == uid) return r;
       }
@@ -1143,7 +1182,7 @@ class AppState extends ChangeNotifier {
       api.marketplace.getChatThread(rideId);
 
   Future<Map<String, dynamic>> sendChat(String rideId, String body) =>
-      api.marketplace.sendChatMessage(rideId, body);
+      api.marketplace.sendChatMessage(rideId, body, senderRole: 'PASSENGER');
 
   Future<Map<String, dynamic>> getRideContact(String rideId) =>
       api.marketplace.getRideContact(rideId);

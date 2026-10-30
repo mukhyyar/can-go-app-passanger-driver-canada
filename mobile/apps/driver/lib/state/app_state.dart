@@ -422,7 +422,7 @@ class AppState extends ChangeNotifier {
       api.marketplace.getChatThread(rideId);
 
   Future<Map<String, dynamic>> sendChat(String rideId, String body) =>
-      api.marketplace.sendChatMessage(rideId, body);
+      api.marketplace.sendChatMessage(rideId, body, senderRole: 'DRIVER');
 
   Future<Map<String, dynamic>> getRideContact(String rideId) =>
       api.marketplace.getRideContact(rideId);
@@ -432,7 +432,12 @@ class AppState extends ChangeNotifier {
     required int stars,
     String? comment,
   }) =>
-      api.marketplace.rateRide(rideId, stars: stars, comment: comment);
+      api.marketplace.rateRide(
+        rideId,
+        stars: stars,
+        role: 'DRIVER',
+        comment: comment,
+      );
 
   Future<Map<String, dynamic>> reportRide(
     String rideId, {
@@ -461,6 +466,13 @@ class AppState extends ChangeNotifier {
     if (uid == null || uid.isEmpty) return null;
     try {
       final list = await listRideRatings(rideId);
+      // In dual-role scenarios, prioritize rating given as driver (without communicationStars)
+      for (final r in list) {
+        if (r['fromUserId']?.toString() == uid &&
+            r['communicationStars'] == null) {
+          return r;
+        }
+      }
       for (final r in list) {
         if (r['fromUserId']?.toString() == uid) return r;
       }
