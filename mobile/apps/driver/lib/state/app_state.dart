@@ -552,6 +552,12 @@ class AppState extends ChangeNotifier {
         'Cannot go online: complete activation to offer prices. Please contact partner@can-go.ca',
       );
     }
+    if (enabled && !hasApprovedVehicle) {
+      throw Exception(
+        profileHoldReason ??
+            'Cannot go online: you do not have an approved and inspected vehicle.',
+      );
+    }
     final res = await api.driver.setAvailability(enabled: enabled);
     drivingEnabled = res['enabled'] == true;
     if (drivingEnabled) {
@@ -1321,6 +1327,9 @@ class AppState extends ChangeNotifier {
 
   bool get hasExpiredDocuments {
     if (hasExpiredDocumentsFromServer) return true;
+    for (final doc in documents) {
+      if (isDocumentExpired(doc)) return true;
+    }
     for (final slot in const ['selfie', 'license']) {
       final doc = documentForType(slot);
       if (isDocumentExpired(doc)) return true;
@@ -1474,14 +1483,41 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
+  /// Check if a vehicle is approved by admin and has passed inspection.
+  bool isVehicleApproved(DriverVehicle v) {
+    return v.isActive &&
+        v.approvalStatus.toUpperCase() == 'APPROVED' &&
+        v.inspectionStatus.toUpperCase() == 'APPROVED';
+  }
+
+  /// List of vehicles eligible for taking trips and offering prices.
+  List<DriverVehicle> get approvedVehicles {
+    return vehicles.where(isVehicleApproved).toList();
+  }
+
+  /// True if driver has at least one active, approved, and inspected vehicle.
+  bool get hasApprovedVehicle => approvedVehicles.isNotEmpty;
+
+  /// True if any active vehicle has approval pending.
+  bool get hasPendingVehicleApproval {
+    return vehicles.any((v) =>
+        v.isActive &&
+        (v.approvalStatus.toUpperCase() == 'PENDING' ||
+            v.approvalStatus.toUpperCase() == 'IN_REVIEW'));
+  }
+
+  /// True if any active vehicle has inspection pending.
+  bool get hasPendingVehicleInspection {
+    return vehicles.any((v) =>
+        v.isActive &&
+        (v.inspectionStatus.toUpperCase() == 'PENDING' ||
+            v.inspectionStatus.toUpperCase() == 'IN_REVIEW'));
+  }
+
   /// True if driver profile is held due to document verification / review.
   bool get isProfileOnHold {
     final st = approvalStatus.toUpperCase();
-    // Activated + approved: only required-doc PENDING holds (ignore optional leftovers).
-    if (st == 'APPROVED' && isActivated) {
-      return hasPendingRequiredDocuments;
-    }
-    if (hasPendingRequiredDocuments) return true;
+    if (hasPendingDocuments || hasPendingRequiredDocuments) return true;
     if (st == 'IN_REVIEW') return true;
     if (st == 'PENDING_KYC' && documents.isNotEmpty) return true;
     return false;
@@ -1493,6 +1529,7 @@ class AppState extends ChangeNotifier {
     if (!isActivated) return false;
     if (hasExpiredDocuments) return false;
     if (hasReuploadRequest) return false;
+    if (!hasApprovedVehicle) return false;
     return approvalStatus.toUpperCase() == 'APPROVED';
   }
 
@@ -1509,6 +1546,18 @@ class AppState extends ChangeNotifier {
     }
     if (!isActivated || approvalStatus.toUpperCase() != 'APPROVED') {
       return 'You will be able to offer your price after activation. Please complete your profile verification.';
+    }
+    if (vehicles.isEmpty) {
+      return 'No vehicle on file. Please add your vehicle in Settings to start offering rides.';
+    }
+    if (!hasApprovedVehicle) {
+      if (hasPendingVehicleApproval) {
+        return 'Your vehicle approval is currently pending admin review. You cannot submit offers until your vehicle is approved.';
+      }
+      if (hasPendingVehicleInspection) {
+        return 'Your vehicle inspection is currently pending approval. You cannot submit offers until inspection is approved.';
+      }
+      return 'Your vehicle is not approved for rides. Please review your vehicle status in Settings.';
     }
     return null;
   }
@@ -2573,12 +2622,19 @@ class AppState extends ChangeNotifier {
         }
 
         final resolvedVehicleId = (draft.vehicleId != null &&
-                vehicles.any((v) => v.id == draft.vehicleId))
+                vehicles.any((v) => v.id == draft.vehicleId && isVehicleApproved(v)))
             ? draft.vehicleId
             : (primaryVehicleId != null &&
-                    vehicles.any((v) => v.id == primaryVehicleId))
+                    vehicles.any((v) => v.id == primaryVehicleId && isVehicleApproved(v)))
                 ? primaryVehicleId
-                : (vehicles.isNotEmpty ? vehicles.first.id : primaryVehicleId);
+                : (approvedVehicles.isNotEmpty ? approvedVehicles.first.id : null);
+
+        if (resolvedVehicleId == null) {
+          throw Exception(
+            profileHoldReason ??
+                'No approved vehicle available. Please verify your vehicle approval and inspection status in Settings.',
+          );
+        }
 
         if (existing != null) {
           await api.driver.updateOffer(

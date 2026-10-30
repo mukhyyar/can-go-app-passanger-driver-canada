@@ -240,9 +240,9 @@ class _RideEndsRow extends StatelessWidget {
             time.hour,
             time.minute,
           );
-          final minEnds = start.add(const Duration(minutes: 30));
+          final minEnds = start.add(const Duration(minutes: 60));
           if (ends.isBefore(minEnds) || ends.isBefore(now)) {
-            ends = minEnds.isAfter(now) ? minEnds : now.add(const Duration(minutes: 30));
+            ends = minEnds.isAfter(now) ? minEnds : now.add(const Duration(minutes: 60));
           }
           state.setRideEndsDateTime(ends);
         },
@@ -276,7 +276,6 @@ class _DurationPills extends StatelessWidget {
   final AppState state;
 
   static const options = <(int, String)>[
-    (30, 'for 30 min'),
     (60, 'for 1 hour'),
     (120, 'for 2 hours'),
     (180, 'for 3 hours'),

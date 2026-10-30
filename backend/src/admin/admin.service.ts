@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
@@ -27,6 +28,7 @@ import type { SmsProvider } from '../providers/sms/sms-provider.interface';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LaunchGateService } from '../providers/launch-gate.service';
 import { FirebaseService } from '../firebase/firebase.service';
+import { DriverWalletService } from '../wallet/driver-wallet.service';
 import {
   asNum,
   rangeStart,
@@ -81,6 +83,7 @@ export class AdminOpsService {
     private readonly storage: StorageService,
     @Inject(PAYMENT_PROVIDER) private readonly payments: PaymentProvider,
     @Inject(SMS_PROVIDER) private readonly sms: SmsProvider,
+    @Optional() private readonly wallet?: DriverWalletService,
   ) {}
 
   /** Authenticated avatar bytes for admin UI (never expose loopback MinIO URLs). */
@@ -230,7 +233,12 @@ export class AdminOpsService {
           status: { in: ['succeeded', 'SUCCEEDED', 'captured'] },
           createdAt: { gte: start, lte: end },
         },
-        select: { amount: true, createdAt: true, ride: { select: { priceSnapshot: true } } },
+        select: {
+          amount: true,
+          createdAt: true,
+          rideId: true,
+          ride: { select: { id: true, status: true, priceSnapshot: true } },
+        },
       }),
       this.prisma.refund.aggregate({
         _sum: { amount: true },
@@ -239,18 +247,26 @@ export class AdminOpsService {
     ]);
 
     const gmv = paymentsOk.reduce((s, p) => s + asNum(p.amount), 0);
-    const commission = paymentsOk.reduce(
-      (s, p) => s + snapField(p.ride?.priceSnapshot, 'platformFee'),
-      0,
-    );
-    const tax = paymentsOk.reduce(
-      (s, p) => s + snapField(p.ride?.priceSnapshot, 'tax'),
-      0,
-    );
-    const driverShare = paymentsOk.reduce(
-      (s, p) => s + snapField(p.ride?.priceSnapshot, 'driverEarning'),
-      0,
-    );
+    // Deduplicate rides and only sum snapshot commission/tax/driverEarning once per COMPLETED ride
+    const completedRideSnaps = new Map<string, unknown>();
+    for (const r of ridesInRange) {
+      if (r.status === RideStatus.COMPLETED) {
+        completedRideSnaps.set(r.id, r.priceSnapshot);
+      }
+    }
+    for (const p of paymentsOk) {
+      if (p.ride?.id && p.ride.status === RideStatus.COMPLETED) {
+        completedRideSnaps.set(p.ride.id, p.ride.priceSnapshot);
+      }
+    }
+    let commission = 0;
+    let tax = 0;
+    let driverShare = 0;
+    for (const snap of completedRideSnaps.values()) {
+      commission += snapField(snap, 'platformFee');
+      tax += snapField(snap, 'taxAmount') || snapField(snap, 'tax');
+      driverShare += snapField(snap, 'driverEarning');
+    }
     const refunds = asNum(refundSum._sum.amount);
     const avgBids =
       ridesInRange.length === 0
@@ -1086,16 +1102,69 @@ export class AdminOpsService {
       include: { tag: true },
     });
 
-    const completed = rides.filter((r) => r.status === RideStatus.COMPLETED).length;
-    const cancelled = rides.filter((r) => CANCELLED.includes(r.status)).length;
-    const unfulfilled = rides.filter((r) => UNFULFILLED.includes(r.status)).length;
-    const spend = payments
-      .filter((p) => /succeed|captur/i.test(p.status))
-      .reduce((s, p) => s + asNum(p.amount), 0);
-    const earnings = rides.reduce(
-      (s, r) => s + snapField(r.priceSnapshot, 'driverEarning'),
-      0,
-    );
+    // Uncapped status counts across all rides for this user
+    const rideStatusGroups = await this.prisma.ride.groupBy({
+      by: ['status'],
+      where: rideWhere,
+      _count: { _all: true },
+    });
+    const totalRidesCount = rideStatusGroups.reduce((s, g) => s + g._count._all, 0);
+    const completed = rideStatusGroups
+      .filter((g) => g.status === RideStatus.COMPLETED)
+      .reduce((s, g) => s + g._count._all, 0);
+    const cancelled = rideStatusGroups
+      .filter((g) => CANCELLED.includes(g.status))
+      .reduce((s, g) => s + g._count._all, 0);
+    const unfulfilled = rideStatusGroups
+      .filter((g) => UNFULFILLED.includes(g.status))
+      .reduce((s, g) => s + g._count._all, 0);
+
+    // Passenger spend: strictly succeeded payments (minus succeeded refunds) on rides where this user is the PASSENGER
+    let spend = 0;
+    if (user.passengerProfile) {
+      const [paxPayAgg, paxRefundAgg] = await Promise.all([
+        this.prisma.payment.aggregate({
+          where: {
+            ride: { passengerId: user.passengerProfile.id },
+            status: { in: ['succeeded', 'SUCCEEDED', 'captured', 'CAPTURED'] },
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.refund.aggregate({
+          where: {
+            payment: { ride: { passengerId: user.passengerProfile.id } },
+            status: 'succeeded',
+          },
+          _sum: { amount: true },
+        }),
+      ]);
+      spend = Math.max(
+        0,
+        asNum(paxPayAgg._sum.amount) - asNum(paxRefundAgg._sum.amount),
+      );
+    }
+
+    // Driver earnings: strictly synchronized with Driver Wallet (completed driver rides + wallet adjustments),
+    // never including cancelled rides or rides where this user was the passenger.
+    let earnings = 0;
+    if (user.driverProfile) {
+      const driverId = user.driverProfile.id;
+      const walletCurrency = (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase();
+      if (this.wallet) {
+        await this.wallet.reconcileDriverCompletedRides(driverId);
+        const balances = await this.wallet.computeBalances(driverId, walletCurrency);
+        earnings = asNum(balances.lifetimeEarned.toFixed(2));
+      } else {
+        const driverCompletedRides = await this.prisma.ride.findMany({
+          where: { assignedDriverId: driverId, status: RideStatus.COMPLETED },
+          select: { priceSnapshot: true },
+        });
+        earnings = driverCompletedRides.reduce(
+          (s, r) => s + snapField(r.priceSnapshot, 'driverEarning'),
+          0,
+        );
+      }
+    }
     const avgRating =
       ratings.length === 0
         ? null
@@ -1171,7 +1240,7 @@ export class AdminOpsService {
       hasAvatar: Boolean(avatarStorageKey),
       avatarPath: avatarStorageKey ? `/admin/users/${user.id}/avatar` : null,
       marketplace: {
-        rides: rides.length,
+        rides: totalRidesCount,
         completed,
         cancelled,
         unfulfilled,
@@ -2300,10 +2369,22 @@ export class AdminOpsService {
 
   async financeOverview(range = '30d') {
     const { start, end } = rangeStart(range);
-    const payments = await this.prisma.payment.findMany({
-      where: { createdAt: { gte: start, lte: end } },
-      include: { ride: { select: { priceSnapshot: true } }, refunds: true },
-    });
+    const [payments, completedRidesInRange] = await Promise.all([
+      this.prisma.payment.findMany({
+        where: { createdAt: { gte: start, lte: end } },
+        include: {
+          ride: { select: { id: true, status: true, priceSnapshot: true } },
+          refunds: true,
+        },
+      }),
+      this.prisma.ride.findMany({
+        where: {
+          status: RideStatus.COMPLETED,
+          createdAt: { gte: start, lte: end },
+        },
+        select: { id: true, priceSnapshot: true },
+      }),
+    ]);
     const succeeded = payments.filter((p) => /succeed|captur/i.test(p.status));
     const gmv = succeeded.reduce((s, p) => s + asNum(p.amount), 0);
     const refunds = payments.reduce(
@@ -2311,15 +2392,24 @@ export class AdminOpsService {
         s + p.refunds.filter((r) => r.status === 'succeeded').reduce((a, r) => a + asNum(r.amount), 0),
       0,
     );
-    const driverShare = succeeded.reduce(
-      (s, p) => s + snapField(p.ride?.priceSnapshot, 'driverEarning'),
-      0,
-    );
-    const tax = succeeded.reduce((s, p) => s + snapField(p.ride?.priceSnapshot, 'tax'), 0);
-    const commission = succeeded.reduce(
-      (s, p) => s + snapField(p.ride?.priceSnapshot, 'platformFee'),
-      0,
-    );
+    // Deduplicate rides and only sum snapshot fields once per COMPLETED ride
+    const completedRideSnaps = new Map<string, unknown>();
+    for (const r of completedRidesInRange) {
+      completedRideSnaps.set(r.id, r.priceSnapshot);
+    }
+    for (const p of succeeded) {
+      if (p.ride?.id && p.ride.status === RideStatus.COMPLETED) {
+        completedRideSnaps.set(p.ride.id, p.ride.priceSnapshot);
+      }
+    }
+    let driverShare = 0;
+    let tax = 0;
+    let commission = 0;
+    for (const snap of completedRideSnaps.values()) {
+      driverShare += snapField(snap, 'driverEarning');
+      tax += snapField(snap, 'taxAmount') || snapField(snap, 'tax');
+      commission += snapField(snap, 'platformFee');
+    }
     const gatewayFee = 0;
     return {
       range: { start, end },
@@ -2533,67 +2623,80 @@ export class AdminOpsService {
   }
 
   async earnings() {
-    const rides = await this.prisma.ride.findMany({
-      where: { status: RideStatus.COMPLETED, assignedDriverId: { not: null } },
-      select: {
-        assignedDriverId: true,
-        priceSnapshot: true,
-        currency: true,
-      },
-      take: 500,
-    });
+    const walletCurrency = (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase();
+    const [rides, walletDrivers] = await Promise.all([
+      this.prisma.ride.findMany({
+        where: { status: RideStatus.COMPLETED, assignedDriverId: { not: null } },
+        select: {
+          assignedDriverId: true,
+          priceSnapshot: true,
+          currency: true,
+        },
+      }),
+      this.prisma.driverWalletEntry.findMany({
+        where: { currency: walletCurrency },
+        distinct: ['driverId'],
+        select: { driverId: true },
+      }),
+    ]);
+
     const byDriver = new Map<string, { earning: number; commission: number; n: number }>();
     for (const r of rides) {
       if (!r.assignedDriverId) continue;
       const cur = byDriver.get(r.assignedDriverId) ?? { earning: 0, commission: 0, n: 0 };
-      cur.earning += snapField(r.priceSnapshot, 'driverEarning');
-      cur.commission += snapField(r.priceSnapshot, 'platformFee');
+      cur.earning = round2(cur.earning + snapField(r.priceSnapshot, 'driverEarning'));
+      cur.commission = round2(cur.commission + snapField(r.priceSnapshot, 'platformFee'));
       cur.n += 1;
       byDriver.set(r.assignedDriverId, cur);
     }
+    for (const wd of walletDrivers) {
+      if (!byDriver.has(wd.driverId)) {
+        byDriver.set(wd.driverId, { earning: 0, commission: 0, n: 0 });
+      }
+    }
+
     const ids = [...byDriver.keys()];
     const drivers = await this.prisma.driverProfile.findMany({
       where: { id: { in: ids } },
       select: { id: true, fullName: true, userId: true },
     });
-    const walletCurrency = (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase();
-    const entries = await this.prisma.driverWalletEntry.findMany({
-      where: { driverId: { in: ids }, currency: walletCurrency },
-      select: {
-        driverId: true,
-        type: true,
-        direction: true,
-        amount: true,
-        status: true,
-        availableAt: true,
-      },
-    });
-    const now = new Date();
-    const walletByDriver = new Map<string, { available: string; pending: string }>();
-    for (const id of ids) {
-      let matured = 0;
-      let pending = 0;
-      let locking = 0;
-      for (const e of entries.filter((x) => x.driverId === id)) {
-        const amt = Number(e.amount.toString());
-        const active = e.status === 'PENDING' || e.status === 'POSTED';
-        if (!active) continue;
-        if (e.type === 'EARNING' && e.direction === 'CREDIT') {
-          if (!e.availableAt || e.availableAt <= now) matured += amt;
-          else pending += amt;
+
+    const results = await Promise.all(
+      drivers.map(async (d) => {
+        const snapStats = byDriver.get(d.id) ?? { earning: 0, commission: 0, n: 0 };
+        if (this.wallet) {
+          await this.wallet.reconcileDriverCompletedRides(d.id);
+          const balances = await this.wallet.computeBalances(d.id, walletCurrency);
+          const lifetimeEarnedNum = round2(asNum(balances.lifetimeEarned.toFixed(2)));
+          return {
+            ...d,
+            n: snapStats.n,
+            tripEarning: round2(snapStats.earning),
+            earning: lifetimeEarnedNum,
+            commission: round2(snapStats.commission),
+            walletBalance: balances.available.plus(balances.pending).toFixed(2),
+            available: balances.available.toFixed(2),
+            pending: balances.pending.toFixed(2),
+            lifetimeEarned: balances.lifetimeEarned.toFixed(2),
+            lifetimePaidOut: balances.lifetimePaidOut.toFixed(2),
+          };
         }
-        if (e.type === 'PAYOUT' && e.direction === 'DEBIT') locking += amt;
-      }
-      walletByDriver.set(id, {
-        available: (matured - locking).toFixed(2),
-        pending: pending.toFixed(2),
-      });
-    }
-    return drivers.map((d) => ({
-      ...d,
-      ...(byDriver.get(d.id) ?? { earning: 0, commission: 0, n: 0 }),
-      ...(walletByDriver.get(d.id) ?? { available: '0.00', pending: '0.00' }),
-    }));
+        return {
+          ...d,
+          n: snapStats.n,
+          tripEarning: round2(snapStats.earning),
+          earning: round2(snapStats.earning),
+          commission: round2(snapStats.commission),
+          walletBalance: round2(snapStats.earning).toFixed(2),
+          available: round2(snapStats.earning).toFixed(2),
+          pending: '0.00',
+          lifetimeEarned: round2(snapStats.earning).toFixed(2),
+          lifetimePaidOut: '0.00',
+        };
+      }),
+    );
+
+    return results;
   }
 
   // ---------- Driver payout / bank details review ----------

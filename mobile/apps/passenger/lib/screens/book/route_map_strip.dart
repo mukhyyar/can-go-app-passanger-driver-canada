@@ -297,7 +297,7 @@ class _MapBodyState extends State<_MapBody> {
     // Driving distance/ETA only — never haversine crow-flies for this badge.
     final selected = state.selectedRoute;
     final distanceLabel = showTo && selected != null && selected.distanceKm > 0
-        ? '${selected.distanceKm} km • ${selected.durationMin} min'
+        ? '${selected.distanceKm} km • ${_formatDuration(selected.durationMin)}'
         : null;
 
     final previewFromLat = adjusting == GtRouteMapAdjustField.from
@@ -605,7 +605,7 @@ class _RouteSelectorCards extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              '${r.distanceKm} km • ~${r.durationMin} min driving',
+                              '${r.distanceKm} km • ${_formatDuration(r.durationMin)} driving',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
@@ -626,5 +626,14 @@ class _RouteSelectorCards extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatDuration(int mins) {
+    if (mins >= 60) {
+      final h = mins ~/ 60;
+      final rem = mins % 60;
+      return rem == 0 ? '~ $h h' : '~ $h h $rem min';
+    }
+    return '~ $mins min';
   }
 }

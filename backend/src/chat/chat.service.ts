@@ -85,7 +85,12 @@ export class ChatService {
         messages: {
           where: {
             deletedAt: null,
-            NOT: { body: { startsWith: '[Ride Report Filed]' } },
+            NOT: {
+              OR: [
+                { body: { startsWith: '[Ride Report Filed]' } },
+                { body: { startsWith: '[Help Request:' } },
+              ],
+            },
           },
           orderBy: { createdAt: 'asc' },
           take: 200,

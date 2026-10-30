@@ -494,82 +494,33 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final r = _ride;
     if (r == null) return;
 
-    // Heading to DROP-OFF if trip is in progress; otherwise heading to PICKUP
-    final isTripInProgress = _serverStatus == 'TRIP_STARTED' ||
-        _serverStatus == 'IN_PROGRESS' ||
-        (r.status ?? '').toUpperCase() == 'TRIP_STARTED' ||
-        (r.status ?? '').toUpperCase() == 'IN_PROGRESS';
+    final String origin = (r.fromLat != null && r.fromLng != null)
+        ? '${r.fromLat},${r.fromLng}'
+        : r.from.trim();
+    final String destination = (r.toLat != null && r.toLng != null)
+        ? '${r.toLat},${r.toLng}'
+        : (r.to.trim().isNotEmpty ? r.to.trim() : origin);
 
-    final destLat = (isTripInProgress && r.toLat != null)
-        ? r.toLat!
-        : (r.fromLat ?? r.toLat);
-    final destLng = (isTripInProgress && r.toLng != null)
-        ? r.toLng!
-        : (r.fromLng ?? r.toLng);
-
-    if (destLat == null || destLng == null) {
+    if (origin.isEmpty && destination.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Destination coordinates unavailable')),
+          const SnackBar(content: Text('Route locations unavailable')),
         );
       }
       return;
     }
 
-    // Retrieve driver's live GPS location
-    double? currLat;
-    double? currLng;
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.whileInUse ||
-          perm == LocationPermission.always) {
-        final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 3),
-          ),
-        );
-        currLat = pos.latitude;
-        currLng = pos.longitude;
-      }
-    } catch (_) {}
+    final encodedOrigin = Uri.encodeComponent(origin);
+    final encodedDest = Uri.encodeComponent(
+      destination.isNotEmpty ? destination : origin,
+    );
 
-    if (currLat == null || currLng == null) {
-      try {
-        final last = await Geolocator.getLastKnownPosition();
-        if (last != null) {
-          currLat = last.latitude;
-          currLng = last.longitude;
-        }
-      } catch (_) {}
-    }
-
-    // 1. Android: Try native Google Maps turn-by-turn navigation intent
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      final navUri = Uri.parse(
-        'google.navigation:q=$destLat,$destLng&mode=d',
-      );
-      try {
-        if (await canLaunchUrl(navUri)) {
-          final launched = await launchUrl(
-            navUri,
-            mode: LaunchMode.externalApplication,
-          );
-          if (launched) return;
-        }
-      } catch (_) {}
-    }
-
-    // 2. iOS: Try native Google Maps app scheme with origin & destination
+    // 1. iOS: Try native Google Maps app scheme with A -> B driving directions
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-      final saddr = (currLat != null && currLng != null)
-          ? '$currLat,$currLng'
-          : '';
       final iosMapsUri = Uri.parse(
-        'comgooglemaps://?saddr=$saddr&daddr=$destLat,$destLng&directionsmode=driving',
+        origin.isNotEmpty && destination.isNotEmpty && origin != destination
+            ? 'comgooglemaps://?saddr=$encodedOrigin&daddr=$encodedDest&directionsmode=driving'
+            : 'comgooglemaps://?daddr=$encodedDest&directionsmode=driving',
       );
       try {
         if (await canLaunchUrl(iosMapsUri)) {
@@ -582,30 +533,35 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       } catch (_) {}
     }
 
-    // 3. Universal Google Maps Directions URL (driving mode + navigate action)
-    final originParam = (currLat != null && currLng != null)
-        ? 'origin=$currLat,$currLng&'
-        : '';
+    // 2. Universal Google Maps A -> B Directions URL (opens Google Maps app on Android/iOS or browser)
     final universalUri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&${originParam}destination=$destLat,$destLng&travelmode=driving&dir_action=navigate',
+      origin.isNotEmpty && destination.isNotEmpty && origin != destination
+          ? 'https://www.google.com/maps/dir/?api=1&origin=$encodedOrigin&destination=$encodedDest&travelmode=driving'
+          : 'https://www.google.com/maps/dir/?api=1&destination=$encodedDest&travelmode=driving',
     );
 
     try {
-      if (await canLaunchUrl(universalUri)) {
-        await launchUrl(universalUri, mode: LaunchMode.externalApplication);
-      } else {
-        final fallbackUri = Uri.parse(
-          'https://www.google.com/maps/search/?api=1&query=$destLat,$destLng',
-        );
-        await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-      }
+      final launched = await launchUrl(
+        universalUri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (launched) return;
+    } catch (_) {}
+
+    try {
+      final launchedDefault = await launchUrl(
+        universalUri,
+        mode: LaunchMode.platformDefault,
+      );
+      if (launchedDefault) return;
     } catch (e) {
       debugPrint('Could not launch navigation: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open map navigation')),
-        );
-      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open map navigation')),
+      );
     }
   }
 
@@ -1348,14 +1304,36 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   ),
                                   if (r.hasReportedRide || r.hasActiveSupport) ...[
                                     const SizedBox(height: 8),
-                                    OutlinedButton.icon(
-                                      onPressed: () => context.push('/chat/${r.id}'),
-                                      icon: const Icon(Icons.support_agent_outlined, size: 18),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: GtColors.brand,
-                                        side: const BorderSide(color: GtColors.brand),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 10,
                                       ),
-                                      label: const Text('Chat with Support'),
+                                      decoration: BoxDecoration(
+                                        color: GtColors.bgGrey,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: GtColors.border),
+                                      ),
+                                      child: const Row(
+                                        children: [
+                                          Icon(
+                                            Icons.support_agent_outlined,
+                                            size: 18,
+                                            color: GtColors.brand,
+                                          ),
+                                          SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              'Your report has been sent to the Admin Support team.',
+                                              style: TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: GtColors.textSecondary,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                   const SizedBox(height: 12),
@@ -1376,14 +1354,36 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   ),
                                   if (r.hasReportedRide || r.hasActiveSupport) ...[
                                     const SizedBox(height: 8),
-                                    OutlinedButton.icon(
-                                      onPressed: () => context.push('/chat/${r.id}'),
-                                      icon: const Icon(Icons.support_agent_outlined, size: 18),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: GtColors.brand,
-                                        side: const BorderSide(color: GtColors.brand),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 10,
                                       ),
-                                      label: const Text('Chat with Support'),
+                                      decoration: BoxDecoration(
+                                        color: GtColors.bgGrey,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: GtColors.border),
+                                      ),
+                                      child: const Row(
+                                        children: [
+                                          Icon(
+                                            Icons.support_agent_outlined,
+                                            size: 18,
+                                            color: GtColors.brand,
+                                          ),
+                                          SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              'Your report has been sent to the Admin Support team.',
+                                              style: TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: GtColors.textSecondary,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                   const SizedBox(height: 8),

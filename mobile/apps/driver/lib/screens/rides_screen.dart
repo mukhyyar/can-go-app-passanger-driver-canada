@@ -455,21 +455,25 @@ class _RidesScreenState extends State<RidesScreen>
                                 ),
                                 const SizedBox(height: 4),
                                 if (dayRides.isNotEmpty)
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: List.generate(
-                                      dayRides.length.clamp(1, 3),
-                                      (_) => Container(
-                                        width: 5,
-                                        height: 5,
-                                        margin: const EdgeInsets.symmetric(
-                                          horizontal: 1,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: selected
-                                              ? Colors.white
-                                              : GtColors.brand,
-                                          shape: BoxShape.circle,
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 2,
+                                    ),
+                                    child: Wrap(
+                                      alignment: WrapAlignment.center,
+                                      spacing: 2,
+                                      runSpacing: 2,
+                                      children: List.generate(
+                                        dayRides.length,
+                                        (_) => Container(
+                                          width: 5,
+                                          height: 5,
+                                          decoration: BoxDecoration(
+                                            color: selected
+                                                ? Colors.white
+                                                : GtColors.brand,
+                                            shape: BoxShape.circle,
+                                          ),
                                         ),
                                       ),
                                     ),

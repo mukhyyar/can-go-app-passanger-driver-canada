@@ -572,10 +572,15 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         date_trunc(${trunc}, r."createdAt" AT TIME ZONE ${tz}) AS bucket,
         COUNT(*)::int AS rides,
         COUNT(*) FILTER (WHERE r."status" = 'COMPLETED')::int AS completed,
-        COALESCE(SUM(p.amount) FILTER (WHERE p.status IN ('succeeded','SUCCEEDED','captured','CAPTURED')), 0) AS gmv,
-        COALESCE(SUM(COALESCE((r."priceSnapshot"->>'platformFee')::numeric, 0)), 0) AS net
+        COALESCE(SUM(COALESCE(p.paid_amount, 0)), 0) AS gmv,
+        COALESCE(SUM(COALESCE((r."priceSnapshot"->>'platformFee')::numeric, 0)) FILTER (WHERE r."status" = 'COMPLETED'), 0) AS net
       FROM "Ride" r
-      LEFT JOIN "Payment" p ON p."rideId" = r.id
+      LEFT JOIN (
+        SELECT "rideId", SUM(amount) AS paid_amount
+        FROM "Payment"
+        WHERE status IN ('succeeded','SUCCEEDED','captured','CAPTURED')
+        GROUP BY "rideId"
+      ) p ON p."rideId" = r.id
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
         AND ${extra}
       GROUP BY 1

@@ -179,14 +179,59 @@ class _InlineOfferFormState extends State<InlineOfferForm> {
                 ),
               ),
               for (final v in widget.vehicles)
-                ListTile(
-                  leading: const Icon(Icons.directions_car_outlined),
-                  title: Text(v.name),
-                  subtitle: Text('${v.plate} · ${v.vehicleClass}'),
-                  trailing: widget.draft.vehicleId == v.id
-                      ? const Icon(Icons.check, color: GtColors.brand)
-                      : null,
-                  onTap: () => Navigator.pop(ctx, v.id),
+                Builder(
+                  builder: (_) {
+                    final isApproved = v.isActive &&
+                        v.approvalStatus.toUpperCase() == 'APPROVED' &&
+                        v.inspectionStatus.toUpperCase() == 'APPROVED';
+                    final badge = !v.isActive
+                        ? 'Inactive'
+                        : (v.approvalStatus.toUpperCase() != 'APPROVED'
+                            ? 'Approval: ${v.approvalStatus}'
+                            : (v.inspectionStatus.toUpperCase() != 'APPROVED'
+                                ? 'Inspection: ${v.inspectionStatus}'
+                                : null));
+                    return ListTile(
+                      leading: Icon(
+                        Icons.directions_car_outlined,
+                        color: isApproved ? null : Colors.grey,
+                      ),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              v.name,
+                              style: TextStyle(
+                                color: isApproved ? Colors.black87 : Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                          if (badge != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.amber.shade300),
+                              ),
+                              child: Text(
+                                badge,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      subtitle: Text('${v.plate} · ${v.vehicleClass}'),
+                      trailing: widget.draft.vehicleId == v.id
+                          ? const Icon(Icons.check, color: GtColors.brand)
+                          : null,
+                      onTap: isApproved ? () => Navigator.pop(ctx, v.id) : null,
+                    );
+                  },
                 ),
             ],
           ),
@@ -236,10 +281,21 @@ class _InlineOfferFormState extends State<InlineOfferForm> {
       isRoundTrip: widget.request.isRoundTrip,
     );
 
+    final isRoundTrip = widget.request.isRoundTrip;
+    final legMin = isRoundTrip
+        ? ((resolvedPricing.minBid / 2) * 100).roundToDouble() / 100.0
+        : null;
+    final legGuidance = isRoundTrip
+        ? ((resolvedPricing.guidanceAmount / 2) * 100).roundToDouble() / 100.0
+        : null;
+    final legMax = isRoundTrip
+        ? ((resolvedPricing.maxBid / 2) * 100).roundToDouble() / 100.0
+        : null;
+
     final outVal = double.tryParse(widget.outCtrl.text.trim());
     final retVal = double.tryParse(widget.retCtrl.text.trim());
     final double? currentPrice;
-    if (widget.request.isRoundTrip) {
+    if (isRoundTrip) {
       currentPrice = (outVal != null || retVal != null)
           ? ((outVal ?? 0.0) + (retVal ?? 0.0))
           : null;
@@ -320,14 +376,53 @@ class _InlineOfferFormState extends State<InlineOfferForm> {
             currency: _currency,
             controller: widget.outCtrl,
             onChanged: (_) => widget.onChanged(),
+            legMin: legMin,
+            legGuidance: legGuidance,
+            legMax: legMax,
           ),
-          if (widget.request.isRoundTrip) ...[
-            const SizedBox(height: 10),
+          if (isRoundTrip) ...[
+            const SizedBox(height: 12),
             _PriceRow(
               label: 'Price B → A',
               currency: _currency,
               controller: widget.retCtrl,
               onChanged: (_) => widget.onChanged(),
+              legMin: legMin,
+              legGuidance: legGuidance,
+              legMax: legMax,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: GtColors.soft,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: GtColors.brand.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total offer (A → B + B → A)',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: GtColors.text,
+                    ),
+                  ),
+                  Text(
+                    MoneyFormat.formatFlexible(currentPrice ?? 0, _currency),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: GtColors.brand,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
           const SizedBox(height: 14),
@@ -499,19 +594,56 @@ class _PriceRow extends StatelessWidget {
     required this.currency,
     required this.controller,
     required this.onChanged,
+    this.legMin,
+    this.legGuidance,
+    this.legMax,
   });
 
   final String label;
   final String currency;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
+  final double? legMin;
+  final double? legGuidance;
+  final double? legMax;
 
   @override
   Widget build(BuildContext context) {
+    final hasLegRange =
+        legMin != null && legGuidance != null && legMax != null;
+    final recStr = hasLegRange
+        ? (legGuidance! % 1 == 0
+            ? legGuidance!.toStringAsFixed(0)
+            : legGuidance!.toStringAsFixed(2))
+        : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            if (hasLegRange)
+              GestureDetector(
+                onTap: () {
+                  controller.text = recStr!;
+                  controller.selection = TextSelection.collapsed(
+                    offset: controller.text.length,
+                  );
+                  onChanged(controller.text);
+                },
+                child: Text(
+                  'Recommended: ${MoneyFormat.formatFlexible(legGuidance!, currency)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: GtColors.brand,
+                  ),
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: 6),
         TextField(
           controller: controller,
@@ -520,6 +652,7 @@ class _PriceRow extends StatelessWidget {
           onChanged: onChanged,
           decoration: InputDecoration(
             prefixText: '${MoneyFormat.symbolFor(currency)} ',
+            hintText: recStr,
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(
@@ -536,6 +669,38 @@ class _PriceRow extends StatelessWidget {
             ),
           ),
         ),
+        if (hasLegRange) ...[
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Min: ${MoneyFormat.formatFlexible(legMin!, currency)}',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: GtColors.textSecondary,
+                ),
+              ),
+              Text(
+                'Recommended: ${MoneyFormat.formatFlexible(legGuidance!, currency)}',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: GtColors.textSecondary,
+                ),
+              ),
+              Text(
+                'Max: ${MoneyFormat.formatFlexible(legMax!, currency)}',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: GtColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

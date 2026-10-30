@@ -73,7 +73,7 @@ class AppState extends ChangeNotifier {
   bool get isCreatingBooking => _isCreatingBooking;
   DateTime pickupDateTime = DateTime.now();
   bool pickupNow = true;
-  /// Selected duration pill for PER HOUR (30, 60, 120, 180). Null if custom end.
+  /// Selected duration pill for PER HOUR (60, 120, 180). Null if custom end.
   int? perHourDurationMinutes;
   DateTime? rideEndsDateTime;
   bool perHourHasEnd = false;
@@ -1740,7 +1740,7 @@ class AppState extends ChangeNotifier {
     if (serviceType == ServiceType.perHour) {
       _syncRideEndsFromDuration();
       if (rideEndsDateTime != null) {
-        final minEnds = effectivePickupDateTime.add(const Duration(minutes: 30));
+        final minEnds = effectivePickupDateTime.add(const Duration(minutes: 60));
         if (rideEndsDateTime!.isBefore(minEnds) || rideEndsDateTime!.isBefore(now)) {
           rideEndsDateTime = minEnds;
         }
@@ -1841,7 +1841,7 @@ class AppState extends ChangeNotifier {
   void setRideEndsDateTime(DateTime value) {
     rideEndsDateTime = value;
     final diff = value.difference(effectivePickupDateTime).inMinutes;
-    const options = [30, 60, 120, 180];
+    const options = [60, 120, 180];
     perHourDurationMinutes = options.contains(diff) ? diff : null;
     notifyListeners();
   }

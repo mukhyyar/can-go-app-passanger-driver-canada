@@ -982,7 +982,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
             ? trafficDur
             : staticDur;
         final distKm = (distValue / 1000 * 10).round() / 10;
-        final durMin = (durValue / 60).round().clamp(1, 999);
+        final durMin = (durValue / 60).round().clamp(1, 99999);
         final summaryText = r['summary']?.toString().trim();
         final name = (summaryText != null && summaryText.isNotEmpty)
             ? (i == 0 ? 'Via $summaryText (Fastest)' : 'Via $summaryText')
@@ -1043,7 +1043,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
       final distMeters = (r['distance'] as num?)?.toDouble() ?? 0;
       final durSec = (r['duration'] as num?)?.toDouble() ?? 0;
       final distKm = (distMeters / 1000 * 10).round() / 10;
-      final durMin = (durSec / 60).round().clamp(1, 999);
+      final durMin = (durSec / 60).round().clamp(1, 99999);
       final legs = r['legs'] as List?;
       final legSummary = (legs != null && legs.isNotEmpty && legs[0] is Map)
           ? legs[0]['summary']?.toString().trim()
@@ -1361,7 +1361,7 @@ class _NativeRouteMapState extends State<_NativeRouteMap> {
                               ),
                               const SizedBox(width: 5),
                               Text(
-                                '${r.summary} • ${r.durationMin} min (${r.distanceKm} km)',
+                                '${r.summary} • ${r.durationMin >= 60 ? (r.durationMin % 60 == 0 ? '~ ${r.durationMin ~/ 60} h' : '~ ${r.durationMin ~/ 60} h ${r.durationMin % 60} min') : '~ ${r.durationMin} min'} (${r.distanceKm} km)',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: isSelected

@@ -177,9 +177,16 @@ export class DriverWalletService {
         }
       } else if (
         (snap.subtotal !== null && snap.subtotal !== undefined) ||
-        (snap.bidAmount !== null && snap.bidAmount !== undefined)
+        (snap.bidAmount !== null && snap.bidAmount !== undefined) ||
+        (snap.guidanceAmount !== null && snap.guidanceAmount !== undefined) ||
+        (snap.passengerTotal !== null && snap.passengerTotal !== undefined)
       ) {
-        const fare = Number(snap.subtotal ?? snap.bidAmount);
+        const fare = Number(
+          snap.subtotal ??
+            snap.bidAmount ??
+            snap.guidanceAmount ??
+            snap.passengerTotal,
+        );
         const fee = Number(snap.platformFee ?? snap.marketplaceFee ?? (fare * 0.2));
         if (Number.isFinite(fare) && Number.isFinite(fee)) {
           rawEarning = Number(Math.max(0, fare - fee).toFixed(2));
@@ -424,8 +431,143 @@ export class DriverWalletService {
     };
   }
 
+  /**
+   * Ensure all COMPLETED rides assigned to this driver have their EARNING entry
+   * and any tip ADJUSTMENT entry present in DriverWalletEntry before computing balances.
+   */
+  async reconcileDriverCompletedRides(driverId: string): Promise<void> {
+    if (!this.prisma.ride?.findMany || !this.prisma.driverWalletEntry?.findMany) {
+      return;
+    }
+    try {
+      const currency = this.walletCurrency();
+      const [completedRides, existingEntries] = await Promise.all([
+        this.prisma.ride.findMany({
+          where: {
+            assignedDriverId: driverId,
+            status: RideStatus.COMPLETED,
+          },
+          select: {
+            id: true,
+            currency: true,
+            fromLabel: true,
+            toLabel: true,
+            priceSnapshot: true,
+          },
+        }),
+        this.prisma.driverWalletEntry.findMany({
+          where: {
+            driverId,
+            type: { in: [WalletEntryType.EARNING, WalletEntryType.ADJUSTMENT] },
+          },
+          select: {
+            id: true,
+            type: true,
+            direction: true,
+            rideId: true,
+            description: true,
+            metaJson: true,
+          },
+        }),
+      ]);
+
+      const creditedRideIds = new Set(
+        existingEntries
+          .filter((e) => e.type === WalletEntryType.EARNING && e.rideId)
+          .map((e) => e.rideId as string),
+      );
+
+      for (const r of completedRides) {
+        if (!creditedRideIds.has(r.id)) {
+          await this.creditEarningForCompletedRide(r.id).catch((err) => {
+            this.logger.warn(
+              `reconcileDriverCompletedRides: failed crediting ride ${r.id}: ${err}`,
+            );
+          });
+        }
+
+        // Also ensure any tip recorded in priceSnapshot has a corresponding Tip ADJUSTMENT entry
+        const snap =
+          r.priceSnapshot && typeof r.priceSnapshot === 'object'
+            ? (r.priceSnapshot as Record<string, unknown>)
+            : {};
+        const tipAmount = Number(snap.tipAmount ?? snap.tip ?? 0);
+        if (Number.isFinite(tipAmount) && tipAmount > 0) {
+          const shortCode = r.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+          const hasTipEntry = existingEntries.some((e) => {
+            if (
+              e.type !== WalletEntryType.ADJUSTMENT ||
+              e.direction !== WalletDirection.CREDIT
+            ) {
+              return false;
+            }
+            const meta =
+              e.metaJson && typeof e.metaJson === 'object'
+                ? (e.metaJson as Record<string, unknown>)
+                : {};
+            const isTip =
+              Boolean(meta.isTip) ||
+              (e.description || '').includes('Tip from passenger');
+            if (!isTip) return false;
+            return (
+              e.rideId === r.id ||
+              meta.bookingRef === r.id ||
+              meta.rideId === r.id ||
+              (shortCode && (e.description || '').toUpperCase().includes(shortCode))
+            );
+          });
+
+          if (!hasTipEntry) {
+            const hasAnyRideAdjustment = existingEntries.some(
+              (e) => e.type === WalletEntryType.ADJUSTMENT && e.rideId === r.id,
+            );
+            const createdTip = await this.prisma.driverWalletEntry
+              .create({
+                data: {
+                  driverId,
+                  type: WalletEntryType.ADJUSTMENT,
+                  direction: WalletDirection.CREDIT,
+                  amount: normalizeMoney(tipAmount, currency),
+                  currency: (r.currency || currency).toUpperCase(),
+                  status: WalletEntryStatus.POSTED,
+                  rideId: hasAnyRideAdjustment ? null : r.id,
+                  availableAt: null,
+                  description: `Tip from passenger · Ride #${shortCode} · ${r.fromLabel}${r.toLabel ? ` → ${r.toLabel}` : ''}`,
+                  metaJson: {
+                    isTip: true,
+                    tipAmount,
+                    rideId: r.id,
+                    bookingRef: r.id,
+                    fromLabel: r.fromLabel,
+                    toLabel: r.toLabel ?? null,
+                    reconciledAt: new Date().toISOString(),
+                  } as Prisma.InputJsonValue,
+                },
+              })
+              .catch(() => null);
+            if (createdTip) {
+              existingEntries.push({
+                id: createdTip.id,
+                type: createdTip.type,
+                direction: createdTip.direction,
+                rideId: createdTip.rideId,
+                description: createdTip.description,
+                metaJson: createdTip.metaJson,
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `reconcileDriverCompletedRides(${driverId}) warning: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   async getWalletForUser(userId: string) {
     const driver = await this.requireDriver(userId);
+    await this.reconcileDriverCompletedRides(driver.id);
     const currency = this.walletCurrency();
     const balances = await this.computeBalances(driver.id, currency);
     const eligibility = await this.evaluateWithdrawEligibility(driver, balances.available);
@@ -481,6 +623,9 @@ export class DriverWalletService {
     },
   ) {
     const driver = await this.requireDriver(userId);
+    if (!query.cursor) {
+      await this.reconcileDriverCompletedRides(driver.id);
+    }
     const currency = this.walletCurrency();
     const limit = Math.min(Math.max(query.limit ?? 20, 1), 100);
 
@@ -1345,6 +1490,7 @@ export class DriverWalletService {
     });
     if (!driver) throw new NotFoundException('Driver not found');
 
+    await this.reconcileDriverCompletedRides(driver.id);
     const currency = this.walletCurrency();
     const balances = await this.computeBalances(driver.id, currency);
     const entries = await this.adminListEntries({

@@ -46,6 +46,14 @@ class _OfferReviewScreenState extends State<OfferReviewScreen> {
 
   Future<void> _submit() async {
     if (_submitting) return;
+    final s = context.read<AppState>();
+    if (!s.canSubmitOffers) {
+      setState(() {
+        _error = s.profileHoldReason ??
+            'You are not permitted to submit offers at this time.';
+      });
+      return;
+    }
     if (_isRideCancelled) {
       setState(() {
         _error =

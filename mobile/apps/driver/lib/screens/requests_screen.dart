@@ -203,6 +203,38 @@ class _RequestsScreenState extends State<RequestsScreen>
     );
   }
 
+  Future<void> _showVehicleNotApprovedDialog(AppState s) async {
+    final title = s.hasPendingVehicleApproval
+        ? 'Vehicle Approval Pending'
+        : (s.hasPendingVehicleInspection
+            ? 'Vehicle Inspection Pending'
+            : 'Approved Vehicle Required');
+    final message = s.profileHoldReason ??
+        'You must have an active vehicle with approved inspection and approval status before going online.';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: GtColors.textSecondary)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: GtColors.brand),
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.push('/settings/vehicles');
+            },
+            child: const Text('Manage Vehicles'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _handleToggleOnline(AppState s, bool targetOnline) async {
     if (_isTogglingDrivingMode) return;
     if (targetOnline) {
@@ -220,6 +252,10 @@ class _RequestsScreenState extends State<RequestsScreen>
       }
       if (!s.isActivated) {
         await _showNotActivatedDialog();
+        return;
+      }
+      if (!s.hasApprovedVehicle) {
+        await _showVehicleNotApprovedDialog(s);
         return;
       }
     }
@@ -264,6 +300,10 @@ class _RequestsScreenState extends State<RequestsScreen>
       await _showNotActivatedDialog();
       return;
     }
+    if (!s.hasApprovedVehicle) {
+      await _showVehicleNotApprovedDialog(s);
+      return;
+    }
     if (s.isOffline) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -302,7 +342,13 @@ class _RequestsScreenState extends State<RequestsScreen>
                     ? 'Document re-upload requested'
                     : (s.isProfileOnHold
                         ? 'Profile on hold — review in progress'
-                        : (s.isActivated ? null : 'Complete activation to offer prices'))),
+                        : (!s.isActivated
+                            ? 'Complete activation to offer prices'
+                            : (!s.hasApprovedVehicle
+                                ? (s.hasPendingVehicleApproval
+                                    ? 'Vehicle approval pending'
+                                    : 'Vehicle approval required')
+                                : null)))),
           ),
         ),
         if (s.hasExpiredDocuments)
@@ -391,6 +437,40 @@ class _RequestsScreenState extends State<RequestsScreen>
                     Expanded(
                       child: Text(
                         'Profile on hold: Document under review. Offers are paused until verified.',
+                        style: TextStyle(
+                          color: Colors.amber.shade900,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: Colors.amber.shade900, size: 18),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (!s.hasApprovedVehicle && s.isActivated)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: InkWell(
+              onTap: () => context.push('/settings/vehicles'),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  border: Border.all(color: Colors.amber.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.directions_car_outlined, color: Colors.amber.shade900, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        s.profileHoldReason ??
+                            'Vehicle approval is pending. You cannot offer prices until approved.',
                         style: TextStyle(
                           color: Colors.amber.shade900,
                           fontSize: 12,

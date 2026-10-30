@@ -180,31 +180,34 @@ export class TrackingService {
       take: 500,
     });
 
+    const rawLive =
+      live ??
+      (current
+        ? {
+            driverId: current.driverId,
+            rideId,
+            lat: current.lat,
+            lng: current.lng,
+            heading: current.heading ?? undefined,
+            speedMps: current.speedMps ?? undefined,
+            accuracyM: current.accuracyM ?? undefined,
+            recordedAt: current.recordedAt.toISOString(),
+          }
+        : null);
+
+    const normalizedLive = this.normalizeLiveForRide(ride, rawLive);
+
     return {
       rideId,
       status: ride.status,
-      live: live ??
-        (current
-          ? {
-              driverId: current.driverId,
-              rideId,
-              lat: current.lat,
-              lng: current.lng,
-              heading: current.heading ?? undefined,
-              speedMps: current.speedMps ?? undefined,
-              accuracyM: current.accuracyM ?? undefined,
-              recordedAt: current.recordedAt.toISOString(),
-            }
-          : null),
+      live: normalizedLive,
       samples,
       pickup: { lat: ride.fromLat, lng: ride.fromLng },
       dropoff:
         ride.toLat != null && ride.toLng != null
           ? { lat: ride.toLat, lng: ride.toLng }
           : null,
-      eta: this.computeEta(ride, live ?? (current
-        ? { lat: current.lat, lng: current.lng, speedMps: current.speedMps ?? undefined }
-        : null)),
+      eta: this.computeEta(ride, normalizedLive),
     };
   }
 
@@ -355,7 +358,7 @@ export class TrackingService {
         })
       : null;
 
-    const liveLoc =
+    const rawLiveLoc =
       live ??
       (current
         ? {
@@ -368,16 +371,9 @@ export class TrackingService {
           }
         : null);
 
-    const eta = this.computeEta(
-      ride,
-      liveLoc
-        ? {
-            lat: liveLoc.lat,
-            lng: liveLoc.lng,
-            speedMps: liveLoc.speedMps,
-          }
-        : null,
-    );
+    const liveLoc = this.normalizeLiveForRide(ride, rawLiveLoc);
+
+    const eta = this.computeEta(ride, liveLoc);
 
     const passengerFullName =
       (ride.passenger?.user as any)?.fullName ??
@@ -418,6 +414,75 @@ export class TrackingService {
     };
   }
 
+  private normalizeLiveForRide<
+    T extends { lat: number; lng: number; speedMps?: number },
+  >(
+    ride: {
+      fromLat: number;
+      fromLng: number;
+      toLat: number | null;
+      toLng: number | null;
+    },
+    rawLive: T | null,
+  ): (T & { outOfRegion?: boolean }) | null {
+    if (!rawLive) return null;
+    const tripDistM =
+      ride.toLat != null && ride.toLng != null
+        ? haversineM(ride.fromLat, ride.fromLng, ride.toLat, ride.toLng)
+        : 0;
+    const maxCorridorM = Math.max(100_000, tripDistM * 1.5);
+    const distFromPickupM = haversineM(
+      rawLive.lat,
+      rawLive.lng,
+      ride.fromLat,
+      ride.fromLng,
+    );
+    const distFromDropoffM =
+      ride.toLat != null && ride.toLng != null
+        ? haversineM(rawLive.lat, rawLive.lng, ride.toLat, ride.toLng)
+        : distFromPickupM;
+
+    if (Math.min(distFromPickupM, distFromDropoffM) > maxCorridorM) {
+      return {
+        ...rawLive,
+        lat: ride.fromLat,
+        lng: ride.fromLng,
+        outOfRegion: true,
+      };
+    }
+    return rawLive;
+  }
+
+  private extractRouteMetrics(ride: {
+    isRoundTrip?: boolean;
+    priceSnapshot?: unknown;
+  }): { distanceKm: number | null; durationMin: number | null } {
+    const snap =
+      ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
+        ? (ride.priceSnapshot as Record<string, unknown>)
+        : null;
+    if (!snap) return { distanceKm: null, durationMin: null };
+
+    const rawLegs = Number(snap.legs);
+    const legs =
+      Number.isFinite(rawLegs) && rawLegs > 0
+        ? rawLegs
+        : ride.isRoundTrip
+          ? 2
+          : 1;
+    const rawDist = Number(snap.distanceKm);
+    const rawDur = Number(snap.durationMin);
+    const distanceKm =
+      Number.isFinite(rawDist) && rawDist > 0
+        ? Math.round((rawDist / legs) * 10) / 10
+        : null;
+    const durationMin =
+      Number.isFinite(rawDur) && rawDur > 0
+        ? Math.max(1, Math.round(rawDur / legs))
+        : null;
+    return { distanceKm, durationMin };
+  }
+
   private computeEta(
     ride: {
       status: RideStatus;
@@ -425,18 +490,69 @@ export class TrackingService {
       fromLng: number;
       toLat: number | null;
       toLng: number | null;
+      isRoundTrip?: boolean;
+      priceSnapshot?: unknown;
     },
-    live: { lat: number; lng: number; speedMps?: number } | null,
+    live: {
+      lat: number;
+      lng: number;
+      speedMps?: number;
+      outOfRegion?: boolean;
+    } | null,
   ) {
     if (!live) return null;
+    const { distanceKm: routeDistKm, durationMin: routeDurMin } =
+      this.extractRouteMetrics(ride);
+
     const toPickup =
-      ride.status === RideStatus.BOOKED ||
-      ride.status === RideStatus.DRIVER_EN_ROUTE ||
-      ride.status === RideStatus.DRIVER_ARRIVED;
+      !live.outOfRegion &&
+      (ride.status === RideStatus.BOOKED ||
+        ride.status === RideStatus.DRIVER_EN_ROUTE ||
+        ride.status === RideStatus.DRIVER_ARRIVED);
     const targetLat = toPickup ? ride.fromLat : ride.toLat;
     const targetLng = toPickup ? ride.fromLng : ride.toLng;
     if (targetLat == null || targetLng == null) return null;
+
+    if (!toPickup && routeDistKm != null && routeDistKm > 0) {
+      const totalStraightM =
+        ride.toLat != null && ride.toLng != null
+          ? haversineM(ride.fromLat, ride.fromLng, ride.toLat, ride.toLng)
+          : 0;
+      const remStraightM = haversineM(live.lat, live.lng, targetLat, targetLng);
+      const ratio =
+        live.outOfRegion ||
+        totalStraightM <= 100 ||
+        remStraightM >= totalStraightM * 0.95
+          ? 1
+          : Math.min(1, Math.max(0, remStraightM / totalStraightM));
+      const baseMinutes =
+        routeDurMin ?? Math.max(1, Math.round((routeDistKm / 60) * 60));
+      return {
+        minutes: Math.max(1, Math.round(baseMinutes * ratio)),
+        target: 'DROPOFF',
+        distanceKm: Math.round(routeDistKm * ratio * 10) / 10,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     const distM = haversineM(live.lat, live.lng, targetLat, targetLng);
+    if (
+      toPickup &&
+      distM < 200 &&
+      ride.toLat != null &&
+      ride.toLng != null &&
+      routeDistKm != null &&
+      routeDistKm > 0
+    ) {
+      return {
+        minutes:
+          routeDurMin ?? Math.max(1, Math.round((routeDistKm / 60) * 60)),
+        target: 'DROPOFF',
+        distanceKm: routeDistKm,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     const speed = live.speedMps && live.speedMps > 1 ? live.speedMps : 11; // ~40 km/h default
     const minutes = Math.max(1, Math.round(distM / speed / 60));
     return {

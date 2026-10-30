@@ -675,6 +675,7 @@ export class MarketplaceService {
             title: true,
             type: true,
             status: true,
+            createdById: true,
             createdAt: true,
             updatedAt: true,
             notes: {
@@ -690,7 +691,13 @@ export class MarketplaceService {
       },
     });
     return Promise.all(
-      rides.map((r) => this.serializeRide(r, { enrichOffers: true, showPin: true })),
+      rides.map((r) =>
+        this.serializeRide(r, {
+          enrichOffers: true,
+          showPin: true,
+          actorUserId: userId,
+        }),
+      ),
     );
   }
 
@@ -751,6 +758,7 @@ export class MarketplaceService {
             title: true,
             type: true,
             status: true,
+            createdById: true,
             createdAt: true,
             updatedAt: true,
             notes: {
@@ -802,6 +810,8 @@ export class MarketplaceService {
       includeEvents: true,
       enrichOffers: isPassenger || isAdmin,
       showPin: isPassenger || isAdmin,
+      actorUserId: userId,
+      isAdmin,
     });
   }
 
@@ -1548,27 +1558,6 @@ export class MarketplaceService {
 
     await this.audit(userId, 'ride.change_request', 'SupportCase', row.id, ip);
 
-    // Ensure ChatThread exists and link to support case
-    const thread = await this.prisma.chatThread.upsert({
-      where: { rideId },
-      create: { rideId },
-      update: {},
-    });
-
-    await this.prisma.supportCase.update({
-      where: { id: row.id },
-      data: { chatThreadId: thread.id },
-    });
-
-    // Add initial message to chat thread
-    await this.prisma.chatMessage.create({
-      data: {
-        threadId: thread.id,
-        senderId: userId,
-        body: `[Help Request: ${titles[dto.type]}]${dto.note ? ' ' + dto.note : ''}. Support team notified.`,
-      },
-    });
-
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (user?.email) {
       void this.emailEvents?.sendSupportReceived(userId, user.email, shortIdFrom(row.id), passenger.fullName);
@@ -1595,7 +1584,6 @@ export class MarketplaceService {
       driverUserId &&
       (dto.type === 'FLIGHT_DELAY' ||
         dto.type === 'RESCHEDULE' ||
-        dto.type === 'CURRENT_RIDE_HELP' ||
         dto.type === 'LOST_ITEM');
     if (notifyDriver) {
       const isLostItem = dto.type === 'LOST_ITEM';
@@ -1618,7 +1606,7 @@ export class MarketplaceService {
       });
     }
 
-    return { id: row.id, status: 'OPEN' as const, chatThreadId: thread.id };
+    return { id: row.id, status: 'OPEN' as const };
   }
 
   async reportRide(
@@ -2063,6 +2051,7 @@ export class MarketplaceService {
             title: true,
             type: true,
             status: true,
+            createdById: true,
             createdAt: true,
             updatedAt: true,
             notes: {
@@ -2082,7 +2071,7 @@ export class MarketplaceService {
 
     return Promise.all(
       rides.map(async (r) => {
-        const serialized = await this.serializeRide(r);
+        const serialized = await this.serializeRide(r, { actorUserId: userId });
         const myOffers = (r.offers ?? []).map((o) =>
           this.serializeOffer(o as unknown as Record<string, unknown>),
         );
@@ -3456,15 +3445,26 @@ export class MarketplaceService {
     });
 
     // 3. Credit Driver Wallet
-    const existingEntry = await this.prisma.driverWalletEntry.findFirst({
+    const existingTipEntry = await this.prisma.driverWalletEntry.findFirst({
       where: {
         driverId,
-        rideId: ride.id,
         type: WalletEntryType.ADJUSTMENT,
         direction: WalletDirection.CREDIT,
+        description: { contains: 'Tip from passenger' },
+        OR: [
+          { rideId: ride.id },
+          { description: { contains: shortIdFrom(ride.id) } },
+        ],
       },
     });
-    if (!existingEntry) {
+    if (!existingTipEntry) {
+      const hasExistingRideAdjustment = await this.prisma.driverWalletEntry.findFirst({
+        where: {
+          driverId,
+          rideId: ride.id,
+          type: WalletEntryType.ADJUSTMENT,
+        },
+      });
       await this.prisma.driverWalletEntry.create({
         data: {
           driverId,
@@ -3473,12 +3473,15 @@ export class MarketplaceService {
           amount: new Prisma.Decimal(amount),
           currency: (ride.currency || 'CAD').toUpperCase(),
           status: WalletEntryStatus.POSTED,
-          rideId: ride.id,
+          // If another adjustment already exists on this ride (e.g. Lost item fee), set rideId to null
+          // to satisfy @@unique([driverId, rideId, type]), preserving ride link in metaJson.
+          rideId: hasExistingRideAdjustment ? null : ride.id,
           availableAt: null,
-          description: `Tip from passenger · ${ride.fromLabel}${ride.toLabel ? ` → ${ride.toLabel}` : ''}`,
+          description: `Tip from passenger · Ride #${shortIdFrom(ride.id)} · ${ride.fromLabel}${ride.toLabel ? ` → ${ride.toLabel}` : ''}`,
           metaJson: {
             isTip: true,
             tipAmount: amount,
+            rideId: ride.id,
             bookingRef: ride.id,
             fromLabel: ride.fromLabel,
             toLabel: ride.toLabel ?? null,
@@ -4147,12 +4150,28 @@ export class MarketplaceService {
         driverId: user.driverProfile.id,
         lifecycleStatus: DocumentLifecycleStatus.CURRENT,
         status: DocumentReviewStatus.PENDING,
-        docType: { in: [...REQUIRED_DOC_TYPES] },
       },
     });
     if (pendingDoc) {
       throw new ForbiddenException(
         `Your driver profile is currently on hold while your document (${pendingDoc.docType}) is under review. You cannot submit offers until it is approved.`,
+      );
+    }
+    const actionRequiredDoc = await this.prisma.driverDocument.findFirst({
+      where: {
+        driverId: user.driverProfile.id,
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        status: {
+          in: [
+            DocumentReviewStatus.NEEDS_RESUBMISSION,
+            DocumentReviewStatus.REJECTED,
+          ],
+        },
+      },
+    });
+    if (actionRequiredDoc) {
+      throw new ForbiddenException(
+        `Document review requested a new upload for ${actionRequiredDoc.docType}. Please re-upload the requested documents before submitting offers.`,
       );
     }
     const expiredDoc = await this.prisma.driverDocument.findFirst({
@@ -4172,7 +4191,13 @@ export class MarketplaceService {
 
   private async serializeRide(
     ride: Record<string, unknown>,
-    opts?: { includeEvents?: boolean; enrichOffers?: boolean; showPin?: boolean },
+    opts?: {
+      includeEvents?: boolean;
+      enrichOffers?: boolean;
+      showPin?: boolean;
+      actorUserId?: string;
+      isAdmin?: boolean;
+    },
   ) {
     const snap = ride.priceSnapshot as PriceSnapshot | null | undefined;
     const status = ride.status as RideStatus;
@@ -4218,6 +4243,7 @@ export class MarketplaceService {
           id: string;
           title: string;
           status: string;
+          createdById?: string | null;
           createdAt: Date;
           updatedAt?: Date;
           notes?: Array<{ id: string; body: string; createdAt: Date }>;
@@ -4227,15 +4253,24 @@ export class MarketplaceService {
       (c) => c.title === 'Lost item inquiry',
     );
     const hasLostItemRequest = !!lostItemCase;
+    const isVisibleSupportCaseForActor = (c: { createdById?: string | null }) =>
+      Boolean(
+        opts?.isAdmin ||
+          (opts?.actorUserId && c.createdById === opts.actorUserId),
+      );
     const reportCase = supportCases.find(
       (c) =>
-        c.title?.startsWith('Ride report') ||
-        (c as unknown as { type?: string }).type === SupportCaseType.DISPUTE ||
-        (c as unknown as { type?: string }).type === SupportCaseType.SAFETY,
+        isVisibleSupportCaseForActor(c) &&
+        (c.title?.startsWith('Ride report') ||
+          (c as unknown as { type?: string }).type === SupportCaseType.DISPUTE ||
+          (c as unknown as { type?: string }).type === SupportCaseType.SAFETY),
     );
     const hasReportedRide = !!reportCase;
     const activeSupportCase = supportCases.find(
-      (c) => c.status !== SupportCaseStatus.RESOLVED,
+      (c) =>
+        isVisibleSupportCaseForActor(c) &&
+        c.title !== 'Lost item inquiry' &&
+        c.status !== SupportCaseStatus.RESOLVED,
     );
     const hasActiveSupport = !!activeSupportCase;
     const id = String(ride.id ?? '');
@@ -4410,7 +4445,30 @@ export class MarketplaceService {
       lostItem: this.extractLostItemDetails(supportCases),
     };
     if (opts?.includeEvents) {
-      return { ...base, events: ride.events };
+      const rawEvents = Array.isArray(ride.events)
+        ? (ride.events as Array<Record<string, unknown>>)
+        : [];
+      const visibleEvents = opts?.isAdmin
+        ? rawEvents
+        : rawEvents.filter((ev) => {
+            const payload = ev.payload as Record<string, unknown> | null | undefined;
+            const action = payload?.action;
+            if (action === 'ride_reported') {
+              return opts?.actorUserId != null && ev.actorId === opts.actorUserId;
+            }
+            if (action === 'change_request') {
+              const reqType = payload?.type;
+              if (
+                reqType === 'BILLING_HELP' ||
+                reqType === 'REFUND_REQUEST' ||
+                reqType === 'CURRENT_RIDE_HELP'
+              ) {
+                return opts?.actorUserId != null && ev.actorId === opts.actorUserId;
+              }
+            }
+            return true;
+          });
+      return { ...base, events: visibleEvents };
     }
     return base;
   }
@@ -4584,12 +4642,17 @@ export class MarketplaceService {
     let vehicle;
     if (!vehicleId) {
       const fallback = await this.prisma.vehicle.findFirst({
-        where: { driverId, isActive: true },
-        orderBy: { createdAt: 'desc' },
+        where: {
+          driverId,
+          isActive: true,
+          approvalStatus: 'APPROVED',
+          inspectionStatus: 'APPROVED',
+        },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
       });
       if (!fallback) {
         throw new BadRequestException(
-          'No eligible vehicle — add and activate a vehicle before offering',
+          'No approved and active vehicle available — your vehicle approval or inspection may be pending',
         );
       }
       vehicle = this.assertVehicleClass(fallback, ride);
@@ -4599,12 +4662,17 @@ export class MarketplaceService {
       });
       if (!v) {
         v = await this.prisma.vehicle.findFirst({
-          where: { driverId, isActive: true },
-          orderBy: { createdAt: 'desc' },
+          where: {
+            driverId,
+            isActive: true,
+            approvalStatus: 'APPROVED',
+            inspectionStatus: 'APPROVED',
+          },
+          orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
         });
         if (v) {
           this.logger.warn(
-            `Requested vehicle ${vehicleId} not found for driver ${driverId}; fell back to active vehicle ${v.id}`,
+            `Requested vehicle ${vehicleId} not found for driver ${driverId}; fell back to active approved vehicle ${v.id}`,
           );
         }
       }
@@ -4614,7 +4682,47 @@ export class MarketplaceService {
       if (!v.isActive) {
         throw new BadRequestException('Vehicle is not active');
       }
+      if (v.approvalStatus?.toUpperCase() !== 'APPROVED') {
+        throw new BadRequestException('Selected vehicle is pending admin approval');
+      }
+      if (v.inspectionStatus?.toUpperCase() !== 'APPROVED') {
+        throw new BadRequestException('Selected vehicle inspection is pending approval');
+      }
       vehicle = this.assertVehicleClass(v, ride);
+    }
+
+    const pendingVehDoc = await this.prisma.driverDocument.findFirst({
+      where: {
+        driverId,
+        vehicleId: vehicle.id,
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        status: {
+          in: [
+            DocumentReviewStatus.PENDING,
+            DocumentReviewStatus.NEEDS_RESUBMISSION,
+            DocumentReviewStatus.REJECTED,
+          ],
+        },
+      },
+    });
+    if (pendingVehDoc) {
+      throw new ForbiddenException(
+        `Vehicle document (${pendingVehDoc.docType}) is under review or requires action. You cannot submit offers with this vehicle until verified.`,
+      );
+    }
+
+    const expiredVehDoc = await this.prisma.driverDocument.findFirst({
+      where: {
+        driverId,
+        vehicleId: vehicle.id,
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        expiresAt: { lt: new Date() },
+      },
+    });
+    if (expiredVehDoc) {
+      throw new ForbiddenException(
+        `Vehicle document (${expiredVehDoc.docType}) has expired. Please upload an updated document.`,
+      );
     }
 
     const vehicleSeats = vehicle.passengerSeats ?? 4;

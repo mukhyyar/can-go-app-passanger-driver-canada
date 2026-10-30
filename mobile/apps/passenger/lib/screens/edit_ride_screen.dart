@@ -551,11 +551,9 @@ class _EditRideScreenState extends State<EditRideScreen> {
                                         ),
                                       ),
                                       Text(
-                                        _hours == 0.5
-                                            ? '30 min'
-                                            : (_hours == 1.0
-                                                ? '1 hour'
-                                                : '${_hours.toInt() == _hours ? _hours.toInt() : _hours} hours'),
+                                        _hours == 1.0
+                                            ? '1 hour'
+                                            : '${_hours.toInt() == _hours ? _hours.toInt() : _hours} hours',
                                         style: const TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
@@ -570,7 +568,6 @@ class _EditRideScreenState extends State<EditRideScreen> {
                                     child: Row(
                                       children: [
                                         for (final (h, label) in const [
-                                          (0.5, '30m'),
                                           (1.0, '1h'),
                                           (2.0, '2h'),
                                           (3.0, '3h'),

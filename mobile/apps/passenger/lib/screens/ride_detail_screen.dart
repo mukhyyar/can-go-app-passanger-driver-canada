@@ -1428,16 +1428,8 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
             content: Text(
               type == 'LOST_ITEM'
                   ? 'Driver notified to check vehicle for lost items'
-                  : 'Help request submitted. Admin notified & support chat enabled.',
+                  : 'Help request submitted to Admin Support.',
             ),
-            action: type == 'LOST_ITEM'
-                ? null
-                : SnackBarAction(
-                    label: 'Open Chat',
-                    textColor: Colors.white,
-                    onPressed: () =>
-                        context.push('/ride/${widget.rideId}/chat'),
-                  ),
           ),
         );
         setState(() {});
@@ -2059,22 +2051,6 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-          if (label != null) ...[
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 11.5,
-                color: Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 4),
-          ],
-          ClipRRect(borderRadius: BorderRadius.circular(8), child: imgWidget),
         ],
       ),
     );
@@ -2995,74 +2971,188 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                   if (_isLiveTrackStatus(status)) ...[
                     const SizedBox(height: 12),
                     _Section(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                      child: Builder(
+                        builder: (_) {
+                          final live = _tracking?['live'];
+                          final pickup = _tracking?['pickup'];
+                          final dropoff = _tracking?['dropoff'];
+                          final eta = _tracking?['eta'];
+
+                          final pLat = pickup is Map
+                              ? (pickup['lat'] as num?)?.toDouble()
+                              : null;
+                          final pLng = pickup is Map
+                              ? (pickup['lng'] as num?)?.toDouble()
+                              : null;
+                          final dLat = dropoff is Map
+                              ? (dropoff['lat'] as num?)?.toDouble()
+                              : null;
+                          final dLng = dropoff is Map
+                              ? (dropoff['lng'] as num?)?.toDouble()
+                              : null;
+                          final lLat = live is Map
+                              ? (live['lat'] as num?)?.toDouble()
+                              : null;
+                          final lLng = live is Map
+                              ? (live['lng'] as num?)?.toDouble()
+                              : null;
+
+                          bool isOutOfRegion =
+                              live is Map && live['outOfRegion'] == true;
+                          if (!isOutOfRegion &&
+                              lLat != null &&
+                              lLng != null &&
+                              pLat != null &&
+                              pLng != null) {
+                            final tripDeg = (dLat != null && dLng != null)
+                                ? (pLat - dLat).abs() + (pLng - dLng).abs()
+                                : 0.0;
+                            final maxCorridorDeg =
+                                tripDeg * 1.5 > 1.5 ? tripDeg * 1.5 : 1.5;
+                            final distPickupDeg =
+                                (lLat - pLat).abs() + (lLng - pLng).abs();
+                            final distDropoffDeg =
+                                (dLat != null && dLng != null)
+                                    ? (lLat - dLat).abs() + (lLng - dLng).abs()
+                                    : distPickupDeg;
+                            final minDeg = distPickupDeg < distDropoffDeg
+                                ? distPickupDeg
+                                : distDropoffDeg;
+                            if (minDeg > maxCorridorDeg) {
+                              isOutOfRegion = true;
+                            }
+                          }
+
+                          final useRouteFallback =
+                              isOutOfRegion ||
+                              lLat == null ||
+                              lLng == null ||
+                              status == 'TRIP_STARTED' ||
+                              status == 'IN_PROGRESS';
+
+                          String? etaDurText;
+                          if (eta is Map && !isOutOfRegion) {
+                            final rawMin = eta['minutes'];
+                            final mins = rawMin is num
+                                ? rawMin.round()
+                                : int.tryParse('$rawMin') ?? 0;
+                            if (mins > 0) {
+                              etaDurText = mins >= 60
+                                  ? (mins % 60 == 0
+                                      ? '~ ${mins ~/ 60} h'
+                                      : '~ ${mins ~/ 60} h ${mins % 60} min')
+                                  : '~ $mins min';
+                            }
+                          }
+
+                          final hasRideDist =
+                              ride.distance != null &&
+                              ride.distance!.trim().isNotEmpty &&
+                              ride.distance != '—';
+                          final hasRideDur =
+                              ride.duration != null &&
+                              ride.duration!.trim().isNotEmpty &&
+                              ride.duration != '—';
+
+                          final displayDur = (useRouteFallback && hasRideDur)
+                              ? ride.duration!.trim()
+                              : (etaDurText ??
+                                  (hasRideDur ? ride.duration!.trim() : null));
+                          final displayDist = (useRouteFallback && hasRideDist)
+                              ? ride.distance!.trim()
+                              : (eta is Map &&
+                                      !isOutOfRegion &&
+                                      eta['distanceKm'] != null
+                                  ? '${eta['distanceKm']} km'
+                                  : (hasRideDist
+                                      ? ride.distance!.trim()
+                                      : null));
+
+                          final mapBadgeLabel =
+                              (displayDist != null && displayDur != null)
+                                  ? '$displayDist · $displayDur'
+                                  : (displayDist ?? displayDur);
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Live tracking',
-                                style: TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                              const Spacer(),
-                              if (_tracking?['eta'] is Map)
-                                Text(
-                                  'ETA ~${(_tracking!['eta'] as Map)['minutes']} min',
-                                  style: const TextStyle(
-                                    color: GtColors.brand,
-                                    fontWeight: FontWeight.w700,
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Live tracking',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Builder(
-                            builder: (_) {
-                              final live = _tracking?['live'];
-                              final pickup = _tracking?['pickup'];
-                              final dropoff = _tracking?['dropoff'];
-                              final eta = _tracking?['eta'];
-                              if (live is! Map || pickup is! Map) {
-                                return const Text(
+                                  const Spacer(),
+                                  if (displayDur != null)
+                                    Text(
+                                      'ETA ${displayDur.startsWith('~') ? displayDur : '~$displayDur'}',
+                                      style: const TextStyle(
+                                        color: GtColors.brand,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (pLat == null ||
+                                  pLng == null ||
+                                  (lLat == null && dLat == null))
+                                const Text(
                                   'Waiting for driver location…',
                                   style: TextStyle(
                                     color: GtColors.textSecondary,
                                   ),
-                                );
-                              }
-                              final toDrop =
-                                  eta is Map &&
-                                  eta['target']?.toString() == 'DROPOFF' &&
-                                  dropoff is Map;
-                              final toLat = toDrop
-                                  ? (dropoff['lat'] as num?)?.toDouble()
-                                  : (pickup['lat'] as num?)?.toDouble();
-                              final toLng = toDrop
-                                  ? (dropoff['lng'] as num?)?.toDouble()
-                                  : (pickup['lng'] as num?)?.toDouble();
-                              // Fixed-height SizedBox prevents the ListView
-                              // from remeasuring the PlatformView on every
-                              // scroll frame.
-                              return SizedBox(
-                                height: 200,
-                                child: GtGoogleRouteMap(
-                                  fromLat: (live['lat'] as num).toDouble(),
-                                  fromLng: (live['lng'] as num).toDouble(),
-                                  fromLabel: 'Driver',
-                                  toLat: toLat,
-                                  toLng: toLng,
-                                  toLabel: toDrop ? 'Dropoff' : 'Pickup',
-                                  distanceLabel: eta is Map
-                                      ? '${eta['distanceKm']} km'
-                                      : null,
-                                  height: 200,
-                                  canExpand: false,
-                                  interactive: false,
+                                )
+                              else
+                                Builder(
+                                  builder: (_) {
+                                    final toDrop =
+                                        isOutOfRegion ||
+                                        status == 'TRIP_STARTED' ||
+                                        status == 'IN_PROGRESS' ||
+                                        (eta is Map &&
+                                            eta['target']?.toString() ==
+                                                'DROPOFF' &&
+                                            dLat != null &&
+                                            dLng != null);
+                                    final mapFromLat =
+                                        (isOutOfRegion || lLat == null)
+                                            ? pLat
+                                            : lLat;
+                                    final mapFromLng =
+                                        (isOutOfRegion || lLng == null)
+                                            ? pLng
+                                            : lLng;
+                                    final mapToLat =
+                                        (toDrop && dLat != null) ? dLat : pLat;
+                                    final mapToLng =
+                                        (toDrop && dLng != null) ? dLng : pLng;
+                                    return SizedBox(
+                                      height: 200,
+                                      child: GtGoogleRouteMap(
+                                        fromLat: mapFromLat,
+                                        fromLng: mapFromLng,
+                                        fromLabel: (isOutOfRegion || lLat == null)
+                                            ? ride.from
+                                            : 'Driver',
+                                        toLat: mapToLat,
+                                        toLng: mapToLng,
+                                        toLabel: toDrop
+                                            ? (ride.to ?? 'Dropoff')
+                                            : 'Pickup',
+                                        distanceLabel: mapBadgeLabel,
+                                        height: 200,
+                                        canExpand: false,
+                                        interactive: false,
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
-                        ],
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -3750,24 +3840,41 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                       label: const Text('Report an issue'),
                     ),
-                    if (!_isTerminal &&
-                        (ride.hasReportedRide == true ||
-                            ride.hasActiveSupport == true)) ...[
+                    if (ride.hasReportedRide == true ||
+                        ride.hasActiveSupport == true) ...[
                       const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _actionBusy
-                            ? null
-                            : () => context.push('/ride/${widget.rideId}/chat'),
-                        icon: const Icon(
-                          Icons.support_agent_outlined,
-                          size: 18,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
                         ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 48),
-                          foregroundColor: GtColors.brand,
-                          side: const BorderSide(color: GtColors.brand),
+                        decoration: BoxDecoration(
+                          color: GtColors.bgGrey,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: GtColors.border),
                         ),
-                        label: const Text('Chat with Support'),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.support_agent_outlined,
+                              size: 18,
+                              color: GtColors.brand,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                ride.hasReportedRide == true
+                                    ? 'Your report has been sent to the Admin Support team.'
+                                    : 'Your help request has been sent to the Admin Support team.',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: GtColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ],

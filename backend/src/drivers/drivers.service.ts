@@ -331,6 +331,35 @@ export class DriversService {
           'KYC must be approved before turning on driving mode',
         );
       }
+      const pendingDoc = await this.prisma.driverDocument.findFirst({
+        where: {
+          driverId: driver.id,
+          lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+          status: DocumentReviewStatus.PENDING,
+        },
+      });
+      if (pendingDoc) {
+        throw new ForbiddenException(
+          `Cannot turn on driving mode: your ${pendingDoc.docType} is currently under review.`,
+        );
+      }
+      const actionRequiredDoc = await this.prisma.driverDocument.findFirst({
+        where: {
+          driverId: driver.id,
+          lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+          status: {
+            in: [
+              DocumentReviewStatus.NEEDS_RESUBMISSION,
+              DocumentReviewStatus.REJECTED,
+            ],
+          },
+        },
+      });
+      if (actionRequiredDoc) {
+        throw new ForbiddenException(
+          `Cannot turn on driving mode: document re-upload is required for ${actionRequiredDoc.docType}.`,
+        );
+      }
       const expiredDoc = await this.prisma.driverDocument.findFirst({
         where: {
           driverId: driver.id,
@@ -341,6 +370,19 @@ export class DriversService {
       if (expiredDoc) {
         throw new ForbiddenException(
           `Cannot turn on driving mode: your ${expiredDoc.docType} has expired. Please upload an updated document.`,
+        );
+      }
+      const approvedVehicle = await this.prisma.vehicle.findFirst({
+        where: {
+          driverId: driver.id,
+          isActive: true,
+          approvalStatus: 'APPROVED',
+          inspectionStatus: 'APPROVED',
+        },
+      });
+      if (!approvedVehicle) {
+        throw new ForbiddenException(
+          'Cannot turn on driving mode: you do not have an approved and inspected vehicle.',
         );
       }
     }

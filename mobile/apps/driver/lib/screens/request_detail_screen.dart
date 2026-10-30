@@ -92,8 +92,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         _request = detail;
         _vehicles = vehicles;
         _loading = false;
-        if (_draft.vehicleId == null && vehicles.isNotEmpty) {
-          _draft.vehicleId = s.primaryVehicleId ?? vehicles.first.id;
+        final approved = vehicles.where((v) => s.isVehicleApproved(v)).toList();
+        if (_draft.vehicleId == null && approved.isNotEmpty) {
+          final pref = s.primaryVehicleId;
+          _draft.vehicleId = (pref != null && approved.any((v) => v.id == pref))
+              ? pref
+              : approved.first.id;
         }
         for (final r in detail.requiredOptions) {
           _draft.selectedOptions.add(r);
@@ -199,10 +203,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
   String? _validate() {
     _persistDraft();
-    if (_vehicles.isEmpty) {
-      return 'No eligible vehicle. Add a vehicle in settings first.';
+    final s = context.read<AppState>();
+    final approved = _vehicles.where((v) => s.isVehicleApproved(v)).toList();
+    if (approved.isEmpty) {
+      return s.profileHoldReason ?? 'No approved vehicle available for ride offers.';
     }
-    if (_draft.vehicleId == null) return 'Select a vehicle';
+    if (_draft.vehicleId == null || !approved.any((v) => v.id == _draft.vehicleId)) {
+      return 'Select an approved vehicle';
+    }
     if (_draft.validForSeconds == null) return 'Select offer validity';
     final out = _draft.outboundPrice;
     if (out == null || out <= 0) return 'Enter a valid A → B price';
@@ -301,12 +309,22 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       _submitting = true;
     });
     try {
+      final approved = _vehicles.where((v) => s.isVehicleApproved(v)).toList();
       final vehicle =
-          _vehicles.where((v) => v.id == _draft.vehicleId).firstOrNull ??
-              (_vehicles.isNotEmpty ? _vehicles.first : null);
-      if (vehicle != null) {
-        _draft.vehicleId = vehicle.id;
+          approved.where((v) => v.id == _draft.vehicleId).firstOrNull ??
+              (approved.isNotEmpty ? approved.first : null);
+      if (vehicle == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              s.profileHoldReason ??
+                  'No approved vehicle available for ride offers.',
+            ),
+          ),
+        );
+        return;
       }
+      _draft.vehicleId = vehicle.id;
       final submitted = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => OfferReviewScreen(
@@ -1016,7 +1034,121 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                     ],
                   ] else if (!isClosed) ...[
                     const SizedBox(height: 16),
-                    if (s.isProfileOnHold) ...[
+                    if (s.hasExpiredDocuments) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          border: Border.all(color: Colors.red.shade300),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.error_outline, color: Colors.red.shade800, size: 24),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Documents Expired',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: Colors.red.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              s.profileHoldReason ??
+                                  'One or more of your documents have expired. Please re-upload updated documents to regain eligibility.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.red.shade900,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => context.push('/onboarding/documents'),
+                                icon: const Icon(Icons.description_outlined, size: 18),
+                                label: const Text('Update Documents'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red.shade900,
+                                  side: BorderSide(color: Colors.red.shade300),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (s.hasReuploadRequest) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          border: Border.all(color: Colors.amber.shade300),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.assignment_late_outlined, color: Colors.amber.shade900, size: 24),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Document Resubmission Required',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              s.profileHoldReason ??
+                                  'Document review requested a new upload. Please re-upload the requested documents.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.amber.shade900,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => context.push('/onboarding/documents'),
+                                icon: const Icon(Icons.description_outlined, size: 18),
+                                label: const Text('Review Documents'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.amber.shade900,
+                                  side: BorderSide(color: Colors.amber.shade400),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (s.isProfileOnHold) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
@@ -1050,7 +1182,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Your resubmitted document is currently under review by our admin team. While on hold, sending offers to passengers is paused until verified.',
+                              s.profileHoldReason ??
+                                  'Your resubmitted document is currently under review by our admin team. While on hold, sending offers to passengers is paused until verified.',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: Colors.amber.shade900,
@@ -1064,6 +1197,132 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                 onPressed: () => context.push('/onboarding/documents'),
                                 icon: const Icon(Icons.description_outlined, size: 18),
                                 label: const Text('View Documents Status'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.amber.shade900,
+                                  side: BorderSide(color: Colors.amber.shade400),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (!s.hasApprovedVehicle) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          border: Border.all(color: Colors.amber.shade300),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.directions_car_outlined,
+                                  color: Colors.amber.shade900,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    s.hasPendingVehicleApproval
+                                        ? 'Vehicle Approval Pending'
+                                        : (s.hasPendingVehicleInspection
+                                            ? 'Vehicle Inspection Pending'
+                                            : 'Approved Vehicle Required'),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              s.profileHoldReason ??
+                                  'Your vehicle approval is currently pending admin review. You cannot submit offers until your vehicle is approved.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.amber.shade900,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => context.push('/settings/vehicles'),
+                                icon: const Icon(Icons.directions_car_filled_outlined, size: 18),
+                                label: const Text('Manage Vehicles'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.amber.shade900,
+                                  side: BorderSide(color: Colors.amber.shade400),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (!s.isActivated || s.approvalStatus.toUpperCase() != 'APPROVED') ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          border: Border.all(color: Colors.amber.shade300),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.account_circle_outlined,
+                                  color: Colors.amber.shade900,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Activation Required',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                      color: Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              s.profileHoldReason ??
+                                  'You will be able to offer your price after activation. Please complete your profile verification.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.amber.shade900,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () => context.push('/onboarding/profile'),
+                                icon: const Icon(Icons.person_outline, size: 18),
+                                label: const Text('Complete Profile'),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.amber.shade900,
                                   side: BorderSide(color: Colors.amber.shade400),
@@ -1111,7 +1370,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       ],
                       InlineOfferForm(
                         request: req,
-                        vehicles: _vehicles,
+                        vehicles: s.approvedVehicles,
                         draft: _draft,
                         outCtrl: _outCtrl,
                         retCtrl: _retCtrl,
