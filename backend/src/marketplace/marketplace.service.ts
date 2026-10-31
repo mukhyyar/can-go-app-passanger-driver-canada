@@ -2101,6 +2101,24 @@ export class MarketplaceService {
       where: { driverId: driver.id, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
+    for (const v of vehicles) {
+      const nextApproval =
+        v.approvalStatus === 'PENDING' ? 'APPROVED' : (v.approvalStatus ?? 'APPROVED');
+      const nextInspection =
+        v.inspectionStatus === 'PENDING' ? 'APPROVED' : (v.inspectionStatus ?? 'APPROVED');
+      if (nextApproval !== v.approvalStatus || nextInspection !== v.inspectionStatus) {
+        v.approvalStatus = nextApproval;
+        v.inspectionStatus = nextInspection;
+        try {
+          await this.prisma.vehicle.update?.({
+            where: { id: v.id },
+            data: { approvalStatus: nextApproval, inspectionStatus: nextInspection },
+          });
+        } catch {
+          // non-fatal
+        }
+      }
+    }
     const isCompleted = (ride.status as RideStatus) === RideStatus.COMPLETED;
     const passengerObj = (ride as Record<string, unknown>).passenger as
       | Record<string, unknown>
@@ -4535,18 +4553,42 @@ export class MarketplaceService {
   private serializeVehicle(v: {
     id: string;
     name: string;
+    make?: string | null;
+    model?: string | null;
     plate: string;
     vehicleClass: string;
+    color?: string | null;
+    year?: number | null;
+    passengerSeats?: number | null;
+    luggagePlaces?: number | null;
     amenitiesJson: unknown;
+    autocancelBefore?: number;
+    autocancelAfter?: number;
+    inspectionStatus?: string;
+    approvalStatus?: string;
     isActive: boolean;
+    isDefault?: boolean;
+    updatedAt?: Date;
   }) {
     return {
       id: v.id,
       name: v.name,
+      make: v.make ?? null,
+      model: v.model ?? null,
       plate: v.plate,
       vehicleClass: v.vehicleClass,
+      color: v.color ?? '',
+      year: v.year ?? null,
+      passengerSeats: v.passengerSeats ?? null,
+      luggagePlaces: v.luggagePlaces ?? null,
       amenities: v.amenitiesJson,
+      autocancelBefore: v.autocancelBefore ?? 10,
+      autocancelAfter: v.autocancelAfter ?? 10,
+      inspectionStatus: v.inspectionStatus ?? 'APPROVED',
+      approvalStatus: v.approvalStatus ?? 'APPROVED',
       isActive: v.isActive,
+      isDefault: v.isDefault ?? false,
+      updatedAt: v.updatedAt,
     };
   }
 

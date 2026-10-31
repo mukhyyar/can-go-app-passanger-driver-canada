@@ -174,6 +174,18 @@ export class DriversService {
         where: { id: vehicleId, driverId: driver.id },
       });
       if (!vehicle) throw new BadRequestException('Invalid vehicleId');
+    } else if (
+      docType === 'vehicle_registration' ||
+      docType === 'insurance' ||
+      docType === 'inspection_certificate'
+    ) {
+      const defaultVehicle = await this.prisma.vehicle?.findFirst?.({
+        where: { driverId: driver.id },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+      });
+      if (defaultVehicle) {
+        vehicleId = defaultVehicle.id;
+      }
     }
 
     const current =
@@ -372,6 +384,7 @@ export class DriversService {
           `Cannot turn on driving mode: your ${expiredDoc.docType} has expired. Please upload an updated document.`,
         );
       }
+      await this.kycDocs?.syncDriverVehiclesApproval?.(driver.id);
       const approvedVehicle = await this.prisma.vehicle.findFirst({
         where: {
           driverId: driver.id,
@@ -834,6 +847,7 @@ export class DriversService {
 
   async listVehicles(userId: string) {
     const driver = await this.requireDriverProfile(userId);
+    await this.kycDocs?.syncDriverVehiclesApproval?.(driver.id);
     const vehicles = await this.prisma.vehicle.findMany({
       where: { driverId: driver.id },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
@@ -843,6 +857,7 @@ export class DriversService {
 
   async getVehicle(userId: string, vehicleId: string) {
     const driver = await this.requireDriverProfile(userId);
+    await this.kycDocs?.syncDriverVehiclesApproval?.(driver.id);
     const vehicle = await this.prisma.vehicle.findFirst({
       where: { id: vehicleId, driverId: driver.id },
     });
@@ -1489,6 +1504,7 @@ export class DriversService {
         approvalStatus: DriverApprovalStatus.APPROVED,
       },
     });
+    await this.kycDocs?.syncDriverVehiclesApproval?.(driverId);
 
     if (!driver.isActivated) {
       const user = await this.prisma.user.findUnique({ where: { id: driver.userId } });

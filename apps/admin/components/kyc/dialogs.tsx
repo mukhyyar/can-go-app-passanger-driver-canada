@@ -697,6 +697,20 @@ export function EditDocumentMetadataDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setDocumentNumber(doc.documentNumber ?? '');
+    setIssueDate(isoDateInput(doc.issueDate));
+    setExpiresAt(isoDateInput(doc.expiresAt));
+    setIssuingJurisdiction(doc.issuingJurisdiction ?? '');
+    setCustomLabel(doc.customLabel ?? '');
+    setAdminNote(doc.adminNote ?? '');
+    setSourceReference(doc.sourceReference ?? '');
+    setStatus(doc.status);
+    setReason('');
+    setDirty(false);
+    setError(null);
+  }, [doc]);
+
+  useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
       if (!dirty) return;
       e.preventDefault();
@@ -761,7 +775,7 @@ export function EditDocumentMetadataDialog({
         <textarea className="field" rows={2} value={adminNote} onChange={(e) => mark(setAdminNote)(e.target.value)} />
       </label>
       <label className="kyc-label">
-        Reason (required)
+        Reason (optional)
         <textarea className="field" rows={2} value={reason} onChange={(e) => mark(setReason)(e.target.value)} />
       </label>
       <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
@@ -771,20 +785,20 @@ export function EditDocumentMetadataDialog({
         <button
           className="btn sm"
           type="button"
-          disabled={busy || reason.trim().length < 3}
+          disabled={busy}
           onClick={() => {
             void (async () => {
               try {
                 await onConfirm({
-                  documentNumber: documentNumber.trim() || undefined,
-                  customLabel: customLabel.trim() || undefined,
+                  documentNumber: documentNumber.trim() || null,
+                  customLabel: customLabel.trim() || null,
                   issueDate: issueDate ? new Date(issueDate).toISOString() : null,
                   expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
-                  issuingJurisdiction: issuingJurisdiction.trim() || undefined,
-                  sourceReference: sourceReference.trim() || undefined,
-                  adminNote: adminNote.trim() || undefined,
+                  issuingJurisdiction: issuingJurisdiction.trim() || null,
+                  sourceReference: sourceReference.trim() || null,
+                  adminNote: adminNote.trim() || null,
                   status: status !== doc.status ? status : undefined,
-                  reason: reason.trim(),
+                  reason: reason.trim() || 'Updated document metadata',
                 });
                 setDirty(false);
               } catch (e) {
@@ -923,7 +937,7 @@ export function EditApplicantDialog({
         </label>
       </div>
       <label className="kyc-label">
-        Reason (required)
+        Reason (optional)
         <textarea className="field" rows={2} value={reason} onChange={(e) => mark(setReason)(e.target.value)} />
       </label>
       <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
@@ -933,28 +947,28 @@ export function EditApplicantDialog({
         <button
           className="btn sm"
           type="button"
-          disabled={busy || reason.trim().length < 3}
+          disabled={busy}
           onClick={() => {
             void (async () => {
               try {
                 await onConfirm({
                   fullName: fullName.trim() || undefined,
-                  legalName: legalName.trim() || undefined,
-                  email: email.trim() || undefined,
-                  phoneE164: phoneE164.trim() || undefined,
+                  legalName: legalName.trim() || null,
+                  email: email.trim() || null,
+                  phoneE164: phoneE164.trim() || null,
                   dateOfBirth: dateOfBirth ? new Date(dateOfBirth).toISOString() : null,
-                  addressLine1: addressLine1.trim() || undefined,
-                  addressLine2: addressLine2.trim() || undefined,
-                  city: city.trim() || undefined,
-                  province: province.trim() || undefined,
-                  postalCode: postalCode.trim() || undefined,
-                  country: country.trim() || undefined,
-                  baseLocation: baseLocation.trim() || undefined,
-                  licenceNumber: licenceNumber.trim() || undefined,
-                  licenceJurisdiction: licenceJurisdiction.trim() || undefined,
+                  addressLine1: addressLine1.trim() || null,
+                  addressLine2: addressLine2.trim() || null,
+                  city: city.trim() || null,
+                  province: province.trim() || null,
+                  postalCode: postalCode.trim() || null,
+                  country: country.trim() || null,
+                  baseLocation: baseLocation.trim() || null,
+                  licenceNumber: licenceNumber.trim() || null,
+                  licenceJurisdiction: licenceJurisdiction.trim() || null,
                   licenceIssueDate: licenceIssueDate ? new Date(licenceIssueDate).toISOString() : null,
                   licenceExpiryDate: licenceExpiryDate ? new Date(licenceExpiryDate).toISOString() : null,
-                  reason: reason.trim(),
+                  reason: reason.trim() || 'Updated applicant details',
                 });
                 setDirty(false);
               } catch (e) {
@@ -1135,12 +1149,16 @@ export function useUnsavedGuard(dirty: boolean) {
 export function InlineEditField({
   label,
   value,
+  displayValue,
+  type = 'text',
   canEdit,
   busy,
   onSave,
 }: {
   label: string;
   value: string;
+  displayValue?: string;
+  type?: 'text' | 'date';
   canEdit: boolean;
   busy?: boolean;
   onSave: (next: string) => Promise<void>;
@@ -1156,7 +1174,7 @@ export function InlineEditField({
       <div className="kyc-inline-row">
         <dt>{label}</dt>
         <dd>
-          <span>{value || '—'}</span>
+          <span>{displayValue ?? (value || '—')}</span>
           {canEdit && (
             <button className="btn ghost sm kyc-inline-edit" type="button" onClick={() => setEditing(true)}>
               Edit
@@ -1171,7 +1189,7 @@ export function InlineEditField({
     <div className="kyc-inline-row editing">
       <dt>{label}</dt>
       <dd>
-        <input className="field" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <input className="field" type={type} value={draft} onChange={(e) => setDraft(e.target.value)} />
         <span className="kyc-inline-actions">
           <button
             className="btn sm"

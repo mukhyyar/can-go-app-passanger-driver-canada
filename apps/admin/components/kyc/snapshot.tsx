@@ -22,6 +22,7 @@ export function DriverSnapshot({
   onInlineSave,
   onEditApplicant,
   onAddDocument,
+  onApproveVehicle,
 }: {
   workspace: KycWorkspace;
   selectedType: string | null;
@@ -29,10 +30,11 @@ export function DriverSnapshot({
   canEdit: boolean;
   busy?: boolean;
   onSelectType: (docType: string) => void;
-  onSelectDoc: (docId: string) => void;
+  onSelectDoc: (docId: string | null) => void;
   onInlineSave: (field: string, value: string) => Promise<void>;
   onEditApplicant: () => void;
   onAddDocument: () => void;
+  onApproveVehicle?: (vehicleId: string) => void;
 }) {
   const v = workspace.vehicles[0];
   const zone = workspace.operatingZones[0];
@@ -143,6 +145,7 @@ export function DriverSnapshot({
         <InlineEditField
           label="Expiry"
           value={isoDateInput(workspace.licenceExpiryDate)}
+          type="date"
           canEdit={canEdit}
           busy={busy}
           onSave={(next) => onInlineSave('licenceExpiryDate', next)}
@@ -189,7 +192,21 @@ export function DriverSnapshot({
 
       {v && (
         <>
-          <h3>Vehicle</h3>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: '12px 0 6px' }}>Vehicle</h3>
+            {onApproveVehicle &&
+              ((v.approvalStatus ?? 'PENDING').toUpperCase() !== 'APPROVED' ||
+                (v.inspectionStatus ?? 'PENDING').toUpperCase() !== 'APPROVED') && (
+                <button
+                  className="btn ghost sm"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onApproveVehicle(v.id)}
+                >
+                  Approve vehicle
+                </button>
+              )}
+          </div>
           <dl className="kyc-dl">
             <div>
               <dt>Name</dt>
@@ -202,6 +219,18 @@ export function DriverSnapshot({
             <div>
               <dt>Vehicle type</dt>
               <dd>{v.vehicleClass}</dd>
+            </div>
+            <div>
+              <dt>Approval</dt>
+              <dd>
+                <KycStatusBadge status={v.approvalStatus ?? 'PENDING'} />
+              </dd>
+            </div>
+            <div>
+              <dt>Inspection</dt>
+              <dd>
+                <KycStatusBadge status={v.inspectionStatus ?? 'PENDING'} />
+              </dd>
             </div>
           </dl>
         </>
@@ -220,7 +249,7 @@ export function DriverSnapshot({
                 className={active ? 'on' : ''}
                 onClick={() => {
                   onSelectType(item.docType);
-                  if (item.documentId) onSelectDoc(item.documentId);
+                  onSelectDoc(item.documentId ?? null);
                 }}
               >
                 <DocGlyph indicator={item.indicator as DocIndicator} />

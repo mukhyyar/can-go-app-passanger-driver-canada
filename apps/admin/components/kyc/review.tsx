@@ -76,6 +76,7 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
   const [compare, setCompare] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [overrideReason, setOverrideReason] = useState('');
+  const didInitSelectionRef = useRef(false);
 
   const load = useCallback(async () => {
     const ws = await api<KycWorkspace>(`/admin/drivers/${driverId}/kyc`);
@@ -84,6 +85,7 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
   }, [driverId]);
 
   useEffect(() => {
+    didInitSelectionRef.current = false;
     setErr(null);
     load().catch((e) => setErr(e instanceof Error ? e.message : String(e)));
   }, [load]);
@@ -105,16 +107,23 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
 
   useEffect(() => {
     if (!data) return;
-    if (selectedDocId && data.documents.some((d) => d.id === selectedDocId)) return;
+    if (selectedDocId && data.documents.some((d) => d.id === selectedDocId)) {
+      didInitSelectionRef.current = true;
+      return;
+    }
     const doc = findDocForType(data, selectedType);
     if (doc) {
+      didInitSelectionRef.current = true;
       setSelectedDocId(doc.id);
       return;
     }
-    const first = data.checklist.find((c) => c.documentId);
-    if (first?.documentId) {
-      setSelectedType(first.docType);
-      setSelectedDocId(first.documentId);
+    if (!didInitSelectionRef.current) {
+      didInitSelectionRef.current = true;
+      const first = data.checklist.find((c) => c.documentId);
+      if (first?.documentId) {
+        setSelectedType(first.docType);
+        setSelectedDocId(first.documentId);
+      }
     }
   }, [data, selectedType, selectedDocId]);
 
@@ -411,6 +420,21 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
           onSelectDoc={setSelectedDocId}
           onEditApplicant={() => setDialog({ kind: 'edit-applicant' })}
           onAddDocument={() => setDialog({ kind: 'upload', mode: 'add' })}
+          onApproveVehicle={
+            canApprove || canReview
+              ? (vehicleId) => {
+                  void run(async () => {
+                    await api(`/admin/vehicles/${vehicleId}`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({
+                        approvalStatus: 'APPROVED',
+                        inspectionStatus: 'APPROVED',
+                      }),
+                    });
+                  }, 'Vehicle approved');
+                }
+              : undefined
+          }
           onInlineSave={async (field, value) => {
             const ok = await run(async () => {
               const payload: Record<string, unknown> = {
@@ -418,10 +442,15 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
                 expectedUpdatedAt: data.updatedAt,
               };
               if (field === 'licenceExpiryDate') {
-                const parsed = new Date(value);
-                payload[field] = Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
+                const trimmed = value.trim();
+                if (!trimmed) {
+                  payload[field] = null;
+                } else {
+                  const parsed = new Date(trimmed);
+                  payload[field] = Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString();
+                }
               } else {
-                payload[field] = value;
+                payload[field] = value.trim() || null;
               }
               await api(`/admin/drivers/${data.id}/kyc`, {
                 method: 'PATCH',
@@ -445,6 +474,37 @@ export function KycReviewWorkspace({ driverId }: { driverId: string }) {
           canDelete={canDelete}
           canOverride={canOverride}
           readOnly={readOnly}
+          busy={busy}
+          onInlineDocSave={
+            selectedDoc
+              ? async (field, value) => {
+                  const ok = await run(async () => {
+                    const payload: Record<string, unknown> = {
+                      reason: `Inline update ${field}`,
+                      expectedUpdatedAt: data.updatedAt,
+                    };
+                    if (field === 'issueDate' || field === 'expiresAt') {
+                      const trimmed = value.trim();
+                      if (!trimmed) {
+                        payload[field] = null;
+                      } else {
+                        const parsed = new Date(trimmed);
+                        payload[field] = Number.isNaN(parsed.getTime())
+                          ? trimmed
+                          : parsed.toISOString();
+                      }
+                    } else {
+                      payload[field] = value.trim() || null;
+                    }
+                    await api(`/admin/drivers/${data.id}/kyc/documents/${selectedDoc.id}`, {
+                      method: 'PATCH',
+                      body: JSON.stringify(payload),
+                    });
+                  }, 'Document information updated');
+                  if (!ok) throw new Error('Save failed');
+                }
+              : undefined
+          }
           onAction={{
             onApprove: () => setDialog({ kind: 'approve-doc' }),
             onResubmit: () => setDialog({ kind: 'resubmit-doc' }),

@@ -1,13 +1,43 @@
-// ignore: avoid_web_libraries_in_flutter
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:math' as math;
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/widgets.dart';
 import 'route_path.dart';
+
+JSAny? _toJsArg(Object? arg) {
+  if (arg == null) return null;
+  if (arg is JSAny) return arg;
+  if (arg is num) return arg.toJS;
+  if (arg is String) return arg.toJS;
+  if (arg is bool) return arg.toJS;
+  return arg.jsify();
+}
+
+JSObject? _jsGetObj(JSObject? target, Object prop) {
+  if (target == null) return null;
+  final key = prop is num ? prop.toJS : '$prop'.toJS;
+  return target.getProperty<JSObject?>(key);
+}
+
+JSAny? _jsCall(JSObject target, String method, [List<Object?> args = const []]) {
+  return target.callMethodVarArgs<JSAny?>(
+    method.toJS,
+    args.map(_toJsArg).toList(),
+  );
+}
+
+JSObject _jsNew(JSObject parent, String ctorName, [List<Object?> args = const []]) {
+  final ctor = parent.getProperty<JSFunction>(ctorName.toJS);
+  return ctor.callAsConstructorVarArgs<JSObject>(
+    args.map(_toJsArg).toList(),
+  );
+}
 
 final Set<String> _registered = <String>{};
 Completer<void>? _mapsJsReady;
@@ -168,9 +198,9 @@ Future<String?> _resolveApiKey() async {
 }
 
 Future<void> _ensureMapsJs(String apiKey) async {
-  final google = js_util.getProperty(html.window, 'google');
+  final google = _jsGetObj(globalContext, 'google');
   if (google != null) {
-    final maps = js_util.getProperty(google, 'maps');
+    final maps = _jsGetObj(google, 'maps');
     if (maps != null) return;
   }
 
@@ -193,8 +223,8 @@ Future<void> _ensureMapsJs(String apiKey) async {
       }
     });
     // Already loaded?
-    final g = js_util.getProperty(html.window, 'google');
-    if (g != null && js_util.getProperty(g, 'maps') != null) {
+    final g = _jsGetObj(globalContext, 'google');
+    if (g != null && _jsGetObj(g, 'maps') != null) {
       if (!ready.isCompleted) ready.complete();
     }
     await ready.future;
@@ -258,27 +288,21 @@ Future<html.ImageElement?> _loadCarImage() async {
   }
 }
 
-Object _carImageIcon(Object maps, String dataUrl, int canvasSize) {
+JSAny? _carImageIcon(JSObject maps, String dataUrl, int canvasSize) {
   final half = canvasSize / 2;
-  return js_util.jsify({
+  return {
     'url': dataUrl,
-    'scaledSize': js_util.callConstructor(
-      js_util.getProperty(maps, 'Size'),
-      [canvasSize, canvasSize],
-    ),
-    'anchor': js_util.callConstructor(
-      js_util.getProperty(maps, 'Point'),
-      [half, half],
-    ),
-  });
+    'scaledSize': _jsNew(maps, 'Size', [canvasSize, canvasSize]),
+    'anchor': _jsNew(maps, 'Point', [half, half]),
+  }.jsify();
 }
 
-Object _carSymbolIcon(Object maps, double bearingDeg) {
+JSAny? _carSymbolIcon(JSObject maps, double bearingDeg) {
   // Simple top-down car path (nose points "up" / north at rotation 0).
   const path =
       'M -6,-14 L 6,-14 Q 8,-14 8,-12 L 8,10 Q 8,14 0,14 Q -8,14 -8,10 L -8,-12 Q -8,-14 -6,-14 Z'
       ' M -5,-8 L 5,-8 L 5,-2 L -5,-2 Z';
-  return js_util.jsify({
+  return {
     'path': path,
     'fillColor': '#E50000',
     'fillOpacity': 1,
@@ -286,11 +310,8 @@ Object _carSymbolIcon(Object maps, double bearingDeg) {
     'strokeWeight': 1.5,
     'scale': 1.35,
     'rotation': bearingDeg,
-    'anchor': js_util.callConstructor(
-      js_util.getProperty(maps, 'Point'),
-      [0, 0],
-    ),
-  });
+    'anchor': _jsNew(maps, 'Point', [0, 0]),
+  }.jsify();
 }
 
 Future<void> _mountMap({
@@ -326,53 +347,54 @@ Future<void> _mountMap({
 
   msg.style.display = 'none';
 
-  final google = js_util.getProperty(html.window, 'google');
-  final maps = js_util.getProperty(google, 'maps');
-  final from = js_util.jsify({'lat': fromLat, 'lng': fromLng});
+  final google = _jsGetObj(globalContext, 'google');
+  final maps = _jsGetObj(google, 'maps');
+  if (maps == null) return;
+  final from = {'lat': fromLat, 'lng': fromLng}.jsify();
 
-  final map = js_util.callConstructor(
-    js_util.getProperty(maps, 'Map'),
+  final map = _jsNew(
+    maps,
+    'Map',
     [
       mapDiv,
-      js_util.jsify({
+      {
         'center': {'lat': fromLat, 'lng': fromLng},
         'zoom': 13,
         'mapTypeControl': false,
         'streetViewControl': false,
         'fullscreenControl': false,
-      }),
+      },
     ],
   );
 
-  final bounds = js_util.callConstructor(
-    js_util.getProperty(maps, 'LatLngBounds'),
-    [],
-  );
-  js_util.callMethod(bounds, 'extend', [from]);
+  final bounds = _jsNew(maps, 'LatLngBounds');
+  _jsCall(bounds, 'extend', [from]);
 
-  js_util.callConstructor(
-    js_util.getProperty(maps, 'Marker'),
+  _jsNew(
+    maps,
+    'Marker',
     [
-      js_util.jsify({
+      {
         'position': {'lat': fromLat, 'lng': fromLng},
         'map': map,
         'label': 'A',
-      }),
+      },
     ],
   );
 
   if (toLat == null || toLng == null) return;
 
-  final to = js_util.jsify({'lat': toLat, 'lng': toLng});
-  js_util.callMethod(bounds, 'extend', [to]);
-  js_util.callConstructor(
-    js_util.getProperty(maps, 'Marker'),
+  final to = {'lat': toLat, 'lng': toLng}.jsify();
+  _jsCall(bounds, 'extend', [to]);
+  _jsNew(
+    maps,
+    'Marker',
     [
-      js_util.jsify({
+      {
         'position': {'lat': toLat, 'lng': toLng},
         'map': map,
         'label': 'B',
-      }),
+      },
     ],
   );
 
@@ -418,30 +440,32 @@ Future<void> _mountMap({
       }
     }
     if (path != null && path.isNotEmpty) {
-      js_util.callConstructor(
-        js_util.getProperty(maps, 'Polyline'),
+      _jsNew(
+        maps,
+        'Polyline',
         [
-          js_util.jsify({
+          {
             'path': path,
             'geodesic': true,
             'strokeColor': '#E50000',
             'strokeOpacity': 0.9,
             'strokeWeight': 5,
             'map': map,
-          }),
+          },
         ],
       );
       for (final p in path) {
-        js_util.callMethod(bounds, 'extend', [js_util.jsify(p)]);
+        _jsCall(bounds, 'extend', [p]);
       }
       routePoints = path
           .map((p) => RouteLatLng(p['lat']!, p['lng']!))
           .toList();
     } else {
-      js_util.callConstructor(
-        js_util.getProperty(maps, 'Polyline'),
+      _jsNew(
+        maps,
+        'Polyline',
         [
-          js_util.jsify({
+          {
             'path': [
               {'lat': fromLat, 'lng': fromLng},
               {'lat': toLat, 'lng': toLng},
@@ -451,15 +475,16 @@ Future<void> _mountMap({
             'strokeOpacity': 0.9,
             'strokeWeight': 5,
             'map': map,
-          }),
+          },
         ],
       );
     }
   } catch (_) {
-    js_util.callConstructor(
-      js_util.getProperty(maps, 'Polyline'),
+    _jsNew(
+      maps,
+      'Polyline',
       [
-        js_util.jsify({
+        {
           'path': [
             {'lat': fromLat, 'lng': fromLng},
             {'lat': toLat, 'lng': toLng},
@@ -469,12 +494,12 @@ Future<void> _mountMap({
           'strokeOpacity': 0.9,
           'strokeWeight': 5,
           'map': map,
-        }),
+        },
       ],
     );
   }
 
-  js_util.callMethod(map, 'fitBounds', [bounds, 48]);
+  _jsCall(map, 'fitBounds', [bounds, 48]);
 
   final sampler = RoutePathSampler(routePoints);
   if (sampler.isEmpty) return;
@@ -483,7 +508,7 @@ Future<void> _mountMap({
   final carImg = await _loadCarImage();
   final first = sampler.sample(0);
 
-  Object icon;
+  JSAny? icon;
   final rotated =
       carImg != null ? _rotatedCarDataUrl(carImg, first.bearingDeg) : null;
   if (rotated != null) {
@@ -492,16 +517,17 @@ Future<void> _mountMap({
     icon = _carSymbolIcon(maps, first.bearingDeg);
   }
 
-  final carMarker = js_util.callConstructor(
-    js_util.getProperty(maps, 'Marker'),
+  final carMarker = _jsNew(
+    maps,
+    'Marker',
     [
-      js_util.jsify({
+      {
         'position': {'lat': first.lat, 'lng': first.lng},
         'map': map,
         'icon': icon,
         'zIndex': 999,
         'optimized': false,
-      }),
+      },
     ],
   );
 
@@ -518,11 +544,11 @@ Future<void> _mountMap({
     final elapsed = html.window.performance.now() - startMs;
     final t = (elapsed % carAnimMs) / carAnimMs;
     final sample = sampler.sample(t);
-    js_util.callMethod(
+    _jsCall(
       carMarker,
       'setPosition',
       [
-        js_util.jsify({'lat': sample.lat, 'lng': sample.lng}),
+        {'lat': sample.lat, 'lng': sample.lng},
       ],
     );
 
@@ -534,14 +560,14 @@ Future<void> _mountMap({
       if (carImg != null) {
         final rotated = _rotatedCarDataUrl(carImg, sample.bearingDeg);
         if (rotated != null) {
-          js_util.callMethod(
+          _jsCall(
             carMarker,
             'setIcon',
             [_carImageIcon(maps, rotated.$1, rotated.$2)],
           );
         }
       } else {
-        js_util.callMethod(
+        _jsCall(
           carMarker,
           'setIcon',
           [_carSymbolIcon(maps, sample.bearingDeg)],

@@ -2154,10 +2154,36 @@ export class AdminOpsService {
   }
 
   async listVehicles() {
-    return this.prisma.vehicle.findMany({
+    const vehicles = await this.prisma.vehicle.findMany({
       include: {
         driver: {
-          select: { id: true, fullName: true, userId: true, approvalStatus: true },
+          select: {
+            id: true,
+            fullName: true,
+            userId: true,
+            approvalStatus: true,
+            documents: {
+              where: {
+                lifecycleStatus: 'CURRENT',
+                docType: {
+                  in: [
+                    'vehicle_registration',
+                    'vehicle_photo',
+                    'insurance',
+                    'inspection_certificate',
+                  ],
+                },
+              },
+              select: {
+                id: true,
+                vehicleId: true,
+                docType: true,
+                status: true,
+                originalFilename: true,
+                expiresAt: true,
+              },
+            },
+          },
         },
         documents: {
           where: { lifecycleStatus: 'CURRENT' },
@@ -2167,6 +2193,126 @@ export class AdminOpsService {
       orderBy: { updatedAt: 'desc' },
       take: 200,
     });
+
+    for (const v of vehicles) {
+      const driverDocs = v.driver?.documents ?? [];
+      const matchingDocs = driverDocs.filter(
+        (d) => !d.vehicleId || d.vehicleId === v.id,
+      );
+      const regApproved = matchingDocs.some(
+        (d) => d.docType === 'vehicle_registration' && d.status === 'APPROVED',
+      );
+      const photoApproved = matchingDocs.some(
+        (d) => d.docType === 'vehicle_photo' && d.status === 'APPROVED',
+      );
+      const hasPendingOrRejected = matchingDocs.some(
+        (d) =>
+          (d.docType === 'vehicle_registration' ||
+            d.docType === 'vehicle_photo' ||
+            d.docType === 'insurance') &&
+          (d.status === 'PENDING' ||
+            d.status === 'REJECTED' ||
+            d.status === 'NEEDS_RESUBMISSION'),
+      );
+      const shouldApprove =
+        !hasPendingOrRejected &&
+        ((regApproved && photoApproved) || v.driver?.approvalStatus === 'APPROVED');
+
+      if (
+        shouldApprove &&
+        (v.approvalStatus !== 'APPROVED' || v.inspectionStatus !== 'APPROVED')
+      ) {
+        v.approvalStatus = 'APPROVED';
+        v.inspectionStatus = 'APPROVED';
+        await this.prisma.vehicle.update({
+          where: { id: v.id },
+          data: {
+            approvalStatus: 'APPROVED',
+            inspectionStatus: 'APPROVED',
+          },
+        });
+      }
+      if (v.documents.length === 0 && matchingDocs.length > 0) {
+        v.documents = matchingDocs;
+      }
+    }
+
+    return vehicles;
+  }
+
+  async updateVehicleStatus(
+    adminId: string,
+    vehicleId: string,
+    body: {
+      approvalStatus?: string;
+      inspectionStatus?: string;
+      isActive?: boolean;
+    },
+    ip?: string,
+  ) {
+    const existing = await this.prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+    });
+    if (!existing) throw new NotFoundException('Vehicle not found');
+
+    const nextApproval = body.approvalStatus
+      ? body.approvalStatus.trim().toUpperCase()
+      : existing.approvalStatus;
+    const nextInspection = body.inspectionStatus
+      ? body.inspectionStatus.trim().toUpperCase()
+      : body.approvalStatus?.trim().toUpperCase() === 'APPROVED'
+        ? 'APPROVED'
+        : existing.inspectionStatus;
+
+    const updated = await this.prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: {
+        approvalStatus: nextApproval,
+        inspectionStatus: nextInspection,
+        ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+      },
+    });
+
+    if (nextApproval === 'APPROVED') {
+      await this.prisma.driverDocument.updateMany({
+        where: {
+          driverId: existing.driverId,
+          lifecycleStatus: 'CURRENT',
+          OR: [{ vehicleId }, { vehicleId: null }],
+          docType: {
+            in: [
+              'vehicle_registration',
+              'vehicle_photo',
+              'insurance',
+              ...(nextInspection === 'APPROVED' ? ['inspection_certificate'] : []),
+            ],
+          },
+          status: { in: ['PENDING', 'NEEDS_RESUBMISSION'] },
+        },
+        data: {
+          status: 'APPROVED',
+          reviewedAt: new Date(),
+          reviewedById: adminId,
+        },
+      });
+    }
+
+    await this.audit(adminId, 'VEHICLE_STATUS_CHANGED', 'Vehicle', vehicleId, {
+      ip,
+      meta: { driverId: existing.driverId },
+      before: {
+        approvalStatus: existing.approvalStatus,
+        inspectionStatus: existing.inspectionStatus,
+        isActive: existing.isActive,
+      },
+      after: {
+        approvalStatus: updated.approvalStatus,
+        inspectionStatus: updated.inspectionStatus,
+        isActive: updated.isActive,
+      },
+    });
+
+    return updated;
   }
 
   async listVipRequests() {

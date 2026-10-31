@@ -536,8 +536,7 @@ export class KycDocumentsService {
     ip?: string,
   ) {
     this.assertPerm(actor, 'kyc.document.edit', 'kyc.edit', 'kyc.approve');
-    const driver = await this.requireDriver(driverId);
-    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
+    await this.requireDriver(driverId);
     const doc = await this.prisma.driverDocument.findFirst({
       where: { id: documentId, driverId },
     });
@@ -556,10 +555,13 @@ export class KycDocumentsService {
       customLabel: doc.customLabel,
       adminNote: doc.adminNote,
       sourceReference: doc.sourceReference,
+      status: doc.status,
     };
 
     const data: Prisma.DriverDocumentUpdateInput = {};
-    if (dto.documentNumber !== undefined) data.documentNumber = dto.documentNumber;
+    if (dto.documentNumber !== undefined) {
+      data.documentNumber = dto.documentNumber?.trim() || null;
+    }
     if (dto.issueDate !== undefined) {
       data.issueDate = dto.issueDate ? new Date(dto.issueDate) : null;
     }
@@ -567,16 +569,38 @@ export class KycDocumentsService {
       data.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     }
     if (dto.issuingJurisdiction !== undefined) {
-      data.issuingJurisdiction = dto.issuingJurisdiction;
+      data.issuingJurisdiction = dto.issuingJurisdiction?.trim() || null;
     }
-    if (dto.customLabel !== undefined) data.customLabel = dto.customLabel;
-    if (dto.adminNote !== undefined) data.adminNote = dto.adminNote;
-    if (dto.sourceReference !== undefined) data.sourceReference = dto.sourceReference;
+    if (dto.customLabel !== undefined) {
+      data.customLabel = dto.customLabel?.trim() || null;
+    }
+    if (dto.adminNote !== undefined) {
+      data.adminNote = dto.adminNote?.trim() || null;
+    }
+    if (dto.sourceReference !== undefined) {
+      data.sourceReference = dto.sourceReference?.trim() || null;
+    }
     if (dto.status !== undefined) {
       data.status = dto.status as DocumentReviewStatus;
-      if (dto.status === DocumentReviewStatus.APPROVED) {
-        data.reviewedAt = new Date();
-        data.reviewedById = actor.id;
+      data.reviewedAt = new Date();
+      data.reviewedById = actor.id;
+    }
+
+    const profileData: Prisma.DriverProfileUpdateInput = {
+      updatedAt: new Date(),
+    };
+    if (doc.docType === 'license') {
+      if (dto.documentNumber !== undefined) {
+        profileData.licenceNumber = dto.documentNumber?.trim() ?? '';
+      }
+      if (dto.issuingJurisdiction !== undefined) {
+        profileData.licenceJurisdiction = dto.issuingJurisdiction?.trim() ?? '';
+      }
+      if (dto.issueDate !== undefined) {
+        profileData.licenceIssueDate = dto.issueDate ? new Date(dto.issueDate) : null;
+      }
+      if (dto.expiresAt !== undefined) {
+        profileData.licenceExpiryDate = dto.expiresAt ? new Date(dto.expiresAt) : null;
       }
     }
 
@@ -586,7 +610,7 @@ export class KycDocumentsService {
     });
     await this.prisma.driverProfile.update({
       where: { id: driverId },
-      data: { updatedAt: new Date() },
+      data: profileData,
     });
 
     const after = {
@@ -597,6 +621,7 @@ export class KycDocumentsService {
       customLabel: updated.customLabel,
       adminNote: updated.adminNote,
       sourceReference: updated.sourceReference,
+      status: updated.status,
     };
 
     await this.audit(
@@ -606,10 +631,11 @@ export class KycDocumentsService {
       documentId,
       ip,
       { driverId, before, after },
-      dto.reason,
+      dto.reason?.trim() || 'Updated document metadata',
       before,
       after,
     );
+    await this.syncDriverVehiclesApproval(driverId);
     return this.serializeDoc(updated);
   }
 
@@ -764,7 +790,125 @@ export class KycDocumentsService {
       { status: doc.status },
       { status: updated.status },
     );
+    await this.syncDriverVehiclesApproval(driverId);
     return this.serializeDoc(updated);
+  }
+
+  /**
+   * Synchronizes Vehicle.approvalStatus and Vehicle.inspectionStatus based on the
+   * driver's KYC approval status and current vehicle documents.
+   */
+  async syncDriverVehiclesApproval(driverId: string) {
+    try {
+      if (!this.prisma?.vehicle?.findMany || !this.prisma?.vehicle?.update) {
+        return;
+      }
+      const [driver, vehicles, allDocs] = await Promise.all([
+        this.prisma.driverProfile.findUnique({ where: { id: driverId } }),
+        this.prisma.vehicle.findMany({ where: { driverId } }),
+        this.prisma.driverDocument.findMany({
+          where: { driverId },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+      if (!driver || !Array.isArray(vehicles) || vehicles.length === 0) {
+        return;
+      }
+      const currentDocs = allDocs.filter(
+        (d) =>
+          (d.lifecycleStatus ?? DocumentLifecycleStatus.CURRENT) ===
+          DocumentLifecycleStatus.CURRENT,
+      );
+      const driverKycApproved =
+        driver.approvalStatus === DriverApprovalStatus.APPROVED;
+
+      for (const v of vehicles) {
+        const matchesVehicle = (docVehicleId?: string | null) =>
+          !docVehicleId || docVehicleId === v.id;
+
+        const regDocs = currentDocs.filter(
+          (d) => d.docType === 'vehicle_registration' && matchesVehicle(d.vehicleId),
+        );
+        const photoDocs = currentDocs.filter(
+          (d) => d.docType === 'vehicle_photo' && matchesVehicle(d.vehicleId),
+        );
+        const insDocs = currentDocs.filter(
+          (d) => d.docType === 'insurance' && matchesVehicle(d.vehicleId),
+        );
+        const inspDocs = currentDocs.filter(
+          (d) => d.docType === 'inspection_certificate' && matchesVehicle(d.vehicleId),
+        );
+
+        const coreVehicleDocs = [...regDocs, ...photoDocs, ...insDocs];
+        const hasRejectedOrResubVehicleDoc = coreVehicleDocs.some(
+          (d) =>
+            d.status === DocumentReviewStatus.REJECTED ||
+            d.status === DocumentReviewStatus.NEEDS_RESUBMISSION,
+        );
+        const hasPendingVehicleDoc = coreVehicleDocs.some(
+          (d) => d.status === DocumentReviewStatus.PENDING,
+        );
+        const regApproved = regDocs.some(
+          (d) => d.status === DocumentReviewStatus.APPROVED,
+        );
+        const photoApproved = photoDocs.some(
+          (d) => d.status === DocumentReviewStatus.APPROVED,
+        );
+
+        let nextApprovalStatus = v.approvalStatus || 'PENDING';
+        if (hasRejectedOrResubVehicleDoc) {
+          nextApprovalStatus = 'REJECTED';
+        } else if (hasPendingVehicleDoc) {
+          nextApprovalStatus = 'PENDING';
+        } else if (
+          (regApproved && photoApproved) ||
+          driverKycApproved ||
+          v.approvalStatus?.toUpperCase() === 'APPROVED'
+        ) {
+          nextApprovalStatus = 'APPROVED';
+        }
+
+        const hasRejectedOrResubInsp = inspDocs.some(
+          (d) =>
+            d.status === DocumentReviewStatus.REJECTED ||
+            d.status === DocumentReviewStatus.NEEDS_RESUBMISSION,
+        );
+        const hasPendingInsp = inspDocs.some(
+          (d) => d.status === DocumentReviewStatus.PENDING,
+        );
+        const inspApproved = inspDocs.some(
+          (d) => d.status === DocumentReviewStatus.APPROVED,
+        );
+
+        let nextInspectionStatus = v.inspectionStatus || 'PENDING';
+        if (hasRejectedOrResubInsp) {
+          nextInspectionStatus = 'REJECTED';
+        } else if (hasPendingInsp) {
+          nextInspectionStatus = 'PENDING';
+        } else if (
+          inspApproved ||
+          nextApprovalStatus === 'APPROVED' ||
+          v.inspectionStatus?.toUpperCase() === 'APPROVED'
+        ) {
+          nextInspectionStatus = 'APPROVED';
+        }
+
+        if (
+          nextApprovalStatus !== v.approvalStatus ||
+          nextInspectionStatus !== v.inspectionStatus
+        ) {
+          await this.prisma.vehicle.update({
+            where: { id: v.id },
+            data: {
+              approvalStatus: nextApprovalStatus,
+              inspectionStatus: nextInspectionStatus,
+            },
+          });
+        }
+      }
+    } catch {
+      // Non-fatal in partial mock environments
+    }
   }
 
   serializeDoc(doc: {

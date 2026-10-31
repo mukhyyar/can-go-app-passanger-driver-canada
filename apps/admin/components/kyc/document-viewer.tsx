@@ -5,6 +5,7 @@ import {
   DOC_TYPE_LABELS,
   bytesLabel,
   formatWhen,
+  isoDateInput,
   kycStatusLabel,
   sourceLabel,
   type DocType,
@@ -13,6 +14,7 @@ import {
   type VerificationCheck,
 } from '../../lib/kyc';
 import { useKycDocumentContent } from '../../hooks/use-kyc-document-content';
+import { InlineEditField } from './dialogs';
 import { KycStatusBadge } from './status';
 
 export type DocViewerActions = {
@@ -44,6 +46,8 @@ export function DocumentViewer({
   canDelete,
   canOverride,
   readOnly,
+  busy,
+  onInlineDocSave,
   onAction,
 }: {
   driverId: string;
@@ -59,6 +63,11 @@ export function DocumentViewer({
   canDelete: boolean;
   canOverride: boolean;
   readOnly: boolean;
+  busy?: boolean;
+  onInlineDocSave?: (
+    field: 'documentNumber' | 'issuingJurisdiction' | 'issueDate' | 'expiresAt' | 'adminNote',
+    value: string,
+  ) => Promise<void>;
   onAction: DocViewerActions;
 }) {
   const [zoom, setZoom] = useState(1);
@@ -114,8 +123,12 @@ export function DocumentViewer({
     ];
     if (doc.customLabel) rows.push({ label: 'Description', value: doc.customLabel });
     if (doc.originalFilename) rows.push({ label: 'Filename', value: doc.originalFilename });
-    if (doc.documentNumber) rows.push({ label: 'Doc #', value: doc.documentNumber });
-    if (doc.issuingJurisdiction) rows.push({ label: 'Jurisdiction', value: doc.issuingJurisdiction });
+    if (doc.documentNumber || doc.docType === 'license') {
+      rows.push({ label: 'Doc #', value: doc.documentNumber || '—' });
+    }
+    if (doc.issuingJurisdiction || doc.docType === 'license') {
+      rows.push({ label: 'Jurisdiction', value: doc.issuingJurisdiction || '—' });
+    }
     if (doc.sourceReference) rows.push({ label: 'Source ref', value: doc.sourceReference });
     if (doc.rejectionReason) rows.push({ label: 'Reviewer note', value: doc.rejectionReason });
     if (doc.checksumSha256) rows.push({ label: 'Checksum', value: doc.checksumSha256.slice(0, 16) + '…' });
@@ -253,7 +266,7 @@ export function DocumentViewer({
         </div>
       </header>
 
-      <div className="kyc-viewer-body">
+      <div className={`kyc-viewer-body${canHistory && showHistory ? ' with-history' : ''}`}>
         <div className="kyc-viewer-stage" ref={stageRef}>
           {content.status === 'loading' || content.status === 'idle' ? (
             <div className="kyc-viewer-missing" aria-busy="true">
@@ -331,14 +344,95 @@ export function DocumentViewer({
 
       <div className="kyc-viewer-meta">
         <div className="kyc-inspector">
-          <h3>Document information</h3>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>Document information</h3>
+            {canEditMeta && doc.isCurrent && !readOnly && (
+              <button
+                className="btn ghost sm"
+                type="button"
+                onClick={onAction.onEditMetadata}
+              >
+                Edit metadata
+              </button>
+            )}
+          </div>
           <dl className="kyc-dl">
-            {meta.map((m) => (
-              <div key={m.label}>
-                <dt>{m.label}</dt>
-                <dd>{m.value}</dd>
-              </div>
-            ))}
+            {meta.map((m) => {
+              const inlineEditable = Boolean(canEditMeta && doc.isCurrent && !readOnly && onInlineDocSave);
+              if (inlineEditable && m.label === 'Issue Date') {
+                return (
+                  <InlineEditField
+                    key={m.label}
+                    label={m.label}
+                    value={isoDateInput(doc.issueDate)}
+                    displayValue={m.value}
+                    type="date"
+                    canEdit
+                    busy={busy}
+                    onSave={(next) => onInlineDocSave!('issueDate', next)}
+                  />
+                );
+              }
+              if (inlineEditable && m.label === 'Expiry Date') {
+                return (
+                  <InlineEditField
+                    key={m.label}
+                    label={m.label}
+                    value={isoDateInput(doc.expiresAt)}
+                    displayValue={m.value}
+                    type="date"
+                    canEdit
+                    busy={busy}
+                    onSave={(next) => onInlineDocSave!('expiresAt', next)}
+                  />
+                );
+              }
+              if (inlineEditable && m.label === 'Admin Note') {
+                return (
+                  <InlineEditField
+                    key={m.label}
+                    label={m.label}
+                    value={doc.adminNote ?? ''}
+                    displayValue={m.value}
+                    canEdit
+                    busy={busy}
+                    onSave={(next) => onInlineDocSave!('adminNote', next)}
+                  />
+                );
+              }
+              if (inlineEditable && m.label === 'Doc #') {
+                return (
+                  <InlineEditField
+                    key={m.label}
+                    label={m.label}
+                    value={doc.documentNumber ?? ''}
+                    displayValue={m.value}
+                    canEdit
+                    busy={busy}
+                    onSave={(next) => onInlineDocSave!('documentNumber', next)}
+                  />
+                );
+              }
+              if (inlineEditable && m.label === 'Jurisdiction') {
+                return (
+                  <InlineEditField
+                    key={m.label}
+                    label={m.label}
+                    value={doc.issuingJurisdiction ?? ''}
+                    displayValue={m.value}
+                    canEdit
+                    busy={busy}
+                    onSave={(next) => onInlineDocSave!('issuingJurisdiction', next)}
+                  />
+                );
+              }
+              return (
+                <div key={m.label}>
+                  <dt>{m.label}</dt>
+                  <dd>{m.value}</dd>
+                </div>
+              );
+            })}
           </dl>
         </div>
         <div>

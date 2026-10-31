@@ -1,7 +1,9 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/gestures.dart';
@@ -10,11 +12,46 @@ import 'package:flutter/widgets.dart';
 
 import 'map_picker.dart';
 
+JSAny? _toJsArg(Object? arg) {
+  if (arg == null) return null;
+  if (arg is JSAny) return arg;
+  if (arg is num) return arg.toJS;
+  if (arg is String) return arg.toJS;
+  if (arg is bool) return arg.toJS;
+  return arg.jsify();
+}
+
+JSObject? _jsGetObj(JSObject? target, Object prop) {
+  if (target == null) return null;
+  final key = prop is num ? prop.toJS : '$prop'.toJS;
+  return target.getProperty<JSObject?>(key);
+}
+
+Object? _jsGetDart(JSObject? target, Object prop) {
+  if (target == null) return null;
+  final key = prop is num ? prop.toJS : '$prop'.toJS;
+  return target.getProperty<JSAny?>(key)?.dartify();
+}
+
+JSAny? _jsCall(JSObject target, String method, [List<Object?> args = const []]) {
+  return target.callMethodVarArgs<JSAny?>(
+    method.toJS,
+    args.map(_toJsArg).toList(),
+  );
+}
+
+JSObject _jsNew(JSObject parent, String ctorName, [List<Object?> args = const []]) {
+  final ctor = parent.getProperty<JSFunction>(ctorName.toJS);
+  return ctor.callAsConstructorVarArgs<JSObject>(
+    args.map(_toJsArg).toList(),
+  );
+}
+
 final Set<String> _registered = <String>{};
 Completer<void>? _mapsJsReady;
 int _pickerSeq = 0;
 
-final Map<String, Object> _mapsById = <String, Object>{};
+final Map<String, JSObject> _mapsById = <String, JSObject>{};
 final Map<String, void Function(double, double)> _centerHandlers =
     <String, void Function(double, double)>{};
 final Map<String, ValueChanged<bool>> _movingHandlers =
@@ -55,10 +92,10 @@ void _emitMoving(String pickerId, bool moving) {
   final map = _mapsById[pickerId];
   if (map == null) return null;
   try {
-    final center = js_util.callMethod(map, 'getCenter', []);
+    final center = _jsCall(map, 'getCenter') as JSObject?;
     if (center == null) return null;
-    final lat = js_util.callMethod(center, 'lat', []);
-    final lng = js_util.callMethod(center, 'lng', []);
+    final lat = _jsCall(center, 'lat')?.dartify();
+    final lng = _jsCall(center, 'lng')?.dartify();
     if (lat is num && lng is num) {
       return (lat.toDouble(), lng.toDouble());
     }
@@ -70,7 +107,7 @@ void _panBy(String pickerId, double dx, double dy) {
   final map = _mapsById[pickerId];
   if (map == null) return;
   try {
-    js_util.callMethod(map, 'panBy', [dx, dy]);
+    _jsCall(map, 'panBy', [dx, dy]);
   } catch (_) {}
 }
 
@@ -78,41 +115,38 @@ void _nudgeZoom(String pickerId, double scrollDy) {
   final map = _mapsById[pickerId];
   if (map == null) return;
   try {
-    final z = js_util.callMethod(map, 'getZoom', []);
+    final z = _jsCall(map, 'getZoom')?.dartify();
     if (z is! num) return;
     final next = (z.toDouble() + (scrollDy > 0 ? -0.6 : 0.6)).clamp(3.0, 20.0);
-    js_util.callMethod(map, 'setZoom', [next]);
+    _jsCall(map, 'setZoom', [next]);
   } catch (_) {}
 }
 
 /// Browser Geocoder (works with HTTP-referrer keys). Falls back to null.
 Future<String?> reverseGeocodeLatLng(double lat, double lng) async {
   try {
-    final google = js_util.getProperty(html.window, 'google');
+    final google = _jsGetObj(globalContext, 'google');
     if (google == null) return null;
-    final maps = js_util.getProperty(google, 'maps');
+    final maps = _jsGetObj(google, 'maps');
     if (maps == null) return null;
 
-    final geocoder = js_util.callConstructor(
-      js_util.getProperty(maps, 'Geocoder'),
-      [],
-    );
+    final geocoder = _jsNew(maps, 'Geocoder');
     final completer = Completer<String?>();
-    final cb = js_util.allowInterop((Object? results, Object? status) {
+    final cb = ((JSAny? results, JSAny? status) {
       try {
-        if ('$status' != 'OK' || results == null) {
+        final statusStr = status?.dartify()?.toString();
+        if (statusStr != 'OK' || results == null) {
           if (!completer.isCompleted) completer.complete(null);
           return;
         }
-        final len = js_util.getProperty(results, 'length');
+        final resultsObj = results as JSObject;
+        final len = _jsGetDart(resultsObj, 'length');
         if (len is! num || len < 1) {
           if (!completer.isCompleted) completer.complete(null);
           return;
         }
-        final first = js_util.getProperty(results, 0);
-        final addr = first == null
-            ? null
-            : js_util.getProperty(first, 'formatted_address');
+        final first = _jsGetObj(resultsObj, 0);
+        final addr = _jsGetDart(first, 'formatted_address');
         if (!completer.isCompleted) {
           completer.complete(
             addr is String && addr.trim().isNotEmpty ? addr.trim() : null,
@@ -121,12 +155,12 @@ Future<String?> reverseGeocodeLatLng(double lat, double lng) async {
       } catch (_) {
         if (!completer.isCompleted) completer.complete(null);
       }
-    });
+    }).toJS;
 
-    js_util.callMethod(geocoder, 'geocode', [
-      js_util.jsify({
+    _jsCall(geocoder, 'geocode', [
+      {
         'location': {'lat': lat, 'lng': lng},
-      }),
+      },
       cb,
     ]);
 
@@ -244,15 +278,13 @@ class _WebMapPickerState extends State<_WebMapPicker> {
   void _animateTo(double lat, double lng) {
     final map = _mapsById[_pickerId];
     if (map == null) return;
-    final google = js_util.getProperty(html.window, 'google');
+    final google = _jsGetObj(globalContext, 'google');
     if (google == null) return;
-    final maps = js_util.getProperty(google, 'maps');
-    final latLng = js_util.callConstructor(
-      js_util.getProperty(maps, 'LatLng'),
-      [lat, lng],
-    );
-    js_util.callMethod(map, 'panTo', [latLng]);
-    js_util.callMethod(map, 'setZoom', [widget.initialZoom]);
+    final maps = _jsGetObj(google, 'maps');
+    if (maps == null) return;
+    final latLng = _jsNew(maps, 'LatLng', [lat, lng]);
+    _jsCall(map, 'panTo', [latLng]);
+    _jsCall(map, 'setZoom', [widget.initialZoom]);
     // Report after pan settles.
     Future<void>.delayed(const Duration(milliseconds: 320), () {
       final c = _readJsCenter(_pickerId);
@@ -393,9 +425,9 @@ Future<String?> _resolveApiKey() async {
 }
 
 Future<void> _ensureMapsJs(String apiKey) async {
-  final google = js_util.getProperty(html.window, 'google');
+  final google = _jsGetObj(globalContext, 'google');
   if (google != null) {
-    final maps = js_util.getProperty(google, 'maps');
+    final maps = _jsGetObj(google, 'maps');
     if (maps != null) return;
   }
 
@@ -417,8 +449,8 @@ Future<void> _ensureMapsJs(String apiKey) async {
         ready.completeError(StateError('Maps JS failed'));
       }
     });
-    final g = js_util.getProperty(html.window, 'google');
-    if (g != null && js_util.getProperty(g, 'maps') != null) {
+    final g = _jsGetObj(globalContext, 'google');
+    if (g != null && _jsGetObj(g, 'maps') != null) {
       if (!ready.isCompleted) ready.complete();
     }
     await ready.future;
@@ -475,14 +507,16 @@ Future<void> _mountPickerMap({
 
   msg.style.display = 'none';
 
-  final google = js_util.getProperty(html.window, 'google');
-  final maps = js_util.getProperty(google, 'maps');
+  final google = _jsGetObj(globalContext, 'google');
+  final maps = _jsGetObj(google, 'maps');
+  if (maps == null) return;
 
-  final map = js_util.callConstructor(
-    js_util.getProperty(maps, 'Map'),
+  final map = _jsNew(
+    maps,
+    'Map',
     [
       mapDiv,
-      js_util.jsify({
+      {
         'center': {'lat': initialLat, 'lng': initialLng},
         'zoom': initialZoom,
         'mapTypeControl': false,
@@ -495,7 +529,7 @@ Future<void> _mountPickerMap({
         'draggable': false,
         'keyboardShortcuts': false,
         'disableDoubleClickZoom': true,
-      }),
+      },
     ],
   );
 

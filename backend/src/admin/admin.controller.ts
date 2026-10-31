@@ -342,6 +342,22 @@ export class AdminOpsController {
     return this.ops.listVehicles();
   }
 
+  @Patch('vehicles/:id')
+  @RequirePermission('kyc.approve')
+  updateVehicleStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      approvalStatus?: string;
+      inspectionStatus?: string;
+      isActive?: boolean;
+    },
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.updateVehicleStatus(user.id, id, body, req.ip);
+  }
+
   @Get('vip-requests')
   @RequirePermission('users.vip')
   vipRequests() {

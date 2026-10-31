@@ -71,7 +71,7 @@ export class AdminUploadDocumentDto {
 export class EditDocumentMetadataDto {
   @IsOptional()
   @IsString()
-  documentNumber?: string;
+  documentNumber?: string | null;
 
   @IsOptional()
   @IsISO8601()
@@ -83,27 +83,27 @@ export class EditDocumentMetadataDto {
 
   @IsOptional()
   @IsString()
-  issuingJurisdiction?: string;
+  issuingJurisdiction?: string | null;
 
   @IsOptional()
   @IsString()
-  customLabel?: string;
+  customLabel?: string | null;
 
   @IsOptional()
   @IsString()
-  adminNote?: string;
+  adminNote?: string | null;
 
   @IsOptional()
   @IsString()
-  sourceReference?: string;
+  sourceReference?: string | null;
 
   @IsOptional()
   @IsString()
   status?: string;
 
+  @IsOptional()
   @IsString()
-  @MinLength(3)
-  reason!: string;
+  reason?: string;
 
   @IsOptional()
   @IsISO8601()
@@ -141,19 +141,19 @@ export class RestoreDocumentDto {
 export class EditApplicantDto {
   @IsOptional()
   @IsString()
-  fullName?: string;
+  fullName?: string | null;
 
   @IsOptional()
   @IsString()
-  legalName?: string;
+  legalName?: string | null;
 
   @IsOptional()
   @IsString()
-  email?: string;
+  email?: string | null;
 
   @IsOptional()
   @IsString()
-  phoneE164?: string;
+  phoneE164?: string | null;
 
   @IsOptional()
   @IsISO8601()
@@ -161,39 +161,39 @@ export class EditApplicantDto {
 
   @IsOptional()
   @IsString()
-  addressLine1?: string;
+  addressLine1?: string | null;
 
   @IsOptional()
   @IsString()
-  addressLine2?: string;
+  addressLine2?: string | null;
 
   @IsOptional()
   @IsString()
-  city?: string;
+  city?: string | null;
 
   @IsOptional()
   @IsString()
-  province?: string;
+  province?: string | null;
 
   @IsOptional()
   @IsString()
-  postalCode?: string;
+  postalCode?: string | null;
 
   @IsOptional()
   @IsString()
-  country?: string;
+  country?: string | null;
 
   @IsOptional()
   @IsString()
-  baseLocation?: string;
+  baseLocation?: string | null;
 
   @IsOptional()
   @IsString()
-  licenceNumber?: string;
+  licenceNumber?: string | null;
 
   @IsOptional()
   @IsString()
-  licenceJurisdiction?: string;
+  licenceJurisdiction?: string | null;
 
   @IsOptional()
   @IsISO8601()
@@ -203,9 +203,9 @@ export class EditApplicantDto {
   @IsISO8601()
   licenceExpiryDate?: string | null;
 
+  @IsOptional()
   @IsString()
-  @MinLength(3)
-  reason!: string;
+  reason?: string;
 
   @IsOptional()
   @IsISO8601()

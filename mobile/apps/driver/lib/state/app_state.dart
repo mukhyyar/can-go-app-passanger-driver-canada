@@ -1245,6 +1245,7 @@ class AppState extends ChangeNotifier {
           ? '$attention document${attention == 1 ? '' : 's'} require attention'
           : (hasDocuments ? 'Documents on file' : 'No documents uploaded');
       await _syncOnboardedFromServer(hasDocuments: hasDocuments);
+      await loadDriverVehicles();
       notifyListeners();
     } catch (e) {
       debugPrint('syncDocumentsStatus: $e');
@@ -2548,10 +2549,18 @@ class AppState extends ChangeNotifier {
     }
     final eligible = json['eligibleVehicles'];
     if (eligible is List) {
-      vehicles = eligible
-          .whereType<Map>()
-          .map((e) => DriverVehicle.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final existingById = {for (final v in vehicles) v.id: v};
+      vehicles = eligible.whereType<Map>().map((e) {
+        final map = Map<String, dynamic>.from(e);
+        final prev = existingById[map['id']?.toString()];
+        if (map['approvalStatus'] == null && prev != null) {
+          map['approvalStatus'] = prev.approvalStatus;
+        }
+        if (map['inspectionStatus'] == null && prev != null) {
+          map['inspectionStatus'] = prev.inspectionStatus;
+        }
+        return DriverVehicle.fromJson(map);
+      }).toList();
     }
     notifyListeners();
     return req;

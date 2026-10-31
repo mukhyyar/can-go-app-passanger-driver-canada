@@ -505,6 +505,9 @@ export type KycWorkspace = {
     name: string;
     plate: string;
     vehicleClass: string;
+    approvalStatus?: string;
+    inspectionStatus?: string;
+    isActive?: boolean;
     amenitiesJson?: unknown;
   }>;
   operatingZones: Array<{ id: string; name: string; zoneType: string }>;
