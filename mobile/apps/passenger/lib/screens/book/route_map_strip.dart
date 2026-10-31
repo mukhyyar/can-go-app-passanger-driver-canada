@@ -627,13 +627,13 @@ class _RouteSelectorCards extends StatelessWidget {
       ),
     );
   }
+}
 
-  String _formatDuration(int mins) {
-    if (mins >= 60) {
-      final h = mins ~/ 60;
-      final rem = mins % 60;
-      return rem == 0 ? '~ $h h' : '~ $h h $rem min';
-    }
-    return '~ $mins min';
+String _formatDuration(int mins) {
+  if (mins >= 60) {
+    final h = mins ~/ 60;
+    final rem = mins % 60;
+    return rem == 0 ? '~ $h h' : '~ $h h $rem min';
   }
+  return '~ $mins min';
 }
