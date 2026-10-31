@@ -5,6 +5,8 @@ jest.mock('@nestjs/config', () => ({
 }));
 
 import { EmailService } from './email.service';
+import { resolveLogoUrl, layout } from './templates/layout';
+import { renderRideDelayedAlert } from './templates/ride_delayed_alert';
 
 describe('EmailService', () => {
   let emailService: EmailService;
@@ -176,5 +178,52 @@ describe('EmailService', () => {
         }),
       }),
     );
+  });
+
+  describe('resolveLogoUrl and template logo rendering', () => {
+    it('resolves brand folder correctly to can-ride-logo.png', () => {
+      expect(resolveLogoUrl('https://www.can-rides.ca/brand')).toBe(
+        'https://www.can-rides.ca/brand/can-ride-logo.png',
+      );
+    });
+
+    it('rewrites legacy assets folder to active brand can-ride-logo.png', () => {
+      expect(resolveLogoUrl('https://can-rides.ca/assets')).toBe(
+        'https://can-rides.ca/brand/can-ride-logo.png',
+      );
+    });
+
+    it('falls back to live brand logo when assetBaseUrl is empty', () => {
+      expect(resolveLogoUrl('')).toBe(
+        'https://www.can-rides.ca/brand/can-ride-logo.png',
+      );
+    });
+
+    it('preserves direct image URL when passed', () => {
+      expect(resolveLogoUrl('https://custom-cdn.com/custom-logo.png')).toBe(
+        'https://custom-cdn.com/custom-logo.png',
+      );
+    });
+
+    it('renders ride_delayed_alert with the live logo URL in the email header', () => {
+      const { html, subject } = renderRideDelayedAlert(
+        {
+          recipientRole: 'passenger',
+          rideId: 'ride-123',
+          rideCode: 'CMVSFT7S',
+          recipientName: 'Zaid Ahmed',
+          otherPartyName: 'Zaid Soomro',
+          pickupAt: 'Oct 28, 2026 11:45 PM',
+          fromLabel: 'Calgary Airport',
+          toLabel: 'Downtown Calgary',
+          actionUrl: 'https://can-rides.ca/ride/ride-123',
+        },
+        'https://www.can-rides.ca/brand',
+      );
+
+      expect(subject).toContain('Action Required: Your CAN-RIDE Trip is Delayed (CMVSFT7S)');
+      expect(html).toContain('https://www.can-rides.ca/brand/can-ride-logo.png');
+      expect(html).toContain('alt="CAN-RIDE"');
+    });
   });
 });

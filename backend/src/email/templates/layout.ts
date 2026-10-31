@@ -1,6 +1,28 @@
+export function resolveLogoUrl(assetBaseUrl: string): string {
+  const base = (assetBaseUrl || '').trim().replace(/\/+$/, '');
+  if (!base) {
+    return 'https://www.can-rides.ca/brand/can-ride-logo.png';
+  }
+  if (
+    base.endsWith('.png') ||
+    base.endsWith('.jpg') ||
+    base.endsWith('.svg') ||
+    base.endsWith('.webp')
+  ) {
+    return base;
+  }
+  if (base.endsWith('/brand')) {
+    return `${base}/can-ride-logo.png`;
+  }
+  if (base.endsWith('/assets')) {
+    return `${base.replace(/\/assets$/, '')}/brand/can-ride-logo.png`;
+  }
+  return `${base}/can-ride-logo.png`;
+}
+
 export function layout(content: string, assetBaseUrl: string): string {
   const year = new Date().getFullYear();
-  const logoUrl = `${assetBaseUrl}/logo.png`;
+  const logoUrl = resolveLogoUrl(assetBaseUrl);
   
   return `
 <!DOCTYPE html>
@@ -15,7 +37,7 @@ export function layout(content: string, assetBaseUrl: string): string {
   body { margin: 0; padding: 0; font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f3f4f6; color: #111827; }
   .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
   .header { background: #ffffff; padding: 24px; text-align: center; border-bottom: 2px solid #E50000; }
-  .header img { height: 48px; display: block; margin: 0 auto; }
+  .header img { height: 48px; max-height: 48px; width: auto; display: block; margin: 0 auto; border: 0; }
   .content { padding: 32px; font-size: 16px; line-height: 1.6; }
   .content h2 { font-family: 'Montserrat', sans-serif; font-weight: 900; color: #000000; }
   .footer { background: #f9fafb; padding: 24px; text-align: center; color: #6b7280; font-size: 13px; border-top: 1px solid #e5e7eb; }
@@ -35,7 +57,7 @@ export function layout(content: string, assetBaseUrl: string): string {
 <body>
 <div class="container">
   <div class="header">
-    <img src="${logoUrl}" alt="CAN-RIDE" />
+    <img src="${logoUrl}" alt="CAN-RIDE" height="48" style="height: 48px; max-height: 48px; width: auto; display: block; margin: 0 auto; border: 0;" />
   </div>
   <div class="content">
     ${content}

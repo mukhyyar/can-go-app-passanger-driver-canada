@@ -521,7 +521,7 @@ export class PostRideNotificationService {
 
     const assetBaseUrl =
       this.config.get<string>('email.assetBaseUrl') ||
-      'https://can-rides.ca/assets';
+      'https://www.can-rides.ca/brand';
 
     return renderPrintableInvoiceHtml(invoiceData, assetBaseUrl);
   }

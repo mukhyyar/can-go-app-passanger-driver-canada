@@ -32,7 +32,7 @@ export class EmailEventsService {
   ) {}
 
   private get assetBaseUrl() {
-    return this.configService.get<string>('email.assetBaseUrl') ?? 'https://can-rides.ca/assets';
+    return this.configService.get<string>('email.assetBaseUrl') ?? 'https://www.can-rides.ca/brand';
   }
 
   private get adminWebBaseUrl() {

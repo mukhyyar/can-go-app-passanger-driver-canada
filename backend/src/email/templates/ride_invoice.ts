@@ -1,4 +1,4 @@
-import { layout, escapeHtml } from './layout';
+import { layout, escapeHtml, resolveLogoUrl } from './layout';
 
 export interface RideInvoiceData {
   rideId: string;
@@ -187,7 +187,7 @@ export function renderPrintableInvoiceHtml(
   const paymentMethod = escapeHtml(data.paymentMethod || 'Credit Card');
   const paymentStatus = escapeHtml(data.paymentStatus || 'SUCCEEDED');
   const txRef = escapeHtml(data.transactionRef || '');
-  const logoUrl = `${assetBaseUrl}/logo.png`;
+  const logoUrl = resolveLogoUrl(assetBaseUrl);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -244,7 +244,7 @@ export function renderPrintableInvoiceHtml(
     <table class="header-table" width="100%">
       <tr>
         <td>
-          <img src="${logoUrl}" alt="CAN-RIDE" class="logo" />
+          <img src="${logoUrl}" alt="CAN-RIDE" class="logo" height="48" style="height: 48px; max-height: 48px; width: auto; display: block; border: 0;" />
           <div class="meta-text">CAN-RIDE Canada &bull; support@can-rides.ca</div>
         </td>
         <td align="right">

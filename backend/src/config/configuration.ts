@@ -178,7 +178,7 @@ export default () => ({
     smtpUser: process.env.SMTP_USER ?? 'no-reply@can-rides.ca',
     smtpPass: process.env.SMTP_PASS,
     fromAddress: process.env.SMTP_FROM ?? 'Can Ride <no-reply@can-rides.ca>',
-    assetBaseUrl: process.env.EMAIL_ASSET_BASE_URL ?? 'https://can-rides.ca/assets',
+    assetBaseUrl: process.env.EMAIL_ASSET_BASE_URL ?? 'https://www.can-rides.ca/brand',
     appDeeplinkBaseUrl: process.env.APP_DEEPLINK_BASE_URL ?? 'canride://',
   },
   postRide: {
