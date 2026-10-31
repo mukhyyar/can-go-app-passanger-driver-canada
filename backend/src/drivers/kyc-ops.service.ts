@@ -158,7 +158,7 @@ export class KycOpsService {
   }
 
   async getWorkspace(driverId: string) {
-    await this.kycDocs?.syncDriverVehiclesApproval?.(driverId);
+    await this.kycDocs.syncDriverVehiclesApproval(driverId);
     const driver = await this.loadDriver(driverId);
     const docs = await Promise.all(
       driver.documents.map(async (doc) => {
@@ -168,6 +168,7 @@ export class KycOpsService {
         } catch {
           url = undefined;
         }
+        return { ...this.kycDocs.serializeDoc(doc), url };
         const serialized = this.kycDocs.serializeDoc(doc);
         if (serialized.docType === 'license' && serialized.isCurrent) {
           const expiresAt = serialized.expiresAt ?? driver.licenceExpiryDate ?? null;
@@ -306,6 +307,10 @@ export class KycOpsService {
       province: driver.province,
       postalCode: driver.postalCode,
       country: driver.country,
+      licenceNumber: driver.licenceNumber,
+      licenceJurisdiction: driver.licenceJurisdiction,
+      licenceIssueDate: driver.licenceIssueDate,
+      licenceExpiryDate: driver.licenceExpiryDate,
       licenceNumber: driver.licenceNumber || latest.license?.documentNumber || null,
       licenceJurisdiction:
         driver.licenceJurisdiction || latest.license?.issuingJurisdiction || null,
@@ -489,7 +494,7 @@ export class KycOpsService {
         reason: dto.rejectionReason ?? null,
       },
     );
-    await this.kycDocs?.syncDriverVehiclesApproval?.(doc.driverId);
+    await this.kycDocs.syncDriverVehiclesApproval(doc.driverId);
     return this.serializeDoc(updated);
   }
 
@@ -779,7 +784,7 @@ export class KycOpsService {
       where: { id: driverId },
       data,
     });
-    await this.kycDocs?.syncDriverVehiclesApproval?.(driverId);
+    await this.kycDocs.syncDriverVehiclesApproval(driverId);
     await this.audit(
       actor.id,
       override ? 'DRIVER_ACTIVATED_WITH_OVERRIDE' : 'admin.driver.activate',
@@ -912,7 +917,7 @@ export class KycOpsService {
     if (Object.keys(data).length) {
       await this.prisma.driverProfile.update({ where: { id: driverId }, data });
     }
-    await this.kycDocs?.syncDriverVehiclesApproval?.(driverId);
+    await this.kycDocs.syncDriverVehiclesApproval(driverId);
   }
 
   async editApplicant(
@@ -923,6 +928,7 @@ export class KycOpsService {
   ) {
     this.assertCanEdit(actor);
     const driver = await this.loadDriver(driverId);
+    this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
 
     const before = {
       fullName: driver.fullName,
@@ -944,6 +950,8 @@ export class KycOpsService {
     };
 
     const profileData: Prisma.DriverProfileUpdateInput = {};
+    if (dto.fullName !== undefined) profileData.fullName = dto.fullName.trim();
+    if (dto.legalName !== undefined) profileData.legalName = dto.legalName.trim();
     if (dto.fullName !== undefined) {
       profileData.fullName = dto.fullName?.trim() || driver.fullName;
     }
@@ -955,6 +963,14 @@ export class KycOpsService {
         ? new Date(dto.dateOfBirth)
         : null;
     }
+    if (dto.addressLine1 !== undefined) profileData.addressLine1 = dto.addressLine1;
+    if (dto.addressLine2 !== undefined) profileData.addressLine2 = dto.addressLine2;
+    if (dto.city !== undefined) profileData.city = dto.city;
+    if (dto.province !== undefined) profileData.province = dto.province;
+    if (dto.postalCode !== undefined) profileData.postalCode = dto.postalCode;
+    if (dto.country !== undefined) profileData.country = dto.country;
+    if (dto.baseLocation !== undefined) profileData.baseLocation = dto.baseLocation;
+    if (dto.licenceNumber !== undefined) profileData.licenceNumber = dto.licenceNumber;
     if (dto.addressLine1 !== undefined) {
       profileData.addressLine1 = dto.addressLine1?.trim() ?? '';
     }
@@ -978,6 +994,7 @@ export class KycOpsService {
       profileData.licenceNumber = dto.licenceNumber?.trim() ?? '';
     }
     if (dto.licenceJurisdiction !== undefined) {
+      profileData.licenceJurisdiction = dto.licenceJurisdiction;
       profileData.licenceJurisdiction = dto.licenceJurisdiction?.trim() ?? '';
     }
     if (dto.licenceIssueDate !== undefined) {
@@ -1010,8 +1027,10 @@ export class KycOpsService {
     }
 
     const userData: Prisma.UserUpdateInput = {};
+    if (dto.email !== undefined) userData.email = dto.email.trim() || null;
     if (dto.email !== undefined) userData.email = dto.email?.trim() || null;
     if (dto.phoneE164 !== undefined) {
+      userData.phoneE164 = dto.phoneE164.trim() || null;
       userData.phoneE164 = dto.phoneE164?.trim() || null;
     }
 
@@ -1067,6 +1086,7 @@ export class KycOpsService {
       'DriverProfile',
       driverId,
       ip,
+      { before, after, reason: dto.reason },
       { before, after, reason: dto.reason?.trim() || 'Updated applicant details' },
     );
     return this.getWorkspace(driverId);

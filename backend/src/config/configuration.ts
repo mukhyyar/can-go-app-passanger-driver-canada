@@ -1,5 +1,21 @@
+/**
+ * Number of reverse-proxy hops (nginx etc.) in front of the API.
+ * Required so `req.ip` (used by the rate limiter) is the real client IP
+ * instead of the proxy IP. Defaults to 1 outside local/dev; override with
+ * TRUST_PROXY=0|false (direct access) or a hop count.
+ */
+function parseTrustProxy(): number | boolean {
+  const raw = (process.env.TRUST_PROXY ?? '').trim().toLowerCase();
+  if (raw === 'false' || raw === '0') return false;
+  if (raw === 'true') return 1;
+  if (/^\d+$/.test(raw)) return parseInt(raw, 10);
+  const env = process.env.NODE_ENV ?? 'local';
+  return env === 'local' || env === 'development' || env === 'test' ? false : 1;
+}
+
 export default () => ({
   nodeEnv: process.env.NODE_ENV ?? 'local',
+  trustProxy: parseTrustProxy(),
   port: parseInt(process.env.PORT ?? '3000', 10),
   appName: process.env.APP_NAME ?? 'can-go-api',
   databaseUrl: process.env.DATABASE_URL,

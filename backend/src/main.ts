@@ -24,6 +24,10 @@ async function bootstrap() {
   );
 
   const config = app.get(ConfigService);
+  // Behind nginx: trust X-Forwarded-For so req.ip (rate limiting, audit logs)
+  // is the real client IP, not the proxy's 127.0.0.1 shared by every user.
+  const trustProxy = config.get<number | boolean>('trustProxy');
+  if (trustProxy) app.set('trust proxy', trustProxy);
   const origins = config.get<string[]>('corsOrigins') ?? [];
   app.enableCors({
     origin: origins.length ? origins : true,

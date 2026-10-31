@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:gt_api/gt_api.dart';
 
+const String _tooManyRequestsMessage =
+    'Too many attempts. Please wait a minute and try again.';
+
 /// Strips low-level exception wrappers (like `ApiException(400):`, `Exception:`, etc.)
 /// and formats user-facing errors into clean, friendly messages.
 String cleanErrorMessage(
@@ -11,6 +14,9 @@ String cleanErrorMessage(
 
   if (error is ApiException) {
     final msg = error.message.trim();
+    if (error.statusCode == 429 || msg.toLowerCase().contains('throttler')) {
+      return _tooManyRequestsMessage;
+    }
     if (msg.isNotEmpty && !msg.toLowerCase().startsWith('request failed')) {
       return _cleanRawString(msg, fallback: fallback);
     }
@@ -26,7 +32,7 @@ String cleanErrorMessage(
       case 409:
         return 'This request was already updated or is in conflict.';
       case 429:
-        return 'Too many requests. Please wait a moment and try again.';
+        return _tooManyRequestsMessage;
       default:
         if (error.statusCode >= 500) {
           return 'Server error. Please try again later.';
@@ -37,6 +43,12 @@ String cleanErrorMessage(
 
   final raw = error.toString().trim();
   final lower = raw.toLowerCase();
+
+  // Rate limiting (HTTP 429 / NestJS ThrottlerException)
+  if (lower.contains('throttlerexception') ||
+      lower.contains('too many requests')) {
+    return _tooManyRequestsMessage;
+  }
 
   // Network / Connection issues
   if (lower.contains('socketexception') ||
