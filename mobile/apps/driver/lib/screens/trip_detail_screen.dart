@@ -438,12 +438,85 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         case 'BOOKED':
           await s.tripGoEnRoute(widget.rideId);
         case 'DRIVER_EN_ROUTE':
-          await s.tripArrived(widget.rideId);
+          Position? arrivedPos = _currentPosition;
+          if (_ride?.fromLat != null && _ride?.fromLng != null) {
+            if (arrivedPos == null) {
+              try {
+                arrivedPos = await Geolocator.getCurrentPosition(
+                  desiredAccuracy: LocationAccuracy.high,
+                  timeLimit: const Duration(seconds: 2),
+                );
+              } catch (_) {
+                arrivedPos = await Geolocator.getLastKnownPosition();
+              }
+            }
+            if (arrivedPos != null) {
+              final distMeters = Geolocator.distanceBetween(
+                arrivedPos.latitude,
+                arrivedPos.longitude,
+                _ride!.fromLat!,
+                _ride!.fromLng!,
+              );
+              if (distMeters > 300) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'You are ${distMeters.round()}m from the pickup. You must be within 300m to mark arrival.',
+                      ),
+                      backgroundColor: GtColors.brand,
+                    ),
+                  );
+                }
+                return;
+              }
+            }
+          }
+          await s.tripArrived(
+            widget.rideId,
+            lat: arrivedPos?.latitude,
+            lng: arrivedPos?.longitude,
+          );
           _arrivedTimestamp = DateTime.now();
           _startWaitingTimer();
         case 'TRIP_STARTED':
         case 'IN_PROGRESS':
-          await s.tripComplete(widget.rideId);
+          Position? completePos = _currentPosition;
+          bool forceEarlyDropoff = false;
+          String? earlyReason;
+          if (_ride?.toLat != null && _ride?.toLng != null) {
+            if (completePos == null) {
+              try {
+                completePos = await Geolocator.getCurrentPosition(
+                  desiredAccuracy: LocationAccuracy.high,
+                  timeLimit: const Duration(seconds: 2),
+                );
+              } catch (_) {
+                completePos = await Geolocator.getLastKnownPosition();
+              }
+            }
+            if (completePos != null) {
+              final distMeters = Geolocator.distanceBetween(
+                completePos.latitude,
+                completePos.longitude,
+                _ride!.toLat!,
+                _ride!.toLng!,
+              );
+              if (distMeters > 500) {
+                final confirmed = await _promptEarlyDropoff(distMeters.round());
+                if (confirmed != true) return;
+                forceEarlyDropoff = true;
+                earlyReason = 'Passenger requested early drop-off';
+              }
+            }
+          }
+          await s.tripComplete(
+            widget.rideId,
+            lat: completePos?.latitude,
+            lng: completePos?.longitude,
+            forceEarlyDropoff: forceEarlyDropoff,
+            earlyDropoffReason: earlyReason,
+          );
       }
       if (!mounted) return;
       await _load();
@@ -458,7 +531,46 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
+  Future<bool?> _promptEarlyDropoff(int distanceMeters) {
+    final distText = distanceMeters >= 1000
+        ? '${(distanceMeters / 1000).toStringAsFixed(1)} km'
+        : '$distanceMeters meters';
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            SizedBox(width: 8),
+            Expanded(child: Text('Early Drop-off?')),
+          ],
+        ),
+        content: Text(
+          'You are currently $distText away from the destination.\n\nHas the passenger requested to end the trip early here?',
+          style: const TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: GtColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GtColors.brand,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirm Early Complete'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _promptStartPin(AppState s) async {
+    final r = _ride;
     final started = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -466,6 +578,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       builder: (sheetContext) => _StartPinSheet(
         rideId: widget.rideId,
         appState: s,
+        pickupLat: r?.fromLat,
+        pickupLng: r?.fromLng,
+        currentPosition: _currentPosition,
       ),
     );
 
@@ -3221,10 +3336,16 @@ class _StartPinSheet extends StatefulWidget {
   const _StartPinSheet({
     required this.rideId,
     required this.appState,
+    this.pickupLat,
+    this.pickupLng,
+    this.currentPosition,
   });
 
   final String rideId;
   final AppState appState;
+  final double? pickupLat;
+  final double? pickupLng;
+  final Position? currentPosition;
 
   @override
   State<_StartPinSheet> createState() => _StartPinSheetState();
@@ -3235,6 +3356,27 @@ class _StartPinSheetState extends State<_StartPinSheet> {
   GtOtpStatus _status = GtOtpStatus.idle;
   String? _errorMsg;
   bool _submitting = false;
+  double? _distanceMeters;
+
+  @override
+  void initState() {
+    super.initState();
+    _computeDistance();
+  }
+
+  void _computeDistance() {
+    if (widget.currentPosition != null &&
+        widget.pickupLat != null &&
+        widget.pickupLng != null) {
+      final dist = Geolocator.distanceBetween(
+        widget.currentPosition!.latitude,
+        widget.currentPosition!.longitude,
+        widget.pickupLat!,
+        widget.pickupLng!,
+      );
+      setState(() => _distanceMeters = dist);
+    }
+  }
 
   @override
   void dispose() {
@@ -3250,8 +3392,46 @@ class _StartPinSheetState extends State<_StartPinSheet> {
       _status = GtOtpStatus.idle;
     });
 
+    Position? pos = widget.currentPosition;
+    if (widget.pickupLat != null && widget.pickupLng != null) {
+      if (pos == null) {
+        try {
+          pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 2),
+          );
+        } catch (_) {
+          pos = await Geolocator.getLastKnownPosition();
+        }
+      }
+
+      if (pos != null) {
+        final distMeters = Geolocator.distanceBetween(
+          pos.latitude,
+          pos.longitude,
+          widget.pickupLat!,
+          widget.pickupLng!,
+        );
+        _distanceMeters = distMeters;
+        if (distMeters > 500) {
+          setState(() {
+            _submitting = false;
+            _status = GtOtpStatus.error;
+            _errorMsg =
+                'You are ${distMeters.round()}m away from the pickup location. You must be within 500m to start the ride.';
+          });
+          return;
+        }
+      }
+    }
+
     try {
-      await widget.appState.tripStart(widget.rideId, pin: pin.trim());
+      await widget.appState.tripStart(
+        widget.rideId,
+        pin: pin.trim(),
+        lat: pos?.latitude,
+        lng: pos?.longitude,
+      );
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -3316,11 +3496,11 @@ class _StartPinSheetState extends State<_StartPinSheet> {
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Enter Ride PIN',
                       style: TextStyle(
                         fontSize: 18,
@@ -3328,8 +3508,8 @@ class _StartPinSheetState extends State<_StartPinSheet> {
                         color: GtColors.text,
                       ),
                     ),
-                    SizedBox(height: 2),
-                    Text(
+                    const SizedBox(height: 2),
+                    const Text(
                       'Ask the passenger for their 4-digit PIN',
                       style: TextStyle(
                         fontSize: 13,
@@ -3337,6 +3517,35 @@ class _StartPinSheetState extends State<_StartPinSheet> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+                    if (_distanceMeters != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            _distanceMeters! <= 500
+                                ? Icons.check_circle_outline
+                                : Icons.warning_amber_rounded,
+                            size: 14,
+                            color: _distanceMeters! <= 500
+                                ? const Color(0xFF1B8755)
+                                : const Color(0xFFD9381E),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _distanceMeters! <= 500
+                                ? 'Within pickup range (${_distanceMeters!.round()}m)'
+                                : 'Too far from pickup (${_distanceMeters!.round()}m / max 500m)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _distanceMeters! <= 500
+                                  ? const Color(0xFF1B8755)
+                                  : const Color(0xFFD9381E),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

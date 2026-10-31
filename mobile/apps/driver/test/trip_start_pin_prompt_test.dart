@@ -13,7 +13,12 @@ class MockDriverAppState extends AppState {
   int tripStartCallCount = 0;
 
   @override
-  Future<Map<String, dynamic>> tripStart(String rideId, {String? pin}) async {
+  Future<Map<String, dynamic>> tripStart(
+    String rideId, {
+    String? pin,
+    double? lat,
+    double? lng,
+  }) async {
     tripStartCallCount++;
     lastPinSent = pin;
     if (shouldFailPin) {

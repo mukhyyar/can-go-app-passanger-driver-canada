@@ -21,8 +21,16 @@ import {
   CancellationPolicyService,
   resolveIncludedWaitingMinutes,
 } from '../marketplace/cancellation-policy.service';
+import { LocationStoreService } from '../tracking/location-store.service';
 
-function haversineKm(
+export const GEOFENCE_LIMITS = {
+  DRIVER_ARRIVED_METERS: 300,
+  TRIP_STARTED_METERS: 500,
+  TRIP_COMPLETED_METERS: 500,
+  NO_SHOW_METERS: 500,
+};
+
+export function haversineKm(
   lat1: number,
   lon1: number,
   lat2: number,
@@ -56,7 +64,25 @@ export class TripService {
     @Optional() private readonly postRideNotifications?: PostRideNotificationService,
     @Optional() @Inject(PAYMENT_PROVIDER) private readonly payments?: PaymentProvider,
     @Optional() private readonly cancellationPolicy?: CancellationPolicyService,
+    @Optional() private readonly locationStore?: LocationStoreService,
   ) {}
+
+  private async resolveDriverCoordinates(
+    rideId: string,
+    metaLat?: number,
+    metaLng?: number,
+  ): Promise<{ lat: number; lng: number } | null> {
+    if (metaLat != null && metaLng != null) {
+      return { lat: metaLat, lng: metaLng };
+    }
+    if (this.locationStore && rideId) {
+      const cached = await this.locationStore.getRideDriver(rideId);
+      if (cached && cached.lat != null && cached.lng != null) {
+        return { lat: cached.lat, lng: cached.lng };
+      }
+    }
+    return null;
+  }
 
 
   async transition(
@@ -71,6 +97,7 @@ export class TripService {
       lat?: number;
       lng?: number;
       contactMethod?: string;
+      forceEarlyDropoff?: boolean;
     },
   ) {
     const user = await this.prisma.user.findUnique({
@@ -129,7 +156,44 @@ export class TripService {
       { isAssignedDriver, isPassenger, isAdmin },
     );
 
+    let arrivedEvidence: Record<string, unknown> | undefined;
+    if (toStatus === RideStatus.DRIVER_ARRIVED && isAssignedDriver) {
+      if (!isAdmin && ride.fromLat != null && ride.fromLng != null) {
+        const coords = await this.resolveDriverCoordinates(
+          ride.id,
+          cancellationMeta?.lat,
+          cancellationMeta?.lng,
+        );
+        if (!coords) {
+          throw new BadRequestException(
+            'Current GPS coordinates are required to mark arrival at the pickup location.',
+          );
+        }
+        const distKm = haversineKm(
+          coords.lat,
+          coords.lng,
+          ride.fromLat,
+          ride.fromLng,
+        );
+        const distanceMeters = Math.round(distKm * 1000);
+        if (distanceMeters > GEOFENCE_LIMITS.DRIVER_ARRIVED_METERS) {
+          throw new BadRequestException(
+            `Driver must be within ${GEOFENCE_LIMITS.DRIVER_ARRIVED_METERS}m of the pickup location to mark arrival (current distance: ${distanceMeters}m).`,
+          );
+        }
+        arrivedEvidence = {
+          action: 'driver_arrived',
+          driverLat: coords.lat,
+          driverLng: coords.lng,
+          pickupLat: ride.fromLat,
+          pickupLng: ride.fromLng,
+          distanceMeters,
+        };
+      }
+    }
+
     let verifiedPin: string | undefined;
+    let tripStartEvidence: Record<string, unknown> | undefined;
     if (toStatus === RideStatus.TRIP_STARTED && isAssignedDriver) {
       const snap = ride.priceSnapshot as Record<string, unknown> | null | undefined;
       const expectedPin =
@@ -151,6 +215,80 @@ export class TripService {
         );
       }
       verifiedPin = expectedPin;
+
+      if (!isAdmin && ride.fromLat != null && ride.fromLng != null) {
+        const coords = await this.resolveDriverCoordinates(
+          ride.id,
+          cancellationMeta?.lat,
+          cancellationMeta?.lng,
+        );
+        if (!coords) {
+          throw new BadRequestException(
+            'Current GPS coordinates are required to start the ride.',
+          );
+        }
+        const distKm = haversineKm(
+          coords.lat,
+          coords.lng,
+          ride.fromLat,
+          ride.fromLng,
+        );
+        const distanceMeters = Math.round(distKm * 1000);
+        if (distanceMeters > GEOFENCE_LIMITS.TRIP_STARTED_METERS) {
+          throw new BadRequestException(
+            `Driver must be within ${GEOFENCE_LIMITS.TRIP_STARTED_METERS}m of the pickup location to start the ride (current distance: ${distanceMeters}m).`,
+          );
+        }
+        tripStartEvidence = {
+          action: 'trip_started',
+          driverLat: coords.lat,
+          driverLng: coords.lng,
+          pickupLat: ride.fromLat,
+          pickupLng: ride.fromLng,
+          distanceMeters,
+        };
+      }
+    }
+
+    let completionEvidence: Record<string, unknown> | undefined;
+    if (toStatus === RideStatus.COMPLETED && isAssignedDriver) {
+      if (!isAdmin && ride.toLat != null && ride.toLng != null) {
+        const coords = await this.resolveDriverCoordinates(
+          ride.id,
+          cancellationMeta?.lat,
+          cancellationMeta?.lng,
+        );
+        if (!coords) {
+          throw new BadRequestException(
+            'Current GPS coordinates are required to complete the ride.',
+          );
+        }
+        const distKm = haversineKm(
+          coords.lat,
+          coords.lng,
+          ride.toLat,
+          ride.toLng,
+        );
+        const distanceMeters = Math.round(distKm * 1000);
+        if (
+          distanceMeters > GEOFENCE_LIMITS.TRIP_COMPLETED_METERS &&
+          !cancellationMeta?.forceEarlyDropoff
+        ) {
+          throw new BadRequestException(
+            `Vehicle is ${distanceMeters}m away from the drop-off destination. If passenger requested an early drop-off, confirm early drop-off.`,
+          );
+        }
+        completionEvidence = {
+          action: 'trip_completed',
+          driverLat: coords.lat,
+          driverLng: coords.lng,
+          dropoffLat: ride.toLat,
+          dropoffLng: ride.toLng,
+          distanceMeters,
+          forceEarlyDropoff: !!cancellationMeta?.forceEarlyDropoff,
+          earlyDropoffReason: cancellationMeta?.reasonDetails ?? null,
+        };
+      }
     }
 
     let noShowEvidence: Record<string, unknown> | undefined;
@@ -176,11 +314,14 @@ export class TripService {
       }
 
       let distanceMeters: number | null = null;
+      let noShowCoords: { lat: number; lng: number } | null = null;
       if (!isAdmin) {
-        if (
-          cancellationMeta?.lat == null ||
-          cancellationMeta?.lng == null
-        ) {
+        noShowCoords = await this.resolveDriverCoordinates(
+          ride.id,
+          cancellationMeta?.lat,
+          cancellationMeta?.lng,
+        );
+        if (!noShowCoords) {
           throw new BadRequestException(
             'Current GPS coordinates are required to verify driver presence at pickup location.',
           );
@@ -188,15 +329,15 @@ export class TripService {
 
         if (ride.fromLat != null && ride.fromLng != null) {
           const distKm = haversineKm(
-            cancellationMeta.lat,
-            cancellationMeta.lng,
+            noShowCoords.lat,
+            noShowCoords.lng,
             ride.fromLat,
             ride.fromLng,
           );
           distanceMeters = Math.round(distKm * 1000);
-          if (distanceMeters > 500) {
+          if (distanceMeters > GEOFENCE_LIMITS.NO_SHOW_METERS) {
             throw new BadRequestException(
-              `Driver must be at the pickup location to declare No-Show (current distance: ${distanceMeters}m, limit: 500m).`,
+              `Driver must be at the pickup location to declare No-Show (current distance: ${distanceMeters}m, limit: ${GEOFENCE_LIMITS.NO_SHOW_METERS}m).`,
             );
           }
         }
@@ -270,8 +411,8 @@ export class TripService {
 
       noShowEvidence = {
         action: 'passenger_no_show',
-        driverLat: cancellationMeta?.lat ?? null,
-        driverLng: cancellationMeta?.lng ?? null,
+        driverLat: noShowCoords?.lat ?? cancellationMeta?.lat ?? null,
+        driverLng: noShowCoords?.lng ?? cancellationMeta?.lng ?? null,
         pickupLat: ride.fromLat,
         pickupLng: ride.fromLng,
         distanceMeters,
@@ -299,6 +440,12 @@ export class TripService {
           ...(verifiedPin ? { startPin: verifiedPin } : {}),
         },
       });
+      const eventEvidence =
+        noShowEvidence ??
+        tripStartEvidence ??
+        arrivedEvidence ??
+        completionEvidence;
+
       await tx.rideEvent.create({
         data: {
           rideId,
@@ -306,8 +453,8 @@ export class TripService {
           toStatus,
           actorType,
           actorId: userId,
-          payload: (noShowEvidence
-            ? { action: 'trip.transition', evidence: noShowEvidence }
+          payload: (eventEvidence
+            ? { action: 'trip.transition', evidence: eventEvidence }
             : { action: 'trip.transition' }) as Prisma.InputJsonValue,
         },
       });
@@ -747,7 +894,35 @@ export class TripService {
       [RideStatus.IN_PROGRESS]: [RideStatus.PASSENGER_CANCELLED],
     };
 
-    if (isAdmin && to === RideStatus.ADMIN_CANCELLED) return;
+    if (isAdmin) {
+      if (to === RideStatus.ADMIN_CANCELLED) return;
+      const adminAllowedNext: Partial<Record<RideStatus, RideStatus[]>> = {
+        [RideStatus.BOOKED]: [
+          RideStatus.DRIVER_EN_ROUTE,
+          RideStatus.DRIVER_ARRIVED,
+          RideStatus.ADMIN_CANCELLED,
+        ],
+        [RideStatus.DRIVER_EN_ROUTE]: [
+          RideStatus.DRIVER_ARRIVED,
+          RideStatus.TRIP_STARTED,
+          RideStatus.ADMIN_CANCELLED,
+        ],
+        [RideStatus.DRIVER_ARRIVED]: [
+          RideStatus.TRIP_STARTED,
+          RideStatus.NO_SHOW,
+          RideStatus.ADMIN_CANCELLED,
+        ],
+        [RideStatus.TRIP_STARTED]: [
+          RideStatus.COMPLETED,
+          RideStatus.ADMIN_CANCELLED,
+        ],
+        [RideStatus.IN_PROGRESS]: [
+          RideStatus.COMPLETED,
+          RideStatus.ADMIN_CANCELLED,
+        ],
+      };
+      if (adminAllowedNext[from]?.includes(to)) return;
+    }
 
     if (isAssignedDriver && driverNext[from]?.includes(to)) return;
     if (isPassenger && passengerNext[from]?.includes(to)) return;

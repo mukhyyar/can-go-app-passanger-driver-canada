@@ -20,30 +20,36 @@ void main() {
   });
 
   group('Section 11: Provider Fails to Arrive - Models & Status Map', () {
-    test('rideFromServer accurately extracts originalDriver and originalDriverId', () {
-      final json = {
-        'id': 'ride-no-show-1',
-        'status': 'BOOKED',
-        'fromLabel': '100 King St W, Toronto',
-        'toLabel': 'Toronto Pearson Airport',
-        'pickupAt': DateTime.now().subtract(const Duration(minutes: 40)).toIso8601String(),
-        'isOverdue': true,
-        'originalDriverId': 'driver-fail-1',
-        'originalDriver': {
-          'id': 'driver-fail-1',
-          'fullName': 'Failed Provider John',
-          'phoneE164': '+14165550199',
-        },
-      };
+    test(
+      'rideFromServer accurately extracts originalDriver and originalDriverId',
+      () {
+        final json = {
+          'id': 'ride-no-show-1',
+          'status': 'BOOKED',
+          'fromLabel': '100 King St W, Toronto',
 
-      final parsed = rideFromServer(json);
+          'toLabel': 'Toronto Pearson Airport',
+          'pickupAt': DateTime.now()
+              .subtract(const Duration(minutes: 40))
+              .toIso8601String(),
+          'isOverdue': true,
+          'originalDriverId': 'driver-fail-1',
+          'originalDriver': {
+            'id': 'driver-fail-1',
+            'fullName': 'Failed Provider John',
+            'phoneE164': '+14165550199',
+          },
+        };
 
-      expect(parsed.id, equals('ride-no-show-1'));
-      expect(parsed.isOverdue, isTrue);
-      expect(parsed.originalDriverId, equals('driver-fail-1'));
-      expect(parsed.originalDriverName, equals('Failed Provider John'));
-      expect(parsed.originalDriverPhone, equals('+14165550199'));
-    });
+        final parsed = rideFromServer(json);
+
+        expect(parsed.id, equals('ride-no-show-1'));
+        expect(parsed.isOverdue, isTrue);
+        expect(parsed.originalDriverId, equals('driver-fail-1'));
+        expect(parsed.originalDriverName, equals('Failed Provider John'));
+        expect(parsed.originalDriverPhone, equals('+14165550199'));
+      },
+    );
   });
 
   group('Section 11: Provider Fails to Arrive - RideDetailScreen UI', () {
@@ -60,11 +66,15 @@ void main() {
               'status': 'BOOKED',
               'fromLabel': '100 King St W',
               'toLabel': 'Pearson Terminal 1',
-              'pickupAt': DateTime.now().subtract(const Duration(minutes: 45)).toIso8601String(),
+              'pickupAt': DateTime.now()
+                  .subtract(const Duration(minutes: 45))
+                  .toIso8601String(),
               'isOverdue': true,
               'selectedOfferId': offerId,
               'currency': 'CAD',
-              'originalDriverId': originalDriverName != null ? 'driver-orig-1' : null,
+              'originalDriverId': originalDriverName != null
+                  ? 'driver-orig-1'
+                  : null,
               'originalDriver': originalDriverName != null
                   ? {
                       'id': 'driver-orig-1',
@@ -88,17 +98,23 @@ void main() {
                     'price': 120.0,
                     'currency': 'CAD',
                   },
-                }
+                },
               ],
             }),
             200,
             headers: {'content-type': 'application/json'},
           );
         }
-        return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+        return http.Response(
+          '{}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
       });
 
-      final session = CanGoSession(client: ApiClient(httpClient: mockHttpClient));
+      final session = CanGoSession(
+        client: ApiClient(httpClient: mockHttpClient),
+      );
       final app = AppState(session: session);
       app.isAuthenticated = true;
       app.me = {'id': 'passenger-user-1'};
@@ -158,7 +174,9 @@ void main() {
 
         // 2. Verify original provider retention badge in history
         expect(
-          find.text('Original Provider: Original Failing Driver John (Failed to arrive · Replaced)'),
+          find.text(
+            'Original Provider: Original Failing Driver John (Failed to arrive · Replaced)',
+          ),
           findsOneWidget,
         );
       },

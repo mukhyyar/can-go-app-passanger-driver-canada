@@ -2710,23 +2710,74 @@ class AppState extends ChangeNotifier {
     return res;
   }
 
-  Future<Map<String, dynamic>> tripArrived(String rideId) async {
-    final res = await api.driver.arrived(rideId);
+  Future<Position?> _resolveCurrentPosition() async {
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 4),
+      );
+    } catch (_) {
+      try {
+        return await Geolocator.getLastKnownPosition();
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> tripArrived(
+    String rideId, {
+    double? lat,
+    double? lng,
+  }) async {
+    if (lat == null || lng == null) {
+      final pos = await _resolveCurrentPosition();
+      lat ??= pos?.latitude;
+      lng ??= pos?.longitude;
+    }
+    final res = await api.driver.arrived(rideId, lat: lat, lng: lng);
     await refreshMyRides();
     notifyListeners();
     return res;
   }
 
-  Future<Map<String, dynamic>> tripStart(String rideId, {String? pin}) async {
-    final res = await api.driver.startTrip(rideId, pin: pin);
+  Future<Map<String, dynamic>> tripStart(
+    String rideId, {
+    String? pin,
+    double? lat,
+    double? lng,
+  }) async {
+    if (lat == null || lng == null) {
+      final pos = await _resolveCurrentPosition();
+      lat ??= pos?.latitude;
+      lng ??= pos?.longitude;
+    }
+    final res = await api.driver.startTrip(rideId, pin: pin, lat: lat, lng: lng);
     await refreshMyRides();
     notifyListeners();
     return res;
   }
 
-  Future<Map<String, dynamic>> tripComplete(String rideId) async {
+  Future<Map<String, dynamic>> tripComplete(
+    String rideId, {
+    double? lat,
+    double? lng,
+    bool? forceEarlyDropoff,
+    String? earlyDropoffReason,
+  }) async {
     stopTripLocationTracking();
-    final res = await api.driver.completeTrip(rideId);
+    if (lat == null || lng == null) {
+      final pos = await _resolveCurrentPosition();
+      lat ??= pos?.latitude;
+      lng ??= pos?.longitude;
+    }
+    final res = await api.driver.completeTrip(
+      rideId,
+      lat: lat,
+      lng: lng,
+      forceEarlyDropoff: forceEarlyDropoff,
+      earlyDropoffReason: earlyDropoffReason,
+    );
     await refreshMyRides();
     notifyListeners();
     return res;

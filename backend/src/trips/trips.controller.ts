@@ -9,7 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
 import { RideStatus, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -61,6 +61,14 @@ class TripTransitionDto {
   @IsOptional()
   @IsString()
   contactMethod?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  forceEarlyDropoff?: boolean;
+
+  @IsOptional()
+  @IsString()
+  earlyDropoffReason?: string;
 }
 
 @Controller('rides')
@@ -103,10 +111,11 @@ export class TripsController {
       dto.pin,
       {
         reasonCode: dto.reasonCode,
-        reasonDetails: dto.reasonDetails,
+        reasonDetails: dto.reasonDetails ?? dto.earlyDropoffReason,
         lat: dto.lat,
         lng: dto.lng,
         contactMethod: dto.contactMethod,
+        forceEarlyDropoff: dto.forceEarlyDropoff,
       },
     );
   }
@@ -161,6 +170,7 @@ export class DriverTripController {
   arrived(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Body() body: { lat?: number; lng?: number },
     @Req() req: { ip?: string },
   ) {
     return this.trips.transition(
@@ -168,6 +178,11 @@ export class DriverTripController {
       id,
       RideStatus.DRIVER_ARRIVED,
       req.ip,
+      undefined,
+      {
+        lat: body?.lat,
+        lng: body?.lng,
+      },
     );
   }
 
@@ -175,7 +190,7 @@ export class DriverTripController {
   start(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body() body: { pin?: string },
+    @Body() body: { pin?: string; lat?: number; lng?: number },
     @Req() req: { ip?: string },
   ) {
     return this.trips.transition(
@@ -184,6 +199,10 @@ export class DriverTripController {
       RideStatus.TRIP_STARTED,
       req.ip,
       body?.pin,
+      {
+        lat: body?.lat,
+        lng: body?.lng,
+      },
     );
   }
 
@@ -191,9 +210,28 @@ export class DriverTripController {
   complete(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Body()
+    body: {
+      lat?: number;
+      lng?: number;
+      forceEarlyDropoff?: boolean;
+      earlyDropoffReason?: string;
+    },
     @Req() req: { ip?: string },
   ) {
-    return this.trips.transition(user.id, id, RideStatus.COMPLETED, req.ip);
+    return this.trips.transition(
+      user.id,
+      id,
+      RideStatus.COMPLETED,
+      req.ip,
+      undefined,
+      {
+        lat: body?.lat,
+        lng: body?.lng,
+        forceEarlyDropoff: body?.forceEarlyDropoff,
+        reasonDetails: body?.earlyDropoffReason,
+      },
+    );
   }
 
   @Post(':id/no-show')

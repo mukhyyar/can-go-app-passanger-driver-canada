@@ -319,17 +319,50 @@ class DriverApi {
   Future<Map<String, dynamic>> enRoute(String rideId) =>
       client.post('/driver/rides/$rideId/en-route', body: {});
 
-  Future<Map<String, dynamic>> arrived(String rideId) =>
-      client.post('/driver/rides/$rideId/arrived', body: {});
-
-  Future<Map<String, dynamic>> startTrip(String rideId, {String? pin}) =>
+  Future<Map<String, dynamic>> arrived(
+    String rideId, {
+    double? lat,
+    double? lng,
+  }) =>
       client.post(
-        '/driver/rides/$rideId/start',
-        body: pin != null && pin.isNotEmpty ? {'pin': pin} : {},
+        '/driver/rides/$rideId/arrived',
+        body: {
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        },
       );
 
-  Future<Map<String, dynamic>> completeTrip(String rideId) =>
-      client.post('/driver/rides/$rideId/complete', body: {});
+  Future<Map<String, dynamic>> startTrip(
+    String rideId, {
+    String? pin,
+    double? lat,
+    double? lng,
+  }) =>
+      client.post(
+        '/driver/rides/$rideId/start',
+        body: {
+          if (pin != null && pin.isNotEmpty) 'pin': pin,
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        },
+      );
+
+  Future<Map<String, dynamic>> completeTrip(
+    String rideId, {
+    double? lat,
+    double? lng,
+    bool? forceEarlyDropoff,
+    String? earlyDropoffReason,
+  }) =>
+      client.post(
+        '/driver/rides/$rideId/complete',
+        body: {
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+          if (forceEarlyDropoff != null) 'forceEarlyDropoff': forceEarlyDropoff,
+          if (earlyDropoffReason != null) 'earlyDropoffReason': earlyDropoffReason,
+        },
+      );
 
   Future<Map<String, dynamic>> noShow(
     String rideId, {
