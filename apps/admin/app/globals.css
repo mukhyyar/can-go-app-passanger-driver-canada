@@ -176,6 +176,10 @@ table.data tbody tr:nth-child(even):hover td { background: var(--brand-soft); }
 .chip.info { background: #eff6ff; color: #1d4ed8; }
 
 .btn, .cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
   background: var(--green);
   color: #fff;
   border: 0;
@@ -184,6 +188,9 @@ table.data tbody tr:nth-child(even):hover td { background: var(--brand-soft); }
   font-weight: 800;
   cursor: pointer;
   transition: background 0.15s, transform 0.15s;
+  box-sizing: border-box;
+  line-height: 1.2;
+  vertical-align: middle;
 }
 .btn:hover, .cta:hover { background: var(--green-dark); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -1681,7 +1688,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .pay-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .pay-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
-.pay-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; max-width: 420px; justify-content: flex-end; }
+.pay-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; max-width: 480px; justify-content: flex-end; }
 .pay-kpis {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px;
 }
@@ -1716,7 +1723,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .pay-waterfall-meta { align-items: center; }
 .pay-parties { display: flex; flex-direction: column; gap: 10px; }
 .pay-party-card {
-  border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fafafa;
+  border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: #fafafa;
+  display: flex; flex-direction: column;
+}
+.pay-party-card .pay-party-actions {
+  margin-top: 12px; display: flex;
+}
+.pay-party-card .pay-party-actions .btn {
+  display: inline-flex;
 }
 .pay-case-list { list-style: none; margin: 0; padding: 0; }
 .pay-case-list li {

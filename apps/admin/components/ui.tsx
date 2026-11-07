@@ -23,7 +23,7 @@ export function statusTone(s?: string) {
   if (/(COMPLET|APPROV|ACTIVE|SUCCEED|ONLINE|VISIBLE|RESOLVED|UP)/.test(v)) return 'ok' as const;
   if (/(PEND|WAIT|BOOK|REVIEW|DRAFT|OFFER|SCHEDULE|EN_ROUTE|ARRIVED|PROGRESS|SEARCH)/.test(v))
     return 'warn' as const;
-  if (/(CANCEL|FAIL|REJECT|SUSPEND|CRIT|HIDDEN|DOWN|EXPIRED|NO_SHOW|UNFULFIL)/.test(v))
+  if (/(CANCEL|FAIL|REJECT|SUSPEND|CRIT|HIDDEN|DOWN|EXPIRED|NO_SHOW|UNFULFIL|LEGAL|DISMISS)/.test(v))
     return 'bad' as const;
   return 'info' as const;
 }

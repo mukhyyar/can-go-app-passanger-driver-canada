@@ -101,9 +101,13 @@ enum RefundType {
 
 enum SupportCaseStatus {
   OPEN
+  PENDING
+  UNDER_REVIEW
   ASSIGNED
   ESCALATED
+  LEGAL_ISSUE
   RESOLVED
+  DISMISSED
 }
 
 enum SupportCaseType {

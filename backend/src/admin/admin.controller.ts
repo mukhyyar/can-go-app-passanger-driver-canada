@@ -828,8 +828,24 @@ export class AdminOpsController {
 
   @Get('cases')
   @RequirePermission('cases.view')
-  cases(@CurrentUser() user: AuthUser, @Query('queue') queue?: string) {
-    return this.ops.listCases({ queue, adminId: user.id });
+  cases(
+    @CurrentUser() user: AuthUser,
+    @Query('queue') queue?: string,
+    @Query('type') type?: SupportCaseType,
+  ) {
+    return this.ops.listCases({ queue, adminId: user.id, type });
+  }
+
+  @Get('cases/assignees')
+  @RequirePermission('cases.view')
+  caseAssignees() {
+    return this.ops.listCaseAssignees();
+  }
+
+  @Get('cases/:id')
+  @RequirePermission('cases.view')
+  getCase(@Param('id') id: string) {
+    return this.ops.getCase(id);
   }
 
   @Post('cases')
@@ -875,8 +891,8 @@ export class AdminOpsController {
 
   @Get('notifications/deliveries')
   @RequirePermission('notifications.view')
-  deliveries() {
-    return this.ops.listDeliveries();
+  deliveries(@Query('channel') channel?: string) {
+    return this.ops.listDeliveries(channel);
   }
 
   @Get('notifications/campaigns')

@@ -37,6 +37,8 @@ describe('RatingsService', () => {
       rating: {
         create: jest.fn(),
         findMany: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
       },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
@@ -446,6 +448,95 @@ describe('RatingsService', () => {
       await expect(
         ratingsService.listForRide(strangerUserId, rideId),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('adminQueue', () => {
+    it('defaults to PENDING_REVIEW when no status is passed', async () => {
+      mockPrisma.rating.findMany.mockResolvedValue([]);
+      await ratingsService.adminQueue();
+      expect(mockPrisma.rating.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { moderationStatus: RatingModerationStatus.PENDING_REVIEW },
+          orderBy: { createdAt: 'desc' },
+          include: expect.objectContaining({
+            fromUser: expect.any(Object),
+            toUser: expect.any(Object),
+            ride: expect.any(Object),
+          }),
+        }),
+      );
+    });
+
+    it('returns all ratings when status=ALL', async () => {
+      mockPrisma.rating.findMany.mockResolvedValue([]);
+      await ratingsService.adminQueue('ALL');
+      expect(mockPrisma.rating.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {},
+        }),
+      );
+    });
+
+    it('filters by status when valid status is passed', async () => {
+      mockPrisma.rating.findMany.mockResolvedValue([]);
+      await ratingsService.adminQueue(RatingModerationStatus.VISIBLE);
+      expect(mockPrisma.rating.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { moderationStatus: RatingModerationStatus.VISIBLE },
+        }),
+      );
+    });
+  });
+
+  describe('moderate', () => {
+    it('approves a rating and records audit log', async () => {
+      mockPrisma.rating.findUnique
+        .mockResolvedValueOnce({ id: 'rating-1', moderationStatus: RatingModerationStatus.PENDING_REVIEW })
+        .mockResolvedValueOnce({ id: 'rating-1', moderationStatus: RatingModerationStatus.VISIBLE });
+      mockPrisma.rating.update.mockResolvedValue({ id: 'rating-1', moderationStatus: RatingModerationStatus.VISIBLE });
+
+      const res = await ratingsService.moderate(adminUserId, 'rating-1', {
+        status: RatingModerationStatus.VISIBLE,
+        note: 'Review verified as authentic',
+      });
+
+      expect(mockPrisma.rating.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'rating-1' },
+          data: expect.objectContaining({
+            moderationStatus: RatingModerationStatus.VISIBLE,
+            moderatedById: adminUserId,
+            moderationNote: 'Review verified as authentic',
+          }),
+        }),
+      );
+      expect(mockPrisma.auditLog.create).toHaveBeenCalled();
+      expect(res?.moderationStatus).toBe(RatingModerationStatus.VISIBLE);
+    });
+
+    it('hides a rating with note', async () => {
+      mockPrisma.rating.findUnique
+        .mockResolvedValueOnce({ id: 'rating-2', moderationStatus: RatingModerationStatus.PENDING_REVIEW })
+        .mockResolvedValueOnce({ id: 'rating-2', moderationStatus: RatingModerationStatus.HIDDEN });
+      mockPrisma.rating.update.mockResolvedValue({ id: 'rating-2', moderationStatus: RatingModerationStatus.HIDDEN });
+
+      const res = await ratingsService.moderate(adminUserId, 'rating-2', {
+        status: RatingModerationStatus.HIDDEN,
+        note: 'Spam/inappropriate language',
+      });
+
+      expect(mockPrisma.rating.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'rating-2' },
+          data: expect.objectContaining({
+            moderationStatus: RatingModerationStatus.HIDDEN,
+            moderatedById: adminUserId,
+            moderationNote: 'Spam/inappropriate language',
+          }),
+        }),
+      );
+      expect(res?.moderationStatus).toBe(RatingModerationStatus.HIDDEN);
     });
   });
 });

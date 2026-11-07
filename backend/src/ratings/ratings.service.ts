@@ -256,21 +256,55 @@ export class RatingsService {
   }
 
   async adminQueue(status?: string) {
-    const where =
+    const where: Prisma.RatingWhereInput = {};
+    if (status === 'ALL') {
+      // No status filter: return all
+    } else if (
       status &&
       Object.values(RatingModerationStatus).includes(
         status as RatingModerationStatus,
       )
-        ? { moderationStatus: status as RatingModerationStatus }
-        : { moderationStatus: RatingModerationStatus.PENDING_REVIEW };
+    ) {
+      where.moderationStatus = status as RatingModerationStatus;
+    } else {
+      where.moderationStatus = RatingModerationStatus.PENDING_REVIEW;
+    }
+
     return this.prisma.rating.findMany({
       where,
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: 100,
       include: {
-        fromUser: { select: { id: true, email: true, role: true } },
-        toUser: { select: { id: true, email: true, role: true } },
-        ride: { select: { id: true, fromLabel: true, toLabel: true, status: true } },
+        fromUser: {
+          select: {
+            id: true,
+            email: true,
+            phoneE164: true,
+            role: true,
+            passengerProfile: { select: { id: true, fullName: true } },
+            driverProfile: { select: { id: true, fullName: true } },
+          },
+        },
+        toUser: {
+          select: {
+            id: true,
+            email: true,
+            phoneE164: true,
+            role: true,
+            passengerProfile: { select: { id: true, fullName: true } },
+            driverProfile: { select: { id: true, fullName: true } },
+          },
+        },
+        ride: {
+          select: {
+            id: true,
+            fromLabel: true,
+            toLabel: true,
+            status: true,
+            pickupAt: true,
+            serviceType: true,
+          },
+        },
       },
     });
   }
@@ -278,13 +312,13 @@ export class RatingsService {
   async moderate(adminUserId: string, ratingId: string, dto: ModerateRatingDto) {
     const rating = await this.prisma.rating.findUnique({ where: { id: ratingId } });
     if (!rating) throw new NotFoundException('Rating not found');
-    const updated = await this.prisma.rating.update({
+    await this.prisma.rating.update({
       where: { id: ratingId },
       data: {
         moderationStatus: dto.status,
         moderatedAt: new Date(),
         moderatedById: adminUserId,
-        moderationNote: dto.note,
+        moderationNote: dto.note?.trim() || null,
       },
     });
     await this.prisma.auditLog.create({
@@ -293,9 +327,43 @@ export class RatingsService {
         action: 'rating.moderate',
         resource: 'Rating',
         resourceId: ratingId,
-        meta: { status: dto.status } as Prisma.InputJsonValue,
+        meta: { status: dto.status, note: dto.note } as Prisma.InputJsonValue,
       },
     });
-    return updated;
+    return this.prisma.rating.findUnique({
+      where: { id: ratingId },
+      include: {
+        fromUser: {
+          select: {
+            id: true,
+            email: true,
+            phoneE164: true,
+            role: true,
+            passengerProfile: { select: { id: true, fullName: true } },
+            driverProfile: { select: { id: true, fullName: true } },
+          },
+        },
+        toUser: {
+          select: {
+            id: true,
+            email: true,
+            phoneE164: true,
+            role: true,
+            passengerProfile: { select: { id: true, fullName: true } },
+            driverProfile: { select: { id: true, fullName: true } },
+          },
+        },
+        ride: {
+          select: {
+            id: true,
+            fromLabel: true,
+            toLabel: true,
+            status: true,
+            pickupAt: true,
+            serviceType: true,
+          },
+        },
+      },
+    });
   }
 }

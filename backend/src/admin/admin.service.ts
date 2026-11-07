@@ -670,8 +670,11 @@ export class AdminOpsService {
     if (params.hasOpenCase === 'true') {
       const openStatuses = [
         SupportCaseStatus.OPEN,
+        SupportCaseStatus.PENDING,
+        SupportCaseStatus.UNDER_REVIEW,
         SupportCaseStatus.ASSIGNED,
         SupportCaseStatus.ESCALATED,
+        SupportCaseStatus.LEGAL_ISSUE,
       ];
       and.push({
         OR: [
@@ -787,8 +790,11 @@ export class AdminOpsService {
           status: {
             in: [
               SupportCaseStatus.OPEN,
+              SupportCaseStatus.PENDING,
+              SupportCaseStatus.UNDER_REVIEW,
               SupportCaseStatus.ASSIGNED,
               SupportCaseStatus.ESCALATED,
+              SupportCaseStatus.LEGAL_ISSUE,
             ],
           },
         },
@@ -1042,18 +1048,28 @@ export class AdminOpsService {
     });
     if (!user) throw new NotFoundException('User not found');
 
+    const driverRidesWhere: Prisma.RideWhereInput[] = user.driverProfile
+      ? [
+          { assignedDriverId: user.driverProfile.id },
+          { originalDriverId: user.driverProfile.id },
+          { selectedOffer: { driverId: user.driverProfile.id } },
+          { offers: { some: { driverId: user.driverProfile.id } } },
+        ]
+      : [];
+
+    const passengerRidesWhere: Prisma.RideWhereInput[] = user.passengerProfile
+      ? [{ passengerId: user.passengerProfile.id }]
+      : [];
+
     const rideWhere: Prisma.RideWhereInput =
-      user.passengerProfile && user.driverProfile
+      driverRidesWhere.length && passengerRidesWhere.length
         ? {
-            OR: [
-              { passengerId: user.passengerProfile.id },
-              { assignedDriverId: user.driverProfile.id },
-            ],
+            OR: [...passengerRidesWhere, ...driverRidesWhere],
           }
-        : user.passengerProfile
-          ? { passengerId: user.passengerProfile.id }
-          : user.driverProfile
-            ? { assignedDriverId: user.driverProfile.id }
+        : passengerRidesWhere.length
+          ? passengerRidesWhere[0]
+          : driverRidesWhere.length
+            ? { OR: driverRidesWhere }
             : { id: '__none__' };
 
     const rides = await this.prisma.ride.findMany({
@@ -2348,11 +2364,23 @@ export class AdminOpsService {
     }
     if (params.serviceType) where.serviceType = params.serviceType;
     if (params.q) {
-      const q = params.q.replace(/^CG-RIDE-/i, '');
+      const q = params.q.replace(/^CG-RIDE-/i, '').trim();
       where.OR = [
         { id: { contains: q, mode: 'insensitive' } },
         { fromLabel: { contains: params.q, mode: 'insensitive' } },
         { toLabel: { contains: params.q, mode: 'insensitive' } },
+        { passenger: { userId: params.q } },
+        { passenger: { fullName: { contains: params.q, mode: 'insensitive' } } },
+        { passenger: { user: { email: { contains: params.q, mode: 'insensitive' } } } },
+        { passenger: { user: { phoneE164: { contains: params.q } } } },
+        { assignedDriverId: params.q },
+        { originalDriverId: params.q },
+        { originalDriver: { userId: params.q } },
+        { selectedOffer: { driver: { userId: params.q } } },
+        { offers: { some: { driver: { userId: params.q } } } },
+        { offers: { some: { driver: { fullName: { contains: params.q, mode: 'insensitive' } } } } },
+        { offers: { some: { driver: { user: { email: { contains: params.q, mode: 'insensitive' } } } } } },
+        { offers: { some: { driver: { user: { phoneE164: { contains: params.q } } } } } },
       ];
     }
     const rides = await this.prisma.ride.findMany({
@@ -3517,26 +3545,122 @@ export class AdminOpsService {
     });
   }
 
-  async listCases(params: { queue?: string; adminId?: string }) {
+  async listCases(params: { queue?: string; adminId?: string; type?: SupportCaseType }) {
     const where: Prisma.SupportCaseWhereInput = {};
+    if (params.type) {
+      where.type = params.type;
+    }
     const q = params.queue;
     if (q === 'unassigned') where.assigneeId = null;
     else if (q === 'assigned' && params.adminId) where.assigneeId = params.adminId;
+    else if (q === 'pending') where.status = SupportCaseStatus.PENDING;
+    else if (q === 'under_review') where.status = SupportCaseStatus.UNDER_REVIEW;
+    else if (q === 'legal') where.status = SupportCaseStatus.LEGAL_ISSUE;
     else if (q === 'escalated') where.status = SupportCaseStatus.ESCALATED;
-    else if (q === 'resolved') where.status = SupportCaseStatus.RESOLVED;
+    else if (q === 'resolved') where.status = { in: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED] };
+    else if (q === 'dismissed') where.status = SupportCaseStatus.DISMISSED;
     else if (q === 'sla') {
-      where.status = { not: SupportCaseStatus.RESOLVED };
+      where.status = { notIn: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED] };
       where.slaDueAt = { lt: new Date() };
-    } else if (q === 'open') where.status = { in: [SupportCaseStatus.OPEN, SupportCaseStatus.ASSIGNED] };
+    } else if (q === 'open') {
+      where.status = {
+        in: [
+          SupportCaseStatus.OPEN,
+          SupportCaseStatus.PENDING,
+          SupportCaseStatus.UNDER_REVIEW,
+          SupportCaseStatus.ASSIGNED,
+          SupportCaseStatus.ESCALATED,
+          SupportCaseStatus.LEGAL_ISSUE,
+        ],
+      };
+    } else if (q && q !== 'all') {
+      const upperQ = q.toUpperCase();
+      if (Object.values(SupportCaseStatus).includes(upperQ as SupportCaseStatus)) {
+        where.status = upperQ as SupportCaseStatus;
+      }
+    }
+    const caseInclude = {
+      assignee: { select: { id: true, email: true, role: true } },
+      createdBy: { select: { id: true, email: true, role: true } },
+      passenger: {
+        select: {
+          id: true,
+          fullName: true,
+          userId: true,
+          user: { select: { id: true, email: true, phoneE164: true } },
+        },
+      },
+      driver: {
+        select: {
+          id: true,
+          fullName: true,
+          userId: true,
+          user: { select: { id: true, email: true, phoneE164: true } },
+        },
+      },
+      ride: {
+        select: {
+          id: true,
+          fromLabel: true,
+          toLabel: true,
+          status: true,
+          serviceType: true,
+          pickupAt: true,
+        },
+      },
+      payment: { select: { id: true, amount: true, currency: true, status: true } },
+      notes: { orderBy: { createdAt: 'asc' as const }, take: 20 },
+    };
+
     return this.prisma.supportCase.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: 100,
+      include: caseInclude,
+    });
+  }
+
+  async listCaseAssignees() {
+    return this.prisma.user.findMany({
+      where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] }, isSuspended: false },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+      },
+      orderBy: { email: 'asc' },
+    });
+  }
+
+  async getCase(id: string) {
+    const row = await this.prisma.supportCase.findUnique({
+      where: { id },
       include: {
-        assignee: { select: { id: true, email: true } },
-        notes: { orderBy: { createdAt: 'desc' }, take: 5 },
+        assignee: { select: { id: true, email: true, role: true } },
+        createdBy: { select: { id: true, email: true, role: true } },
+        passenger: {
+          select: {
+            id: true,
+            fullName: true,
+            userId: true,
+            user: { select: { id: true, email: true, phoneE164: true } },
+          },
+        },
+        driver: {
+          select: {
+            id: true,
+            fullName: true,
+            userId: true,
+            user: { select: { id: true, email: true, phoneE164: true } },
+          },
+        },
+        ride: { select: { id: true, fromLabel: true, toLabel: true, status: true, serviceType: true, pickupAt: true } },
+        payment: { select: { id: true, amount: true, currency: true, status: true } },
+        notes: { orderBy: { createdAt: 'asc' } },
       },
     });
+    if (!row) throw new NotFoundException('Case not found');
+    return row;
   }
 
   async createCase(
@@ -3577,23 +3701,57 @@ export class AdminOpsService {
   ) {
     const before = await this.prisma.supportCase.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Case not found');
+
+    let nextStatus = dto.status;
+    if (!nextStatus) {
+      if (dto.assigneeId !== undefined) {
+        if (dto.assigneeId && before.status === SupportCaseStatus.OPEN) {
+          nextStatus = SupportCaseStatus.ASSIGNED;
+        } else if (dto.assigneeId === null && before.status === SupportCaseStatus.ASSIGNED) {
+          nextStatus = SupportCaseStatus.OPEN;
+        }
+      }
+    }
+
     const row = await this.prisma.supportCase.update({
       where: { id },
       data: {
-        status: dto.status,
+        status: nextStatus ?? undefined,
         assigneeId: dto.assigneeId === undefined ? undefined : dto.assigneeId,
       },
       include: { notes: true },
     });
-    if (dto.note) {
+    if (dto.note && dto.note.trim()) {
       await this.prisma.supportCaseNote.create({
-        data: { caseId: id, authorId: adminId, body: dto.note },
+        data: { caseId: id, authorId: adminId, body: dto.note.trim() },
       });
     }
     await this.audit(adminId, 'CASE_UPDATE', 'SupportCase', id, { before, after: row });
     return this.prisma.supportCase.findUnique({
       where: { id },
-      include: { notes: { orderBy: { createdAt: 'asc' } }, assignee: { select: { email: true } } },
+      include: {
+        assignee: { select: { id: true, email: true, role: true } },
+        createdBy: { select: { id: true, email: true, role: true } },
+        passenger: {
+          select: {
+            id: true,
+            fullName: true,
+            userId: true,
+            user: { select: { id: true, email: true, phoneE164: true } },
+          },
+        },
+        driver: {
+          select: {
+            id: true,
+            fullName: true,
+            userId: true,
+            user: { select: { id: true, email: true, phoneE164: true } },
+          },
+        },
+        ride: { select: { id: true, fromLabel: true, toLabel: true, status: true, serviceType: true, pickupAt: true } },
+        payment: { select: { id: true, amount: true, currency: true, status: true } },
+        notes: { orderBy: { createdAt: 'asc' } },
+      },
     });
   }
 
@@ -3625,10 +3783,36 @@ export class AdminOpsService {
     });
   }
 
-  listDeliveries() {
+  listDeliveries(channel?: string) {
+    const where: Prisma.NotificationDeliveryWhereInput = {};
+    if (channel && channel !== 'all') {
+      const ch = channel.toLowerCase();
+      if (ch === 'push' || ch === 'fcm') {
+        where.OR = [{ channel: 'push' }, { channel: 'fcm' }, { provider: 'fcm' }];
+      } else if (ch === 'sms') {
+        where.OR = [{ channel: 'sms' }, { provider: 'twilio' }];
+      } else if (ch === 'email') {
+        where.OR = [{ channel: 'email' }, { provider: 'smtp' }, { provider: 'relay' }, { provider: 'resend' }];
+      } else {
+        where.channel = ch;
+      }
+    }
     return this.prisma.notificationDelivery.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       take: 100,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            phoneE164: true,
+            role: true,
+            passengerProfile: { select: { fullName: true } },
+            driverProfile: { select: { fullName: true } },
+          },
+        },
+      },
     });
   }
 
@@ -3711,7 +3895,27 @@ export class AdminOpsService {
             status: 'failed',
           });
         }
-      } else if (dto.channel !== 'sms') {
+      } else if (dto.channel === 'email' && u.email) {
+        try {
+          await this.notifications.logDelivery({
+            userId: u.id,
+            channel: 'email',
+            title: dto.title,
+            body: dto.body,
+            status: 'sent',
+            templateKey: dto.templateKey,
+          });
+          sent += 1;
+        } catch {
+          await this.notifications.logDelivery({
+            userId: u.id,
+            channel: 'email',
+            title: dto.title,
+            body: dto.body,
+            status: 'failed',
+          });
+        }
+      } else if (dto.channel === 'push' || (dto.channel !== 'sms' && dto.channel !== 'email')) {
         const result = await this.notifications.sendToUser({
           userId: u.id,
           title: dto.title,
@@ -3780,7 +3984,7 @@ export class AdminOpsService {
       if (!ids.length) return [];
       return this.prisma.user.findMany({
         where: { id: { in: ids }, isSuspended: false },
-        select: { id: true, phoneE164: true, role: true },
+        select: { id: true, email: true, phoneE164: true, role: true },
       });
     }
     if (segment === 'GUESTS') {
@@ -3798,7 +4002,7 @@ export class AdminOpsService {
     }
     const users = await this.prisma.user.findMany({
       where,
-      select: { id: true, phoneE164: true, role: true },
+      select: { id: true, email: true, phoneE164: true, role: true },
       take: 500,
     });
     if (segment === 'CITY' && city) {

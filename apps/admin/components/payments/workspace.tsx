@@ -803,19 +803,21 @@ function PartyCard({
 }) {
   return (
     <div className="pay-party-card">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <span className="muted sm" style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <span className="muted sm" style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
           {role}
         </span>
         {badge && <Chip tone="action">{badge}</Chip>}
       </div>
-      <div style={{ fontWeight: 700, marginTop: 4 }}>{name || '—'}</div>
-      <div className="muted sm">{email || '—'}</div>
-      <div className="muted sm">{phone || '—'}</div>
+      <div style={{ fontWeight: 700, marginTop: 6, fontSize: 14 }}>{name || '—'}</div>
+      <div className="muted sm" style={{ wordBreak: 'break-all', marginTop: 2 }}>{email || '—'}</div>
+      <div className="muted sm" style={{ marginTop: 2 }}>{phone || '—'}</div>
       {userId && (
-        <Link className="btn ghost sm" href={`/users/${userId}`} style={{ marginTop: 8 }}>
-          Open profile
-        </Link>
+        <div className="pay-party-actions" style={{ marginTop: 12 }}>
+          <Link className="btn ghost sm" href={`/users/${userId}`}>
+            Open profile
+          </Link>
+        </div>
       )}
     </div>
   );

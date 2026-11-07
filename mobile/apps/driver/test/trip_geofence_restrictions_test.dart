@@ -79,42 +79,47 @@ void main() {
     });
   }
 
-  testWidgets('Allows opening Start Trip PIN sheet when ride is in DRIVER_ARRIVED',
-      (tester) async {
-    final appState = MockGeofenceAppState();
-    appState.hasSeenWelcome = true;
-    appState.loaded = true;
+  testWidgets(
+    'Allows opening Start Trip PIN sheet when ride is in DRIVER_ARRIVED',
+    (tester) async {
+      final appState = MockGeofenceAppState();
+      appState.hasSeenWelcome = true;
+      appState.loaded = true;
 
-    final trip = createArrivedTripWithCoords(
-      id: 'ride-geo-999',
-      fromLat: 43.6535,
-      fromLng: -79.3839,
-    );
-    appState.openRequests = [trip];
+      final trip = createArrivedTripWithCoords(
+        id: 'ride-geo-999',
+        fromLat: 43.6535,
+        fromLng: -79.3839,
+      );
+      appState.openRequests = [trip];
 
-    await tester.pumpWidget(
-      ChangeNotifierProvider<AppState>.value(
-        value: appState,
-        child: const MaterialApp(
-          home: TripDetailScreen(rideId: 'ride-geo-999'),
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: appState,
+          child: const MaterialApp(
+            home: TripDetailScreen(rideId: 'ride-geo-999'),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final startBtn = find.text('Start trip');
-    expect(startBtn, findsOneWidget);
-    await tester.tap(startBtn);
-    await tester.pumpAndSettle();
+      final startBtn = find.text('Start trip');
+      expect(startBtn, findsOneWidget);
+      await tester.tap(startBtn);
+      await tester.pumpAndSettle();
 
-    // Verify PIN sheet is displayed with headers
-    expect(find.text('Enter Ride PIN'), findsOneWidget);
-    expect(find.text('Ask the passenger for their 4-digit PIN'), findsOneWidget);
-    expect(find.text('Start ride'), findsOneWidget);
+      // Verify PIN sheet is displayed with headers
+      expect(find.text('Enter Ride PIN'), findsOneWidget);
+      expect(
+        find.text('Ask the passenger for their 4-digit PIN'),
+        findsOneWidget,
+      );
+      expect(find.text('Start ride'), findsOneWidget);
 
-    // Close the sheet and advance timer to avoid pending timers
-    await tester.tap(find.byIcon(Icons.close));
-    await tester.pumpAndSettle();
-    await tester.pump(const Duration(seconds: 5));
-  });
+      // Close the sheet and advance timer to avoid pending timers
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 5));
+    },
+  );
 }
