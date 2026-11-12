@@ -664,7 +664,7 @@ function RatingsInner() {
                       Phone: {selectedRating.fromUser.phoneE164}
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1, fontFamily: 'monospace' }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1, fontFamily: 'monospace', wordBreak: 'break-all' }}>
                     User ID: {selectedRating.fromUserId}
                   </div>
                   <div style={{ marginTop: 8 }}>
@@ -698,7 +698,7 @@ function RatingsInner() {
                       Phone: {selectedRating.toUser.phoneE164}
                     </div>
                   )}
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1, fontFamily: 'monospace' }}>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1, fontFamily: 'monospace', wordBreak: 'break-all' }}>
                     User ID: {selectedRating.toUserId}
                   </div>
                   <div style={{ marginTop: 8 }}>

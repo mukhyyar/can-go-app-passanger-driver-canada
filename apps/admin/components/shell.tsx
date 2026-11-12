@@ -98,16 +98,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             ☰
           </button>
-          <button className="search-btn" onClick={() => setPalette(true)}>
-            Search users, rides, plates, promos… ⌘K
+          <button className="search-btn" onClick={() => setPalette(true)} aria-label="Search">
+            <span className="search-btn-icon" aria-hidden>🔍</span>
+            <span className="search-btn-full">Search users, rides, plates, promos… ⌘K</span>
+            <span className="search-btn-short">Search… ⌘K</span>
           </button>
           <DriverNotices />
           <div className="user-chip">
             <b>{me?.adminRole?.name || me?.role}</b>
             <span>{me?.email}</span>
           </div>
-          <button className="btn ghost sm" onClick={logout}>
-            Sign out
+          <button className="btn ghost sm sign-out-btn" onClick={logout} aria-label="Sign out">
+            <span className="sign-out-text">Sign out</span>
+            <span className="sign-out-icon" aria-hidden>⎋</span>
           </button>
         </header>
         <div className="content">{children}</div>

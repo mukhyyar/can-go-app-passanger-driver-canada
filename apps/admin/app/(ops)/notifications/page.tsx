@@ -234,15 +234,7 @@ function NotificationsInner() {
 
       {/* Composer + Live Preview Section (Hidden if on deliveries log tab) */}
       {channelParam !== 'deliveries' && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.35fr) minmax(320px, 1fr)',
-            gap: 20,
-            marginBottom: 28,
-            alignItems: 'start',
-          }}
-        >
+        <div className="notif-composer-grid">
           {/* Left Column: Form Panel */}
           <div className="panel" style={{ padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -926,13 +918,13 @@ function NotificationsInner() {
                 {selectedDelivery.providerMsgId && (
                   <div style={{ gridColumn: 'span 2' }}>
                     <span style={{ color: 'var(--muted)' }}>Provider Message ID:</span>{' '}
-                    <code style={{ fontSize: 11 }}>{selectedDelivery.providerMsgId}</code>
+                    <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{selectedDelivery.providerMsgId}</code>
                   </div>
                 )}
                 {selectedDelivery.errorCode && (
                   <div style={{ gridColumn: 'span 2', color: '#dc2626' }}>
                     <span style={{ fontWeight: 700 }}>Error Code:</span>{' '}
-                    <code>{selectedDelivery.errorCode}</code>
+                    <code style={{ wordBreak: 'break-all' }}>{selectedDelivery.errorCode}</code>
                   </div>
                 )}
               </div>

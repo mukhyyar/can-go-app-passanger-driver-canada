@@ -778,7 +778,7 @@ function CasesInner() {
                 </button>
               </div>
 
-              <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800 }}>
+              <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, wordBreak: 'break-word' }}>
                 {selectedCase.title}
               </h2>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -811,13 +811,13 @@ function CasesInner() {
                   </div>
                   {selectedCase.passenger ? (
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', wordBreak: 'break-word' }}>
                         {selectedCase.passenger.fullName || 'User'}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
                         {selectedCase.passenger.user?.phoneE164 || 'No phone'}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', wordBreak: 'break-all' }}>
                         {selectedCase.passenger.user?.email || 'No email'}
                       </div>
                       <Link
@@ -851,13 +851,13 @@ function CasesInner() {
                   </div>
                   {selectedCase.driver ? (
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', wordBreak: 'break-word' }}>
                         {selectedCase.driver.fullName || 'Driver'}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
                         {selectedCase.driver.user?.phoneE164 || 'No phone'}
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', wordBreak: 'break-all' }}>
                         {selectedCase.driver.user?.email || 'No email'}
                       </div>
                       <Link

@@ -444,7 +444,8 @@ export function DriverCancellationManager() {
               ✓ No provider cancellations recorded in the selected window.
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <div className="table-wrap">
+              <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', color: '#6b7280', fontSize: 12, textTransform: 'uppercase' }}>
                   <th style={{ padding: '10px 8px' }}>Driver</th>
@@ -562,7 +563,8 @@ export function DriverCancellationManager() {
                 ))}
               </tbody>
             </table>
-          )}
+          </div>
+        )}
         </div>
       )}
 
@@ -593,7 +595,8 @@ export function DriverCancellationManager() {
           ) : records.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>No cancellation records found.</div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <div className="table-wrap">
+              <table style={{ width: '100%', minWidth: 700, borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', color: '#6b7280', fontSize: 12, textTransform: 'uppercase' }}>
                   <th style={{ padding: '8px' }}>Date</th>
@@ -673,7 +676,8 @@ export function DriverCancellationManager() {
                 })}
               </tbody>
             </table>
-          )}
+          </div>
+        )}
         </div>
       )}
 
@@ -687,7 +691,8 @@ export function DriverCancellationManager() {
             </p>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <div className="table-wrap">
+            <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', color: '#6b7280', fontSize: 12, textTransform: 'uppercase' }}>
                 <th style={{ padding: '10px 8px' }}>Reason Code</th>
@@ -815,14 +820,15 @@ export function DriverCancellationManager() {
             </tbody>
           </table>
         </div>
-      )}
+      </div>
+    )}
 
       {/* Modal: Issue Warning */}
       {warnModalDriver && (
         <div style={{
           position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: 'calc(100vw - 24px)', boxSizing: 'border-box', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700 }}>Issue Formal Warning</h3>
             <p style={{ margin: '0 0 16px', color: '#4b5563', fontSize: 14 }}>
               Issuing a warning will increment the driver&apos;s warning tally to <strong>{warnModalDriver.warningCount + 1}</strong> and send an official platform warning notice.
@@ -878,7 +884,7 @@ export function DriverCancellationManager() {
         <div style={{
           position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: 'calc(100vw - 24px)', boxSizing: 'border-box', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700, color: '#b91c1c' }}>Suspend Driver Account</h3>
             <p style={{ margin: '0 0 16px', color: '#4b5563', fontSize: 14 }}>
               Are you sure you want to suspend <strong>{suspendModalDriver.fullName}</strong>? The driver will be kicked offline and disqualified from receiving bookings.
@@ -921,7 +927,7 @@ export function DriverCancellationManager() {
         <div style={{
           position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: 'calc(100vw - 24px)', boxSizing: 'border-box', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700, color: '#7f1d1d' }}>Terminate Driver Account</h3>
             <p style={{ margin: '0 0 16px', color: '#4b5563', fontSize: 14 }}>
               <strong>Permanent Action:</strong> Terminating <strong>{terminateModalDriver.fullName}</strong> will revoke all driving privileges, permanently suspend user access, and invalidate all active credentials.
@@ -966,7 +972,7 @@ export function DriverCancellationManager() {
         <div style={{
           position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 500, width: 'calc(100vw - 24px)', boxSizing: 'border-box', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 700 }}>Review &amp; Override Cancellation</h3>
             <p style={{ margin: '0 0 16px', color: '#4b5563', fontSize: 14 }}>
               Ride: <strong>#{overrideModalRecord.rideId.slice(-6).toUpperCase()}</strong> | Driver: <strong>{overrideModalRecord.driver.fullName}</strong>

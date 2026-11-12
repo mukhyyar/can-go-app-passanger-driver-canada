@@ -1,6 +1,13 @@
 import './globals.css';
+import type { Viewport } from 'next';
 import { AuthProvider } from '../lib/auth';
 import { ToastProvider } from '../components/toast';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 export const metadata = {
   title: 'CAN-RIDE Admin Ops',

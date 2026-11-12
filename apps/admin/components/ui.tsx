@@ -117,7 +117,7 @@ export function Drawer({
     <div className="drawer-back" onClick={onClose} role="presentation">
       <aside
         className="drawer"
-        style={width ? { width } : undefined}
+        style={width ? { width, maxWidth: '100vw' } : { maxWidth: '100vw' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="drawer-title"

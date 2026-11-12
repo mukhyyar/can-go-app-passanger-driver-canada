@@ -319,8 +319,8 @@ export function User360Workspace() {
             hasAvatar={Boolean(data?.hasAvatar)}
             avatarPath={data?.avatarPath ?? null}
           />
-          <div>
-            <h1 className="page-title" style={{ marginBottom: 6 }}>
+          <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+            <h1 className="page-title" style={{ marginBottom: 6, wordBreak: 'break-word' }}>
               {name}
             </h1>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>

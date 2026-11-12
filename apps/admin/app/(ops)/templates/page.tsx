@@ -398,7 +398,7 @@ export default function TemplatesPage() {
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="template-form-row">
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
                   Delivery Channel

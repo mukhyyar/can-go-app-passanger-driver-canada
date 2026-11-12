@@ -809,7 +809,7 @@ function PartyCard({
         </span>
         {badge && <Chip tone="action">{badge}</Chip>}
       </div>
-      <div style={{ fontWeight: 700, marginTop: 6, fontSize: 14 }}>{name || '—'}</div>
+      <div style={{ fontWeight: 700, marginTop: 6, fontSize: 14, wordBreak: 'break-word' }}>{name || '—'}</div>
       <div className="muted sm" style={{ wordBreak: 'break-all', marginTop: 2 }}>{email || '—'}</div>
       <div className="muted sm" style={{ marginTop: 2 }}>{phone || '—'}</div>
       {userId && (
