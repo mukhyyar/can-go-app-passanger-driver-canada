@@ -598,9 +598,9 @@ function displayCell(v: unknown) {
 }
 
 function defaultMinWidth(type: ColType) {
-  if (type === 'number' || type === 'date') return 156;
-  if (type === 'enum' || type === 'boolean') return 128;
-  return 160;
+  if (type === 'number' || type === 'date') return 128;
+  if (type === 'enum' || type === 'boolean') return 108;
+  return 136;
 }
 
 function FilterIcon() {

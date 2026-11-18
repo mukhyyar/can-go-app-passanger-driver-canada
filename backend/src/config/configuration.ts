@@ -82,6 +82,8 @@ export default () => ({
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
     /** Apple Pay merchant identifier (e.g. merchant.com.canride.passenger) */
     merchantId: process.env.STRIPE_MERCHANT_ID,
+    connectReturnUrl: process.env.STRIPE_CONNECT_RETURN_URL,
+    connectRefreshUrl: process.env.STRIPE_CONNECT_REFRESH_URL,
   },
   twilio: {
     accountSid: process.env.TWILIO_ACCOUNT_SID,
@@ -160,7 +162,7 @@ export default () => ({
     manualReviewAlertCad: process.env.WALLET_MANUAL_REVIEW_ALERT_CAD ?? '5000',
     holdDays: parseInt(process.env.WALLET_HOLD_DAYS ?? '3', 10),
     dailyWithdrawalLimitCad: process.env.WALLET_DAILY_WITHDRAWAL_LIMIT_CAD || '',
-    defaultCommissionPct: process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '15',
+    defaultCommissionPct: process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '20',
   },
   email: {
     enabled: process.env.EMAIL_ENABLED === 'true',

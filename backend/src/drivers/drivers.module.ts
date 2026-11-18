@@ -7,13 +7,14 @@ import { KycOpsService } from './kyc-ops.service';
 import { KycDocumentsService } from './kyc-documents.service';
 import { DriversController } from './drivers.controller';
 import { AdminKycController } from './admin-kyc.controller';
+import { StripeConnectController } from './stripe-connect.controller';
 
 import { DocumentsExpiryService } from './documents-expiry.service';
 import { DocumentsExpiryScheduler } from './documents-expiry.scheduler';
 
 @Module({
   imports: [AuthModule, StorageModule, NotificationsModule],
-  controllers: [DriversController, AdminKycController],
+  controllers: [DriversController, AdminKycController, StripeConnectController],
   providers: [
     DriversService,
     KycOpsService,

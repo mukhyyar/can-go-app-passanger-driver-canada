@@ -15,6 +15,10 @@ type PayoutRow = {
   email: string | null;
   phoneE164: string | null;
   payoutStatus: string;
+  stripeAccountId?: string | null;
+  stripeAccountStatus?: string;
+  stripeChargesEnabled?: boolean;
+  stripePayoutsEnabled?: boolean;
   bankCountry: string | null;
   outpaymentCurrency: string | null;
   payoutMethod: string | null;
@@ -67,6 +71,17 @@ export default function PayoutReviewsPage() {
         <Chip tone={statusTone(String(r.payoutStatus))}>{String(r.payoutStatus)}</Chip>
       ),
     },
+    {
+      key: 'stripeAccountStatus',
+      label: 'Stripe Connect',
+      type: 'enum',
+      render: (r) => (
+        <Chip tone={statusTone(String(r.stripeAccountStatus || 'UNLINKED'))}>
+          {String(r.stripeAccountStatus || 'UNLINKED')}
+        </Chip>
+      ),
+    },
+    { key: 'stripeAccountId', label: 'Stripe Account', type: 'text' },
     { key: 'accountHolderName', label: 'Account holder', type: 'text' },
     { key: 'accountMask', label: 'Account', type: 'text' },
     { key: 'bankCountry', label: 'Bank country', type: 'text' },

@@ -35,8 +35,14 @@ export class StripeConnectService {
   /**
    * Creates an Express Connected Account for a Canadian driver/transport provider.
    */
-  async createDriverExpressAccount(driverId: string, email: string): Promise<string> {
+  async createDriverExpressAccount(
+    driverId: string,
+    email: string,
+    opts?: { isIndividual?: boolean },
+  ): Promise<string> {
     const stripe = this.getClient();
+    const businessType =
+      opts?.isIndividual === false ? 'company' : 'individual';
     const account = await stripe.accounts.create({
       type: 'express',
       country: 'CA',
@@ -45,7 +51,7 @@ export class StripeConnectService {
         transfers: { requested: true },
         card_payments: { requested: true },
       },
-      business_type: 'individual',
+      business_type: businessType,
       metadata: {
         driverId,
         platform: 'CAN_RIDE',
@@ -53,12 +59,14 @@ export class StripeConnectService {
       settings: {
         payouts: {
           schedule: {
-            interval: 'manual', // Platform controls payouts or delays until trip completion
+            // Connected Express account pays out transferred funds to the driver's bank;
+            // CAN-RIDE platform controls hold timing before executing the Stripe Transfer.
+            interval: 'daily',
           },
         },
       },
     });
-    this.logger.log(`Created Stripe Express account ${account.id} for driver ${driverId}`);
+    this.logger.log(`Created Stripe Express account ${account.id} for driver ${driverId} (${businessType})`);
     return account.id;
   }
 
@@ -72,11 +80,17 @@ export class StripeConnectService {
   ): Promise<string> {
     const stripe = this.getClient();
     const appBase =
-      this.config.get<string>('admin.passengerWebBase') || 'https://www.can-rides.ca';
+      (this.config.get<string>('admin.passengerWebBase') || 'https://www.can-rides.ca').replace(/\/+$/, '');
+    const defaultReturn =
+      this.config.get<string>('stripe.connectReturnUrl') ||
+      `${appBase}/stripe/return?accountId=${encodeURIComponent(accountId)}`;
+    const defaultRefresh =
+      this.config.get<string>('stripe.connectRefreshUrl') ||
+      `${appBase}/stripe/refresh?accountId=${encodeURIComponent(accountId)}`;
     const link = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: refreshUrl || `${appBase}/stripe/refresh`,
-      return_url: returnUrl || `${appBase}/stripe/return`,
+      refresh_url: refreshUrl || defaultRefresh,
+      return_url: returnUrl || defaultReturn,
       type: 'account_onboarding',
     });
     return link.url;
@@ -114,7 +128,7 @@ export class StripeConnectService {
   /**
    * Separate Charges & Transfers:
    * Transfers the net driver earnings from the platform to the driver's Express account
-   * upon ride completion.
+   * after ride completion and post-ride hold/verification checks.
    */
   async transferToDriver(params: {
     amount: number;
@@ -123,6 +137,8 @@ export class StripeConnectService {
     transferGroup: string;
     rideId: string;
     driverId?: string;
+    sourceTransaction?: string;
+    idempotencyKey?: string;
   }): Promise<{ transferId: string; amountCents: number }> {
     const stripe = this.getClient();
     const amountCents = Math.round(params.amount * 100);
@@ -130,17 +146,25 @@ export class StripeConnectService {
       throw new Error(`Invalid transfer amount: ${params.amount}`);
     }
 
-    const transfer = await stripe.transfers.create({
-      amount: amountCents,
-      currency: params.currency.toLowerCase(),
-      destination: params.destinationAccountId,
-      transfer_group: params.transferGroup,
-      metadata: {
-        rideId: params.rideId,
-        driverId: params.driverId ?? '',
-        payoutType: 'trip_completion',
+    const transfer = await stripe.transfers.create(
+      {
+        amount: amountCents,
+        currency: params.currency.toLowerCase(),
+        destination: params.destinationAccountId,
+        transfer_group: params.transferGroup,
+        ...(params.sourceTransaction
+          ? { source_transaction: params.sourceTransaction }
+          : {}),
+        metadata: {
+          rideId: params.rideId,
+          driverId: params.driverId ?? '',
+          payoutType: 'trip_completion',
+        },
       },
-    });
+      params.idempotencyKey
+        ? { idempotencyKey: params.idempotencyKey }
+        : undefined,
+    );
 
     this.logger.log(
       `Transferred ${amountCents} ${params.currency} to ${params.destinationAccountId} for ride ${params.rideId} (tr: ${transfer.id})`,
@@ -149,6 +173,39 @@ export class StripeConnectService {
     return {
       transferId: transfer.id,
       amountCents,
+    };
+  }
+
+  /**
+   * Reverses a previously created transfer to a connected driver account
+   * (e.g. when a full/partial refund or chargeback occurs after a transfer).
+   */
+  async reverseTransfer(params: {
+    transferId: string;
+    amount?: number;
+    rideId?: string;
+    reason?: string;
+  }): Promise<{ reversalId: string; amountCents: number }> {
+    const stripe = this.getClient();
+    const opts: Stripe.TransferCreateReversalParams = {
+      metadata: {
+        ...(params.rideId ? { rideId: params.rideId } : {}),
+        ...(params.reason ? { reason: params.reason } : {}),
+      },
+    };
+    if (params.amount != null && params.amount > 0) {
+      opts.amount = Math.round(params.amount * 100);
+    }
+    const reversal = await stripe.transfers.createReversal(
+      params.transferId,
+      opts,
+    );
+    this.logger.log(
+      `Reversed transfer ${params.transferId} (reversal: ${reversal.id}, amountCents: ${reversal.amount})`,
+    );
+    return {
+      reversalId: reversal.id,
+      amountCents: reversal.amount,
     };
   }
 

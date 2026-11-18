@@ -1020,8 +1020,19 @@ function PayoutTab({
 }) {
   const toast = useToast();
   const payout = asObj(drv.payoutSettingsJson);
+  const stripeAccountId = drv.stripeAccountId ? String(drv.stripeAccountId) : null;
+  const stripeAccountStatus = String(drv.stripeAccountStatus || 'UNLINKED');
+  const stripeChargesEnabled = Boolean(drv.stripeChargesEnabled);
+  const stripePayoutsEnabled = Boolean(drv.stripePayoutsEnabled);
+  const stripeActive =
+    Boolean(stripeAccountId) && stripePayoutsEnabled && stripeAccountStatus === 'ACTIVE';
   const status = String(
-    payout.status ?? (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
+    payout.status ??
+      (stripeActive
+        ? 'VERIFIED'
+        : payout.outpaymentCurrency
+          ? 'CONFIGURED'
+          : 'NOT_CONFIGURED'),
   );
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1035,6 +1046,20 @@ function PayoutTab({
     canReview &&
     configured &&
     (status === 'PENDING' || status === 'VERIFIED' || status === 'CONFIGURED');
+
+  async function syncStripeStatus() {
+    if (!stripeAccountId) return;
+    setBusy(true);
+    try {
+      await api(`/stripe/return?accountId=${encodeURIComponent(stripeAccountId)}`);
+      toast.push('Stripe Connect status synchronized');
+      onChanged();
+    } catch (e) {
+      toast.push(e instanceof Error ? e.message : String(e), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function review(decision: 'APPROVE' | 'REJECT') {
     setBusy(true);
@@ -1067,20 +1092,55 @@ function PayoutTab({
   return (
     <div className="panel">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={{ marginTop: 0 }}>Bank / payout details</h3>
+        <h3 style={{ marginTop: 0 }}>Stripe Connect &amp; payout details</h3>
         <Chip tone={statusTone(status)}>{status}</Chip>
       </div>
       <p className="muted" style={{ marginTop: 0 }}>
-        Driver must have verified payout details before wallet withdrawals are allowed.
+        Drivers use Stripe Connect Express (Canada) for direct automated payouts after ride completion and the post-ride verification window.
       </p>
       <div className="grid-2" style={{ marginTop: 12 }}>
+        <Card title="Stripe Connect Express">
+          <Row label="Connected Account ID" value={stripeAccountId || 'Not linked'} />
+          <Row
+            label="Onboarding Status"
+            value={<Chip tone={statusTone(stripeAccountStatus)}>{stripeAccountStatus}</Chip>}
+          />
+          <Row
+            label="Charges Enabled"
+            value={
+              <Chip tone={stripeChargesEnabled ? 'ok' : 'warn'}>
+                {stripeChargesEnabled ? 'ENABLED' : 'DISABLED'}
+              </Chip>
+            }
+          />
+          <Row
+            label="Payouts Enabled"
+            value={
+              <Chip tone={stripePayoutsEnabled ? 'ok' : 'warn'}>
+                {stripePayoutsEnabled ? 'ENABLED' : 'DISABLED'}
+              </Chip>
+            }
+          />
+          {stripeAccountId && (
+            <div style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                className="btn sm ghost"
+                disabled={busy}
+                onClick={() => void syncStripeStatus()}
+              >
+                Sync Stripe Status
+              </button>
+            </div>
+          )}
+        </Card>
         <Card title="Submitted details">
           <Row label="Account holder" value={String(payout.accountHolderName || '—')} />
           <Row label="Account mask" value={String(payout.accountMask || '—')} />
-          <Row label="Bank country" value={String(payout.bankCountry || '—')} />
-          <Row label="Currency" value={String(payout.outpaymentCurrency || '—')} />
-          <Row label="Method" value={String(payout.payoutMethod || '—')} />
-          <Row label="Billing period" value={String(payout.billingPeriod || '—')} />
+          <Row label="Bank country" value={String(payout.bankCountry || 'Canada')} />
+          <Row label="Currency" value={String(payout.outpaymentCurrency || 'CAD')} />
+          <Row label="Method" value={String(payout.payoutMethod || (stripeAccountId ? 'stripe_express' : '—'))} />
+          <Row label="Billing period" value={String(payout.billingPeriod || '3 days')} />
         </Card>
         <Card title="Review">
           <Row label="Status" value={<Chip tone={statusTone(status)}>{status}</Chip>} />

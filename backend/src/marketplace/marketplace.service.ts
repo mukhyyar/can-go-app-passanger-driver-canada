@@ -906,6 +906,36 @@ export class MarketplaceService {
 
         if (refundAmount > 0.01) {
           const isFull = Math.abs(refundAmount - remaining) < 0.01;
+          let gatewayRefundId: string | undefined;
+          let gatewayStatus = 'succeeded';
+          let gatewayResponse: Record<string, unknown> = {};
+
+          if (this.payments?.refund) {
+            try {
+              const res = await this.payments.refund(
+                payment.providerRef ?? payment.id,
+                refundAmount,
+              );
+              gatewayRefundId = res.refundId;
+              gatewayStatus =
+                res.status === 'succeeded' || res.status === 'pending'
+                  ? res.status
+                  : 'succeeded';
+              gatewayResponse = res as unknown as Record<string, unknown>;
+            } catch (gatewayErr) {
+              this.logger.error(
+                `Gateway refund error on cancelRide for ride ${rideId}: ${gatewayErr}`,
+              );
+              gatewayStatus = 'failed';
+              gatewayResponse = {
+                error:
+                  gatewayErr instanceof Error
+                    ? gatewayErr.message
+                    : String(gatewayErr),
+              };
+            }
+          }
+
           await this.prisma.$transaction(async (tx) => {
             await tx.refund.create({
               data: {
@@ -915,14 +945,19 @@ export class MarketplaceService {
                 type: isFull ? 'FULL' : 'PARTIAL',
                 reason: `Cancellation refund (${evaluationLabel})`,
                 internalNote: `Automated cancellation refund for ride ${rideId}`,
-                status: 'succeeded',
+                status: gatewayStatus,
+                gatewayRefundId,
+                gatewayResponse:
+                  gatewayResponse as unknown as Prisma.InputJsonValue,
                 requestedById: userId,
               },
             });
-            await tx.payment.update({
-              where: { id: payment.id },
-              data: { status: isFull ? 'refunded' : 'partially_refunded' },
-            });
+            if (gatewayStatus !== 'failed') {
+              await tx.payment.update({
+                where: { id: payment.id },
+                data: { status: isFull ? 'refunded' : 'partially_refunded' },
+              });
+            }
             await tx.rideFinancial.updateMany({
               where: { rideId },
               data: {
@@ -2589,10 +2624,13 @@ export class MarketplaceService {
     }
 
     const snap = offer.priceSnapshot as PriceSnapshot;
+    const breakdown = this.presentation?.priceBreakdown?.(snap);
     const total =
-      snap?.passengerTotal != null
-        ? Number(snap.passengerTotal)
-        : Number(offer.bidAmount);
+      breakdown?.total != null
+        ? breakdown.total
+        : snap?.passengerTotal != null
+          ? Number(snap.passengerTotal)
+          : round2(Number(offer.bidAmount) * 1.2);
     const paymentQuote = this.presentation.computePaymentQuote({
       totalAmount: total,
       currency: offer.currency,
@@ -2967,7 +3005,13 @@ export class MarketplaceService {
     }
 
     const snap = ride.selectedOffer.priceSnapshot as PriceSnapshot;
-    const totalAmount = snap.passengerTotal;
+    const breakdown = this.presentation?.priceBreakdown?.(snap);
+    const totalAmount =
+      breakdown?.total != null
+        ? breakdown.total
+        : snap?.passengerTotal != null
+          ? Number(snap.passengerTotal)
+          : null;
     if (totalAmount == null) {
       throw new BadRequestException('Frozen passenger total missing');
     }
@@ -3052,6 +3096,7 @@ export class MarketplaceService {
     await this.recordRideFinancial(ride.id, {
       paymentId: payment.id,
       paymentRef: intent.intentId,
+      priceSnapshot: snap as unknown as Record<string, unknown>,
     });
 
     // Never auto-book unpaid/dev intents. Real Stripe create returns
@@ -3463,6 +3508,7 @@ export class MarketplaceService {
     });
 
     // 3. Credit Driver Wallet
+    let tipWalletEntryId: string | undefined;
     const existingTipEntry = await this.prisma.driverWalletEntry.findFirst({
       where: {
         driverId,
@@ -3475,6 +3521,7 @@ export class MarketplaceService {
         ],
       },
     });
+    tipWalletEntryId = existingTipEntry?.id;
     if (!existingTipEntry) {
       const hasExistingRideAdjustment = await this.prisma.driverWalletEntry.findFirst({
         where: {
@@ -3483,7 +3530,7 @@ export class MarketplaceService {
           type: WalletEntryType.ADJUSTMENT,
         },
       });
-      await this.prisma.driverWalletEntry.create({
+      const createdTipEntry = await this.prisma.driverWalletEntry.create({
         data: {
           driverId,
           type: WalletEntryType.ADJUSTMENT,
@@ -3507,6 +3554,7 @@ export class MarketplaceService {
           } as Prisma.InputJsonValue,
         },
       });
+      tipWalletEntryId = createdTipEntry?.id;
     }
 
     // 4. Stripe Connect Transfer (if driver has payouts enabled and connect is configured)
@@ -3517,7 +3565,7 @@ export class MarketplaceService {
       this.stripeConnect?.isConfigured()
     ) {
       try {
-        await this.stripeConnect.transferToDriver({
+        const tipTransfer = await this.stripeConnect.transferToDriver({
           amount,
           currency: ride.currency || 'CAD',
           destinationAccountId: driver.stripeAccountId,
@@ -3525,6 +3573,27 @@ export class MarketplaceService {
           rideId: ride.id,
           driverId: driver.id,
         });
+        if (
+          tipWalletEntryId &&
+          (this.prisma.driverWalletEntry as any)?.update
+        ) {
+          await this.prisma.driverWalletEntry.update({
+            where: { id: tipWalletEntryId },
+            data: {
+              metaJson: {
+                isTip: true,
+                tipAmount: amount,
+                rideId: ride.id,
+                bookingRef: ride.id,
+                fromLabel: ride.fromLabel,
+                toLabel: ride.toLabel ?? null,
+                tippedAt: new Date().toISOString(),
+                transferredDirect: true,
+                stripeTransferId: tipTransfer?.transferId ?? null,
+              } as Prisma.InputJsonValue,
+            },
+          });
+        }
       } catch (err) {
         this.logger.warn(`Stripe Connect tip transfer failed: ${err}`);
       }
@@ -3592,12 +3661,18 @@ export class MarketplaceService {
       const rawObj = (event.raw as any)?.data?.object;
       if (rawObj?.id) {
         const isComplete = Boolean(rawObj.charges_enabled && rawObj.payouts_enabled);
-        const reqDue = rawObj.requirements?.currently_due ?? [];
+        const disabledReason = rawObj.requirements?.disabled_reason ?? null;
+        const reqDue = [
+          ...(rawObj.requirements?.currently_due ?? []),
+          ...(rawObj.requirements?.past_due ?? []),
+        ];
         const status = isComplete
           ? 'ACTIVE'
-          : reqDue.length > 0
-            ? 'REQUIREMENTS_DUE'
-            : 'PENDING';
+          : disabledReason
+            ? 'RESTRICTED'
+            : reqDue.length > 0
+              ? 'REQUIREMENTS_DUE'
+              : 'PENDING';
         await this.prisma.driverProfile.updateMany({
           where: { stripeAccountId: rawObj.id },
           data: {
@@ -3614,6 +3689,285 @@ export class MarketplaceService {
         data: { processedAt: new Date() },
       });
       return { ok: true, handled: 'account.updated' };
+    }
+
+    // Handle Stripe Connect transfer & payout webhook events on the main webhook endpoint
+    if (
+      event.type === 'transfer.created' ||
+      event.type === 'transfer.reversed' ||
+      event.type === 'payout.paid' ||
+      event.type === 'payout.failed'
+    ) {
+      const rawObj = (event.raw as any)?.data?.object ?? {};
+      const objectId = rawObj.id ? String(rawObj.id) : undefined;
+      const rideIdMeta = rawObj.metadata?.rideId ? String(rawObj.metadata.rideId) : undefined;
+      if (event.type === 'transfer.reversed') {
+        if (objectId && (this.prisma.rideFinancial as any)?.updateMany) {
+          await this.prisma.rideFinancial.updateMany({
+            where: {
+              OR: [
+                { stripeTransferId: objectId },
+                ...(rideIdMeta ? [{ rideId: rideIdMeta }] : []),
+              ],
+            },
+            data: { driverPayoutStatus: DriverPayoutStatus.REVERSED },
+          });
+        }
+        if (objectId && (this.prisma.driverPayout as any)?.updateMany) {
+          await this.prisma.driverPayout.updateMany({
+            where: {
+              OR: [{ providerPayoutId: objectId }, { providerBatchId: objectId }],
+            },
+            data: {
+              status: DriverPayoutStatus.REVERSED,
+              providerStatus: 'reversed',
+            },
+          });
+        }
+      } else if (event.type === 'payout.failed') {
+        if (objectId && (this.prisma.driverPayout as any)?.updateMany) {
+          await this.prisma.driverPayout.updateMany({
+            where: {
+              OR: [{ providerPayoutId: objectId }, { providerBatchId: objectId }],
+            },
+            data: {
+              status: DriverPayoutStatus.FAILED,
+              providerStatus: 'failed',
+              failureReason: String(rawObj.failure_message ?? 'Stripe payout failed'),
+            },
+          });
+        }
+      } else if (event.type === 'transfer.created' || event.type === 'payout.paid') {
+        if (objectId && (this.prisma.rideFinancial as any)?.updateMany) {
+          await this.prisma.rideFinancial.updateMany({
+            where: {
+              OR: [
+                { stripeTransferId: objectId },
+                ...(rideIdMeta ? [{ rideId: rideIdMeta }] : []),
+              ],
+            },
+            data: {
+              driverPayoutStatus: DriverPayoutStatus.SUCCEEDED,
+              stripeTransferId: objectId,
+              payoutReleasedAt: new Date(),
+            },
+          });
+        }
+      }
+      await this.prisma.webhookEvent.update({
+        where: {
+          provider_eventId: { provider: event.provider, eventId: event.eventId },
+        },
+        data: { processedAt: new Date() },
+      });
+      return { ok: true, handled: event.type };
+    }
+
+    // Handle Stripe Dispute / Chargeback webhook events (Section 7 & 8)
+    if (
+      event.type === 'charge.dispute.created' ||
+      event.type === 'charge.dispute.updated' ||
+      event.type === 'charge.dispute.closed'
+    ) {
+      const rawObj = (event.raw as any)?.data?.object ?? {};
+      const piId = rawObj.payment_intent ? String(rawObj.payment_intent) : event.paymentRef;
+      const disputedPayment = piId
+        ? await this.prisma.payment.findFirst({
+            where: { providerRef: piId },
+            include: { ride: true },
+          })
+        : null;
+
+      if (disputedPayment) {
+        const disputeStatusRaw = String(rawObj.status ?? '').toLowerCase();
+        const isClosed = event.type === 'charge.dispute.closed';
+        const isWon = isClosed && disputeStatusRaw === 'won';
+        const isLost = isClosed && disputeStatusRaw === 'lost';
+
+        await this.prisma.payment.update({
+          where: { id: disputedPayment.id },
+          data: {
+            status: isWon ? 'succeeded' : isLost ? 'refunded' : 'disputed',
+            rawWebhookLast: event.raw as Prisma.InputJsonValue,
+          },
+        });
+
+        if ((this.prisma.rideFinancial as any)?.updateMany) {
+          await this.prisma.rideFinancial.updateMany({
+            where: { rideId: disputedPayment.rideId },
+            data: {
+              driverPayoutStatus: isWon
+                ? DriverPayoutStatus.HELD
+                : isLost
+                  ? DriverPayoutStatus.REVERSED
+                  : DriverPayoutStatus.HELD,
+              ...(isLost
+                ? {
+                    refundAmount: disputedPayment.amount,
+                    refundReason: `Chargeback lost (${rawObj.reason ?? 'dispute'})`,
+                    refundedAt: new Date(),
+                  }
+                : {}),
+            },
+          });
+        }
+
+        // Hold or reverse driver wallet earning for this ride
+        if ((this.prisma.driverWalletEntry as any)?.updateMany) {
+          if (isLost) {
+            await this.prisma.driverWalletEntry.updateMany({
+              where: {
+                rideId: disputedPayment.rideId,
+                type: WalletEntryType.EARNING,
+              },
+              data: { status: WalletEntryStatus.REVERSED },
+            });
+            // If transfer was already sent, reverse transfer on Stripe
+            if (this.stripeConnect?.isConfigured?.() && (this.prisma.rideFinancial as any)?.findUnique) {
+              const rf = await this.prisma.rideFinancial.findUnique({
+                where: { rideId: disputedPayment.rideId },
+              });
+              if (rf?.stripeTransferId) {
+                await this.stripeConnect
+                  .reverseTransfer({
+                    transferId: rf.stripeTransferId,
+                    rideId: disputedPayment.rideId,
+                    reason: 'charge_dispute_lost',
+                  })
+                  .catch((err) =>
+                    this.logger.warn(`Failed reversing transfer on dispute loss: ${err}`),
+                  );
+              }
+            }
+          } else if (isWon) {
+            await this.prisma.driverWalletEntry.updateMany({
+              where: {
+                rideId: disputedPayment.rideId,
+                type: WalletEntryType.EARNING,
+              },
+              data: {
+                status: WalletEntryStatus.POSTED,
+                availableAt: new Date(),
+              },
+            });
+          } else {
+            // Freeze payout while dispute is open
+            await this.prisma.driverWalletEntry.updateMany({
+              where: {
+                rideId: disputedPayment.rideId,
+                type: WalletEntryType.EARNING,
+              },
+              data: {
+                status: WalletEntryStatus.PENDING,
+                availableAt: new Date(Date.now() + 30 * 24 * 3600_000),
+              },
+            });
+          }
+        }
+
+        // Open a Dispute SupportCase on charge.dispute.created
+        if (
+          event.type === 'charge.dispute.created' &&
+          disputedPayment.ride &&
+          ((this.prisma.supportCase as any)?.create || (this.prisma as any).dispute?.create)
+        ) {
+          const ride = disputedPayment.ride;
+          const passengerUser = await this.prisma.passengerProfile
+            ?.findUnique?.({
+              where: { id: ride.passengerId },
+              select: { userId: true },
+            })
+            .catch(() => null);
+          if (passengerUser?.userId) {
+            await (this.prisma as any).dispute
+              ?.create?.({
+                data: {
+                  rideId: ride.id,
+                  openedById: passengerUser.userId,
+                  reason: `Stripe Dispute: ${rawObj.reason ?? 'chargeback'} (${rawObj.id ?? ''})`,
+                  status: 'OPEN',
+                },
+              })
+              .catch(() => null);
+            await this.prisma.supportCase
+              ?.create?.({
+                data: {
+                  title: `Stripe Chargeback / Dispute (${rawObj.reason ?? 'dispute'})`,
+                  type: SupportCaseType.DISPUTE,
+                  status: SupportCaseStatus.OPEN,
+                  createdById: passengerUser.userId,
+                  passengerProfileId: ride.passengerId,
+                  driverProfileId: ride.assignedDriverId ?? null,
+                  rideId: ride.id,
+                  paymentId: disputedPayment.id,
+                  slaDueAt: new Date(Date.now() + 12 * 3600_000),
+                },
+              })
+              .catch(() => null);
+          }
+        }
+      }
+
+      await this.prisma.webhookEvent.update({
+        where: {
+          provider_eventId: { provider: event.provider, eventId: event.eventId },
+        },
+        data: { processedAt: new Date() },
+      });
+      return { ok: true, handled: event.type };
+    }
+
+    // Handle Stripe Refund webhook events (charge.refunded, refund.updated, refund.failed)
+    if (
+      event.type === 'charge.refunded' ||
+      event.type === 'refund.updated' ||
+      event.type === 'refund.failed'
+    ) {
+      const rawObj = (event.raw as any)?.data?.object ?? {};
+      const piId = rawObj.payment_intent ? String(rawObj.payment_intent) : event.paymentRef;
+      const refundedPayment = piId
+        ? await this.prisma.payment.findFirst({ where: { providerRef: piId } })
+        : null;
+      if (refundedPayment) {
+        if (event.type === 'refund.failed') {
+          if (rawObj.id && (this.prisma.refund as any)?.updateMany) {
+            await this.prisma.refund.updateMany({
+              where: { gatewayRefundId: String(rawObj.id) },
+              data: { status: 'failed' },
+            });
+          }
+        } else {
+          const amountRefundedCents = Number(
+            rawObj.amount_refunded ?? rawObj.amount ?? 0,
+          );
+          const amountRefunded = round2(amountRefundedCents / 100);
+          const totalAmount = Number(refundedPayment.amount);
+          const isFull = amountRefunded >= totalAmount - 0.01;
+          await this.prisma.payment.update({
+            where: { id: refundedPayment.id },
+            data: {
+              status: isFull ? 'refunded' : 'partially_refunded',
+              rawWebhookLast: event.raw as Prisma.InputJsonValue,
+            },
+          });
+          if ((this.prisma.rideFinancial as any)?.updateMany) {
+            await this.prisma.rideFinancial.updateMany({
+              where: { rideId: refundedPayment.rideId },
+              data: {
+                refundAmount: amountRefunded,
+                refundedAt: new Date(),
+              },
+            });
+          }
+        }
+      }
+      await this.prisma.webhookEvent.update({
+        where: {
+          provider_eventId: { provider: event.provider, eventId: event.eventId },
+        },
+        data: { processedAt: new Date() },
+      });
+      return { ok: true, handled: event.type };
     }
 
     const paymentRef = event.paymentRef;
@@ -3654,10 +4008,26 @@ export class MarketplaceService {
       },
     });
 
-    const isTip = (payment.metaJson as Record<string, unknown> | null)?.type === 'TIP';
+    const metaType = (payment.metaJson as Record<string, unknown> | null)?.type;
+    const isTip = metaType === 'TIP';
+    const isLostItemFee = metaType === 'LOST_ITEM_FEE';
     if (event.status === 'succeeded') {
       if (isTip) {
         await this.finalizeTipPayment(payment.id);
+      } else if (isLostItemFee) {
+        if ((this.prisma.driverWalletEntry as any)?.updateMany) {
+          await this.prisma.driverWalletEntry.updateMany({
+            where: {
+              type: WalletEntryType.ADJUSTMENT,
+              description: { contains: shortIdFrom(payment.rideId) },
+              status: WalletEntryStatus.PENDING,
+            },
+            data: {
+              status: WalletEntryStatus.POSTED,
+              availableAt: null,
+            },
+          });
+        }
       } else {
         const meta =
           (event.raw as { data?: { object?: { metadata?: Record<string, string> } } })
@@ -3670,7 +4040,7 @@ export class MarketplaceService {
         });
         await this.markBooked(payment.rideId, payment.id, undefined);
       }
-    } else if (event.status === 'failed' && !isTip) {
+    } else if (event.status === 'failed' && !isTip && !isLostItemFee) {
       // Do not leave the ride stuck — release reservation so passenger can retry.
       await this.releasePaymentReservation(
         payment.rideId,
@@ -3952,8 +4322,14 @@ export class MarketplaceService {
     });
     if (!ride) return null;
 
+    const driverOfferSnap =
+      (ride as any).selectedOffer &&
+      typeof (ride as any).selectedOffer.priceSnapshot === 'object'
+        ? ((ride as any).selectedOffer.priceSnapshot as Record<string, unknown>)
+        : null;
     const snap =
       opts?.priceSnapshot ??
+      driverOfferSnap ??
       (ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
         ? (ride.priceSnapshot as Record<string, unknown>)
         : {});
@@ -3961,7 +4337,7 @@ export class MarketplaceService {
     const rawFare = snap.subtotal ?? snap.bidAmount ?? snap.driverEarning ?? 0;
     const rideFare = typeof rawFare === 'number' ? rawFare : parseFloat(String(rawFare) || '0');
 
-    const rawFee = snap.platformFee ?? snap.marketplaceFee ?? 0;
+    const rawFee = snap.platformFee ?? snap.marketplaceFee ?? parseFloat((rideFare * 0.2).toFixed(2));
     const marketplaceFee = typeof rawFee === 'number' ? rawFee : parseFloat(String(rawFee) || '0');
 
     const rawTax = snap.taxAmount ?? 0;
@@ -3970,8 +4346,10 @@ export class MarketplaceService {
     const rawTip = snap.tipAmount ?? snap.tip ?? 0;
     const tipAmount = typeof rawTip === 'number' ? rawTip : parseFloat(String(rawTip) || '0');
 
-    const rawTotal = snap.passengerTotal ?? (rideFare + marketplaceFee + taxes + tipAmount);
-    const passengerTotalCharged = typeof rawTotal === 'number' ? rawTotal : parseFloat(String(rawTotal) || '0');
+    const expectedTotal = parseFloat((rideFare + marketplaceFee + taxes + tipAmount).toFixed(2));
+    const rawTotal = snap.passengerTotal;
+    const parsedRawTotal = typeof rawTotal === 'number' ? rawTotal : parseFloat(String(rawTotal) || '0');
+    const passengerTotalCharged = parsedRawTotal >= expectedTotal ? parsedRawTotal : expectedTotal;
 
     // CAN-RIDE Driver Commission standard is 20%
     const commissionRate = 0.2000;
@@ -4203,6 +4581,20 @@ export class MarketplaceService {
       throw new ForbiddenException(
         `Cannot accept rides or make offers: your ${expiredDoc.docType} has expired. Please upload an updated document for verification.`,
       );
+    }
+    if (
+      this.stripeConnect?.isConfigured?.() ||
+      user.driverProfile.stripeAccountId
+    ) {
+      if (
+        !user.driverProfile.stripeAccountId ||
+        !user.driverProfile.stripePayoutsEnabled ||
+        user.driverProfile.stripeAccountStatus !== 'ACTIVE'
+      ) {
+        throw new ForbiddenException(
+          'Complete your Stripe Connect payout verification before submitting ride offers or accepting bookings.',
+        );
+      }
     }
     return user.driverProfile;
   }
@@ -4939,6 +5331,10 @@ export class MarketplaceService {
             languagesJson: true,
             isActivated: true,
             approvalStatus: true,
+            stripeAccountId: true,
+            stripeAccountStatus: true,
+            stripeChargesEnabled: true,
+            stripePayoutsEnabled: true,
             user: { select: { id: true, isSuspended: true } },
           },
         },
@@ -4954,6 +5350,9 @@ export class MarketplaceService {
       id?: string;
       isActivated: boolean;
       approvalStatus: DriverApprovalStatus;
+      stripeAccountId?: string | null;
+      stripeAccountStatus?: string | null;
+      stripePayoutsEnabled?: boolean | null;
       user: { isSuspended: boolean };
     };
   }) {
@@ -4965,6 +5364,20 @@ export class MarketplaceService {
     }
     if (offer.driver.user.isSuspended) {
       throw new BadRequestException('Driver account is suspended');
+    }
+    if (
+      this.stripeConnect?.isConfigured?.() ||
+      offer.driver.stripeAccountId
+    ) {
+      if (
+        !offer.driver.stripeAccountId ||
+        !offer.driver.stripePayoutsEnabled ||
+        offer.driver.stripeAccountStatus !== 'ACTIVE'
+      ) {
+        throw new BadRequestException(
+          'Driver payout verification is incomplete and cannot receive bookings',
+        );
+      }
     }
     const driverId = offer.driver.id ?? offer.driverId;
     if (driverId) {
@@ -5564,6 +5977,7 @@ export class MarketplaceService {
             type: WalletEntryType.ADJUSTMENT,
           },
         });
+        const isAlreadyPaid = intent.status === 'succeeded';
         await this.prisma.driverWalletEntry.create({
           data: {
             driverId,
@@ -5571,11 +5985,15 @@ export class MarketplaceService {
             direction: WalletDirection.CREDIT,
             amount: new Prisma.Decimal(amount),
             currency: (ride.currency || 'CAD').toUpperCase(),
-            status: WalletEntryStatus.POSTED,
+            status: isAlreadyPaid
+              ? WalletEntryStatus.POSTED
+              : WalletEntryStatus.PENDING,
             // If another adjustment already exists on this ride (e.g. Tip), set rideId to null
             // to satisfy @@unique([driverId, rideId, type]), preserving ride link in metaJson.
             rideId: hasExistingRideAdjustment ? null : ride.id,
-            availableAt: null,
+            availableAt: isAlreadyPaid
+              ? null
+              : new Date(Date.now() + 365 * 24 * 3600_000),
             description: `Lost item return fee · Ride #${shortIdFrom(ride.id)}`,
             metaJson: {
               isLostItemFee: true,

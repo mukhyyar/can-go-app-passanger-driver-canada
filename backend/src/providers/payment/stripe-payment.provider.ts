@@ -23,10 +23,12 @@ export class StripePaymentProvider implements PaymentProvider {
   private readonly logger = new Logger(StripePaymentProvider.name);
   private readonly secret: string | undefined;
   private readonly webhookSecret: string | undefined;
+  private readonly nodeEnv: string;
 
   constructor(config: ConfigService) {
     this.secret = config.get<string>('stripe.secretKey');
     this.webhookSecret = config.get<string>('stripe.webhookSecret');
+    this.nodeEnv = config.get<string>('nodeEnv') ?? process.env.NODE_ENV ?? 'local';
   }
 
   private assertConfigured() {
@@ -141,6 +143,11 @@ export class StripePaymentProvider implements PaymentProvider {
     rawBody: Buffer | string,
   ): Promise<VerifiedWebhookEvent> {
     const raw = typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8');
+    if (this.nodeEnv === 'production' && !this.webhookSecret) {
+      throw new ServiceUnavailableException(
+        'STRIPE_WEBHOOK_SECRET is required in production',
+      );
+    }
     if (this.webhookSecret) {
       const sigHeader = header(headers, 'stripe-signature');
       if (!sigHeader || !verifyStripeSignature(raw, sigHeader, this.webhookSecret)) {
@@ -159,11 +166,17 @@ export class StripePaymentProvider implements PaymentProvider {
     let status: string | undefined;
     if (event.type === 'payment_intent.succeeded') status = 'succeeded';
     else if (event.type === 'payment_intent.payment_failed') status = 'failed';
+    const paymentRef =
+      typeof obj.payment_intent === 'string' && obj.payment_intent
+        ? obj.payment_intent
+        : obj.id
+          ? String(obj.id)
+          : undefined;
     return {
       provider: this.name,
       eventId: event.id,
       type: event.type,
-      paymentRef: obj.id ? String(obj.id) : undefined,
+      paymentRef,
       status,
       raw: event,
     };
@@ -190,7 +203,7 @@ export class StripePaymentProvider implements PaymentProvider {
   }
 }
 
-function header(
+export function header(
   headers: Record<string, string | string[] | undefined>,
   name: string,
 ) {
@@ -198,7 +211,7 @@ function header(
   return Array.isArray(v) ? v[0] : v;
 }
 
-function verifyStripeSignature(
+export function verifyStripeSignature(
   payload: string,
   headerValue: string,
   secret: string,

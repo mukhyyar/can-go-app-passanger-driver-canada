@@ -62,30 +62,33 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </div>
           )}
         </div>
-        {NAV.map((g) => {
-          const items = g.items.filter(
-            (i) => !i.permission || hasPermission(perms, i.permission),
-          );
-          if (!items.length) return null;
-          return (
-            <div className="nav-group" key={g.id}>
-              {!collapsed && <h3>{g.label}</h3>}
-              {items.map((i) => {
-                const active = isNavActive(i.href, path, searchParams, hash);
-                return (
-                  <Link
-                    key={g.id + i.href + i.label}
-                    href={i.href}
-                    className={`nav-item ${active ? 'active' : ''}`}
-                    onClick={() => setNavOpen(false)}
-                  >
-                    {collapsed ? i.label.slice(0, 1) : i.label}
-                  </Link>
-                );
-              })}
-            </div>
-          );
-        })}
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          {NAV.map((g) => {
+            const items = g.items.filter(
+              (i) => !i.permission || hasPermission(perms, i.permission),
+            );
+            if (!items.length) return null;
+            return (
+              <div className="nav-group" key={g.id}>
+                {!collapsed && <h3>{g.label}</h3>}
+                {items.map((i) => {
+                  const active = isNavActive(i.href, path, searchParams, hash);
+                  return (
+                    <Link
+                      key={g.id + i.href + i.label}
+                      href={i.href}
+                      className={`nav-item ${active ? 'active' : ''}`}
+                      onClick={() => setNavOpen(false)}
+                      title={collapsed ? i.label : undefined}
+                    >
+                      {collapsed ? i.label.slice(0, 1) : i.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </nav>
       </aside>
       <div className="main">
         <header className="topbar">

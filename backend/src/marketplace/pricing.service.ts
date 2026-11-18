@@ -37,6 +37,9 @@ export type PriceSnapshot = {
   subtotal?: number;
   taxAmount?: number;
   platformFee?: number;
+  marketplaceFee?: number;
+  driverCommission?: number;
+  canRideGrossRevenue?: number;
   driverEarning?: number;
   passengerTotal?: number;
   frozenAt?: string;
@@ -155,11 +158,11 @@ export class PricingService implements OnModuleInit {
           currency: 'CAD',
           minBidMultiplier: 0.8,
           maxBidMultiplier: 1.5,
-          platformCommissionPct: 0,
+          platformCommissionPct: 20,
           taxPct: 0,
         },
         update: {
-          platformCommissionPct: 0,
+          platformCommissionPct: 20,
         },
       });
     }
@@ -388,11 +391,13 @@ export class PricingService implements OnModuleInit {
     const driverBid = round2(bidAmount);
     const ridePrice = driverBid;
     const platformFee = round2(ridePrice * 0.2);
+    const driverCommission = round2(ridePrice * 0.2);
     const taxAmount = round2(
-      (ridePrice) * (guidance.taxPct / 100),
+      ridePrice * (guidance.taxPct / 100),
     );
-    const passengerTotal = round2(ridePrice + taxAmount);
-    const driverEarning = round2(ridePrice - platformFee);
+    const passengerTotal = round2(ridePrice + platformFee + taxAmount);
+    const driverEarning = round2(ridePrice - driverCommission);
+    const canRideGrossRevenue = round2(platformFee + driverCommission);
     const outbound =
       opts?.outboundPrice != null ? round2(opts.outboundPrice) : driverBid;
     const returnPrice =
@@ -412,6 +417,9 @@ export class PricingService implements OnModuleInit {
       subtotal: ridePrice,
       taxAmount,
       platformFee,
+      marketplaceFee: platformFee,
+      driverCommission,
+      canRideGrossRevenue,
       driverEarning,
       passengerTotal,
       priceBand,

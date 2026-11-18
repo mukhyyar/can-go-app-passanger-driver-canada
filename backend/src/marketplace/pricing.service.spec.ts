@@ -60,17 +60,49 @@ describe('PricingService (unit)', () => {
       perKm: 1.4,
       perMinute: 0.25,
       perHour: 0,
-      platformCommissionPct: 0,
+      platformCommissionPct: 20,
       taxPct: 13,
     };
     const frozen = pricing.freezeBid(guidance, 100);
     expect(frozen.bidAmount).toBe(100);
     expect(frozen.subtotal).toBe(100);
     expect(frozen.platformFee).toBe(20);
+    expect(frozen.marketplaceFee).toBe(20);
+    expect(frozen.driverCommission).toBe(20);
+    expect(frozen.canRideGrossRevenue).toBe(40);
     expect(frozen.taxAmount).toBe(13);
-    expect(frozen.passengerTotal).toBe(113);
+    expect(frozen.passengerTotal).toBe(133);
     expect(frozen.driverEarning).toBe(80);
     expect(frozen.frozenAt).toBeTruthy();
+  });
+
+  it('freezeBid computes Section 3 commercial example ($100 fare -> $120 passenger total, $80 driver net, $40 CAN-RIDE gross revenue)', () => {
+    const guidance: PriceSnapshot = {
+      currency: 'CAD',
+      serviceType: 'RIDE',
+      vehicleClass: 'sedan',
+      distanceKm: 10,
+      durationMin: 20,
+      guidanceAmount: 100,
+      minBid: 80,
+      maxBid: 150,
+      minFare: 12,
+      baseFare: 8,
+      perKm: 1.4,
+      perMinute: 0.25,
+      perHour: 0,
+      platformCommissionPct: 20,
+      taxPct: 0,
+    };
+    const frozen = pricing.freezeBid(guidance, 100);
+    expect(frozen.bidAmount).toBe(100);
+    expect(frozen.subtotal).toBe(100);
+    expect(frozen.platformFee).toBe(20);
+    expect(frozen.marketplaceFee).toBe(20);
+    expect(frozen.driverCommission).toBe(20);
+    expect(frozen.passengerTotal).toBe(120);
+    expect(frozen.driverEarning).toBe(80);
+    expect(frozen.canRideGrossRevenue).toBe(40);
   });
 
   it('freezeBid computes user example ($17 offer -> $17 ride price + $3.40 platform fee -> $20.40 total)', () => {
@@ -88,14 +120,14 @@ describe('PricingService (unit)', () => {
       perKm: 1.0,
       perMinute: 0.2,
       perHour: 0,
-      platformCommissionPct: 0,
+      platformCommissionPct: 20,
       taxPct: 0,
     };
     const frozen = pricing.freezeBid(guidance, 17);
     expect(frozen.bidAmount).toBe(17);
     expect(frozen.subtotal).toBe(17);
     expect(frozen.platformFee).toBe(3.4);
-    expect(frozen.passengerTotal).toBe(17);
+    expect(frozen.passengerTotal).toBe(20.4);
     expect(frozen.driverEarning).toBe(13.6);
   });
 
@@ -114,7 +146,7 @@ describe('PricingService (unit)', () => {
       perKm: 1.4,
       perMinute: 0.25,
       perHour: 0,
-      platformCommissionPct: 0,
+      platformCommissionPct: 20,
       taxPct: 0,
       isRoundTrip: true,
       legs: 2,
@@ -127,7 +159,7 @@ describe('PricingService (unit)', () => {
     expect(frozen.returnPrice).toBe(100);
     expect(frozen.subtotal).toBe(220);
     expect(frozen.platformFee).toBe(44);
-    expect(frozen.passengerTotal).toBe(220);
+    expect(frozen.passengerTotal).toBe(264);
     expect(frozen.driverEarning).toBe(176);
     expect(frozen.priceBand).toBe('typical');
   });

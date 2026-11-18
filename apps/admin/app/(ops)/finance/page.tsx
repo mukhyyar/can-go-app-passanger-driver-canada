@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
 import { money } from '../../../components/ui';
 
+function formatMetricLabel(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .trim();
+}
+
 export default function FinancePage() {
   const [data, setData] = useState<{
     waterfall: Record<string, number>;
@@ -24,7 +31,7 @@ export default function FinancePage() {
         {data &&
           Object.entries(data.waterfall).map(([k, v]) => (
             <div className="kpi" key={k}>
-              <div className="label">{k}</div>
+              <div className="label">{formatMetricLabel(k)}</div>
               <div className="value">{money(v)}</div>
             </div>
           ))}

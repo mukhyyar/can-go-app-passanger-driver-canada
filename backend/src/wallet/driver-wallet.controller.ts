@@ -102,14 +102,30 @@ export class DriverWalletController {
       event.raw && typeof event.raw === 'object'
         ? (event.raw as Record<string, unknown>)
         : {};
+    const nestedObj =
+      rawObj.data &&
+      typeof rawObj.data === 'object' &&
+      (rawObj.data as Record<string, unknown>).object &&
+      typeof (rawObj.data as Record<string, unknown>).object === 'object'
+        ? ((rawObj.data as Record<string, unknown>).object as Record<string, unknown>)
+        : null;
     const providerPayoutId = String(
       rawObj.providerPayoutId ??
         rawObj.transferId ??
-        rawObj.id ??
+        nestedObj?.id ??
         rawObj.batchId ??
+        rawObj.id ??
         '',
     );
-    const payoutId = rawObj.payoutId ? String(rawObj.payoutId) : undefined;
+    const nestedMeta =
+      nestedObj?.metadata && typeof nestedObj.metadata === 'object'
+        ? (nestedObj.metadata as Record<string, unknown>)
+        : null;
+    const payoutId = rawObj.payoutId
+      ? String(rawObj.payoutId)
+      : nestedMeta?.payoutId
+        ? String(nestedMeta.payoutId)
+        : undefined;
     return this.wallet.reconcilePayoutEvent({
       provider: event.provider,
       eventId: event.eventId,

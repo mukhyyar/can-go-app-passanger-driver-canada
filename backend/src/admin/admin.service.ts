@@ -263,7 +263,13 @@ export class AdminOpsService {
     let tax = 0;
     let driverShare = 0;
     for (const snap of completedRideSnaps.values()) {
-      commission += snapField(snap, 'platformFee');
+      const mktFee =
+        snapField(snap, 'marketplaceFee') || snapField(snap, 'platformFee');
+      const drvComm =
+        snapField(snap, 'driverCommission') || snapField(snap, 'platformFee');
+      const grossRev =
+        snapField(snap, 'canRideGrossRevenue') || mktFee + drvComm;
+      commission += grossRev;
       tax += snapField(snap, 'taxAmount') || snapField(snap, 'tax');
       driverShare += snapField(snap, 'driverEarning');
     }
@@ -2578,11 +2584,21 @@ export class AdminOpsService {
     }
     let driverShare = 0;
     let tax = 0;
-    let commission = 0;
+    let passengerMarketplaceFee = 0;
+    let driverCommission = 0;
+    let canRideGrossRevenue = 0;
     for (const snap of completedRideSnaps.values()) {
       driverShare += snapField(snap, 'driverEarning');
       tax += snapField(snap, 'taxAmount') || snapField(snap, 'tax');
-      commission += snapField(snap, 'platformFee');
+      const mktFee =
+        snapField(snap, 'marketplaceFee') || snapField(snap, 'platformFee');
+      const drvComm =
+        snapField(snap, 'driverCommission') || snapField(snap, 'platformFee');
+      const grossRev =
+        snapField(snap, 'canRideGrossRevenue') || mktFee + drvComm;
+      passengerMarketplaceFee += mktFee;
+      driverCommission += drvComm;
+      canRideGrossRevenue += grossRev;
     }
     const gatewayFee = 0;
     return {
@@ -2590,10 +2606,13 @@ export class AdminOpsService {
       waterfall: {
         grossBookingValue: round2(gmv),
         refunds: round2(refunds),
+        passengerMarketplaceFee: round2(passengerMarketplaceFee),
+        driverCommission: round2(driverCommission),
+        canRideGrossRevenue: round2(canRideGrossRevenue),
         driverShare: round2(driverShare),
         gatewayFee,
         tax: round2(tax),
-        netRevenue: round2(commission - refunds),
+        netRevenue: round2(canRideGrossRevenue - refunds),
       },
       counts: {
         attempts: payments.length,
@@ -2787,6 +2806,22 @@ export class AdminOpsService {
         approvedById: adminId,
       },
     });
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        status: type === 'FULL' ? 'refunded' : 'partially_refunded',
+      },
+    });
+    if (payment.rideId && (this.prisma.rideFinancial as any)?.updateMany) {
+      await this.prisma.rideFinancial.updateMany({
+        where: { rideId: payment.rideId },
+        data: {
+          refundAmount: already + amount,
+          refundReason: dto.reason.trim(),
+          refundedAt: new Date(),
+        },
+      });
+    }
     await this.audit(adminId, 'PAYMENT_REFUND', 'Payment', paymentId, {
       ip,
       reason: dto.reason,
@@ -2887,13 +2922,25 @@ export class AdminOpsService {
     approvalStatus: DriverApprovalStatus;
     isActivated: boolean;
     payoutSettingsJson: Prisma.JsonValue;
+    stripeAccountId?: string | null;
+    stripeAccountStatus?: string | null;
+    stripeChargesEnabled?: boolean | null;
+    stripePayoutsEnabled?: boolean | null;
     updatedAt: Date;
     user?: { email: string | null; phoneE164: string | null } | null;
   }) {
     const payout = this.parsePayoutSettings(driver.payoutSettingsJson);
+    const stripeActive =
+      Boolean(driver.stripeAccountId) &&
+      Boolean(driver.stripePayoutsEnabled) &&
+      driver.stripeAccountStatus === 'ACTIVE';
     const status = String(
       payout.status ??
-        (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
+        (stripeActive
+          ? 'VERIFIED'
+          : payout.outpaymentCurrency
+            ? 'CONFIGURED'
+            : 'NOT_CONFIGURED'),
     );
     return {
       driverId: driver.id,
@@ -2905,14 +2952,18 @@ export class AdminOpsService {
       isActivated: driver.isActivated,
       payoutStatus: status,
       billingPeriod: payout.billingPeriod ?? null,
-      outpaymentCurrency: payout.outpaymentCurrency ?? null,
-      bankCountry: payout.bankCountry ?? null,
-      payoutMethod: payout.payoutMethod ?? null,
+      outpaymentCurrency: payout.outpaymentCurrency ?? 'CAD',
+      bankCountry: payout.bankCountry ?? 'Canada',
+      payoutMethod: payout.payoutMethod ?? (driver.stripeAccountId ? 'stripe_express' : null),
       accountHolderName: payout.accountHolderName ?? null,
       accountMask: payout.accountMask ?? null,
       reviewedAt: payout.reviewedAt ?? null,
       reviewedByAdminId: payout.reviewedByAdminId ?? null,
       reviewNote: payout.reviewNote ?? null,
+      stripeAccountId: driver.stripeAccountId ?? null,
+      stripeAccountStatus: driver.stripeAccountStatus ?? 'UNLINKED',
+      stripeChargesEnabled: Boolean(driver.stripeChargesEnabled),
+      stripePayoutsEnabled: Boolean(driver.stripePayoutsEnabled),
       updatedAt: driver.updatedAt.toISOString(),
     };
   }
@@ -2921,7 +2972,10 @@ export class AdminOpsService {
     const wanted = (statusFilter || 'PENDING').trim().toUpperCase();
     const drivers = await this.prisma.driverProfile.findMany({
       where: {
-        NOT: { payoutSettingsJson: { equals: {} } },
+        OR: [
+          { NOT: { payoutSettingsJson: { equals: {} } } },
+          { stripeAccountId: { not: null } },
+        ],
       },
       select: {
         id: true,
@@ -2930,6 +2984,10 @@ export class AdminOpsService {
         approvalStatus: true,
         isActivated: true,
         payoutSettingsJson: true,
+        stripeAccountId: true,
+        stripeAccountStatus: true,
+        stripeChargesEnabled: true,
+        stripePayoutsEnabled: true,
         updatedAt: true,
         user: { select: { email: true, phoneE164: true } },
       },
@@ -2941,7 +2999,7 @@ export class AdminOpsService {
       .map((d) => this.serializePayoutReview(d))
       .filter((r) => {
         if (wanted === 'ALL') {
-          return r.payoutStatus !== 'NOT_CONFIGURED';
+          return r.payoutStatus !== 'NOT_CONFIGURED' || Boolean(r.stripeAccountId);
         }
         return r.payoutStatus === wanted;
       });
@@ -2959,6 +3017,10 @@ export class AdminOpsService {
         approvalStatus: true,
         isActivated: true,
         payoutSettingsJson: true,
+        stripeAccountId: true,
+        stripeAccountStatus: true,
+        stripeChargesEnabled: true,
+        stripePayoutsEnabled: true,
         updatedAt: true,
         user: { select: { email: true, phoneE164: true } },
       },

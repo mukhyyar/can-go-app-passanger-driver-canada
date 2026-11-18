@@ -330,6 +330,7 @@ export class DriverWalletService {
         status: true,
         availableAt: true,
         payoutId: true,
+        metaJson: true,
       },
     });
 
@@ -371,7 +372,19 @@ export class DriverWalletService {
           maturedCredits = maturedCredits.minus(amt);
         } else {
           lifetimeEarned = lifetimeEarned.plus(amt);
-          maturedCredits = maturedCredits.plus(amt);
+          const meta =
+            e.metaJson && typeof e.metaJson === 'object'
+              ? (e.metaJson as Record<string, unknown>)
+              : {};
+          const matured = !e.availableAt || e.availableAt <= at;
+          if (meta.transferredDirect === true) {
+            // Already transferred directly via Stripe Connect (e.g. instant tip transfer)
+            lifetimePaidOut = lifetimePaidOut.plus(amt);
+          } else if (matured && e.status === WalletEntryStatus.POSTED) {
+            maturedCredits = maturedCredits.plus(amt);
+          } else {
+            pending = pending.plus(amt);
+          }
         }
       }
       if (e.type === WalletEntryType.REVERSAL && isActive) {
@@ -930,7 +943,12 @@ export class DriverWalletService {
     try {
       const beneficiary = await this.payoutProvider.ensureBeneficiary(
         payout.driverId,
-        prefs as Record<string, unknown>,
+        {
+          ...(prefs as Record<string, unknown>),
+          stripeAccountId:
+            payout.driver.stripeAccountId ||
+            (prefs as Record<string, unknown>).stripeAccountId,
+        },
       );
       const result = await this.payoutProvider.createPayout([
         {
@@ -1040,6 +1058,26 @@ export class DriverWalletService {
           data: {
             status: WalletEntryStatus.POSTED,
             description: 'Withdrawal completed',
+          },
+        });
+      }
+      if ((tx as any).rideFinancial?.updateMany) {
+        await tx.rideFinancial.updateMany({
+          where: {
+            ride: { assignedDriverId: payout.driverId, status: RideStatus.COMPLETED },
+            driverPayoutStatus: {
+              in: [DriverPayoutStatus.HELD, DriverPayoutStatus.REQUESTED],
+            },
+          },
+          data: {
+            driverPayoutStatus: DriverPayoutStatus.SUCCEEDED,
+            stripeTransferId:
+              refs?.providerPayoutId ??
+              refs?.providerBatchId ??
+              payout.providerPayoutId ??
+              payout.providerBatchId ??
+              null,
+            payoutReleasedAt: now,
           },
         });
       }
@@ -1864,6 +1902,9 @@ export class DriverWalletService {
       isActivated: boolean;
       payoutSettingsJson: unknown;
       userId: string;
+      stripeAccountId?: string | null;
+      stripeAccountStatus?: string | null;
+      stripePayoutsEnabled?: boolean | null;
     },
     available: Decimal,
     amount?: Decimal,
@@ -1876,7 +1917,8 @@ export class DriverWalletService {
     payoutMethodConfigured: boolean;
     payoutMethodVerified: boolean;
   }> {
-    const user = await (tx ?? this.prisma).user.findUnique({
+    const client = tx ?? this.prisma;
+    const user = await client.user.findUnique({
       where: { id: driver.userId },
       select: { isSuspended: true },
     });
@@ -1904,27 +1946,75 @@ export class DriverWalletService {
       };
     }
 
+    if ((client as any).supportCase?.count || (client as any).dispute?.count) {
+      const openDisputes = (client as any).supportCase?.count
+        ? await client.supportCase.count({
+            where: {
+              type: 'DISPUTE' as any,
+              status: {
+                in: ['OPEN', 'UNDER_REVIEW', 'ESCALATED', 'LEGAL_ISSUE'] as any,
+              },
+              OR: [
+                { driverProfileId: driver.id },
+                { ride: { assignedDriverId: driver.id } },
+              ],
+            },
+          })
+        : await (client as any).dispute.count({
+            where: {
+              status: { in: ['OPEN', 'UNDER_REVIEW'] as any },
+              ride: { assignedDriverId: driver.id },
+            },
+          });
+      if (openDisputes > 0) {
+        return {
+          ok: false,
+          code: 'DRIVER_NOT_ELIGIBLE',
+          message:
+            'Payouts are temporarily on hold due to an open ride dispute under review',
+          payoutMethodConfigured: true,
+          payoutMethodVerified: true,
+        };
+      }
+    }
+
     const payout = this.parsePayout(driver.payoutSettingsJson);
-    const configured = !!(
+    const legacyConfigured = !!(
       payout.payoutMethod &&
       payout.outpaymentCurrency &&
       payout.bankCountry
     );
-    const verified =
-      payout.status === 'CONFIGURED' ||
-      payout.status === 'VERIFIED' ||
-      (configured && payout.status !== 'NOT_CONFIGURED');
-
-    // After save, status is PENDING — treat configured+PENDING as not verified for withdraw
-    const payoutMethodVerified =
+    const legacyVerified =
       payout.status === 'CONFIGURED' || payout.status === 'VERIFIED';
-    const payoutMethodConfigured = configured;
+
+    const stripeLinked = Boolean(
+      driver.stripeAccountId &&
+        driver.stripeAccountId.trim() !== '' &&
+        driver.stripeAccountStatus !== 'UNLINKED',
+    );
+    const stripeVerified = Boolean(
+      stripeLinked &&
+        driver.stripePayoutsEnabled === true &&
+        driver.stripeAccountStatus === 'ACTIVE',
+    );
+
+    const useStripeVerification =
+      this.payoutProvider?.name === 'stripe' || stripeLinked;
+
+    const payoutMethodConfigured = useStripeVerification
+      ? stripeLinked
+      : legacyConfigured;
+    const payoutMethodVerified = useStripeVerification
+      ? stripeVerified
+      : legacyVerified;
 
     if (!payoutMethodConfigured) {
       return {
         ok: false,
         code: 'PAYOUT_METHOD_REQUIRED',
-        message: 'Configure payout method before withdrawing',
+        message: useStripeVerification
+          ? 'Complete Stripe Connect onboarding before withdrawing'
+          : 'Configure payout method before withdrawing',
         payoutMethodConfigured,
         payoutMethodVerified: false,
       };
@@ -1933,7 +2023,9 @@ export class DriverWalletService {
       return {
         ok: false,
         code: 'PAYOUT_METHOD_NOT_VERIFIED',
-        message: 'Payout method is not verified',
+        message: useStripeVerification
+          ? 'Stripe Connect verification is incomplete or payouts are not enabled yet'
+          : 'Payout method is not verified',
         payoutMethodConfigured,
         payoutMethodVerified: false,
       };

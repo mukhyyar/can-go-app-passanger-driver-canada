@@ -502,40 +502,13 @@ export class TripService {
         const financial = await tx.rideFinancial.findUnique({
           where: { rideId },
         });
-        const driver = ride.selectedOffer?.driver;
-
-        if (
-          financial &&
-          driver?.stripeAccountId &&
-          driver?.stripePayoutsEnabled &&
-          this.stripeConnect?.isConfigured()
-        ) {
-          try {
-            const transfer = await this.stripeConnect.transferToDriver({
-              amount: Number(financial.driverNetEarning),
-              currency: financial.currency,
-              destinationAccountId: driver.stripeAccountId,
-              transferGroup: financial.stripeTransferGroup || `group_${rideId}`,
-              rideId,
-              driverId: driver.id,
-            });
-
-            await tx.rideFinancial.update({
-              where: { rideId },
-              data: {
-                driverPayoutStatus: DriverPayoutStatus.SUCCEEDED,
-                stripeTransferId: transfer.transferId,
-                payoutReleasedAt: new Date(),
-              },
-            });
-          } catch {
-            await tx.rideFinancial.update({
-              where: { rideId },
-              data: {
-                driverPayoutStatus: DriverPayoutStatus.HELD,
-              },
-            });
-          }
+        if (financial) {
+          await tx.rideFinancial.update({
+            where: { rideId },
+            data: {
+              driverPayoutStatus: DriverPayoutStatus.HELD,
+            },
+          });
         }
       }
     });

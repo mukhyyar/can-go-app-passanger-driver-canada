@@ -751,9 +751,32 @@ class _StripeConnectCard extends StatefulWidget {
   State<_StripeConnectCard> createState() => _StripeConnectCardState();
 }
 
-class _StripeConnectCardState extends State<_StripeConnectCard> {
+class _StripeConnectCardState extends State<_StripeConnectCard>
+    with WidgetsBindingObserver {
   bool _loading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted && !_loading) {
+      final s = context.read<AppState>();
+      if (s.stripeAccountId != null && s.stripeAccountId!.isNotEmpty) {
+        _refresh(s);
+      }
+    }
+  }
 
   Future<void> _handleStripeAction(AppState s) async {
     setState(() {
@@ -858,10 +881,10 @@ class _StripeConnectCardState extends State<_StripeConnectCard> {
           const SizedBox(height: 10),
           Text(
             isActive
-                ? 'Your Canadian bank account is connected with Stripe Express. Ride earnings are transferred automatically upon completing each trip.'
+                ? 'Your Canadian bank account is connected with Stripe Express. Ride earnings are released after trip completion and the post-ride verification window.'
                 : isPending
                     ? 'Your Stripe account needs verification or additional documents before payouts can be deposited. Tap below to complete setup.'
-                    : 'Connect your Canadian bank account securely via Stripe Express for immediate automated trip payouts and official tax reporting.',
+                    : 'Connect your Canadian bank account securely via Stripe Express for automated trip payouts and official tax reporting.',
             style: const TextStyle(fontSize: 13, color: GtColors.textSecondary, height: 1.4),
           ),
           if (_error != null) ...[

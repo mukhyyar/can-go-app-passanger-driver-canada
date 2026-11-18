@@ -1082,6 +1082,10 @@ class AppState extends ChangeNotifier {
     if (res['accountId'] != null) {
       stripeAccountId = res['accountId'] as String;
     }
+    if (stripeAccountStatus == 'ACTIVE' && stripePayoutsEnabled) {
+      paymentStatus = 'VERIFIED';
+      paymentSummaryLabel = '$outpaymentCurrency · verified';
+    }
     notifyListeners();
     return res;
   }

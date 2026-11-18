@@ -398,6 +398,26 @@ export class DriversService {
           'Cannot turn on driving mode: you do not have an approved and inspected vehicle.',
         );
       }
+      if (this.stripeConnect?.isConfigured?.() || driver.stripeAccountId) {
+        if (!driver.stripeAccountId || driver.stripeAccountStatus === 'UNLINKED') {
+          throw new ForbiddenException(
+            'Complete your Stripe Connect payout onboarding before turning on driving mode.',
+          );
+        }
+        if (
+          driver.stripeAccountStatus === 'REQUIREMENTS_DUE' ||
+          driver.stripeAccountStatus === 'RESTRICTED'
+        ) {
+          throw new ForbiddenException(
+            'Cannot turn on driving mode: additional verification is required on your Stripe Connect account.',
+          );
+        }
+        if (!driver.stripePayoutsEnabled || driver.stripeAccountStatus !== 'ACTIVE') {
+          throw new ForbiddenException(
+            'Cannot turn on driving mode: your Stripe Connect payout account verification is still pending.',
+          );
+        }
+      }
     }
     const updated = await this.prisma.driverProfile.update({
       where: { id: driver.id },
@@ -529,6 +549,17 @@ export class DriversService {
     const driver = await this.requireDriverProfile(userId);
     const payout = this.parsePayout(driver.payoutSettingsJson);
     const commissionPct = await this.resolveCommissionPct();
+    const stripeActive =
+      Boolean(driver.stripeAccountId) &&
+      Boolean(driver.stripePayoutsEnabled) &&
+      driver.stripeAccountStatus === 'ACTIVE';
+    const effectiveStatus =
+      payout.status ??
+      (stripeActive
+        ? 'VERIFIED'
+        : payout.outpaymentCurrency
+          ? 'CONFIGURED'
+          : 'NOT_CONFIGURED');
     return {
       paymentPeriod: '30 working days',
       billingPeriod: payout.billingPeriod ?? '3 days',
@@ -537,9 +568,7 @@ export class DriversService {
       payoutMethod: payout.payoutMethod ?? 'bank_transfer',
       accountHolderName: payout.accountHolderName ?? '',
       accountMask: payout.accountMask ?? '',
-      status:
-        payout.status ??
-        (payout.outpaymentCurrency ? 'CONFIGURED' : 'NOT_CONFIGURED'),
+      status: effectiveStatus,
       commissionPct,
       reviewedAt: payout.reviewedAt ?? null,
       reviewNote: payout.reviewNote ?? null,
@@ -577,7 +606,9 @@ export class DriversService {
           },
         });
         return {
-          url: opts?.returnUrl || 'https://www.can-rides.ca/stripe/return',
+          url:
+            opts?.returnUrl ||
+            `https://www.can-rides.ca/stripe/return?accountId=${encodeURIComponent(accountId)}`,
           accountId,
           status: 'PENDING',
         };
@@ -585,6 +616,7 @@ export class DriversService {
       accountId = await this.stripeConnect.createDriverExpressAccount(
         user.driverProfile.id,
         user.email || `${user.id}@can-rides.ca`,
+        { isIndividual: user.driverProfile.isIndividual },
       );
       await this.prisma.driverProfile.update({
         where: { id: user.driverProfile.id },
@@ -597,7 +629,9 @@ export class DriversService {
 
     if (!this.stripeConnect.isConfigured()) {
       return {
-        url: opts?.returnUrl || 'https://www.can-rides.ca/stripe/return',
+        url:
+          opts?.returnUrl ||
+          `https://www.can-rides.ca/stripe/return?accountId=${encodeURIComponent(accountId)}`,
         accountId,
         status: user.driverProfile.stripeAccountStatus || 'PENDING',
       };
@@ -643,11 +677,17 @@ export class DriversService {
     try {
       const status = await this.stripeConnect.getAccountStatus(driver.stripeAccountId);
       const isComplete = status.chargesEnabled && status.payoutsEnabled;
+      const hasDisabledReason = Boolean(status.requirements.disabledReason);
+      const hasDue =
+        status.requirements.currentlyDue.length > 0 ||
+        status.requirements.pastDue.length > 0;
       const accountStatus = isComplete
         ? 'ACTIVE'
-        : status.requirements.currentlyDue.length > 0
-          ? 'REQUIREMENTS_DUE'
-          : 'PENDING';
+        : hasDisabledReason
+          ? 'RESTRICTED'
+          : hasDue
+            ? 'REQUIREMENTS_DUE'
+            : 'PENDING';
 
       await this.prisma.driverProfile.update({
         where: { id: driver.id },
@@ -679,6 +719,99 @@ export class DriversService {
     }
   }
 
+  async handleStripeConnectReturn(accountId?: string) {
+    if (!accountId?.trim()) {
+      return {
+        ok: true,
+        accountId: null,
+        status: 'PENDING',
+        chargesEnabled: false,
+        payoutsEnabled: false,
+      };
+    }
+    const cleanId = accountId.trim();
+    const driver = await this.prisma.driverProfile.findFirst({
+      where: { stripeAccountId: cleanId },
+    });
+    if (!driver) {
+      return {
+        ok: false,
+        accountId: cleanId,
+        status: 'UNLINKED',
+        chargesEnabled: false,
+        payoutsEnabled: false,
+      };
+    }
+    if (!this.stripeConnect?.isConfigured?.()) {
+      return {
+        ok: true,
+        accountId: cleanId,
+        status: driver.stripeAccountStatus || 'PENDING',
+        chargesEnabled: driver.stripeChargesEnabled,
+        payoutsEnabled: driver.stripePayoutsEnabled,
+      };
+    }
+    try {
+      const status = await this.stripeConnect.getAccountStatus(cleanId);
+      const isComplete = status.chargesEnabled && status.payoutsEnabled;
+      const hasDisabledReason = Boolean(status.requirements.disabledReason);
+      const hasDue =
+        status.requirements.currentlyDue.length > 0 ||
+        status.requirements.pastDue.length > 0;
+      const accountStatus = isComplete
+        ? 'ACTIVE'
+        : hasDisabledReason
+          ? 'RESTRICTED'
+          : hasDue
+            ? 'REQUIREMENTS_DUE'
+            : 'PENDING';
+
+      await this.prisma.driverProfile.update({
+        where: { id: driver.id },
+        data: {
+          stripeAccountStatus: accountStatus,
+          stripeChargesEnabled: status.chargesEnabled,
+          stripePayoutsEnabled: status.payoutsEnabled,
+        },
+      });
+      return {
+        ok: true,
+        accountId: cleanId,
+        status: accountStatus,
+        chargesEnabled: status.chargesEnabled,
+        payoutsEnabled: status.payoutsEnabled,
+        requirements: status.requirements,
+      };
+    } catch {
+      return {
+        ok: true,
+        accountId: cleanId,
+        status: driver.stripeAccountStatus || 'PENDING',
+        chargesEnabled: driver.stripeChargesEnabled,
+        payoutsEnabled: driver.stripePayoutsEnabled,
+      };
+    }
+  }
+
+  async handleStripeConnectRefresh(accountId?: string) {
+    if (!accountId?.trim()) {
+      return { ok: false, url: null };
+    }
+    const cleanId = accountId.trim();
+    const driver = await this.prisma.driverProfile.findFirst({
+      where: { stripeAccountId: cleanId },
+    });
+    if (!driver || !this.stripeConnect?.isConfigured?.()) {
+      return { ok: false, url: null, accountId: cleanId };
+    }
+    try {
+      const url = await this.stripeConnect.createAccountOnboardingLink(cleanId);
+      return { ok: true, accountId: cleanId, url };
+    } catch {
+      return { ok: false, url: null, accountId: cleanId };
+    }
+  }
+
   async getStripeDashboardLink(userId: string) {
     if (!this.stripeConnect) {
       throw new BadRequestException('Stripe Connect service is not available');
@@ -694,7 +827,7 @@ export class DriversService {
     return { url };
   }
 
-  /** Active FareRule commission, else platform configured default. Never rewrite snapshots. */
+  /** Active FareRule commission, else platform configured default (20%). Never rewrite snapshots. */
   private async resolveCommissionPct(): Promise<number> {
     const rule = await this.prisma.fareRule.findFirst({
       where: { isActive: true, serviceType: 'RIDE' },
@@ -702,9 +835,10 @@ export class DriversService {
       select: { platformCommissionPct: true },
     });
     if (rule?.platformCommissionPct != null) {
-      return Number(rule.platformCommissionPct.toString());
+      const pct = Number(rule.platformCommissionPct.toString());
+      if (pct > 0) return pct;
     }
-    const fallback = process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '0';
+    const fallback = process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '20';
     return Number(fallback);
   }
 
@@ -1267,6 +1401,9 @@ export class DriversService {
       baseLatitude: number | null;
       baseLongitude: number | null;
       payoutSettingsJson: Prisma.JsonValue;
+      stripeAccountId?: string | null;
+      stripeAccountStatus?: string | null;
+      stripePayoutsEnabled?: boolean | null;
     },
     checklist: {
       requiredComplete: boolean;
@@ -1358,10 +1495,23 @@ export class DriversService {
     }
 
     const payout = this.parsePayout(driver.payoutSettingsJson);
-    if (!payout.outpaymentCurrency) {
+    const stripeActive =
+      Boolean(driver.stripeAccountId) &&
+      Boolean(driver.stripePayoutsEnabled) &&
+      driver.stripeAccountStatus === 'ACTIVE';
+    const stripeNeedsAction =
+      driver.stripeAccountStatus === 'REQUIREMENTS_DUE' ||
+      driver.stripeAccountStatus === 'RESTRICTED';
+    if (
+      stripeNeedsAction ||
+      (!stripeActive &&
+        (this.stripeConnect?.isConfigured?.() || !payout.outpaymentCurrency))
+    ) {
       return {
         state: 'PAYMENT_SETUP_REQUIRED',
-        label: 'Set up payout details',
+        label: stripeNeedsAction
+          ? 'Stripe verification required'
+          : 'Set up payout details',
         cta: { label: 'Payment details', route: '/onboarding/payment' },
         checklist,
       };
