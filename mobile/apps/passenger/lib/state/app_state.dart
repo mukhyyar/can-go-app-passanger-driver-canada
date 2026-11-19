@@ -54,8 +54,11 @@ class AppState extends ChangeNotifier {
   ServiceType serviceType = ServiceType.ride;
   Place? from;
   Place? to;
-  /// Multi-select vehicle classes on Book (ride).
-  /// All classes checked to maximize driver offers.
+  /// Configurable vehicle categories loaded from backend (fallback: MockData.vehicleClasses).
+  List<VehicleClass> availableVehicleClasses =
+      List<VehicleClass>.from(MockData.vehicleClasses);
+
+  /// Passenger's preferred vehicle categories on Book (ride).
   Set<String> vehicleClassIds =
       MockData.vehicleClasses.map((v) => v.id).toSet();
   int adults = 1;
@@ -329,6 +332,7 @@ class AppState extends ChangeNotifier {
     isAuthenticated = true;
     await _syncLocalProfileFromMe();
     await setOnboarded(true);
+    unawaited(loadVehicleCategories());
     await refreshRidesFromServer();
     await startRideRealtime();
     _syncOpenRidePolling();
@@ -899,6 +903,8 @@ class AppState extends ChangeNotifier {
     if (nested is Map) {
       quote = {
         ...Map<String, dynamic>.from(nested),
+        if (raw['priceBreakdown'] != null)
+          'priceBreakdown': raw['priceBreakdown'],
         if (raw['cancellationPolicy'] != null)
           'cancellationPolicy': raw['cancellationPolicy'],
         if (raw['paymentMethods'] != null)
@@ -1389,9 +1395,15 @@ class AppState extends ChangeNotifier {
         type == 'offer.updated' ||
         type == 'offer.withdrawn' ||
         type == 'offer.reserved' ||
-        type == 'offer.reservation_released';
+        type == 'offer.reservation_released' ||
+        type == 'ride.discount.activated';
     final isBookingEvent =
         type == 'ride.booked' || payload['status']?.toString() == 'BOOKED';
+    if (type == 'ride.discount.activated') {
+      pendingOfferRideId = rideId;
+      pendingOfferAlert =
+          '5% discount now available! Complete your booking before this enquiry expires.';
+    }
     if (type == 'offer.created') {
       pendingOfferRideId = rideId;
       pendingOfferAlert = 'New offer on your ride';
@@ -1675,15 +1687,86 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clears all input fields from the booking composer form so the passenger
+  /// starts with a pristine booking screen.
+  /// Crucially: This does NOT cancel or alter any submitted enquiries in [repo.rides].
+  void resetBookingForm() {
+    from = null;
+    to = null;
+    comment = '';
+    flight = '';
+    signage = '';
+    promoCode = '';
+    promoEnabled = false;
+    returnEnabled = false;
+    returnDateTime = null;
+    returnFlight = '';
+    adults = 1;
+    childSeats = const ChildSeats();
+    pickupNow = true;
+    pickupDateTime = DateTime.now();
+    availableRoutes = const [];
+    selectedRouteIndex = 0;
+    routeRecalcFailed = false;
+    perHourDurationMinutes = null;
+    rideEndsDateTime = null;
+    perHourHasEnd = false;
+    termsAccepted = false;
+    vehicleClassIds = availableVehicleClasses.map((v) => v.id).toSet();
+    notifyListeners();
+  }
+
+  Future<void> loadVehicleCategories() async {
+    try {
+      final raw = await api.marketplace.listVehicleCategories();
+      final parsed = raw
+          .whereType<Map>()
+          .map((e) => VehicleClass.fromJson(Map<String, dynamic>.from(e)))
+          .where((vc) => vc.id.isNotEmpty)
+          .toList();
+      if (parsed.isNotEmpty) {
+        final wasAllSelected =
+            vehicleClassIds.length == availableVehicleClasses.length;
+        availableVehicleClasses = parsed;
+        final validIds = parsed.map((v) => v.id).toSet();
+        if (wasAllSelected) {
+          vehicleClassIds = validIds;
+        } else {
+          final filtered = vehicleClassIds.intersection(validIds);
+          vehicleClassIds =
+              filtered.isNotEmpty ? filtered : {parsed.first.id};
+        }
+        notifyListeners();
+      }
+    } catch (_) {
+      // Keep default MockData.vehicleClasses when offline or unconfigured
+    }
+  }
+
   void setVehicleClass(String id) {
-    // All vehicle classes remain selected so drivers of any class can offer.
-    vehicleClassIds = MockData.vehicleClasses.map((v) => v.id).toSet();
+    vehicleClassIds = {id};
     notifyListeners();
   }
 
   void toggleVehicleClass(String id) {
-    // All vehicle classes remain selected so drivers of any class can offer.
-    vehicleClassIds = MockData.vehicleClasses.map((v) => v.id).toSet();
+    final allIds = availableVehicleClasses.map((v) => v.id).toSet();
+    if (vehicleClassIds.length == allIds.length && allIds.length > 1) {
+      // When all categories are selected, tapping a card selects it as the primary preference.
+      vehicleClassIds = {id};
+    } else if (vehicleClassIds.contains(id)) {
+      if (vehicleClassIds.length > 1) {
+        vehicleClassIds = Set<String>.from(vehicleClassIds)..remove(id);
+      } else {
+        vehicleClassIds = allIds;
+      }
+    } else {
+      vehicleClassIds = Set<String>.from(vehicleClassIds)..add(id);
+    }
+    notifyListeners();
+  }
+
+  void selectAllVehicleClasses() {
+    vehicleClassIds = availableVehicleClasses.map((v) => v.id).toSet();
     notifyListeners();
   }
 
@@ -2007,6 +2090,29 @@ class AppState extends ChangeNotifier {
         return aTime.compareTo(bTime);
       });
       return scheduled.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Returns the most recent active enquiry that is waiting for offers or in offer selection.
+  RideRequest? get activeWaitingEnquiry {
+    try {
+      final active = repo.rides.where((r) {
+        if (r.isCancelled ||
+            isTerminalRideStatus(r.serverStatus) ||
+            r.isBooked ||
+            r.status == RideStatus.cancelled ||
+            r.status == RideStatus.past) {
+          return false;
+        }
+        final s = (r.serverStatus ?? '').toUpperCase();
+        return s == 'WAITING_FOR_OFFERS' ||
+            s == 'OFFER_SELECTION' ||
+            r.status == RideStatus.waitingOffers ||
+            r.status == RideStatus.chooseOffer;
+      }).toList();
+      return active.isNotEmpty ? active.first : null;
     } catch (_) {
       return null;
     }

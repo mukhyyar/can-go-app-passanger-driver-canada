@@ -128,11 +128,15 @@ class _WaitingScreenState extends State<WaitingScreen>
       backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
         title: Text(
-          ride != null ? 'Ride · #${ride.displayId}' : 'Finding offers',
+          ride != null ? 'Ride · #${ride.displayId}' : 'Waiting for offers',
         ),
         leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => context.go('/'),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to Home',
+          onPressed: () {
+            context.read<AppState>().resetBookingForm();
+            context.go('/');
+          },
         ),
         actions: [
           if (canEdit)
@@ -244,14 +248,14 @@ class _WaitingScreenState extends State<WaitingScreen>
           Text(
             hasOffers
                 ? '$offerCount offer${offerCount == 1 ? '' : 's'} received'
-                : 'Finding the best offers for you',
+                : 'Waiting for Offers from Drivers',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           Text(
             hasOffers
                 ? 'Drivers have bid on your ride. Review and choose an offer.'
-                : 'Connecting you with nearby drivers. You can leave this screen — your request stays active.',
+                : 'Connecting you with nearby drivers. Your request remains active in the background — you can return to the Home Screen anytime to book another ride or track this request under My Bookings.',
             style: const TextStyle(
               color: GtColors.textSecondary,
               height: 1.4,
@@ -263,27 +267,50 @@ class _WaitingScreenState extends State<WaitingScreen>
           _step(hasOffers, 'Select an offer'),
           _step(false, 'Book & pay'),
           const SizedBox(height: 28),
-          if (_refreshed && hasOffers)
+          if (_refreshed && hasOffers) ...[
             GtGreenButton(
               label: 'Show offers',
               onPressed: () => context.push('/offers/${widget.rideId}'),
             ),
-          if (_refreshed && !hasOffers)
+            const SizedBox(height: 12),
+          ],
+          if (_refreshed && !hasOffers) ...[
             OutlinedButton(
               onPressed: _refresh,
               style: OutlinedButton.styleFrom(
                 foregroundColor: GtColors.brand,
                 side: const BorderSide(color: GtColors.brand),
                 minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: const Text('Refresh'),
             ),
-          const SizedBox(height: 12),
-          TextButton(
-            onPressed: () => context.go('/'),
-            child: const Text(
-              'Back to home',
-              style: TextStyle(color: GtColors.textSecondary),
+            const SizedBox(height: 12),
+          ],
+          OutlinedButton.icon(
+            key: const Key('btn_back_to_home'),
+            onPressed: () {
+              context.read<AppState>().resetBookingForm();
+              context.go('/');
+            },
+            icon: const Icon(Icons.home_outlined),
+            label: const Text(
+              'Back to Home',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: GtColors.text,
+              side: const BorderSide(color: GtColors.border, width: 1.5),
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              backgroundColor: Colors.white,
             ),
           ),
         ],

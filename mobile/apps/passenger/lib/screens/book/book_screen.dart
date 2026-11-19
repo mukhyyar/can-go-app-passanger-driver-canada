@@ -61,6 +61,7 @@ class _BookScreenState extends State<BookScreen> {
         ? true
         : (state.from != null && state.to != null);
     final activeRide = state.activeBookedRide;
+    final activeEnquiry = state.activeWaitingEnquiry;
 
     return Scaffold(
       backgroundColor: GtColors.bgGrey,
@@ -77,6 +78,9 @@ class _BookScreenState extends State<BookScreen> {
                   if (activeRide != null) ...[
                     const SizedBox(height: 12),
                     _ActiveBookedRideCard(ride: activeRide),
+                  ] else if (activeEnquiry != null) ...[
+                    const SizedBox(height: 12),
+                    _ActiveEnquiryBanner(ride: activeEnquiry),
                   ],
                   const SizedBox(height: 12),
                   ServiceModeSegment(state: state),
@@ -282,6 +286,131 @@ class _ActiveBookedRideCard extends StatelessWidget {
                   ),
                   child: Text(
                     buttonText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveEnquiryBanner extends StatelessWidget {
+  const _ActiveEnquiryBanner({required this.ride});
+  final RideRequest ride;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final offers = app.offersFor(ride.id);
+    final offerCount = offers.isNotEmpty ? offers.length : ride.offerCount;
+    final hasOffers = offerCount > 0;
+    final statusText = hasOffers
+        ? '$offerCount offer${offerCount == 1 ? '' : 's'} received'
+        : 'Waiting for offers';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        elevation: 0,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            if (hasOffers) {
+              context.push('/offers/${ride.id}');
+            } else {
+              context.push('/waiting/${ride.id}');
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: hasOffers ? GtColors.green : const Color(0xFFE2E8F0),
+                width: hasOffers ? 1.5 : 1.0,
+              ),
+              color: hasOffers ? const Color(0xFFF0FDF4) : Colors.white,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: hasOffers
+                        ? const Color(0xFFDCFCE7)
+                        : const Color(0xFFF1F5F9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    hasOffers ? Icons.local_offer_outlined : Icons.radar,
+                    color: hasOffers ? GtColors.green : GtColors.brand,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              statusText,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color:
+                                    hasOffers ? GtColors.green : GtColors.text,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '#${ride.displayId}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: GtColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${ride.from} → ${ride.to ?? "Destination"}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: GtColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: hasOffers ? GtColors.green : GtColors.brand,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    hasOffers ? 'View Offers' : 'Track',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,

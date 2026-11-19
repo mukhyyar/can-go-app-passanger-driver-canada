@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 
@@ -15,6 +14,7 @@ class VehiclePreferences extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final classes = state.availableVehicleClasses;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -22,11 +22,11 @@ class VehiclePreferences extends StatelessWidget {
           height: showFromPrice ? 138 : 118,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: MockData.vehicleClasses.length,
+            itemCount: classes.length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (ctx, i) {
-              final vc = MockData.vehicleClasses[i];
-              final isLuxury = vc.id == 'premium' || vc.id == 'suv';
+              final vc = classes[i];
+              final isLuxury = vc.effectiveIsLuxury;
               final selected = state.vehicleClassIds.contains(vc.id);
               final priceValue = showFromPrice
                   ? vc.fromPrice?.replaceFirst(
@@ -35,18 +35,7 @@ class VehiclePreferences extends StatelessWidget {
                     )
                   : null;
               return InkWell(
-                onTap: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      behavior: SnackBarBehavior.floating,
-                      duration: Duration(seconds: 2),
-                      content: Text(
-                        'All vehicle classes are selected to help you get the most driver offers.',
-                      ),
-                    ),
-                  );
-                },
+                onTap: () => state.toggleVehicleClass(vc.id),
                 borderRadius: BorderRadius.circular(12),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),

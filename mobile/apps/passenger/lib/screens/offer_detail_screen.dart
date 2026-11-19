@@ -766,12 +766,35 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Text(
-                            offer.priceLabel,
-                            softWrap: false,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
+                          Flexible(
+                            child: Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: [
+                                Text(
+                                  offer.priceLabel,
+                                  softWrap: false,
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                if (breakdown != null &&
+                                    breakdown.discount > 0)
+                                  Text(
+                                    formatMoney(
+                                      breakdown.originalTotal,
+                                      offer.currency,
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: GtColors.textSecondary,
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -808,8 +831,50 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           ),
                         ],
                       ),
+                      if (breakdown != null && breakdown.discount > 0) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            () {
+                              if (breakdown.returnDiscountAmount > 0 &&
+                                  breakdown.enquiryDiscountAmount > 0) {
+                                return '15% Return + 5% Enquiry Discount applied (-${formatMoney(breakdown.discount, offer.currency)})';
+                              }
+                              if (breakdown.enquiryDiscountAmount > 0) {
+                                return '5% Enquiry Discount applied (-${formatMoney(breakdown.enquiryDiscountAmount, offer.currency)})';
+                              }
+                              return '15% Return Ride Discount applied (-${formatMoney(breakdown.discount, offer.currency)})';
+                            }(),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF15803D),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (_breakdownOpen) ...[
                         const SizedBox(height: 8),
+                        if (breakdown != null && breakdown.returnPrice > 0) ...[
+                          _breakRow(
+                            'Initial journey fare',
+                            breakdown.outboundPrice,
+                            offer.currency,
+                          ),
+                          _breakRow(
+                            'Return journey fare',
+                            breakdown.returnPrice,
+                            offer.currency,
+                          ),
+                        ],
                         _breakRow(
                           'Ride fare',
                           (breakdown != null && breakdown.ridePrice > 0)
@@ -833,9 +898,40 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                         ),
                         if (breakdown != null && breakdown.taxes > 0)
                           _breakRow('Taxes', breakdown.taxes, offer.currency),
+                        if (breakdown != null && breakdown.discount > 0) ...[
+                          _breakRow(
+                            'Original fare',
+                            breakdown.originalTotal,
+                            offer.currency,
+                          ),
+                          if (breakdown.returnDiscountAmount > 0)
+                            _breakRow(
+                              '15% Return ride discount',
+                              -breakdown.returnDiscountAmount,
+                              offer.currency,
+                              isDiscount: true,
+                            ),
+                          if (breakdown.enquiryDiscountAmount > 0)
+                            _breakRow(
+                              '5% Enquiry discount',
+                              -breakdown.enquiryDiscountAmount,
+                              offer.currency,
+                              isDiscount: true,
+                            ),
+                          if (breakdown.returnDiscountAmount <= 0 &&
+                              breakdown.enquiryDiscountAmount <= 0)
+                            _breakRow(
+                              'Ride discount',
+                              -breakdown.discount,
+                              offer.currency,
+                              isDiscount: true,
+                            ),
+                        ],
                         const Divider(height: 16),
                         _breakRow(
-                          'Total',
+                          breakdown != null && breakdown.discount > 0
+                              ? 'Final discounted fare'
+                              : 'Total',
                           (breakdown != null && breakdown.total > 0)
                               ? breakdown.total
                               : offer.price,
@@ -1016,7 +1112,12 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     double amount,
     String currency, {
     bool bold = false,
+    bool isDiscount = false,
   }) {
+    final color = isDiscount ? const Color(0xFF15803D) : null;
+    final formatted = isDiscount
+        ? '-${formatMoney(amount.abs(), currency)}'
+        : formatMoney(amount, currency);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -1025,16 +1126,20 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
             child: Text(
               label,
               style: TextStyle(
-                fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                fontWeight:
+                    (bold || isDiscount) ? FontWeight.w700 : FontWeight.w400,
                 fontSize: 13,
+                color: color,
               ),
             ),
           ),
           Text(
-            formatMoney(amount, currency),
+            formatted,
             style: TextStyle(
-              fontWeight: bold ? FontWeight.w800 : FontWeight.w500,
+              fontWeight:
+                  (bold || isDiscount) ? FontWeight.w800 : FontWeight.w500,
               fontSize: 13,
+              color: color,
             ),
           ),
         ],

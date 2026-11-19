@@ -2964,7 +2964,7 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                       ),
                     ),
                   ),
-                  if (isOverdue && ride != null) ...[
+                  if (isOverdue) ...[
                     const SizedBox(height: 12),
                     _buildOverdueBanner(ride),
                   ],

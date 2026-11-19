@@ -1,7 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/state/app_state.dart';
 import '../../utils/error_utils.dart';
@@ -52,12 +51,13 @@ class _GetOffersBarState extends State<GetOffersBar> {
       parts.add(
         '${state.adults} adult${state.adults == 1 ? '' : 's'}',
       );
-      final names = MockData.vehicleClasses
+      final classes = state.availableVehicleClasses;
+      final names = classes
           .where((v) => state.vehicleClassIds.contains(v.id))
           .map((v) => v.name)
           .toList();
       if (names.isNotEmpty) {
-        if (names.length == MockData.vehicleClasses.length) {
+        if (names.length == classes.length) {
           parts.add('All classes');
         } else {
           final shown = names.take(2).join(', ');
@@ -141,6 +141,7 @@ class _GetOffersBarState extends State<GetOffersBar> {
     setState(() => _isSubmitting = true);
     try {
       final req = await state.createBookingRequestAsync();
+      state.resetBookingForm();
       if (!context.mounted) return;
       context.push('/waiting/${req.id}');
     } catch (e) {

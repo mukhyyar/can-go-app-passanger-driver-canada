@@ -277,6 +277,40 @@ class _OffersScreenState extends State<OffersScreen> {
             ],
           ),
         ),
+      if (ride != null &&
+          (ride.isEnquiryDiscountActive ||
+              offers.any(
+                (o) => (o.priceBreakdown?.enquiryDiscountAmount ?? 0) > 0,
+              )))
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFDCFCE7),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF86EFAC)),
+          ),
+          child: const Row(
+            children: [
+              Icon(
+                Icons.local_offer_rounded,
+                color: Color(0xFF15803D),
+                size: 20,
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '5% Special Offer Active — Complete your booking before this enquiry expires to save 5%!',
+                  style: TextStyle(
+                    color: Color(0xFF14532D),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       if (ride != null) ...[
         Container(
           width: double.infinity,
@@ -334,6 +368,17 @@ class _OffersScreenState extends State<OffersScreen> {
                       ),
                     ),
                   ],
+                ),
+              ],
+              if (ride.vehicleClassIds.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Preferred vehicle: ${ride.vehicleClassIds.join(', ')}',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: GtColors.textSecondary,
+                  ),
                 ),
               ],
               const SizedBox(height: 10),
@@ -544,13 +589,71 @@ class _OffersScreenState extends State<OffersScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  offer.priceLabel,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 24,
+                if (offer.priceBreakdown != null &&
+                    offer.priceBreakdown!.discount > 0) ...[
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Text(
+                        offer.priceLabel,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 24,
+                        ),
+                      ),
+                      Text(
+                        formatMoney(
+                          offer.priceBreakdown!.originalTotal,
+                          offer.currency,
+                        ),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black45,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      () {
+                        final pb = offer.priceBreakdown!;
+                        if (pb.returnDiscountAmount > 0 &&
+                            pb.enquiryDiscountAmount > 0) {
+                          return '15% Return + 5% Enquiry Discount (-${formatMoney(pb.discount, offer.currency)})';
+                        }
+                        if (pb.enquiryDiscountAmount > 0) {
+                          return '5% Enquiry Discount (-${formatMoney(pb.enquiryDiscountAmount, offer.currency)})';
+                        }
+                        return '15% Return Ride Discount (-${formatMoney(pb.discount, offer.currency)})';
+                      }(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF15803D),
+                      ),
+                    ),
+                  ),
+                ] else
+                  Text(
+                    offer.priceLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 24,
+                    ),
+                  ),
                 const SizedBox(height: 14),
                 Row(
                   children: [

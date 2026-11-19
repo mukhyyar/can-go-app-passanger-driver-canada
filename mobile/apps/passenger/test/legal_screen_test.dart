@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-import 'package:gt_ui/gt_ui.dart';
 import 'package:passenger/screens/auth_screen.dart';
 import 'package:passenger/screens/legal_screen.dart';
 import 'package:passenger/state/app_state.dart';

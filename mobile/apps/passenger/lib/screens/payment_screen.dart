@@ -372,29 +372,59 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
     final quote = _quote;
 
-    final breakdown = offer?.priceBreakdown;
+    final quoteBreakdownMap =
+        quote != null && quote['priceBreakdown'] is Map
+            ? Map<String, dynamic>.from(quote['priceBreakdown'] as Map)
+            : null;
+    final breakdown = offer?.priceBreakdown ??
+        (quoteBreakdownMap != null
+            ? OfferPriceBreakdown.fromJson(quoteBreakdownMap)
+            : null);
     final double rideFare;
+    final double outboundPrice;
+    final double returnPrice;
     final double platformFee;
     final double taxes;
+    final double returnDiscountAmount;
+    final double enquiryDiscountAmount;
+    final double discountAmount;
+    final double originalTotal;
     final double displayTotal;
 
     if (breakdown != null && breakdown.ridePrice > 0) {
       rideFare = breakdown.ridePrice;
+      outboundPrice = breakdown.outboundPrice;
+      returnPrice = breakdown.returnPrice;
       platformFee = breakdown.platformFee > 0
           ? breakdown.platformFee
           : (((rideFare * 0.2) * 100).roundToDouble() / 100.0);
       taxes = breakdown.taxes;
+      returnDiscountAmount = breakdown.returnDiscountAmount;
+      enquiryDiscountAmount = breakdown.enquiryDiscountAmount;
+      discountAmount = breakdown.discount;
+      originalTotal = breakdown.originalTotal > 0
+          ? breakdown.originalTotal
+          : (((rideFare + platformFee + taxes) * 100).roundToDouble() / 100.0);
       displayTotal = breakdown.total > 0
           ? breakdown.total
-          : (((rideFare + platformFee + taxes) * 100).roundToDouble() / 100.0);
+          : (((originalTotal - discountAmount).clamp(0.0, double.infinity) *
+                      100)
+                  .roundToDouble() /
+              100.0);
     } else {
       final base = (offer != null && offer.price > 0)
           ? offer.price
           : (quote != null ? _num(quote['totalAmount']) : 0.0);
       rideFare = ((base * 100).roundToDouble()) / 100.0;
+      outboundPrice = rideFare;
+      returnPrice = 0.0;
       platformFee = (((rideFare * 0.2) * 100).roundToDouble()) / 100.0;
       taxes = 0.0;
-      displayTotal = (((rideFare + platformFee) * 100).roundToDouble()) / 100.0;
+      returnDiscountAmount = 0.0;
+      enquiryDiscountAmount = 0.0;
+      discountAmount = 0.0;
+      originalTotal = (((rideFare + platformFee) * 100).roundToDouble()) / 100.0;
+      displayTotal = originalTotal;
     }
 
     final quoteTotal = quote != null ? _num(quote['totalAmount']) : 0.0;
@@ -564,16 +594,72 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ),
                     ),
                   const SizedBox(height: 16),
-                  Text(
-                    formatMoney(effectiveTotal, currency),
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
+                  if (discountAmount > 0) ...[
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 10,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          formatMoney(effectiveTotal, currency),
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          formatMoney(originalTotal, currency),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: GtColors.textSecondary,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const Text(
-                    'Total for this ride',
-                    style: TextStyle(color: GtColors.textSecondary),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        () {
+                          if (returnDiscountAmount > 0 &&
+                              enquiryDiscountAmount > 0) {
+                            return '15% Return + 5% Enquiry Discount applied (-${formatMoney(discountAmount, currency)})';
+                          }
+                          if (enquiryDiscountAmount > 0) {
+                            return '5% Enquiry Discount applied (-${formatMoney(enquiryDiscountAmount, currency)})';
+                          }
+                          return '15% Return Ride Discount applied (-${formatMoney(discountAmount, currency)})';
+                        }(),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF15803D),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ] else
+                    Text(
+                      formatMoney(effectiveTotal, currency),
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  Text(
+                    discountAmount > 0
+                        ? 'Final discounted fare for this ride'
+                        : 'Total for this ride',
+                    style: const TextStyle(color: GtColors.textSecondary),
                   ),
                   const SizedBox(height: 16),
                   GtCard(
@@ -599,6 +685,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ],
                         ),
                         const SizedBox(height: 14),
+                        if (returnPrice > 0) ...[
+                          _costRow(
+                            'Initial journey fare',
+                            outboundPrice,
+                            currency,
+                          ),
+                          const SizedBox(height: 8),
+                          _costRow(
+                            'Return journey fare',
+                            returnPrice,
+                            currency,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         _costRow('Ride fare', rideFare, currency),
                         const SizedBox(height: 8),
                         _costRow('Platform fee', platformFee, currency),
@@ -606,12 +706,46 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           const SizedBox(height: 8),
                           _costRow('Taxes', taxes, currency),
                         ],
+                        if (discountAmount > 0) ...[
+                          const SizedBox(height: 8),
+                          _costRow('Original fare', originalTotal, currency),
+                          if (returnDiscountAmount > 0) ...[
+                            const SizedBox(height: 8),
+                            _costRow(
+                              '15% Return ride discount',
+                              -returnDiscountAmount,
+                              currency,
+                              isDiscount: true,
+                            ),
+                          ],
+                          if (enquiryDiscountAmount > 0) ...[
+                            const SizedBox(height: 8),
+                            _costRow(
+                              '5% Enquiry discount',
+                              -enquiryDiscountAmount,
+                              currency,
+                              isDiscount: true,
+                            ),
+                          ],
+                          if (returnDiscountAmount <= 0 &&
+                              enquiryDiscountAmount <= 0) ...[
+                            const SizedBox(height: 8),
+                            _costRow(
+                              'Ride discount',
+                              -discountAmount,
+                              currency,
+                              isDiscount: true,
+                            ),
+                          ],
+                        ],
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 10),
                           child: Divider(height: 1),
                         ),
                         _costRow(
-                          'Total',
+                          discountAmount > 0
+                              ? 'Final discounted fare'
+                              : 'Total',
                           effectiveTotal,
                           currency,
                           isTotal: true,
@@ -747,23 +881,31 @@ class _PaymentScreenState extends State<PaymentScreen> {
     num amount,
     String currency, {
     bool isTotal = false,
+    bool isDiscount = false,
   }) {
     final style = TextStyle(
       fontSize: isTotal ? 16 : 14,
-      fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
-      color: isTotal ? GtColors.text : GtColors.textSecondary,
+      fontWeight: (isTotal || isDiscount) ? FontWeight.w800 : FontWeight.w500,
+      color: isDiscount
+          ? const Color(0xFF15803D)
+          : (isTotal ? GtColors.text : GtColors.textSecondary),
     );
     final valueStyle = TextStyle(
       fontSize: isTotal ? 16 : 14,
-      fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
-      color: isTotal ? GtColors.brand : GtColors.text,
+      fontWeight: (isTotal || isDiscount) ? FontWeight.w800 : FontWeight.w600,
+      color: isDiscount
+          ? const Color(0xFF15803D)
+          : (isTotal ? GtColors.brand : GtColors.text),
     );
+    final formatted = isDiscount
+        ? '-${formatMoney(amount.abs(), currency)}'
+        : formatMoney(amount, currency);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: style),
-        Text(formatMoney(amount, currency), style: valueStyle),
+        Text(formatted, style: valueStyle),
       ],
     );
   }

@@ -88,6 +88,7 @@ void main() {
         serverStatus: 'COMPLETED',
       );
 
+      appState.repo.rides.addAll([openRide, cancelledByServerRide, completedRide]);
       await appState.refreshRidesFromServer();
 
       await tester.pumpWidget(

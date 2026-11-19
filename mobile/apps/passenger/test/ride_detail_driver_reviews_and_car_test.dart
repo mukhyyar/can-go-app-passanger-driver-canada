@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gt_api/gt_api.dart';
-import 'package:gt_mock/gt_mock.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:passenger/screens/ride_detail_screen.dart';

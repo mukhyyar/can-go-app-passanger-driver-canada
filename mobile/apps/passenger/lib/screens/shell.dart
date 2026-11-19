@@ -172,8 +172,8 @@ class _ShellState extends State<Shell> {
         items: [
           const GtNavItem(icon: Icons.add_circle_outline, label: 'Book'),
           GtNavItem(
-            icon: Icons.alt_route,
-            label: 'Rides',
+            icon: Icons.receipt_long_outlined,
+            label: 'My Bookings',
             badge: offerBadge > 99 ? 99 : offerBadge,
           ),
           const GtNavItem(icon: Icons.headset_mic_outlined, label: 'Support'),
