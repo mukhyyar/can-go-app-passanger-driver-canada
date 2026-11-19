@@ -118,16 +118,16 @@ export class DocumentsExpiryService {
                 isActivated: driver.isActivated,
                 drivingEnabled: driver.drivingEnabled,
                 approvalStatus: driver.approvalStatus,
-              } as Prisma.InputJsonValue,
+              },
               after: {
                 isActivated: false,
                 drivingEnabled: false,
                 approvalStatus: DriverApprovalStatus.ACTION_REQUIRED,
-              } as Prisma.InputJsonValue,
+              },
               meta: {
                 expiredDocumentIds: docs.map((d) => d.id),
                 expiredDocTypes: docs.map((d) => d.docType),
-              } as Prisma.InputJsonValue,
+              },
             },
           });
         } catch (e) {
@@ -312,9 +312,7 @@ export class DocumentsExpiryService {
    * Sweeps both expired documents and upcoming document expirations.
    * Usable on-demand by admin operations and scheduled background tasks.
    */
-  async sweepAll(
-    now = new Date(),
-  ): Promise<{
+  async sweepAll(now = new Date()): Promise<{
     deactivatedDrivers: number;
     expiredDocs: number;
     notifiedCount: number;

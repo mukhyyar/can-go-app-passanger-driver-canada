@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:driver/screens/request_detail_screen.dart';
-import 'package:driver/screens/trip_detail_screen.dart';
 import 'package:driver/state/app_state.dart';
 
 class MockPaymentUpdateAppState extends AppState {

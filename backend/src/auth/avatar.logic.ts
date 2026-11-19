@@ -45,10 +45,7 @@ export function looksLikeUnsafeMarkup(buf: Buffer): boolean {
 }
 
 /** Minimal structural checks so we reject truncated/corrupt files. */
-export function hasValidImageStructure(
-  buf: Buffer,
-  mime: string,
-): boolean {
+export function hasValidImageStructure(buf: Buffer, mime: string): boolean {
   if (buf.length < 12) return false;
   if (mime === 'image/jpeg') {
     // SOI + somewhere an EOI (or at least APP0/SOF markers after SOI)

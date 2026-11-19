@@ -16,7 +16,7 @@ export function renderWalletPayoutRequested(
   const amount = escapeHtml(data.amount);
   const currency = escapeHtml(data.currency);
   const accountMask = escapeHtml(data.accountMask);
-  
+
   const subject = `Withdrawal Requested - ${amount} ${currency}`;
   const html = layout(
     `

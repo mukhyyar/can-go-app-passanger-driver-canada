@@ -14,7 +14,7 @@ export function renderWalletPayoutFailed(
   const driverName = escapeHtml(data.driverName);
   const amount = escapeHtml(data.amount);
   const currency = escapeHtml(data.currency);
-  
+
   const subject = `Withdrawal Failed - ${amount} ${currency}`;
   const html = layout(
     `

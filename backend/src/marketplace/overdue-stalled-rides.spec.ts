@@ -164,28 +164,44 @@ describe('Overdue and Stalled Rides Feature', () => {
               passenger: {
                 userId: 'user_pax_2',
                 fullName: 'Alice',
-                user: { id: 'user_pax_2', email: 'alice@example.ca', phoneE164: '+14165550200' },
+                user: {
+                  id: 'user_pax_2',
+                  email: 'alice@example.ca',
+                  phoneE164: '+14165550200',
+                },
               },
               selectedOffer: {
                 driver: {
                   userId: 'user_drv_2',
                   fullName: 'Bob',
-                  user: { id: 'user_drv_2', email: 'bob@example.ca', phoneE164: '+14165550201' },
+                  user: {
+                    id: 'user_drv_2',
+                    email: 'bob@example.ca',
+                    phoneE164: '+14165550201',
+                  },
                 },
               },
             },
           ]),
         },
         notificationDelivery: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'prior_del_1', status: 'sent' }),
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: 'prior_del_1', status: 'sent' }),
           create: jest.fn(),
         },
       };
 
       const mockTracking: any = { emitRideEvent: jest.fn() };
-      const mockEmailEvents: any = { sendRideDelayedAlert: jest.fn().mockResolvedValue(undefined) };
-      const mockNotifications: any = { notifyRideStatus: jest.fn().mockResolvedValue([]) };
-      const mockSms: any = { sendSms: jest.fn().mockResolvedValue({ messageId: 'sms_1' }) };
+      const mockEmailEvents: any = {
+        sendRideDelayedAlert: jest.fn().mockResolvedValue(undefined),
+      };
+      const mockNotifications: any = {
+        notifyRideStatus: jest.fn().mockResolvedValue([]),
+      };
+      const mockSms: any = {
+        sendSms: jest.fn().mockResolvedValue({ messageId: 'sms_1' }),
+      };
 
       const service = new RideLifecycleService(
         mockPrisma,
@@ -215,13 +231,18 @@ describe('Overdue and Stalled Rides Feature', () => {
             currency: 'CAD',
             refunds: [],
           }),
-          update: jest.fn().mockResolvedValue({ id: 'pay_123', status: 'refunded' }),
+          update: jest
+            .fn()
+            .mockResolvedValue({ id: 'pay_123', status: 'refunded' }),
         },
         user: {
           findUnique: jest.fn().mockResolvedValue({ id: 'user_pax_1' }),
         },
         ride: {
-          findUnique: jest.fn().mockResolvedValue({ id: 'ride_123', assignedDriverId: 'driver_1' }),
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'ride_123',
+            assignedDriverId: 'driver_1',
+          }),
         },
         refund: {
           create: jest.fn().mockResolvedValue({ id: 'ref_1' }),
@@ -236,7 +257,10 @@ describe('Overdue and Stalled Rides Feature', () => {
 
       const mockPaymentProvider: any = {
         name: 'stripe',
-        refund: jest.fn().mockResolvedValue({ refundId: 're_stripe_999', status: 'succeeded' }),
+        refund: jest.fn().mockResolvedValue({
+          refundId: 're_stripe_999',
+          status: 'succeeded',
+        }),
       };
 
       const tripService = new TripService(
@@ -260,7 +284,10 @@ describe('Overdue and Stalled Rides Feature', () => {
       expect(result.amount).toBe(240);
       expect(result.refundId).toBe('re_stripe_999');
 
-      expect(mockPaymentProvider.refund).toHaveBeenCalledWith('pi_stripe_123', 240);
+      expect(mockPaymentProvider.refund).toHaveBeenCalledWith(
+        'pi_stripe_123',
+        240,
+      );
       expect(mockPrisma.refund.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({

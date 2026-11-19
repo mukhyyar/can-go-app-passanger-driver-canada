@@ -40,7 +40,9 @@ export class AdminRbacService implements OnModuleInit {
       }
       for (const row of existing) {
         if (!want.has(row.permission as Permission)) {
-          await this.prisma.adminRolePermission.delete({ where: { id: row.id } });
+          await this.prisma.adminRolePermission.delete({
+            where: { id: row.id },
+          });
         }
       }
     }
@@ -62,9 +64,21 @@ export class AdminRbacService implements OnModuleInit {
   async ensureFlagsAndTemplates() {
     const flags = [
       { key: 'vip_enabled', enabled: true, description: 'VIP passenger perks' },
-      { key: 'referrals_enabled', enabled: true, description: 'Referral credits' },
-      { key: 'experiences_enabled', enabled: true, description: 'Experiences catalog' },
-      { key: 'analytics_demo', enabled: false, description: 'Allow labeled demo analytics when requested' },
+      {
+        key: 'referrals_enabled',
+        enabled: true,
+        description: 'Referral credits',
+      },
+      {
+        key: 'experiences_enabled',
+        enabled: true,
+        description: 'Experiences catalog',
+      },
+      {
+        key: 'analytics_demo',
+        enabled: false,
+        description: 'Allow labeled demo analytics when requested',
+      },
     ];
     for (const f of flags) {
       await this.prisma.featureFlag.upsert({
@@ -114,7 +128,9 @@ export class AdminRbacService implements OnModuleInit {
   }
 
   async setRolePermissions(roleId: string, permissions: string[]) {
-    const role = await this.prisma.adminRole.findUnique({ where: { id: roleId } });
+    const role = await this.prisma.adminRole.findUnique({
+      where: { id: roleId },
+    });
     if (!role) throw new Error('Role not found');
     await this.prisma.adminRolePermission.deleteMany({ where: { roleId } });
     if (permissions.length) {

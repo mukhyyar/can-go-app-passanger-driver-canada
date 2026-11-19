@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 
@@ -27,7 +31,9 @@ export class StripeConnectService {
 
   private getClient(): Stripe {
     if (!this.stripe) {
-      throw new ServiceUnavailableException('STRIPE_SECRET_KEY is not configured');
+      throw new ServiceUnavailableException(
+        'STRIPE_SECRET_KEY is not configured',
+      );
     }
     return this.stripe;
   }
@@ -66,7 +72,9 @@ export class StripeConnectService {
         },
       },
     });
-    this.logger.log(`Created Stripe Express account ${account.id} for driver ${driverId} (${businessType})`);
+    this.logger.log(
+      `Created Stripe Express account ${account.id} for driver ${driverId} (${businessType})`,
+    );
     return account.id;
   }
 
@@ -79,8 +87,10 @@ export class StripeConnectService {
     refreshUrl?: string,
   ): Promise<string> {
     const stripe = this.getClient();
-    const appBase =
-      (this.config.get<string>('admin.passengerWebBase') || 'https://www.can-rides.ca').replace(/\/+$/, '');
+    const appBase = (
+      this.config.get<string>('admin.passengerWebBase') ||
+      'https://www.can-rides.ca'
+    ).replace(/\/+$/, '');
     const defaultReturn =
       this.config.get<string>('stripe.connectReturnUrl') ||
       `${appBase}/stripe/return?accountId=${encodeURIComponent(accountId)}`;

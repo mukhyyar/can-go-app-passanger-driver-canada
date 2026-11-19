@@ -43,7 +43,10 @@ export class DevPaymentProvider implements PaymentProvider {
   ): Promise<VerifiedWebhookEvent> {
     const body =
       typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8');
-    const eventId = createHash('sha256').update(body).digest('hex').slice(0, 32);
+    const eventId = createHash('sha256')
+      .update(body)
+      .digest('hex')
+      .slice(0, 32);
     const parsed = body ? (JSON.parse(body) as Record<string, unknown>) : {};
     return {
       provider: this.name,

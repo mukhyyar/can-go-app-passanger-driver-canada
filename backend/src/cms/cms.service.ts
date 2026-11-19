@@ -8,7 +8,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CMS_KINDS, CMS_SEEDS, type CmsKind } from './cms.defaults';
 
-const PLACEHOLDER_RE = /phase 2 placeholder|placeholder\)|support@can-go\.local/i;
+const PLACEHOLDER_RE =
+  /phase 2 placeholder|placeholder\)|support@can-go\.local/i;
 
 @Injectable()
 export class CmsService implements OnModuleInit {
@@ -34,7 +35,8 @@ export class CmsService implements OnModuleInit {
         continue;
       }
       const stale =
-        PLACEHOLDER_RE.test(existing.bodyMd) || existing.bodyMd.trim().length < 80;
+        PLACEHOLDER_RE.test(existing.bodyMd) ||
+        existing.bodyMd.trim().length < 80;
       await this.prisma.cmsPage.update({
         where: { slug: d.slug },
         data: {
@@ -50,7 +52,8 @@ export class CmsService implements OnModuleInit {
   }
 
   listPublic(kind?: string) {
-    const allowed = kind && CMS_KINDS.includes(kind as CmsKind) ? kind : undefined;
+    const allowed =
+      kind && CMS_KINDS.includes(kind as CmsKind) ? kind : undefined;
     return this.prisma.cmsPage.findMany({
       where: {
         published: true,
@@ -113,7 +116,8 @@ export class CmsService implements OnModuleInit {
         bodyMd: data.bodyMd,
         published: data.published ?? true,
         kind: data.kind ?? 'page',
-        category: data.category === undefined ? undefined : data.category || null,
+        category:
+          data.category === undefined ? undefined : data.category || null,
         sortOrder: data.sortOrder ?? 0,
       },
     });
@@ -124,8 +128,12 @@ export class CmsService implements OnModuleInit {
         resource: 'CmsPage',
         resourceId: page.id,
         reason: `Edited ${page.kind} /${page.slug}`,
-        after: { slug: page.slug, title: page.title, published: page.published } as Prisma.InputJsonValue,
-        meta: { slug: page.slug, kind: page.kind } as Prisma.InputJsonValue,
+        after: {
+          slug: page.slug,
+          title: page.title,
+          published: page.published,
+        },
+        meta: { slug: page.slug, kind: page.kind },
       },
     });
     return page;
@@ -142,8 +150,8 @@ export class CmsService implements OnModuleInit {
         resource: 'CmsPage',
         resourceId: page.id,
         reason: `Deleted /${page.slug}`,
-        before: { slug: page.slug, title: page.title } as Prisma.InputJsonValue,
-        meta: { slug: page.slug } as Prisma.InputJsonValue,
+        before: { slug: page.slug, title: page.title },
+        meta: { slug: page.slug },
       },
     });
     return { ok: true, slug };

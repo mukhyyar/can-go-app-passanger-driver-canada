@@ -68,7 +68,9 @@ describe('DriversService payment details', () => {
       },
       driverProfile: {
         update: jest.fn(async ({ where, data }: any) => {
-          const current = Object.values(profiles).find((p) => p.id === where.id);
+          const current = Object.values(profiles).find(
+            (p) => p.id === where.id,
+          );
           if (current && data.payoutSettingsJson) {
             current.payoutSettingsJson = data.payoutSettingsJson;
           }

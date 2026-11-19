@@ -17,8 +17,14 @@ export function renderRideDelayedAlert(
   assetBaseUrl: string,
 ) {
   const code = escapeHtml(data.rideCode);
-  const name = escapeHtml(data.recipientName || (data.recipientRole === 'passenger' ? 'Passenger' : 'Driver'));
-  const other = escapeHtml(data.otherPartyName || (data.recipientRole === 'passenger' ? 'your driver' : 'your passenger'));
+  const name = escapeHtml(
+    data.recipientName ||
+      (data.recipientRole === 'passenger' ? 'Passenger' : 'Driver'),
+  );
+  const other = escapeHtml(
+    data.otherPartyName ||
+      (data.recipientRole === 'passenger' ? 'your driver' : 'your passenger'),
+  );
   const pickupAt = escapeHtml(data.pickupAt);
   const from = escapeHtml(data.fromLabel);
   const to = escapeHtml(data.toLabel);

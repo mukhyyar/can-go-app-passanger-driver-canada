@@ -31,7 +31,8 @@ export class StripePayoutProvider implements PayoutProvider {
   constructor(config: ConfigService) {
     this.secret = config.get<string>('stripe.secretKey');
     this.webhookSecret = config.get<string>('stripe.webhookSecret');
-    this.nodeEnv = config.get<string>('nodeEnv') ?? process.env.NODE_ENV ?? 'local';
+    this.nodeEnv =
+      config.get<string>('nodeEnv') ?? process.env.NODE_ENV ?? 'local';
   }
 
   private assertConfigured() {
@@ -47,7 +48,8 @@ export class StripePayoutProvider implements PayoutProvider {
     prefs: Record<string, unknown>,
   ): Promise<BeneficiaryRef> {
     const connected =
-      (typeof prefs.stripeAccountId === 'string' && prefs.stripeAccountId.trim()) ||
+      (typeof prefs.stripeAccountId === 'string' &&
+        prefs.stripeAccountId.trim()) ||
       (typeof prefs.beneficiaryId === 'string' && prefs.beneficiaryId.trim()) ||
       '';
     if (!connected || connected.startsWith('acct_pending_')) {
@@ -104,7 +106,8 @@ export class StripePayoutProvider implements PayoutProvider {
     headers: Record<string, string | string[] | undefined>,
     rawBody: Buffer | string,
   ) {
-    const raw = typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8');
+    const raw =
+      typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8');
     if (this.nodeEnv === 'production' && !this.webhookSecret) {
       throw new ServiceUnavailableException(
         'STRIPE_WEBHOOK_SECRET is required in production',
@@ -112,8 +115,13 @@ export class StripePayoutProvider implements PayoutProvider {
     }
     if (this.webhookSecret) {
       const sigHeader = header(headers, 'stripe-signature');
-      if (!sigHeader || !verifyStripeSignature(raw, sigHeader, this.webhookSecret)) {
-        throw new ServiceUnavailableException('Invalid Stripe webhook signature');
+      if (
+        !sigHeader ||
+        !verifyStripeSignature(raw, sigHeader, this.webhookSecret)
+      ) {
+        throw new ServiceUnavailableException(
+          'Invalid Stripe webhook signature',
+        );
       }
     }
     const parsed = JSON.parse(raw) as {

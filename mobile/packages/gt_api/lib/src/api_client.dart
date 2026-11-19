@@ -121,6 +121,16 @@ class ApiClient {
     return _send('GET', path, auth: auth);
   }
 
+  Future<List<dynamic>> getList(
+    String path, {
+    bool auth = true,
+  }) async {
+    final res = await get(path, auth: auth);
+    final list = res['_list'] ?? res['items'] ?? res['data'];
+    if (list is List) return list;
+    return const [];
+  }
+
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? body,

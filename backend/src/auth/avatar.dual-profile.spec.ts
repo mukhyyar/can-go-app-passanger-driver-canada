@@ -1,6 +1,4 @@
-import {
-  collectAvatarKeys,
-} from './avatar.logic';
+import { collectAvatarKeys } from './avatar.logic';
 
 /**
  * Lightweight dual-profile / cleanup sequencing checks that mirror AuthService

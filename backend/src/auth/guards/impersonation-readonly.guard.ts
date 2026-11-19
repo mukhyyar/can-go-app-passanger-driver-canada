@@ -32,8 +32,6 @@ export class ImpersonationReadOnlyGuard implements CanActivate {
     const path = req.originalUrl ?? req.url ?? '';
     if (ALLOWED_WRITE_SUFFIXES.some((s) => path.includes(s))) return true;
 
-    throw new ForbiddenException(
-      'Read-only impersonation: writes are blocked',
-    );
+    throw new ForbiddenException('Read-only impersonation: writes are blocked');
   }
 }

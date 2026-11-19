@@ -192,7 +192,7 @@ export class NotificationsService {
         templateKey: input.templateKey,
         title: input.title,
         body: input.body,
-        dataJson: (input.dataJson ?? {}) as Prisma.InputJsonValue,
+        dataJson: input.dataJson ?? {},
         status: input.status,
         providerMsgId: input.providerMsgId,
         errorCode: input.errorCode,
@@ -227,9 +227,7 @@ export class NotificationsService {
         ...(targetRoles && targetRoles.length > 0
           ? {
               appRole:
-                targetRoles.length === 1
-                  ? (targetRoles[0] as AppRole)
-                  : { in: targetRoles as AppRole[] },
+                targetRoles.length === 1 ? targetRoles[0] : { in: targetRoles },
             }
           : {}),
       },
@@ -357,8 +355,12 @@ export class NotificationsService {
           code.includes('registration-token-not-registered') ||
           code.includes('invalid-registration-token')
         ) {
-          await this.prisma.deviceToken.delete({ where: { token: t.token } }).catch(() => undefined);
-          this.logger.log(`Removed invalid FCM token for user=${payload.userId}`);
+          await this.prisma.deviceToken
+            .delete({ where: { token: t.token } })
+            .catch(() => undefined);
+          this.logger.log(
+            `Removed invalid FCM token for user=${payload.userId}`,
+          );
         }
       }
     }

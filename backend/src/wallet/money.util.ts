@@ -19,9 +19,9 @@ export function currencyScale(currency: string): number {
   }
 }
 
-export function d(value: Prisma.Decimal | Decimal | string | number): Decimal {
+export function d(value: Prisma.Decimal | string | number): Decimal {
   if (value instanceof Decimal) return value;
-  return new Decimal(value as string | number);
+  return new Decimal(value);
 }
 
 export function moneyZero(): Decimal {
@@ -33,10 +33,7 @@ export function moneyZero(): Decimal {
  * Rejects zero, negative, NaN, and unsupported precision.
  * Never use JS number arithmetic for wallet balances.
  */
-export function normalizeMoney(
-  raw: unknown,
-  currency: string,
-): Decimal {
+export function normalizeMoney(raw: unknown, currency: string): Decimal {
   if (raw === null || raw === undefined) {
     throw new BadRequestException({
       code: 'INVALID_AMOUNT',
@@ -58,7 +55,7 @@ export function normalizeMoney(
       }
       parsed = new Decimal(trimmed);
     } else if (raw instanceof Decimal || Decimal.isDecimal(raw)) {
-      parsed = d(raw as Decimal);
+      parsed = d(raw);
     } else {
       throw new Error('malformed');
     }
@@ -93,7 +90,7 @@ export function normalizeMoney(
   return parsed.toDecimalPlaces(scale, Decimal.ROUND_HALF_UP);
 }
 
-export function moneyToString(value: Decimal | Prisma.Decimal, currency: string): string {
+export function moneyToString(value: Decimal, currency: string): string {
   const scale = currencyScale(currency);
   return d(value).toFixed(scale);
 }
@@ -113,27 +110,30 @@ export function moneyToMinorUnits(value: Decimal, currency: string): number {
 }
 
 /** Provider boundary: Decimal → number for legacy PayoutBatchItem (cents already validated). */
-export function moneyToProviderNumber(value: Decimal, currency: string): number {
+export function moneyToProviderNumber(
+  value: Decimal,
+  currency: string,
+): number {
   const scale = currencyScale(currency);
   return Number(value.toFixed(scale));
 }
 
-export function sumMoney(values: Array<Decimal | Prisma.Decimal>): Decimal {
+export function sumMoney(values: Array<Decimal>): Decimal {
   return values.reduce<Decimal>((acc, v) => acc.plus(d(v)), ZERO);
 }
 
-export function moneyCmp(a: Decimal | Prisma.Decimal, b: Decimal | Prisma.Decimal): number {
+export function moneyCmp(a: Decimal, b: Decimal): number {
   return d(a).cmp(d(b));
 }
 
-export function moneyGte(a: Decimal | Prisma.Decimal, b: Decimal | Prisma.Decimal): boolean {
+export function moneyGte(a: Decimal, b: Decimal): boolean {
   return d(a).gte(d(b));
 }
 
-export function moneyLt(a: Decimal | Prisma.Decimal, b: Decimal | Prisma.Decimal): boolean {
+export function moneyLt(a: Decimal, b: Decimal): boolean {
   return d(a).lt(d(b));
 }
 
-export function moneyIsNegative(a: Decimal | Prisma.Decimal): boolean {
+export function moneyIsNegative(a: Decimal): boolean {
   return d(a).isNegative();
 }

@@ -11,7 +11,15 @@ jest.mock('@nestjs/jwt', () => ({
 }));
 
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { DriverPayoutStatus, Prisma, RideStatus, UserRole, WalletDirection, WalletEntryStatus, WalletEntryType } from '@prisma/client';
+import {
+  DriverPayoutStatus,
+  Prisma,
+  RideStatus,
+  UserRole,
+  WalletDirection,
+  WalletEntryStatus,
+  WalletEntryType,
+} from '@prisma/client';
 import { MarketplaceService } from './marketplace.service';
 
 describe('MarketplaceService - Ride Tip Feature (Stripe Processing)', () => {
@@ -43,7 +51,10 @@ describe('MarketplaceService - Ride Tip Feature (Stripe Processing)', () => {
               role: UserRole.PASSENGER,
               phoneVerifiedAt: new Date(),
               isSuspended: false,
-              passengerProfile: { id: passengerProfileId, userId: passengerUserId },
+              passengerProfile: {
+                id: passengerProfileId,
+                userId: passengerUserId,
+              },
             });
           }
           if (where.id === driverUserId) {
@@ -112,7 +123,9 @@ describe('MarketplaceService - Ride Tip Feature (Stripe Processing)', () => {
     };
     mockStripeConnect = {
       isConfigured: jest.fn().mockReturnValue(true),
-      transferToDriver: jest.fn().mockResolvedValue({ transferId: 'tr_test_tip_123' }),
+      transferToDriver: jest
+        .fn()
+        .mockResolvedValue({ transferId: 'tr_test_tip_123' }),
     };
 
     const mockConfig = {
@@ -191,7 +204,11 @@ describe('MarketplaceService - Ride Tip Feature (Stripe Processing)', () => {
     const mockRide = {
       id: rideId,
       passengerId: passengerProfileId,
-      passenger: { id: passengerProfileId, fullName: 'John Doe', userId: passengerUserId },
+      passenger: {
+        id: passengerProfileId,
+        fullName: 'John Doe',
+        userId: passengerUserId,
+      },
       status: RideStatus.COMPLETED,
       assignedDriverId: driverProfileId,
       currency: 'CAD',
@@ -343,7 +360,11 @@ describe('MarketplaceService - Ride Tip Feature (Stripe Processing)', () => {
     const rideData = {
       id: rideId,
       passengerId: passengerProfileId,
-      passenger: { id: passengerProfileId, fullName: 'John Doe', userId: passengerUserId },
+      passenger: {
+        id: passengerProfileId,
+        fullName: 'John Doe',
+        userId: passengerUserId,
+      },
       status: RideStatus.COMPLETED,
       assignedDriverId: driverProfileId,
       offers: [],

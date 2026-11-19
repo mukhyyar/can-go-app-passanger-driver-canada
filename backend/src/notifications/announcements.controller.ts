@@ -14,9 +14,7 @@ export class AnnouncementsController {
         active: true,
         startsAt: { lte: now },
         OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-        ...(audience
-          ? { audience: { in: [audience, 'ALL', 'GUESTS'] } }
-          : {}),
+        ...(audience ? { audience: { in: [audience, 'ALL', 'GUESTS'] } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: 10,

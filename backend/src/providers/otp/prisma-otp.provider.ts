@@ -19,9 +19,7 @@ export class PrismaOtpProvider implements OtpProvider {
   async issue(phoneE164: string, purpose: OtpPurpose) {
     // Mock SMS: fixed code for local/staging test without reading server logs.
     const code =
-      this.sms.name === 'mock'
-        ? '111111'
-        : String(randomInt(100000, 999999));
+      this.sms.name === 'mock' ? '111111' : String(randomInt(100000, 999999));
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     // Invalidate prior open challenges for same phone+purpose

@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 /// Compile-time override: `--dart-define=CANGO_API_BASE=https://…/api`
 const kApiBaseFromEnv = String.fromEnvironment('CANGO_API_BASE');
 

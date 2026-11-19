@@ -92,15 +92,15 @@ describe('TripService Geofencing and Restrictions', () => {
   const nearPickupLng = -114.0719;
 
   // Coordinates ~800m from pickup (approx 0.0072 lat offset is ~800m)
-  const farPickupLat = 51.0520;
+  const farPickupLat = 51.052;
   const farPickupLng = -114.0719;
 
   // Coordinates ~200m from dropoff
-  const nearDropoffLat = 51.1230;
+  const nearDropoffLat = 51.123;
   const nearDropoffLng = -114.0076;
 
   // Coordinates ~1500m from dropoff
-  const farDropoffLat = 51.1080;
+  const farDropoffLat = 51.108;
   const farDropoffLng = -114.0076;
 
   const mockDriverUser = {
@@ -292,7 +292,9 @@ describe('TripService Geofencing and Restrictions', () => {
           undefined,
           { lat: farDropoffLat, lng: farDropoffLng },
         ),
-      ).rejects.toThrow(/away from the drop-off destination.*confirm early drop-off/);
+      ).rejects.toThrow(
+        /away from the drop-off destination.*confirm early drop-off/,
+      );
     });
 
     it('allows COMPLETED when driver is far from dropoff if forceEarlyDropoff is true', async () => {

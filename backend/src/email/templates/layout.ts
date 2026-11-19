@@ -23,7 +23,7 @@ export function resolveLogoUrl(assetBaseUrl: string): string {
 export function layout(content: string, assetBaseUrl: string): string {
   const year = new Date().getFullYear();
   const logoUrl = resolveLogoUrl(assetBaseUrl);
-  
+
   return `
 <!DOCTYPE html>
 <html>

@@ -83,8 +83,7 @@ export class ExpansionController {
   @UseGuards(JwtAuthGuard)
   @Post('referrals/redeem')
   redeem(@CurrentUser() user: AuthUser, @Body() dto: RedeemReferralDto) {
-    const role =
-      user.role === UserRole.DRIVER ? 'DRIVER' : 'PASSENGER';
+    const role = user.role === UserRole.DRIVER ? 'DRIVER' : 'PASSENGER';
     return this.expansion.redeemReferral(user.id, dto.code, role);
   }
 

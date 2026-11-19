@@ -5,6 +5,7 @@ import { api, hasPermission } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { DataGrid } from '../../../components/data-grid';
 import { CancellationPolicyManager } from '../../../components/cancellation-policy-manager';
+import { VehicleCategoriesManager } from '../../../components/vehicle-categories-manager';
 
 type FareRow = Record<string, unknown>;
 
@@ -154,6 +155,9 @@ export default function PricingPage() {
       <div style={{ display: 'flex', gap: 10, margin: '14px 0 16px' }}>
         <a href="#services" className="btn ghost sm" style={{ fontWeight: 700 }}>
           Fare Rules
+        </a>
+        <a href="#vehicle-categories" className="btn ghost sm" style={{ fontWeight: 700 }}>
+          Vehicle Categories
         </a>
         <a href="#cancellation" className="btn ghost sm" style={{ fontWeight: 700 }}>
           Cancellation Policy
@@ -375,6 +379,8 @@ export default function PricingPage() {
           },
         ]}
       />
+
+      <VehicleCategoriesManager />
 
       <CancellationPolicyManager />
     </div>

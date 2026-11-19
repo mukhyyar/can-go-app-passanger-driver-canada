@@ -465,4 +465,3 @@ export class TerminateDriverDto {
   @MinLength(3)
   reason!: string;
 }
-

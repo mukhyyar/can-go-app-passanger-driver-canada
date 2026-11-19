@@ -58,9 +58,10 @@ export class LaunchGateService {
         !!(this.config.get<string>('twilio.accountSid') || '').trim() &&
         !!(this.config.get<string>('twilio.authToken') || '').trim() &&
         (!!(this.config.get<string>('twilio.fromNumber') || '').trim() ||
-          !!(this.config.get<string>('twilio.messagingServiceSid') || '').trim()),
-      adminTotpEnforce:
-        this.config.get<boolean>('admin.totpEnforce') === true,
+          !!(
+            this.config.get<string>('twilio.messagingServiceSid') || ''
+          ).trim()),
+      adminTotpEnforce: this.config.get<boolean>('admin.totpEnforce') === true,
       allowDevPaymentInProduction:
         this.config.get<boolean>('launchGate.allowDevPaymentInProduction') ===
         true,

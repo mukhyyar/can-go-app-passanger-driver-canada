@@ -134,13 +134,20 @@ describe('AdminOpsService - Support Case Management & Assignment', () => {
     it('returns active admin and super admin users', async () => {
       prisma.user.findMany.mockResolvedValue([
         { id: 'admin-1', email: 'support@can-rides.ca', role: UserRole.ADMIN },
-        { id: 'admin-2', email: 'lead@can-rides.ca', role: UserRole.SUPER_ADMIN },
+        {
+          id: 'admin-2',
+          email: 'lead@can-rides.ca',
+          role: UserRole.SUPER_ADMIN,
+        },
       ]);
 
       const result = await service.listCaseAssignees();
       expect(result).toHaveLength(2);
       expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] }, isSuspended: false },
+        where: {
+          role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+          isSuspended: false,
+        },
         select: {
           id: true,
           email: true,
@@ -160,8 +167,18 @@ describe('AdminOpsService - Support Case Management & Assignment', () => {
         assignee: null,
         passenger: { id: 'pax-1', fullName: 'John Doe', userId: 'user-1' },
         driver: { id: 'drv-1', fullName: 'Jane Smith', userId: 'user-2' },
-        ride: { id: 'ride-1', fromLabel: 'Point A', toLabel: 'Point B', status: 'COMPLETED' },
-        payment: { id: 'pay-1', amount: 25.5, currency: 'CAD', status: 'SUCCEEDED' },
+        ride: {
+          id: 'ride-1',
+          fromLabel: 'Point A',
+          toLabel: 'Point B',
+          status: 'COMPLETED',
+        },
+        payment: {
+          id: 'pay-1',
+          amount: 25.5,
+          currency: 'CAD',
+          status: 'SUCCEEDED',
+        },
         notes: [],
       });
 
@@ -172,7 +189,9 @@ describe('AdminOpsService - Support Case Management & Assignment', () => {
 
     it('throws NotFoundException if case does not exist', async () => {
       prisma.supportCase.findUnique.mockResolvedValue(null);
-      await expect(service.getCase('missing')).rejects.toThrow('Case not found');
+      await expect(service.getCase('missing')).rejects.toThrow(
+        'Case not found',
+      );
     });
   });
 
@@ -188,7 +207,11 @@ describe('AdminOpsService - Support Case Management & Assignment', () => {
           id: 'case-1',
           status: SupportCaseStatus.ASSIGNED,
           assigneeId: 'admin-1',
-          assignee: { id: 'admin-1', email: 'agent@can-rides.ca', role: UserRole.ADMIN },
+          assignee: {
+            id: 'admin-1',
+            email: 'agent@can-rides.ca',
+            role: UserRole.ADMIN,
+          },
           notes: [],
         });
 
@@ -321,4 +344,3 @@ describe('AdminOpsService - Support Case Management & Assignment', () => {
     });
   });
 });
-

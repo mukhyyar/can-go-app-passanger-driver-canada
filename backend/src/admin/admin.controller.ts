@@ -20,7 +20,10 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
-import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type AuthUser,
+} from '../auth/decorators/current-user.decorator';
 import { AdminOpsService } from './admin.service';
 import { AdminRbacService } from './rbac.service';
 import { DriverWalletService } from '../wallet/driver-wallet.service';
@@ -87,7 +90,12 @@ export class AdminOpsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.ops.dashboardSeries(metric ?? 'overview', range ?? '30d', from, to);
+    return this.ops.dashboardSeries(
+      metric ?? 'overview',
+      range ?? '30d',
+      from,
+      to,
+    );
   }
 
   @Get('search')
@@ -138,7 +146,8 @@ export class AdminOpsController {
       lastActiveFrom,
       lastActiveTo,
       page: page != null && page !== '' ? Number(page) : undefined,
-      pageSize: pageSize != null && pageSize !== '' ? Number(pageSize) : undefined,
+      pageSize:
+        pageSize != null && pageSize !== '' ? Number(pageSize) : undefined,
       sort,
       order,
     });
@@ -185,7 +194,13 @@ export class AdminOpsController {
     @Body() dto: SuspendDto,
     @Req() req: { ip?: string },
   ) {
-    return this.ops.setSuspended(user.id, id, dto.isSuspended, dto.reason, req.ip);
+    return this.ops.setSuspended(
+      user.id,
+      id,
+      dto.isSuspended,
+      dto.reason,
+      req.ip,
+    );
   }
 
   @Post('users/:id/reset-password')
@@ -545,7 +560,7 @@ export class AdminOpsController {
     @Body() dto: FareRuleDto,
     @Req() req: { ip?: string },
   ) {
-    return this.ops.upsertFareRule(user.id, undefined, dto as never, req.ip);
+    return this.ops.upsertFareRule(user.id, undefined, dto, req.ip);
   }
 
   @Put('fare-rules/:id')
@@ -556,13 +571,57 @@ export class AdminOpsController {
     @Body() dto: FareRuleDto,
     @Req() req: { ip?: string },
   ) {
-    return this.ops.upsertFareRule(user.id, id, dto as never, req.ip);
+    return this.ops.upsertFareRule(user.id, id, dto, req.ip);
+  }
+
+  @Get('vehicle-categories')
+  @RequirePermission('pricing.view')
+  vehicleCategories() {
+    return this.ops.listVehicleCategories();
+  }
+
+  @Post('vehicle-categories')
+  @RequirePermission('pricing.edit')
+  createVehicleCategory(
+    @CurrentUser() user: AuthUser,
+    @Body() body: Record<string, unknown>,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.upsertVehicleCategory(
+      user.id,
+      undefined,
+      body as never,
+      req.ip,
+    );
+  }
+
+  @Put('vehicle-categories/:id')
+  @RequirePermission('pricing.edit')
+  updateVehicleCategory(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.upsertVehicleCategory(user.id, id, body as never, req.ip);
+  }
+
+  @Delete('vehicle-categories/:id')
+  @RequirePermission('pricing.edit')
+  deleteVehicleCategory(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.deleteVehicleCategory(user.id, id, req.ip);
   }
 
   @Get('cancellation-policy')
   @RequirePermission('pricing.view')
   cancellationPolicy() {
-    return this.cancellationPolicyService ? this.cancellationPolicyService.listTiers() : [];
+    return this.cancellationPolicyService
+      ? this.cancellationPolicyService.listTiers()
+      : [];
   }
 
   @Put('cancellation-policy/:tierKey')
@@ -572,14 +631,12 @@ export class AdminOpsController {
     @Param('tierKey') tierKey: string,
     @Body() dto: UpdateCancellationPolicyTierDto,
   ) {
-    return this.cancellationPolicyService?.updateTier(tierKey, dto as never, user.id);
+    return this.cancellationPolicyService?.updateTier(tierKey, dto, user.id);
   }
 
   @Post('cancellation-policy/simulate')
   @RequirePermission('pricing.view')
-  simulateCancellation(
-    @Body() dto: SimulateCancellationDto,
-  ) {
+  simulateCancellation(@Body() dto: SimulateCancellationDto) {
     return this.cancellationPolicyService?.simulate(dto);
   }
 
@@ -626,11 +683,10 @@ export class AdminOpsController {
     @Body() dto: OverrideCancellationJustificationDto,
     @Req() req: { ip?: string },
   ) {
-    return this.driverCancellationService?.overrideJustification(
-      user.id,
-      id,
-      { ...dto, ip: req.ip },
-    );
+    return this.driverCancellationService?.overrideJustification(user.id, id, {
+      ...dto,
+      ip: req.ip,
+    });
   }
 
   @Get('driver-cancellations/reasons')
@@ -675,11 +731,10 @@ export class AdminOpsController {
     @Body() dto: TerminateDriverDto,
     @Req() req: { ip?: string },
   ) {
-    return this.driverCancellationService?.terminateDriver(
-      user.id,
-      driverId,
-      { ...dto, ip: req.ip },
-    );
+    return this.driverCancellationService?.terminateDriver(user.id, driverId, {
+      ...dto,
+      ip: req.ip,
+    });
   }
 
   @Patch('promos/:id')
@@ -781,10 +836,7 @@ export class AdminOpsController {
 
   @Get('chat/threads/:rideId')
   @RequirePermission('chat.view')
-  chatThread(
-    @CurrentUser() user: AuthUser,
-    @Param('rideId') rideId: string,
-  ) {
+  chatThread(@CurrentUser() user: AuthUser, @Param('rideId') rideId: string) {
     return this.ops.getChatThreadByRide(rideId, user.id);
   }
 
@@ -862,7 +914,12 @@ export class AdminOpsController {
   updateCase(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-    @Body() dto: { status?: SupportCaseStatus; assigneeId?: string | null; note?: string },
+    @Body()
+    dto: {
+      status?: SupportCaseStatus;
+      assigneeId?: string | null;
+      note?: string;
+    },
   ) {
     return this.ops.updateCase(user.id, id, dto);
   }
@@ -991,10 +1048,7 @@ export class AdminOpsController {
 
   @Put('roles/:id/permissions')
   @RequirePermission('roles.manage')
-  setPerms(
-    @Param('id') id: string,
-    @Body() dto: { permissions: string[] },
-  ) {
+  setPerms(@Param('id') id: string, @Body() dto: { permissions: string[] }) {
     return this.rbac.setRolePermissions(id, dto.permissions);
   }
 

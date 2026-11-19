@@ -20,7 +20,10 @@ describe('Ride Report Functionality', () => {
   describe('ReportRideDto Validation', () => {
     it('validates a valid ReportRideDto with reasons and details', async () => {
       const dto = new ReportRideDto();
-      dto.reasons = ['Dangerous / Reckless driving', 'Distracted driving / Phone use'];
+      dto.reasons = [
+        'Dangerous / Reckless driving',
+        'Distracted driving / Phone use',
+      ];
       dto.details = 'Driver was speeding and looking at phone.';
 
       const errors = await validate(dto);
@@ -64,10 +67,14 @@ describe('Ride Report Functionality', () => {
           update: jest.fn().mockResolvedValue({}),
         },
         chatThread: {
-          upsert: jest.fn().mockResolvedValue({ id: 'thread-1', rideId: 'ride-1' }),
+          upsert: jest
+            .fn()
+            .mockResolvedValue({ id: 'thread-1', rideId: 'ride-1' }),
         },
         chatMessage: {
-          create: jest.fn().mockResolvedValue({ id: 'msg-1', threadId: 'thread-1' }),
+          create: jest
+            .fn()
+            .mockResolvedValue({ id: 'msg-1', threadId: 'thread-1' }),
         },
         rideEvent: {
           create: jest.fn(),

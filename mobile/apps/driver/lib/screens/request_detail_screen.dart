@@ -685,8 +685,16 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   ],
                   const SizedBox(height: 16),
                   const Text(
-                    'Transport types',
+                    'Preferred vehicle category',
                     style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Passenger preference — all eligible drivers can submit an offer.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: GtColors.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Wrap(

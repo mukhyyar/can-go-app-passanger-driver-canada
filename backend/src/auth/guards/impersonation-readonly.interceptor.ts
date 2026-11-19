@@ -36,8 +36,6 @@ export class ImpersonationReadOnlyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    throw new ForbiddenException(
-      'Read-only impersonation: writes are blocked',
-    );
+    throw new ForbiddenException('Read-only impersonation: writes are blocked');
   }
 }

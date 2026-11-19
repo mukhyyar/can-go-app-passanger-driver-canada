@@ -1,5 +1,3 @@
-library gt_ui;
-
 export 'src/auth_shell.dart';
 export 'src/avatar_edit_flow.dart';
 export 'src/avatar_normalize.dart';

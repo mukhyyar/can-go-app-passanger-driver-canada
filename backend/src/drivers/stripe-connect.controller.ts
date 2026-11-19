@@ -13,7 +13,11 @@ export class StripeConnectController {
     @Res() res: Response,
   ) {
     const result = await this.drivers.handleStripeConnectReturn(accountId);
-    if (accept && accept.includes('application/json') && !accept.includes('text/html')) {
+    if (
+      accept &&
+      accept.includes('application/json') &&
+      !accept.includes('text/html')
+    ) {
       return res.status(200).json(result);
     }
 
@@ -60,7 +64,11 @@ export class StripeConnectController {
     @Res() res: Response,
   ) {
     const result = await this.drivers.handleStripeConnectRefresh(accountId);
-    if (accept && accept.includes('application/json') && !accept.includes('text/html')) {
+    if (
+      accept &&
+      accept.includes('application/json') &&
+      !accept.includes('text/html')
+    ) {
       return res.status(200).json(result);
     }
     if (result.ok && result.url) {

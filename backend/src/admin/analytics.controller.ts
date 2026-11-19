@@ -16,7 +16,10 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
-import { CurrentUser, type AuthUser } from '../auth/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type AuthUser,
+} from '../auth/decorators/current-user.decorator';
 import { AdminAnalyticsService } from './analytics.service';
 
 @Controller('admin/analytics')
@@ -33,104 +36,222 @@ export class AdminAnalyticsController {
 
   @Get('overview')
   @RequirePermission('analytics.view')
-  overview(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.overview(this.analytics.parse(query), user.permissions ?? []);
+  overview(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.overview(
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('live')
   @RequirePermission('analytics.view')
-  live(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('live', this.analytics.parse(query), user.permissions ?? []);
+  live(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'live',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('rides')
   @RequirePermission('analytics.view')
-  rides(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('rides', this.analytics.parse(query), user.permissions ?? []);
+  rides(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'rides',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('revenue')
   @RequirePermission('analytics.financial')
-  revenue(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('revenue', this.analytics.parse(query), user.permissions ?? []);
+  revenue(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'revenue',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('drivers')
   @RequirePermission('analytics.view')
-  drivers(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('drivers', this.analytics.parse(query), user.permissions ?? []);
+  drivers(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'drivers',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('passengers')
   @RequirePermission('analytics.view')
-  passengers(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('passengers', this.analytics.parse(query), user.permissions ?? []);
+  passengers(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'passengers',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('geography')
   @RequirePermission('analytics.view')
-  geography(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('geography', this.analytics.parse(query), user.permissions ?? []);
+  geography(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'geography',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('cancellations')
   @RequirePermission('analytics.view')
-  cancellations(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('cancellations', this.analytics.parse(query), user.permissions ?? []);
+  cancellations(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'cancellations',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('payments')
   @RequirePermission('analytics.financial')
-  payments(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('payments', this.analytics.parse(query), user.permissions ?? []);
+  payments(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'payments',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('retention')
   @RequirePermission('analytics.view')
-  retention(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('retention', this.analytics.parse(query), user.permissions ?? []);
+  retention(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'retention',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('funnel')
   @RequirePermission('analytics.view')
-  funnel(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('funnel', this.analytics.parse(query), user.permissions ?? []);
+  funnel(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'funnel',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('operations')
   @RequirePermission('analytics.view')
-  operations(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('operations', this.analytics.parse(query), user.permissions ?? []);
+  operations(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'operations',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('forecast')
   @RequirePermission('analytics.view')
-  forecast(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('forecast', this.analytics.parse(query), user.permissions ?? []);
+  forecast(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'forecast',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('promotions')
   @RequirePermission('analytics.view')
-  promotions(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('promotions', this.analytics.parse(query), user.permissions ?? []);
+  promotions(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'promotions',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('ratings')
   @RequirePermission('analytics.view')
-  ratings(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('ratings', this.analytics.parse(query), user.permissions ?? []);
+  ratings(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'ratings',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('safety')
   @RequirePermission('analytics.safety')
-  safety(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('safety', this.analytics.parse(query), user.permissions ?? []);
+  safety(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'safety',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('heatmap')
   @RequirePermission('analytics.view')
-  heatmap(@Query() query: Record<string, string | undefined>, @CurrentUser() user: AuthUser) {
-    return this.analytics.section('heatmap', this.analytics.parse(query), user.permissions ?? []);
+  heatmap(
+    @Query() query: Record<string, string | undefined>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.analytics.section(
+      'heatmap',
+      this.analytics.parse(query),
+      user.permissions ?? [],
+    );
   }
 
   @Get('drilldown')
@@ -169,7 +290,10 @@ export class AdminAnalyticsController {
       user?.permissions ?? [],
     );
     res!.setHeader('Content-Type', file.mime);
-    res!.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res!.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.filename}"`,
+    );
     res!.send(file.body);
   }
 
@@ -195,7 +319,12 @@ export class AdminAnalyticsController {
     @CurrentUser() user: AuthUser,
     @Body() dto: { name: string; kind?: string; query: unknown },
   ) {
-    return this.analytics.saveView(user.id, dto.name, dto.kind ?? 'filter', dto.query);
+    return this.analytics.saveView(
+      user.id,
+      dto.name,
+      dto.kind ?? 'filter',
+      dto.query,
+    );
   }
 
   @Delete('views/:id')

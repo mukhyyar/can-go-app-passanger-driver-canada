@@ -91,7 +91,9 @@ describe('DriverCancellationService', () => {
     };
 
     mockPayments = {
-      refund: jest.fn().mockResolvedValue({ refundId: 'ref_123', status: 'succeeded' }),
+      refund: jest
+        .fn()
+        .mockResolvedValue({ refundId: 'ref_123', status: 'succeeded' }),
     };
 
     service = new DriverCancellationService(
@@ -104,30 +106,44 @@ describe('DriverCancellationService', () => {
   describe('seedDefaultReasons', () => {
     it('seeds the default structured reasons with expected justification flags', async () => {
       await service.seedDefaultReasons();
-      expect(mockPrisma.providerCancellationReason.upsert).toHaveBeenCalledTimes(9);
+      expect(
+        mockPrisma.providerCancellationReason.upsert,
+      ).toHaveBeenCalledTimes(9);
 
       const calls = mockPrisma.providerCancellationReason.upsert.mock.calls;
-      const breakdownCall = calls.find((c: any) => c[0].where.code === 'VEHICLE_BREAKDOWN');
+      const breakdownCall = calls.find(
+        (c: any) => c[0].where.code === 'VEHICLE_BREAKDOWN',
+      );
       expect(breakdownCall[0].create.isJustified).toBe(true);
 
-      const weatherCall = calls.find((c: any) => c[0].where.code === 'WEATHER_ROAD_CONDITIONS');
+      const weatherCall = calls.find(
+        (c: any) => c[0].where.code === 'WEATHER_ROAD_CONDITIONS',
+      );
       expect(weatherCall[0].create.isJustified).toBe(true);
 
-      const unsafeCall = calls.find((c: any) => c[0].where.code === 'UNSAFE_CONDITIONS');
+      const unsafeCall = calls.find(
+        (c: any) => c[0].where.code === 'UNSAFE_CONDITIONS',
+      );
       expect(unsafeCall[0].create.isJustified).toBe(true);
       expect(unsafeCall[0].create.requiresDetails).toBe(true);
 
-      const unlawfulCall = calls.find((c: any) => c[0].where.code === 'UNLAWFUL_ACTIVITY');
+      const unlawfulCall = calls.find(
+        (c: any) => c[0].where.code === 'UNLAWFUL_ACTIVITY',
+      );
       expect(unlawfulCall[0].create.isJustified).toBe(true);
 
-      const legalCall = calls.find((c: any) => c[0].where.code === 'LEGAL_RESTRICTION');
+      const legalCall = calls.find(
+        (c: any) => c[0].where.code === 'LEGAL_RESTRICTION',
+      );
       expect(legalCall[0].create.isJustified).toBe(true);
 
       const otherCall = calls.find((c: any) => c[0].where.code === 'OTHER');
       expect(otherCall[0].create.isJustified).toBe(false);
       expect(otherCall[0].create.requiresDetails).toBe(true);
 
-      const noShowCall = calls.find((c: any) => c[0].where.code === 'PROVIDER_NO_SHOW');
+      const noShowCall = calls.find(
+        (c: any) => c[0].where.code === 'PROVIDER_NO_SHOW',
+      );
       expect(noShowCall).toBeDefined();
       expect(noShowCall[0].create.isJustified).toBe(false);
       expect(noShowCall[0].create.requiresDetails).toBe(false);
@@ -144,8 +160,12 @@ describe('DriverCancellationService', () => {
         id: 'rec_1',
         reasonCode: 'PROVIDER_NO_SHOW',
       });
-      mockPrisma.kycFlag = { create: jest.fn().mockResolvedValue({ id: 'flag_1' }) };
-      mockPrisma.driverProfile.update = jest.fn().mockResolvedValue({ id: 'driver_1', warningCount: 2 });
+      mockPrisma.kycFlag = {
+        create: jest.fn().mockResolvedValue({ id: 'flag_1' }),
+      };
+      mockPrisma.driverProfile.update = jest
+        .fn()
+        .mockResolvedValue({ id: 'driver_1', warningCount: 2 });
       mockPrisma.auditLog.create = jest.fn().mockResolvedValue({});
 
       const result = await service.flagProviderForNoShow({
@@ -175,7 +195,9 @@ describe('DriverCancellationService', () => {
     it('returns structured active cancellation reasons', async () => {
       const reasons = await service.getActiveReasons();
       expect(reasons.length).toBe(DEFAULT_PROVIDER_CANCELLATION_REASONS.length);
-      expect(mockPrisma.providerCancellationReason.findMany).toHaveBeenCalledWith({
+      expect(
+        mockPrisma.providerCancellationReason.findMany,
+      ).toHaveBeenCalledWith({
         where: { isActive: true },
         orderBy: { sortOrder: 'asc' },
         select: expect.any(Object),
@@ -198,7 +220,10 @@ describe('DriverCancellationService', () => {
     };
 
     it('rejects if caller is not an approved driver', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'usr_pax_1', driverProfile: null });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'usr_pax_1',
+        driverProfile: null,
+      });
 
       await expect(
         service.cancelByDriver({
@@ -324,7 +349,11 @@ describe('DriverCancellationService', () => {
             userId: 'usr_1',
             approvalStatus: DriverApprovalStatus.APPROVED,
             warningCount: 1,
-            user: { email: 'drv1@test.com', phoneE164: '+15551234', isSuspended: false },
+            user: {
+              email: 'drv1@test.com',
+              phoneE164: '+15551234',
+              isSuspended: false,
+            },
           },
         },
         {
@@ -342,7 +371,11 @@ describe('DriverCancellationService', () => {
             userId: 'usr_1',
             approvalStatus: DriverApprovalStatus.APPROVED,
             warningCount: 1,
-            user: { email: 'drv1@test.com', phoneE164: '+15551234', isSuspended: false },
+            user: {
+              email: 'drv1@test.com',
+              phoneE164: '+15551234',
+              isSuspended: false,
+            },
           },
         },
         {
@@ -360,14 +393,23 @@ describe('DriverCancellationService', () => {
             userId: 'usr_2',
             approvalStatus: DriverApprovalStatus.APPROVED,
             warningCount: 0,
-            user: { email: 'drv2@test.com', phoneE164: '+15555678', isSuspended: false },
+            user: {
+              email: 'drv2@test.com',
+              phoneE164: '+15555678',
+              isSuspended: false,
+            },
           },
         },
       ];
 
-      mockPrisma.driverCancellationRecord.findMany.mockResolvedValue(mockRecords);
+      mockPrisma.driverCancellationRecord.findMany.mockResolvedValue(
+        mockRecords,
+      );
 
-      const report = await service.getRepeatOffendersReport({ windowDays: 30, threshold: 2 });
+      const report = await service.getRepeatOffendersReport({
+        windowDays: 30,
+        threshold: 2,
+      });
 
       expect(report.summary.totalCancellations).toBe(3);
       expect(report.summary.totalUnjustified).toBe(2);

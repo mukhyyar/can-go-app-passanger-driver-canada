@@ -74,6 +74,7 @@ export class OfferPresentationService {
     market?: string;
     paymentMode?: string;
   }): CancellationPolicy {
+    void _input;
     const body =
       process.env.CANCELLATION_POLICY_DEFAULT?.trim() ||
       'The ride is not refundable in case of cancellation.';
@@ -101,6 +102,7 @@ export class OfferPresentationService {
    * via automatic_payment_methods — not as fake radio options here.
    */
   paymentMethodsAvailable(_platform?: string) {
+    void _platform;
     return ['CARD'] as Array<'CARD'>;
   }
 
@@ -120,23 +122,90 @@ export class OfferPresentationService {
   priceBreakdown(snap?: PriceSnapshot | null) {
     if (!snap) return null;
     const driverBid = round2(
-      (snap.bidAmount ??
-        (snap.subtotal ? snap.subtotal : snap.guidanceAmount ?? 0)) as number,
+      snap.bidAmount ??
+        (snap.subtotal ? snap.subtotal : (snap.guidanceAmount ?? 0)),
     );
     const ridePrice = driverBid;
     const platformFee = round2(ridePrice * 0.2);
     const taxes = round2(snap.taxAmount ?? 0);
-    const total = round2(ridePrice + platformFee + taxes);
+    const originalTotal =
+      snap.originalPassengerTotal != null
+        ? round2(Number(snap.originalPassengerTotal))
+        : round2(ridePrice + platformFee + taxes);
+
+    const isRoundTrip =
+      Boolean(snap.isRoundTrip) ||
+      (snap.legs != null && Number(snap.legs) > 1) ||
+      (snap.returnPrice != null && Number(snap.returnPrice) > 0);
+    const outboundPrice =
+      snap.outboundPrice != null
+        ? round2(Number(snap.outboundPrice))
+        : ridePrice;
+    let returnPrice: number | null =
+      snap.returnPrice != null && Number(snap.returnPrice) > 0
+        ? round2(Number(snap.returnPrice))
+        : null;
+    if (returnPrice == null && isRoundTrip && ridePrice > outboundPrice) {
+      returnPrice = round2(ridePrice - outboundPrice);
+    }
+
+    const hasReturnDiscount = returnPrice != null && returnPrice > 0;
+    const returnDiscountPct = hasReturnDiscount
+      ? Number(snap.returnDiscountPct ?? 15)
+      : 0;
+    const returnDiscountAmount = hasReturnDiscount
+      ? snap.returnDiscountAmount != null
+        ? round2(Number(snap.returnDiscountAmount))
+        : round2(returnPrice! * (returnDiscountPct / 100))
+      : 0;
+    const discountedReturnPrice = hasReturnDiscount
+      ? snap.discountedReturnPrice != null
+        ? round2(Number(snap.discountedReturnPrice))
+        : round2(Math.max(0, returnPrice! - returnDiscountAmount))
+      : null;
+
+    const hasEnquiryDiscount =
+      (snap.enquiryDiscountPct != null &&
+        Number(snap.enquiryDiscountPct) > 0) ||
+      (snap.enquiryDiscountAmount != null &&
+        Number(snap.enquiryDiscountAmount) > 0) ||
+      Boolean(snap.enquiryDiscountApplied);
+    const enquiryDiscountPct = hasEnquiryDiscount
+      ? Number(snap.enquiryDiscountPct ?? 5)
+      : 0;
+    const enquiryDiscountAmount = hasEnquiryDiscount
+      ? snap.enquiryDiscountAmount != null &&
+        Number(snap.enquiryDiscountAmount) > 0
+        ? round2(Number(snap.enquiryDiscountAmount))
+        : round2(ridePrice * (enquiryDiscountPct / 100))
+      : 0;
+
+    const totalDiscountAmount = round2(
+      returnDiscountAmount + enquiryDiscountAmount,
+    );
+    const total = round2(Math.max(0, originalTotal - totalDiscountAmount));
     const driverEarning = round2(ridePrice - platformFee);
+    const canRideGrossRevenue = round2(
+      Math.max(0, platformFee * 2 - totalDiscountAmount),
+    );
     return {
       ridePrice,
+      outboundPrice,
+      returnPrice,
+      discountedReturnPrice,
+      returnDiscountPct,
+      returnDiscountAmount,
+      enquiryDiscountPct,
+      enquiryDiscountAmount,
+      originalTotal,
       driverEarning,
       platformFee,
       marketplaceFee: platformFee,
+      canRideGrossRevenue,
       taxes,
       tolls: 0,
       waitingTime: 0,
-      discount: 0,
+      discount: totalDiscountAmount,
       promotion: 0,
       total,
       currency: snap.currency,
@@ -145,7 +214,6 @@ export class OfferPresentationService {
       marketplaceFeeNote: 'Platform fee for booking and support.',
     };
   }
-
 
   parseVehicleName(name: string) {
     return parseVehicleNameUtil(name);
@@ -191,10 +259,7 @@ export class OfferPresentationService {
         vehicleId,
         docType: 'vehicle_photo',
         status: {
-          in: [
-            DocumentReviewStatus.APPROVED,
-            DocumentReviewStatus.PENDING,
-          ],
+          in: [DocumentReviewStatus.APPROVED, DocumentReviewStatus.PENDING],
         },
         lifecycleStatus: DocumentLifecycleStatus.CURRENT,
       },
@@ -293,13 +358,15 @@ export class OfferPresentationService {
         | undefined) ?? null;
 
     let vehicleRow = vehicle;
-    if (!vehicleRow && offer.vehicleId) {
+    const vehicleIdStr =
+      typeof offer.vehicleId === 'string' ? offer.vehicleId : null;
+    if (!vehicleRow && vehicleIdStr) {
       vehicleRow = await this.prisma.vehicle.findUnique({
-        where: { id: String(offer.vehicleId) },
+        where: { id: vehicleIdStr },
       });
     }
 
-    const driverId = String(offer.driverId ?? '');
+    const driverId = typeof offer.driverId === 'string' ? offer.driverId : '';
     const driver =
       (offer.driver as
         | {
@@ -333,18 +400,15 @@ export class OfferPresentationService {
       4;
     const baggage =
       numOr(amenities.baggage, amenities.bags, amenities.luggage) ?? 2;
-    const year =
-      numOr(amenities.year) ??
-      parsed.year;
-    const color =
-      typeof amenities.color === 'string' ? amenities.color : null;
+    const year = numOr(amenities.year) ?? parsed.year;
+    const color = typeof amenities.color === 'string' ? amenities.color : null;
     const brand =
       typeof amenities.brand === 'string' ? amenities.brand : parsed.brand;
     const model =
       typeof amenities.model === 'string' ? amenities.model : parsed.model;
 
-    const offerId = String(offer.id ?? '');
-    const rideId = String(offer.rideId ?? '');
+    const offerId = typeof offer.id === 'string' ? offer.id : '';
+    const rideId = typeof offer.rideId === 'string' ? offer.rideId : '';
     const images = await this.loadVehicleImages(vehicleRow?.id, {
       rideId: rideId || undefined,
       offerId: offerId || undefined,
@@ -386,13 +450,26 @@ export class OfferPresentationService {
       };
     }
 
-    const snap = offer.priceSnapshot as PriceSnapshot | undefined;
+    const rawSnap = offer.priceSnapshot as PriceSnapshot | undefined;
+    const snap = rawSnap
+      ? {
+          ...rawSnap,
+          outboundPrice:
+            rawSnap.outboundPrice ??
+            (offer.outboundPrice != null
+              ? Number(offer.outboundPrice)
+              : undefined),
+          returnPrice:
+            rawSnap.returnPrice ??
+            (offer.returnPrice != null ? Number(offer.returnPrice) : undefined),
+        }
+      : undefined;
     const breakdown = this.priceBreakdown(snap);
     const passengerTotal = breakdown
       ? breakdown.total
-      : (snap?.passengerTotal != null
-          ? Number(snap.passengerTotal)
-          : round2(Number(offer.bidAmount ?? 0) * 1.2));
+      : snap?.passengerTotal != null
+        ? Number(snap.passengerTotal)
+        : round2(Number(offer.bidAmount ?? 0) * 1.2);
 
     const baseVehicleName = (() => {
       const b = (brand ?? '').trim();
@@ -438,7 +515,6 @@ export class OfferPresentationService {
         waitingTime: this.waitingTimePolicy(),
       },
     };
-
   }
 
   private async safeSignedUrl(storageKey: string): Promise<string | null> {
@@ -472,9 +548,7 @@ function normalizeAmenityKey(raw: string): string {
 }
 
 function humanize(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function numOr(...vals: unknown[]): number | null {
@@ -511,8 +585,6 @@ function publicCarrierId(driverId: string): string {
 }
 
 /** Prisma JSON helper for languagesJson column. */
-export function asLanguagesJson(
-  languages: string[],
-): Prisma.InputJsonValue {
-  return languages as Prisma.InputJsonValue;
+export function asLanguagesJson(languages: string[]): Prisma.InputJsonValue {
+  return languages;
 }

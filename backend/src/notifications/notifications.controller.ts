@@ -85,7 +85,10 @@ export class NotificationsController {
     }
     if (assignedRoles.length > 0 && assignedRoles[0] !== '') {
       if (target === 'PASSENGER') {
-        return assignedRoles.includes('PASSENGER') || assignedRoles.includes('PASSENGER_WEB');
+        return (
+          assignedRoles.includes('PASSENGER') ||
+          assignedRoles.includes('PASSENGER_WEB')
+        );
       }
       return assignedRoles.includes(target);
     }
@@ -96,7 +99,9 @@ export class NotificationsController {
     });
     if (inferred && inferred.length > 0) {
       if (target === 'PASSENGER') {
-        return inferred.includes('PASSENGER') || inferred.includes('PASSENGER_WEB');
+        return (
+          inferred.includes('PASSENGER') || inferred.includes('PASSENGER_WEB')
+        );
       }
       return inferred.includes(target as any);
     }
@@ -115,10 +120,7 @@ export class NotificationsController {
     const rows = await this.prisma.notificationDelivery.findMany({
       where: {
         userId: user.id,
-        OR: [
-          { title: { not: null } },
-          { body: { not: null } },
-        ],
+        OR: [{ title: { not: null } }, { body: { not: null } }],
       },
       orderBy: { createdAt: 'desc' },
       take: limit * 3,
@@ -178,7 +180,9 @@ export class NotificationsController {
       select: { templateKey: true, dataJson: true },
       take: 200,
     });
-    const count = unreadRows.filter((r) => this.matchesAppRole(r, appRole)).length;
+    const count = unreadRows.filter((r) =>
+      this.matchesAppRole(r, appRole),
+    ).length;
     return { count };
   }
 

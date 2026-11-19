@@ -6,7 +6,8 @@ export interface KycApprovedVars {
 
 export function renderKycApproved(vars: KycApprovedVars, assetBaseUrl: string) {
   const name = escapeHtml(vars.driverName);
-  const html = layout(`
+  const html = layout(
+    `
     <h2 style="margin-top:0;">You're Approved! 🎉</h2>
     <p>Hi ${name},</p>
     <p>Great news! Your CAN-RIDE driver account has been fully approved.</p>
@@ -14,7 +15,9 @@ export function renderKycApproved(vars: KycApprovedVars, assetBaseUrl: string) {
       Your profile is now active and you can start accepting rides immediately.
     </div>
     <p>Open the CAN-RIDE Driver App, go online, and start earning on your own schedule!</p>
-  `, assetBaseUrl);
+  `,
+    assetBaseUrl,
+  );
 
   return { subject: 'CAN-RIDE: Your Account is Approved', html };
 }

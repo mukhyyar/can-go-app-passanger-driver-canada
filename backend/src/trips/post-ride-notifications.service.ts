@@ -38,16 +38,11 @@ export class PostRideNotificationService {
   }
 
   private get appDeeplinkBase(): string {
-    return (
-      this.config.get<string>('email.appDeeplinkBaseUrl') ||
-      'canride://'
-    );
+    return this.config.get<string>('email.appDeeplinkBaseUrl') || 'canride://';
   }
 
   private get tipReminderDelayMinutes(): number {
-    return (
-      this.config.get<number>('postRide.tipReminderDelayMinutes') ?? 60
-    );
+    return this.config.get<number>('postRide.tipReminderDelayMinutes') ?? 60;
   }
 
   /**
@@ -75,7 +70,9 @@ export class PostRideNotificationService {
       });
 
       if (!ride) {
-        this.logger.warn(`Cannot process post-ride notifications: Ride ${rideId} not found`);
+        this.logger.warn(
+          `Cannot process post-ride notifications: Ride ${rideId} not found`,
+        );
         return;
       }
 
@@ -87,7 +84,11 @@ export class PostRideNotificationService {
       }
 
       const passengerUser = ride.passenger?.user;
-      if (!passengerUser || passengerUser.isSuspended || passengerUser.archivedAt) {
+      if (
+        !passengerUser ||
+        passengerUser.isSuspended ||
+        passengerUser.archivedAt
+      ) {
         this.logger.debug(
           `Skipping post-ride notifications: Passenger user inactive or not found for ride ${rideId}`,
         );
@@ -154,18 +155,26 @@ export class PostRideNotificationService {
         });
 
         if (!alreadySent) {
-          await this.emailEvents.sendPostRideReview(passengerUser.id, passengerUser.email, {
-            rideId,
-            rideCode,
-            passengerName,
-            driverName,
-            fromLabel: ride.fromLabel,
-            toLabel: ride.toLabel || 'Destination',
-            reviewUrl,
-          });
-          this.logger.log(`Post-ride review email sent to ${passengerUser.email} for ride ${rideId}`);
+          await this.emailEvents.sendPostRideReview(
+            passengerUser.id,
+            passengerUser.email,
+            {
+              rideId,
+              rideCode,
+              passengerName,
+              driverName,
+              fromLabel: ride.fromLabel,
+              toLabel: ride.toLabel || 'Destination',
+              reviewUrl,
+            },
+          );
+          this.logger.log(
+            `Post-ride review email sent to ${passengerUser.email} for ride ${rideId}`,
+          );
         } else {
-          this.logger.debug(`Post-ride review email already sent for ride ${rideId}`);
+          this.logger.debug(
+            `Post-ride review email already sent for ride ${rideId}`,
+          );
         }
       } catch (emailErr) {
         this.logger.error(
@@ -178,19 +187,24 @@ export class PostRideNotificationService {
     if (passengerUser.phoneE164 && this.sms) {
       const smsEventId = `post_ride_review_sms_${rideId}`;
       try {
-        const alreadySentSms = await this.prisma.notificationDelivery.findFirst({
-          where: {
-            channel: 'sms',
-            templateKey: 'post_ride_review_sms',
-            dataJson: { path: ['eventId'], equals: smsEventId },
-            status: 'sent',
+        const alreadySentSms = await this.prisma.notificationDelivery.findFirst(
+          {
+            where: {
+              channel: 'sms',
+              templateKey: 'post_ride_review_sms',
+              dataJson: { path: ['eventId'], equals: smsEventId },
+              status: 'sent',
+            },
           },
-        });
+        );
 
         if (!alreadySentSms) {
           const smsBody = `Thank you for riding with CAN-RIDE! We hope you enjoyed your journey with ${driverName}. How was your experience? Would you choose CAN-RIDE again? Rate your ride and share feedback: ${reviewUrl}. Please recommend CAN-RIDE to friends & family!`;
 
-          const result = await this.sms.sendSms(passengerUser.phoneE164, smsBody);
+          const result = await this.sms.sendSms(
+            passengerUser.phoneE164,
+            smsBody,
+          );
 
           await this.notifications.logDelivery({
             userId: passengerUser.id,
@@ -207,7 +221,9 @@ export class PostRideNotificationService {
             `Post-ride review SMS sent to ${passengerUser.phoneE164} for ride ${rideId}`,
           );
         } else {
-          this.logger.debug(`Post-ride review SMS already sent for ride ${rideId}`);
+          this.logger.debug(
+            `Post-ride review SMS already sent for ride ${rideId}`,
+          );
         }
       } catch (smsErr) {
         this.logger.error(
@@ -220,7 +236,10 @@ export class PostRideNotificationService {
           templateKey: 'post_ride_review_sms',
           title: 'Post-Ride Review',
           status: 'failed',
-          errorCode: smsErr instanceof Error ? smsErr.message.slice(0, 255) : 'UNKNOWN_SMS_ERROR',
+          errorCode:
+            smsErr instanceof Error
+              ? smsErr.message.slice(0, 255)
+              : 'UNKNOWN_SMS_ERROR',
           dataJson: { eventId: smsEventId, rideId },
         });
       }
@@ -312,7 +331,9 @@ export class PostRideNotificationService {
       rideFare: Number(financial.rideFare).toFixed(2),
       marketplaceFee: Number(financial.marketplaceFee).toFixed(2),
       taxes: financial.taxes ? Number(financial.taxes).toFixed(2) : '0.00',
-      tipAmount: financial.tipAmount ? Number(financial.tipAmount).toFixed(2) : '0.00',
+      tipAmount: financial.tipAmount
+        ? Number(financial.tipAmount).toFixed(2)
+        : '0.00',
       totalCharged: Number(financial.passengerTotalCharged).toFixed(2),
       paymentMethod: succeededPayment?.paymentMethod || 'Credit Card (Stripe)',
       paymentStatus: (succeededPayment?.status || 'PAID').toUpperCase(),
@@ -326,7 +347,9 @@ export class PostRideNotificationService {
         passengerUser.email,
         invoiceData,
       );
-      this.logger.log(`Ride invoice email sent to ${passengerUser.email} for ride ${rideId}`);
+      this.logger.log(
+        `Ride invoice email sent to ${passengerUser.email} for ride ${rideId}`,
+      );
     } catch (invoiceErr) {
       this.logger.error(
         `Failed to send invoice email for ride ${rideId}: ${invoiceErr instanceof Error ? invoiceErr.message : String(invoiceErr)}`,
@@ -354,7 +377,8 @@ export class PostRideNotificationService {
     if (ride.status !== RideStatus.COMPLETED) return false;
 
     const passengerUser = ride.passenger?.user;
-    if (!passengerUser || !passengerUser.email || !this.emailEvents) return false;
+    if (!passengerUser || !passengerUser.email || !this.emailEvents)
+      return false;
 
     // Check if passenger already tipped
     const financial = ride.financial;
@@ -384,8 +408,7 @@ export class PostRideNotificationService {
     if (alreadySent) return false;
 
     const rideCode = ride.id.slice(0, 8).toUpperCase();
-    const driverName =
-      ride.selectedOffer?.driver?.fullName || 'Your Driver';
+    const driverName = ride.selectedOffer?.driver?.fullName || 'Your Driver';
     const passengerName =
       ride.passenger?.fullName || passengerUser.phoneE164 || 'Passenger';
     const tipUrl = `${this.passengerWebBase}/rides/${ride.id}?action=tip`;
@@ -402,7 +425,9 @@ export class PostRideNotificationService {
           tipUrl,
         },
       );
-      this.logger.log(`Tipping reminder email sent to ${passengerUser.email} for ride ${rideId}`);
+      this.logger.log(
+        `Tipping reminder email sent to ${passengerUser.email} for ride ${rideId}`,
+      );
       return true;
     } catch (err) {
       this.logger.error(
@@ -415,7 +440,10 @@ export class PostRideNotificationService {
   /**
    * Sweeps completed rides within the tipping reminder window (e.g. 60 min to 24 hr ago).
    */
-  async processDueTippingReminders(): Promise<{ sent: number; skipped: number }> {
+  async processDueTippingReminders(): Promise<{
+    sent: number;
+    skipped: number;
+  }> {
     const delayMinutes = this.tipReminderDelayMinutes;
     const delayCutoff = new Date(Date.now() - delayMinutes * 60 * 1000);
     const maxLookback = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours lookback
@@ -473,11 +501,12 @@ export class PostRideNotificationService {
     if (!ride) throw new NotFoundException('Ride not found');
 
     const isPassenger = ride.passenger?.userId === actorUserId;
-    const isAdmin =
-      role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
+    const isAdmin = role === UserRole.ADMIN || role === UserRole.SUPER_ADMIN;
 
     if (!isPassenger && !isAdmin) {
-      throw new ForbiddenException('You do not have permission to view this invoice');
+      throw new ForbiddenException(
+        'You do not have permission to view this invoice',
+      );
     }
 
     const passengerUser = ride.passenger?.user;
@@ -496,7 +525,8 @@ export class PostRideNotificationService {
     const invoiceData: RideInvoiceData = {
       rideId,
       rideCode,
-      passengerName: ride.passenger?.fullName || passengerUser?.phoneE164 || 'Passenger',
+      passengerName:
+        ride.passenger?.fullName || passengerUser?.phoneE164 || 'Passenger',
       passengerEmail: passengerUser?.email || '',
       passengerPhone: passengerUser?.phoneE164 || undefined,
       driverName: driver?.fullName || 'CAN-RIDE Driver',
@@ -510,10 +540,16 @@ export class PostRideNotificationService {
       completedAtFormatted,
       currency: (financial?.currency || 'CAD').toUpperCase(),
       rideFare: financial ? Number(financial.rideFare).toFixed(2) : '0.00',
-      marketplaceFee: financial ? Number(financial.marketplaceFee).toFixed(2) : '0.00',
+      marketplaceFee: financial
+        ? Number(financial.marketplaceFee).toFixed(2)
+        : '0.00',
       taxes: financial?.taxes ? Number(financial.taxes).toFixed(2) : '0.00',
-      tipAmount: financial?.tipAmount ? Number(financial.tipAmount).toFixed(2) : '0.00',
-      totalCharged: financial ? Number(financial.passengerTotalCharged).toFixed(2) : '0.00',
+      tipAmount: financial?.tipAmount
+        ? Number(financial.tipAmount).toFixed(2)
+        : '0.00',
+      totalCharged: financial
+        ? Number(financial.passengerTotalCharged).toFixed(2)
+        : '0.00',
       paymentMethod: succeededPayment?.paymentMethod || 'Credit Card (Stripe)',
       paymentStatus: (succeededPayment?.status || 'PAID').toUpperCase(),
       transactionRef: succeededPayment?.providerRef || undefined,

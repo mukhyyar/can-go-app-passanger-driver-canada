@@ -27,10 +27,7 @@ export interface RideInvoiceData {
   invoiceUrl?: string;
 }
 
-export function renderRideInvoice(
-  data: RideInvoiceData,
-  assetBaseUrl: string,
-) {
+export function renderRideInvoice(data: RideInvoiceData, assetBaseUrl: string) {
   const code = escapeHtml(data.rideCode);
   const passengerName = escapeHtml(data.passengerName);
   const passengerEmail = escapeHtml(data.passengerEmail);
@@ -60,7 +57,9 @@ export function renderRideInvoice(
     vehicleClass,
     data.vehicleYear ? String(data.vehicleYear) : '',
     vehiclePlate ? `Plate: ${vehiclePlate}` : '',
-  ].filter(Boolean).join(' • ');
+  ]
+    .filter(Boolean)
+    .join(' • ');
 
   const html = layout(
     `
@@ -112,19 +111,27 @@ export function renderRideInvoice(
         </td>
         <td align="right" style="padding: 10px; color: #111827; font-weight: 500;">CA$${fee}</td>
       </tr>
-      ${parseFloat(taxes) > 0 ? `
+      ${
+        parseFloat(taxes) > 0
+          ? `
       <tr>
         <td style="padding: 10px; color: #111827;">Applicable Taxes (GST/HST)</td>
         <td align="right" style="padding: 10px; color: #111827; font-weight: 500;">CA$${taxes}</td>
-      </tr>` : ''}
-      ${parseFloat(tip) > 0 ? `
+      </tr>`
+          : ''
+      }
+      ${
+        parseFloat(tip) > 0
+          ? `
       <tr>
         <td style="padding: 10px; color: #111827;">
           Driver Tip
           <div style="font-size: 12px; color: #6b7280;">100% credited directly to driver</div>
         </td>
         <td align="right" style="padding: 10px; color: #111827; font-weight: 500;">CA$${tip}</td>
-      </tr>` : ''}
+      </tr>`
+          : ''
+      }
       <tr style="background-color: #f9fafb; font-size: 16px;">
         <td style="padding: 14px 10px; font-weight: 700; color: #111827;">Total Customer Bill</td>
         <td align="right" style="padding: 14px 10px; font-weight: 700; color: #111827;">CA$${total}</td>
@@ -146,13 +153,17 @@ export function renderRideInvoice(
       </table>
     </div>
 
-    ${invoiceUrl ? `
+    ${
+      invoiceUrl
+        ? `
     <div style="text-align: center; margin: 24px 0 12px 0;">
       <a href="${invoiceUrl}" class="btn" style="display: inline-block; background: #111827; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: 600; text-decoration: none; font-size: 14px;">
         View / Print Official Invoice (PDF)
       </a>
       <p style="color: #94a3b8; font-size: 12px; margin-top: 8px;">Opens a secure, printable tax invoice in your browser.</p>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
     `,
     assetBaseUrl,
   );
@@ -298,16 +309,24 @@ export function renderPrintableInvoiceHtml(
           </td>
           <td align="right">CA$${fee}</td>
         </tr>
-        ${parseFloat(taxes) > 0 ? `
+        ${
+          parseFloat(taxes) > 0
+            ? `
         <tr>
           <td>Applicable Taxes (GST/HST)</td>
           <td align="right">CA$${taxes}</td>
-        </tr>` : ''}
-        ${parseFloat(tip) > 0 ? `
+        </tr>`
+            : ''
+        }
+        ${
+          parseFloat(tip) > 0
+            ? `
         <tr>
           <td>Driver Tip (100% credited to driver)</td>
           <td align="right">CA$${tip}</td>
-        </tr>` : ''}
+        </tr>`
+            : ''
+        }
         <tr class="total-row">
           <td>Total Customer Bill</td>
           <td align="right">CA$${total}</td>

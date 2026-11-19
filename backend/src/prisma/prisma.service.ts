@@ -11,7 +11,6 @@ export class PrismaService
     try {
       await this.$connect();
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.warn(
         '[PrismaService] Database not reachable yet; health will report not-ready.',
         err instanceof Error ? err.message : err,

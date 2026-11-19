@@ -84,7 +84,10 @@ export class DriversService {
       where: {
         driverId: driver.id,
         lifecycleStatus: {
-          in: [DocumentLifecycleStatus.CURRENT, DocumentLifecycleStatus.SUPERSEDED],
+          in: [
+            DocumentLifecycleStatus.CURRENT,
+            DocumentLifecycleStatus.SUPERSEDED,
+          ],
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -146,7 +149,12 @@ export class DriversService {
   async uploadDocument(
     userId: string,
     file: Express.Multer.File | undefined,
-    meta: { docType: string; vehicleId?: string; expiresAt?: string; customLabel?: string },
+    meta: {
+      docType: string;
+      vehicleId?: string;
+      expiresAt?: string;
+      customLabel?: string;
+    },
     ip?: string,
   ) {
     const driver = await this.requireDriverProfile(userId);
@@ -213,7 +221,9 @@ export class DriversService {
       vehicleId,
       uploadSource: 'DRIVER_APP',
       customLabel: meta.customLabel?.trim() || current?.customLabel || null,
-      expiresAt: meta.expiresAt ? new Date(meta.expiresAt) : current?.expiresAt ?? null,
+      expiresAt: meta.expiresAt
+        ? new Date(meta.expiresAt)
+        : (current?.expiresAt ?? null),
       uploadedById: userId,
       uploadedByType: 'DRIVER',
       replaceDocumentId: current?.id,
@@ -227,11 +237,18 @@ export class DriversService {
       });
     }
 
-    await this.audit(userId, 'driver.document.upload', 'DriverDocument', created.id, ip, {
-      versionNumber: created.versionNumber,
-      previousVersionId: current?.id ?? null,
-      checksumSha256: stored.checksumSha256,
-    });
+    await this.audit(
+      userId,
+      'driver.document.upload',
+      'DriverDocument',
+      created.id,
+      ip,
+      {
+        versionNumber: created.versionNumber,
+        previousVersionId: current?.id ?? null,
+        checksumSha256: stored.checksumSha256,
+      },
+    );
     await this.kycOps.afterDriverUpload(driver.id);
     return this.kycDocs.serializeDoc(created);
   }
@@ -267,7 +284,9 @@ export class DriversService {
     });
     if (!doc) throw new NotFoundException('Document not found');
     if (doc.lifecycleStatus !== DocumentLifecycleStatus.CURRENT) {
-      throw new BadRequestException('Only the current document version can be deleted');
+      throw new BadRequestException(
+        'Only the current document version can be deleted',
+      );
     }
     if (doc.status === DocumentReviewStatus.APPROVED) {
       throw new ForbiddenException(
@@ -284,10 +303,17 @@ export class DriversService {
       },
     });
 
-    await this.audit(userId, 'driver.document.delete', 'DriverDocument', documentId, ip, {
-      docType: doc.docType,
-      previousStatus: doc.status,
-    });
+    await this.audit(
+      userId,
+      'driver.document.delete',
+      'DriverDocument',
+      documentId,
+      ip,
+      {
+        docType: doc.docType,
+        previousStatus: doc.status,
+      },
+    );
     await this.kycOps.afterDriverUpload(driver.id);
     return this.kycDocs.serializeDoc(updated);
   }
@@ -399,7 +425,10 @@ export class DriversService {
         );
       }
       if (this.stripeConnect?.isConfigured?.() || driver.stripeAccountId) {
-        if (!driver.stripeAccountId || driver.stripeAccountStatus === 'UNLINKED') {
+        if (
+          !driver.stripeAccountId ||
+          driver.stripeAccountStatus === 'UNLINKED'
+        ) {
           throw new ForbiddenException(
             'Complete your Stripe Connect payout onboarding before turning on driving mode.',
           );
@@ -412,7 +441,10 @@ export class DriversService {
             'Cannot turn on driving mode: additional verification is required on your Stripe Connect account.',
           );
         }
-        if (!driver.stripePayoutsEnabled || driver.stripeAccountStatus !== 'ACTIVE') {
+        if (
+          !driver.stripePayoutsEnabled ||
+          driver.stripeAccountStatus !== 'ACTIVE'
+        ) {
           throw new ForbiddenException(
             'Cannot turn on driving mode: your Stripe Connect payout account verification is still pending.',
           );
@@ -422,7 +454,7 @@ export class DriversService {
     const updated = await this.prisma.driverProfile.update({
       where: { id: driver.id },
       // Field added in migration 20260913060000_driver_driving_enabled
-      data: { drivingEnabled: enabled } as Prisma.DriverProfileUpdateInput,
+      data: { drivingEnabled: enabled },
     });
     return {
       enabled:
@@ -480,7 +512,7 @@ export class DriversService {
         throw new BadRequestException('Maximum 6 languages allowed');
       }
       const normalized = dto.languages.map((l) => l.trim().toUpperCase());
-      data.languagesJson = normalized as Prisma.InputJsonValue;
+      data.languagesJson = normalized;
       changed.push('languages');
     }
     if (dto.referralCode !== undefined) {
@@ -659,7 +691,12 @@ export class DriversService {
         status: 'UNLINKED',
         chargesEnabled: false,
         payoutsEnabled: false,
-        requirements: { currentlyDue: [], eventuallyDue: [], pastDue: [], disabledReason: null },
+        requirements: {
+          currentlyDue: [],
+          eventuallyDue: [],
+          pastDue: [],
+          disabledReason: null,
+        },
       };
     }
 
@@ -670,12 +707,19 @@ export class DriversService {
         status: driver.stripeAccountStatus || 'PENDING',
         chargesEnabled: driver.stripeChargesEnabled,
         payoutsEnabled: driver.stripePayoutsEnabled,
-        requirements: { currentlyDue: [], eventuallyDue: [], pastDue: [], disabledReason: null },
+        requirements: {
+          currentlyDue: [],
+          eventuallyDue: [],
+          pastDue: [],
+          disabledReason: null,
+        },
       };
     }
 
     try {
-      const status = await this.stripeConnect.getAccountStatus(driver.stripeAccountId);
+      const status = await this.stripeConnect.getAccountStatus(
+        driver.stripeAccountId,
+      );
       const isComplete = status.chargesEnabled && status.payoutsEnabled;
       const hasDisabledReason = Boolean(status.requirements.disabledReason);
       const hasDue =
@@ -713,7 +757,12 @@ export class DriversService {
         status: driver.stripeAccountStatus || 'ERROR',
         chargesEnabled: driver.stripeChargesEnabled,
         payoutsEnabled: driver.stripePayoutsEnabled,
-        requirements: { currentlyDue: [], eventuallyDue: [], pastDue: [], disabledReason: null },
+        requirements: {
+          currentlyDue: [],
+          eventuallyDue: [],
+          pastDue: [],
+          disabledReason: null,
+        },
         error: err instanceof Error ? err.message : String(err),
       };
     }
@@ -823,7 +872,9 @@ export class DriversService {
     if (!this.stripeConnect.isConfigured()) {
       return { url: 'https://dashboard.stripe.com/test/express' };
     }
-    const url = await this.stripeConnect.createDashboardLoginLink(driver.stripeAccountId);
+    const url = await this.stripeConnect.createDashboardLoginLink(
+      driver.stripeAccountId,
+    );
     return { url };
   }
 
@@ -894,7 +945,7 @@ export class DriversService {
 
     await this.prisma.driverProfile.update({
       where: { id: driver.id },
-      data: { payoutSettingsJson: next as Prisma.InputJsonValue },
+      data: { payoutSettingsJson: next },
     });
 
     await this.audit(
@@ -954,8 +1005,7 @@ export class DriversService {
           color: dto.color?.trim() ?? '',
           year: dto.year ?? null,
           passengerSeats:
-            dto.passengerSeats ??
-            getDefaultSeatingCapacity(dto.vehicleClass),
+            dto.passengerSeats ?? getDefaultSeatingCapacity(dto.vehicleClass),
           luggagePlaces: dto.luggagePlaces ?? null,
           amenitiesJson: (dto.amenities ?? {}) as Prisma.InputJsonValue,
           autocancelBefore: dto.autocancelBefore ?? 10,
@@ -968,14 +1018,10 @@ export class DriversService {
       });
     });
 
-    await this.audit(
-      userId,
-      'VEHICLE_CREATED',
-      'Vehicle',
-      vehicle.id,
-      ip,
-      { source: 'DRIVER_APP', plate: vehicle.plate },
-    );
+    await this.audit(userId, 'VEHICLE_CREATED', 'Vehicle', vehicle.id, ip, {
+      source: 'DRIVER_APP',
+      plate: vehicle.plate,
+    });
     return this.serializeVehicle(vehicle);
   }
 
@@ -1038,8 +1084,10 @@ export class DriversService {
       (dto.plate !== undefined &&
         dto.plate.trim().toUpperCase() !== existing.plate) ||
       (dto.name !== undefined && dto.name.trim() !== existing.name) ||
-      (dto.make !== undefined && (dto.make?.trim() ?? null) !== existing.make) ||
-      (dto.model !== undefined && (dto.model?.trim() ?? null) !== existing.model) ||
+      (dto.make !== undefined &&
+        (dto.make?.trim() ?? null) !== existing.make) ||
+      (dto.model !== undefined &&
+        (dto.model?.trim() ?? null) !== existing.model) ||
       (dto.vehicleClass !== undefined &&
         dto.vehicleClass.trim() !== existing.vehicleClass);
 
@@ -1084,10 +1132,18 @@ export class DriversService {
             ? { autocancelAfter: dto.autocancelAfter }
             : {}),
           ...(dto.inspectionStatus !== undefined
-            ? { inspectionStatus: dto.inspectionStatus ? dto.inspectionStatus.trim() : 'PENDING' }
+            ? {
+                inspectionStatus: dto.inspectionStatus
+                  ? dto.inspectionStatus.trim()
+                  : 'PENDING',
+              }
             : {}),
           ...(dto.approvalStatus !== undefined
-            ? { approvalStatus: dto.approvalStatus ? dto.approvalStatus.trim() : 'PENDING' }
+            ? {
+                approvalStatus: dto.approvalStatus
+                  ? dto.approvalStatus.trim()
+                  : 'PENDING',
+              }
             : {}),
           ...(dto.isDefault !== undefined ? { isDefault: dto.isDefault } : {}),
           ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
@@ -1370,7 +1426,7 @@ export class DriversService {
 
   private parsePayout(raw: Prisma.JsonValue): PayoutSettings {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-    return raw as PayoutSettings;
+    return raw;
   }
 
   private async assertPlateUnique(
@@ -1604,7 +1660,9 @@ export class DriversService {
     ip?: string,
   ) {
     if (dto.status === 'REJECTED' && !dto.rejectionReason?.trim()) {
-      throw new BadRequestException('rejectionReason is required when rejecting');
+      throw new BadRequestException(
+        'rejectionReason is required when rejecting',
+      );
     }
     const doc = await this.prisma.driverDocument.findUnique({
       where: { id: documentId },
@@ -1614,7 +1672,7 @@ export class DriversService {
     const updated = await this.prisma.driverDocument.update({
       where: { id: documentId },
       data: {
-        status: dto.status as DocumentReviewStatus,
+        status: dto.status,
         rejectionReason:
           dto.status === 'REJECTED' ? dto.rejectionReason!.trim() : null,
         reviewedAt: new Date(),
@@ -1632,7 +1690,11 @@ export class DriversService {
     return this.kycDocs.serializeDoc(updated);
   }
 
-  async adminActivateDriver(adminUserId: string, driverId: string, ip?: string) {
+  async adminActivateDriver(
+    adminUserId: string,
+    driverId: string,
+    ip?: string,
+  ) {
     const driver = await this.prisma.driverProfile.findUnique({
       where: { id: driverId },
     });
@@ -1657,13 +1719,25 @@ export class DriversService {
     await this.kycDocs?.syncDriverVehiclesApproval?.(driverId);
 
     if (!driver.isActivated) {
-      const user = await this.prisma.user.findUnique({ where: { id: driver.userId } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: driver.userId },
+      });
       if (user?.email) {
-        void this.emailEvents?.sendKycApproved(driver.userId, driver.fullName, user.email);
+        void this.emailEvents?.sendKycApproved(
+          driver.userId,
+          driver.fullName,
+          user.email,
+        );
       }
     }
 
-    await this.audit(adminUserId, 'admin.driver.activate', 'DriverProfile', driverId, ip);
+    await this.audit(
+      adminUserId,
+      'admin.driver.activate',
+      'DriverProfile',
+      driverId,
+      ip,
+    );
     return {
       id: updated.id,
       approvalStatus: updated.approvalStatus,
@@ -1706,7 +1780,11 @@ export class DriversService {
     };
   }
 
-  async adminDeactivateDriver(adminUserId: string, driverId: string, ip?: string) {
+  async adminDeactivateDriver(
+    adminUserId: string,
+    driverId: string,
+    ip?: string,
+  ) {
     const driver = await this.prisma.driverProfile.findUnique({
       where: { id: driverId },
     });
@@ -1715,7 +1793,13 @@ export class DriversService {
       where: { id: driverId },
       data: { isActivated: false },
     });
-    await this.audit(adminUserId, 'admin.driver.deactivate', 'DriverProfile', driverId, ip);
+    await this.audit(
+      adminUserId,
+      'admin.driver.deactivate',
+      'DriverProfile',
+      driverId,
+      ip,
+    );
     return {
       id: updated.id,
       approvalStatus: updated.approvalStatus,
@@ -1775,7 +1859,10 @@ export class DriversService {
       }
     } else if (dto.zoneType === 'polygon') {
       const g = dto.geoJson as { type?: string; coordinates?: unknown };
-      const geom = g.type === 'Feature' ? (dto.geoJson as { geometry?: { type?: string } }).geometry : g;
+      const geom =
+        g.type === 'Feature'
+          ? (dto.geoJson as { geometry?: { type?: string } }).geometry
+          : g;
       if (!geom || (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon')) {
         throw new BadRequestException(
           'polygon zones require GeoJSON Polygon/MultiPolygon',
@@ -1821,7 +1908,7 @@ export class DriversService {
       }
     } catch (err) {
       // Column may not exist until SQL migration applied; non-fatal for JSON path.
-      // eslint-disable-next-line no-console
+
       console.warn(
         '[DriversService] PostGIS geom sync skipped/failed:',
         err instanceof Error ? err.message : err,

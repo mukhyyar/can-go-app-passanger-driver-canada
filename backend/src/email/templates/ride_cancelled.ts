@@ -16,7 +16,7 @@ export function renderRideCancelled(
   const by = escapeHtml(data.cancelledBy);
   const fee = escapeHtml(data.fee);
   const grace = data.gracePeriodMinutes;
-  
+
   const subject = `Ride Cancelled - ${code}`;
   const html = layout(
     `

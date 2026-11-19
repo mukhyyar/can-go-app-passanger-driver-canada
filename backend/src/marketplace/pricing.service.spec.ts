@@ -131,7 +131,7 @@ describe('PricingService (unit)', () => {
     expect(frozen.driverEarning).toBe(13.6);
   });
 
-  it('freezeBid stores outbound/return and price band', () => {
+  it('freezeBid stores outbound/return, applies 15% return discount from CAN-RIDE commission, and sets price band', () => {
     const guidance: PriceSnapshot = {
       currency: 'CAD',
       serviceType: 'RIDE',
@@ -157,10 +157,15 @@ describe('PricingService (unit)', () => {
     });
     expect(frozen.outboundPrice).toBe(120);
     expect(frozen.returnPrice).toBe(100);
+    expect(frozen.discountedReturnPrice).toBe(85);
+    expect(frozen.returnDiscountPct).toBe(15);
+    expect(frozen.returnDiscountAmount).toBe(15);
     expect(frozen.subtotal).toBe(220);
     expect(frozen.platformFee).toBe(44);
-    expect(frozen.passengerTotal).toBe(264);
+    expect(frozen.originalPassengerTotal).toBe(264);
+    expect(frozen.passengerTotal).toBe(249);
     expect(frozen.driverEarning).toBe(176);
+    expect(frozen.canRideGrossRevenue).toBe(73);
     expect(frozen.priceBand).toBe('typical');
   });
 
@@ -202,7 +207,7 @@ describe('PricingService (unit)', () => {
     const svc = new PricingService(mockPrisma as never);
     const snap = await svc.quote({
       serviceType: 'RIDE',
-      fromLat: 50.90,
+      fromLat: 50.9,
       fromLng: -113.93,
       toLat: 51.11,
       toLng: -114.01,
@@ -239,10 +244,10 @@ describe('PricingService (unit)', () => {
         provider: 'google',
       }),
     };
-    const svc = new PricingService(mockPrisma as never, mockMaps as never);
+    const svc = new PricingService(mockPrisma as never, mockMaps);
     const snap = await svc.quote({
       serviceType: 'RIDE',
-      fromLat: 50.90,
+      fromLat: 50.9,
       fromLng: -113.93,
       toLat: 51.11,
       toLng: -114.01,

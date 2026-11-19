@@ -52,6 +52,7 @@ class VehicleClass {
     this.luggagePlaces = 2,
     this.capacityInfo,
     this.seatsRange,
+    this.isLuxury,
   });
   final String id;
   final String name;
@@ -63,9 +64,40 @@ class VehicleClass {
   final int luggagePlaces;
   final String? capacityInfo;
   final String? seatsRange;
+  final bool? isLuxury;
+
+  bool get effectiveIsLuxury =>
+      isLuxury ?? (id == 'premium' || id == 'suv' || id == 'luxury');
 
   String get seatsCapacityText =>
       seatsRange != null ? 'Up to $seatsRange' : 'Up to $passengerSeats';
+
+  factory VehicleClass.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['slug'] ?? 'economy').toString().trim();
+    final name = (json['name'] ?? json['title'] ?? id).toString().trim();
+    final seats = (json['passengerSeats'] as num?)?.toInt() ?? 4;
+    final bags = (json['luggagePlaces'] as num?)?.toInt() ?? 2;
+    final range = json['seatsRange']?.toString().trim();
+    final effRange = (range != null && range.isNotEmpty) ? range : null;
+    final desc = json['description']?.toString().trim();
+    final fromPrice = json['fromPrice']?.toString().trim();
+    final rawAsset = json['imageAsset']?.toString().trim();
+    return VehicleClass(
+      id: id,
+      name: name,
+      fromPrice: (fromPrice != null && fromPrice.isNotEmpty) ? fromPrice : null,
+      imageAsset: (rawAsset != null && rawAsset.isNotEmpty)
+          ? rawAsset
+          : 'assets/vehicles/$id.png',
+      passengerSeats: seats,
+      luggagePlaces: bags,
+      seatsRange: effRange,
+      capacityInfo: (desc != null && desc.isNotEmpty)
+          ? desc
+          : 'Seating capacity: Up to ${effRange ?? seats} passengers\nLuggage capacity: Up to $bags standard bags',
+      isLuxury: json['isLuxury'] is bool ? json['isLuxury'] as bool : null,
+    );
+  }
 }
 
 class ChildSeats {
@@ -109,6 +141,14 @@ class OfferImage {
 class OfferPriceBreakdown {
   const OfferPriceBreakdown({
     this.ridePrice = 0,
+    this.outboundPrice = 0,
+    this.returnPrice = 0,
+    this.discountedReturnPrice = 0,
+    this.returnDiscountPct = 0,
+    this.returnDiscountAmount = 0,
+    this.enquiryDiscountPct = 0,
+    this.enquiryDiscountAmount = 0,
+    this.originalTotal = 0,
     this.platformFee = 0,
     this.marketplaceFee = 0,
     this.taxes = 0,
@@ -124,6 +164,14 @@ class OfferPriceBreakdown {
   });
 
   final double ridePrice;
+  final double outboundPrice;
+  final double returnPrice;
+  final double discountedReturnPrice;
+  final double returnDiscountPct;
+  final double returnDiscountAmount;
+  final double enquiryDiscountPct;
+  final double enquiryDiscountAmount;
+  final double originalTotal;
   final double platformFee;
   final double marketplaceFee;
   final double taxes;
@@ -141,15 +189,50 @@ class OfferPriceBreakdown {
     double basePrice, {
     String currency = 'CAD',
     double taxes = 0,
+    double? outboundPrice,
+    double returnPrice = 0,
+    double enquiryDiscountPct = 0,
   }) {
     final ridePrice = basePrice;
     final fee = ((ridePrice * 0.20) * 100).roundToDouble() / 100.0;
-    final total = ((ridePrice + fee + taxes) * 100).roundToDouble() / 100.0;
+    final origTotal = ((ridePrice + fee + taxes) * 100).roundToDouble() / 100.0;
+    final effOutbound = outboundPrice ??
+        (returnPrice > 0
+            ? (ridePrice - returnPrice).clamp(0.0, ridePrice)
+            : ridePrice);
+    final hasReturnDiscount = returnPrice > 0;
+    final discountPct = hasReturnDiscount ? 15.0 : 0.0;
+    final returnDiscountAmt = hasReturnDiscount
+        ? ((returnPrice * 0.15) * 100).roundToDouble() / 100.0
+        : 0.0;
+    final discReturn = hasReturnDiscount
+        ? ((returnPrice - returnDiscountAmt) * 100).roundToDouble() / 100.0
+        : 0.0;
+    final effEnquiryPct = enquiryDiscountPct > 0 ? enquiryDiscountPct : 0.0;
+    final enquiryDiscountAmt = effEnquiryPct > 0
+        ? ((ridePrice * (effEnquiryPct / 100.0)) * 100).roundToDouble() / 100.0
+        : 0.0;
+    final totalDiscountAmt =
+        ((returnDiscountAmt + enquiryDiscountAmt) * 100).roundToDouble() /
+            100.0;
+    final total =
+        (((origTotal - totalDiscountAmt).clamp(0.0, double.infinity)) * 100)
+                .roundToDouble() /
+            100.0;
     return OfferPriceBreakdown(
       ridePrice: ridePrice,
+      outboundPrice: effOutbound,
+      returnPrice: returnPrice,
+      discountedReturnPrice: discReturn,
+      returnDiscountPct: discountPct,
+      returnDiscountAmount: returnDiscountAmt,
+      enquiryDiscountPct: effEnquiryPct,
+      enquiryDiscountAmount: enquiryDiscountAmt,
+      originalTotal: origTotal,
       platformFee: fee,
       marketplaceFee: fee,
       taxes: taxes,
+      discount: totalDiscountAmt,
       total: total,
       currency: currency,
       includesNote: 'Includes all taxes and fees',
@@ -197,14 +280,80 @@ class OfferPriceBreakdown {
       }
     }
 
+    final rawReturnPrice = n(json['returnPrice']);
+    final rawOutboundPrice = n(json['outboundPrice']) > 0
+        ? n(json['outboundPrice'])
+        : (rawReturnPrice > 0
+            ? (rawRidePrice - rawReturnPrice).clamp(0.0, rawRidePrice)
+            : rawRidePrice);
+    var rawReturnDiscount = n(json['returnDiscountAmount']);
+    var rawReturnDiscountPct = n(json['returnDiscountPct']);
+    if (rawReturnPrice > 0 && rawReturnDiscount <= 0) {
+      rawReturnDiscountPct =
+          rawReturnDiscountPct > 0 ? rawReturnDiscountPct : 15.0;
+      rawReturnDiscount =
+          ((rawReturnPrice * (rawReturnDiscountPct / 100.0)) * 100)
+                  .roundToDouble() /
+              100.0;
+    } else if (rawReturnPrice > 0 && rawReturnDiscountPct <= 0) {
+      rawReturnDiscountPct = 15.0;
+    }
+    final rawDiscountedReturnPrice = n(json['discountedReturnPrice']) > 0
+        ? n(json['discountedReturnPrice'])
+        : (rawReturnPrice > 0
+            ? ((rawReturnPrice - rawReturnDiscount).clamp(0.0, rawReturnPrice) *
+                        100)
+                    .roundToDouble() /
+                100.0
+            : 0.0);
+
+    var rawEnquiryDiscountPct = n(json['enquiryDiscountPct']);
+    var rawEnquiryDiscount = n(json['enquiryDiscountAmount']);
+    if (rawEnquiryDiscountPct > 0 && rawEnquiryDiscount <= 0 && rawRidePrice > 0) {
+      rawEnquiryDiscount =
+          ((rawRidePrice * (rawEnquiryDiscountPct / 100.0)) * 100)
+                  .roundToDouble() /
+              100.0;
+    } else if (rawEnquiryDiscount > 0 && rawEnquiryDiscountPct <= 0) {
+      rawEnquiryDiscountPct = 5.0;
+    }
+
+    final combinedDiscount =
+        ((rawReturnDiscount + rawEnquiryDiscount) * 100).roundToDouble() /
+            100.0;
+    final rawDiscount =
+        combinedDiscount > 0 ? combinedDiscount : n(json['discount']);
+
+    final computedOriginalTotal =
+        ((rawRidePrice + rawPlatformFee + rawTaxes) * 100).roundToDouble() /
+            100.0;
+    final rawOriginalTotal = n(json['originalTotal']) > 0
+        ? n(json['originalTotal'])
+        : computedOriginalTotal;
+
+    if (rawDiscount > 0) {
+      rawTotal =
+          (((rawOriginalTotal - rawDiscount).clamp(0.0, double.infinity)) * 100)
+                  .roundToDouble() /
+              100.0;
+    }
+
     return OfferPriceBreakdown(
       ridePrice: rawRidePrice,
+      outboundPrice: rawOutboundPrice,
+      returnPrice: rawReturnPrice,
+      discountedReturnPrice: rawDiscountedReturnPrice,
+      returnDiscountPct: rawReturnDiscountPct,
+      returnDiscountAmount: rawReturnDiscount,
+      enquiryDiscountPct: rawEnquiryDiscountPct,
+      enquiryDiscountAmount: rawEnquiryDiscount,
+      originalTotal: rawOriginalTotal,
       platformFee: rawPlatformFee,
       marketplaceFee: rawPlatformFee,
       taxes: rawTaxes,
       tolls: n(json['tolls']),
       waitingTime: n(json['waitingTime']),
-      discount: n(json['discount']),
+      discount: rawDiscount,
       promotion: n(json['promotion']),
       total: rawTotal,
       currency: json['currency']?.toString() ?? 'CAD',
@@ -292,6 +441,7 @@ class Offer {
     this.vehicleDisplayName,
     this.plate,
     this.driverName,
+    this.matchesVehiclePreference = true,
   });
 
   final String id;
@@ -327,6 +477,7 @@ class Offer {
 
   /// Driver / carrier display name after booking (from server `driver.fullName`).
   final String? driverName;
+  final bool matchesVehiclePreference;
 
   String get displayName {
     if (vehicleDisplayName != null && vehicleDisplayName!.trim().isNotEmpty) {
@@ -549,11 +700,15 @@ class RideRequest {
     this.shareToken,
     this.shareUrl,
     this.pickupAt,
+    this.requestExpiresAt,
+    this.hasEnquiryDiscount = false,
+    this.enquiryDiscountPct = 0,
     this.isOverdue = false,
     this.isChatLocked = false,
     this.originalDriverId,
     this.originalDriverName,
     this.originalDriverPhone,
+    this.vehicleClassIds = const [],
   });
 
   final String id;
@@ -584,11 +739,28 @@ class RideRequest {
   String? shareToken;
   String? shareUrl;
   final DateTime? pickupAt;
+  final DateTime? requestExpiresAt;
+  final bool hasEnquiryDiscount;
+  final double enquiryDiscountPct;
   final bool isOverdue;
   final bool isChatLocked;
   final String? originalDriverId;
   final String? originalDriverName;
   final String? originalDriverPhone;
+  final List<String> vehicleClassIds;
+
+  bool get isEnquiryDiscountActive {
+    if (isBooked || isCancelled) return false;
+    final now = DateTime.now();
+    final expires = requestExpiresAt ??
+        (pickupAt != null ? pickupAt!.add(const Duration(minutes: 60)) : null);
+    if (expires != null) {
+      if (!expires.isAfter(now)) return false;
+      final remaining = expires.difference(now);
+      if (remaining <= const Duration(hours: 12)) return true;
+    }
+    return hasEnquiryDiscount;
+  }
 
   bool get isOverdueBooking {
     if (isOverdue) return true;
@@ -709,11 +881,15 @@ class RideRequest {
     String? shareToken,
     String? shareUrl,
     DateTime? pickupAt,
+    DateTime? requestExpiresAt,
+    bool? hasEnquiryDiscount,
+    double? enquiryDiscountPct,
     bool? isOverdue,
     bool? isChatLocked,
     String? originalDriverId,
     String? originalDriverName,
     String? originalDriverPhone,
+    List<String>? vehicleClassIds,
   }) {
     return RideRequest(
       id: id ?? this.id,
@@ -742,11 +918,15 @@ class RideRequest {
       shareToken: shareToken ?? this.shareToken,
       shareUrl: shareUrl ?? this.shareUrl,
       pickupAt: pickupAt ?? this.pickupAt,
+      requestExpiresAt: requestExpiresAt ?? this.requestExpiresAt,
+      hasEnquiryDiscount: hasEnquiryDiscount ?? this.hasEnquiryDiscount,
+      enquiryDiscountPct: enquiryDiscountPct ?? this.enquiryDiscountPct,
       isOverdue: isOverdue ?? this.isOverdue,
       isChatLocked: isChatLocked ?? this.isChatLocked,
       originalDriverId: originalDriverId ?? this.originalDriverId,
       originalDriverName: originalDriverName ?? this.originalDriverName,
       originalDriverPhone: originalDriverPhone ?? this.originalDriverPhone,
+      vehicleClassIds: vehicleClassIds ?? this.vehicleClassIds,
     );
   }
 }

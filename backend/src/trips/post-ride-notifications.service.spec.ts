@@ -112,7 +112,9 @@ describe('PostRideNotificationService', () => {
 
     smsProvider = {
       name: 'test_sms',
-      sendSms: jest.fn().mockResolvedValue({ providerMessageId: 'mock_msg_123' }),
+      sendSms: jest
+        .fn()
+        .mockResolvedValue({ providerMessageId: 'mock_msg_123' }),
     };
 
     notifications = {
@@ -127,9 +129,11 @@ describe('PostRideNotificationService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) => {
-              if (key === 'admin.passengerWebBase') return 'https://can-rides.ca';
+              if (key === 'admin.passengerWebBase')
+                return 'https://can-rides.ca';
               if (key === 'postRide.tipReminderDelayMinutes') return 60;
-              if (key === 'email.assetBaseUrl') return 'https://can-rides.ca/assets';
+              if (key === 'email.assetBaseUrl')
+                return 'https://can-rides.ca/assets';
               return null;
             }),
           },
@@ -140,7 +144,9 @@ describe('PostRideNotificationService', () => {
       ],
     }).compile();
 
-    service = module.get<PostRideNotificationService>(PostRideNotificationService);
+    service = module.get<PostRideNotificationService>(
+      PostRideNotificationService,
+    );
   });
 
   describe('handleRideCompleted (Review, SMS & Invoice Triggers)', () => {
@@ -216,12 +222,17 @@ describe('PostRideNotificationService', () => {
       prisma.ride.findUnique.mockResolvedValue(ride);
       prisma.rating.findUnique.mockResolvedValue(null);
       // Already sent in notification delivery
-      prisma.notificationDelivery.findFirst.mockImplementation(({ where }: any) => {
-        if (where.templateKey === 'post_ride_review') return Promise.resolve({ id: 'sent_email' });
-        if (where.templateKey === 'post_ride_review_sms') return Promise.resolve({ id: 'sent_sms' });
-        if (where.templateKey === 'ride_invoice') return Promise.resolve({ id: 'sent_invoice' });
-        return Promise.resolve(null);
-      });
+      prisma.notificationDelivery.findFirst.mockImplementation(
+        ({ where }: any) => {
+          if (where.templateKey === 'post_ride_review')
+            return Promise.resolve({ id: 'sent_email' });
+          if (where.templateKey === 'post_ride_review_sms')
+            return Promise.resolve({ id: 'sent_sms' });
+          if (where.templateKey === 'ride_invoice')
+            return Promise.resolve({ id: 'sent_invoice' });
+          return Promise.resolve(null);
+        },
+      );
 
       await service.handleRideCompleted(mockRideId);
 
@@ -246,7 +257,9 @@ describe('PostRideNotificationService', () => {
       prisma.ride.findUnique.mockResolvedValue(ride);
       prisma.rating.findUnique.mockResolvedValue(null);
       prisma.notificationDelivery.findFirst.mockResolvedValue(null);
-      smsProvider.sendSms.mockRejectedValueOnce(new Error('Twilio Gateway Timeout'));
+      smsProvider.sendSms.mockRejectedValueOnce(
+        new Error('Twilio Gateway Timeout'),
+      );
 
       await service.handleRideCompleted(mockRideId);
 
@@ -342,7 +355,10 @@ describe('PostRideNotificationService', () => {
     it('does NOT send tipping reminder if tip payment exists', async () => {
       const ride = createMockRide();
       prisma.ride.findUnique.mockResolvedValue(ride);
-      prisma.payment.findFirst.mockResolvedValue({ id: 'tip_pay_1', status: 'succeeded' });
+      prisma.payment.findFirst.mockResolvedValue({
+        id: 'tip_pay_1',
+        status: 'succeeded',
+      });
 
       const result = await service.sendTippingReminderIfEligible(mockRideId);
 
@@ -354,7 +370,10 @@ describe('PostRideNotificationService', () => {
       const ride = createMockRide();
       prisma.ride.findUnique.mockResolvedValue(ride);
       prisma.payment.findFirst.mockResolvedValue(null);
-      prisma.notificationDelivery.findFirst.mockResolvedValue({ id: 'reminder_1', status: 'sent' });
+      prisma.notificationDelivery.findFirst.mockResolvedValue({
+        id: 'reminder_1',
+        status: 'sent',
+      });
 
       const result = await service.sendTippingReminderIfEligible(mockRideId);
 

@@ -37,7 +37,9 @@ import { ProvidersController } from './providers.controller';
         dev: DevPaymentProvider,
         stripe: StripePaymentProvider,
       ) => {
-        const name = (config.get<string>('providers.payment') ?? 'dev').toLowerCase();
+        const name = (
+          config.get<string>('providers.payment') ?? 'dev'
+        ).toLowerCase();
         if (name === 'stripe') return stripe;
         return dev;
       },
@@ -50,7 +52,9 @@ import { ProvidersController } from './providers.controller';
         dev: DevPayoutProvider,
         stripe: StripePayoutProvider,
       ) => {
-        const name = (config.get<string>('providers.payout') ?? 'dev').toLowerCase();
+        const name = (
+          config.get<string>('providers.payout') ?? 'dev'
+        ).toLowerCase();
         if (name === 'stripe') return stripe;
         return dev;
       },
@@ -63,7 +67,9 @@ import { ProvidersController } from './providers.controller';
         mock: MockSmsProvider,
         twilio: TwilioSmsProvider,
       ) => {
-        const name = (config.get<string>('providers.sms') ?? 'mock').toLowerCase();
+        const name = (
+          config.get<string>('providers.sms') ?? 'mock'
+        ).toLowerCase();
         if (name === 'twilio') return twilio;
         return mock;
       },
@@ -76,7 +82,9 @@ import { ProvidersController } from './providers.controller';
         prismaOtp: PrismaOtpProvider,
         mockOtp: MockOtpProvider,
       ) => {
-        const name = (config.get<string>('providers.otp') ?? 'prisma').toLowerCase();
+        const name = (
+          config.get<string>('providers.otp') ?? 'prisma'
+        ).toLowerCase();
         if (name === 'mock') return mockOtp;
         return prismaOtp;
       },

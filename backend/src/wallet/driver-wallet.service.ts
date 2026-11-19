@@ -112,13 +112,15 @@ export class DriverWalletService {
 
   private parsePayout(json: unknown): PayoutSettings {
     if (!json || typeof json !== 'object') return {};
-    return json as PayoutSettings;
+    return json;
   }
 
   /** DB authoritative UTC now for financial maturity checks. */
   async dbNow(tx?: Tx): Promise<Date> {
     const client = tx ?? this.prisma;
-    const rows = await client.$queryRaw<Array<{ now: Date }>>`SELECT NOW() AS now`;
+    const rows = await client.$queryRaw<
+      Array<{ now: Date }>
+    >`SELECT NOW() AS now`;
     return rows[0]?.now ?? new Date();
   }
 
@@ -187,7 +189,9 @@ export class DriverWalletService {
             snap.guidanceAmount ??
             snap.passengerTotal,
         );
-        const fee = Number(snap.platformFee ?? snap.marketplaceFee ?? (fare * 0.2));
+        const fee = Number(
+          snap.platformFee ?? snap.marketplaceFee ?? fare * 0.2,
+        );
         if (Number.isFinite(fare) && Number.isFinite(fee)) {
           rawEarning = Number(Math.max(0, fare - fee).toFixed(2));
         }
@@ -230,7 +234,11 @@ export class DriverWalletService {
         },
       });
       if (existing) {
-        return { created: false, entryId: existing.id, skippedReason: 'already_credited' };
+        return {
+          created: false,
+          entryId: existing.id,
+          skippedReason: 'already_credited',
+        };
       }
 
       const now = await this.dbNow(tx);
@@ -246,7 +254,10 @@ export class DriverWalletService {
             direction: WalletDirection.CREDIT,
             amount,
             currency,
-            status: availableAt && availableAt > now ? WalletEntryStatus.PENDING : WalletEntryStatus.POSTED,
+            status:
+              availableAt && availableAt > now
+                ? WalletEntryStatus.PENDING
+                : WalletEntryStatus.POSTED,
             rideId: ride.id,
             availableAt,
             description: `Trip earning · ${ride.fromLabel}${ride.toLabel ? ` → ${ride.toLabel}` : ''}`,
@@ -255,7 +266,7 @@ export class DriverWalletService {
               fromLabel: ride.fromLabel,
               toLabel: ride.toLabel ?? null,
               completedAt: now.toISOString(),
-            } as Prisma.InputJsonValue,
+            },
           },
         });
 
@@ -419,7 +430,10 @@ export class DriverWalletService {
       if (p.status === DriverPayoutStatus.SUCCEEDED) {
         lifetimePaidOut = lifetimePaidOut.plus(amt);
       }
-      if (p.status === DriverPayoutStatus.PROCESSING || p.status === DriverPayoutStatus.REQUESTED) {
+      if (
+        p.status === DriverPayoutStatus.PROCESSING ||
+        p.status === DriverPayoutStatus.REQUESTED
+      ) {
         processingPayouts = processingPayouts.plus(amt);
       }
     }
@@ -449,7 +463,10 @@ export class DriverWalletService {
    * and any tip ADJUSTMENT entry present in DriverWalletEntry before computing balances.
    */
   async reconcileDriverCompletedRides(driverId: string): Promise<void> {
-    if (!this.prisma.ride?.findMany || !this.prisma.driverWalletEntry?.findMany) {
+    if (
+      !this.prisma.ride?.findMany ||
+      !this.prisma.driverWalletEntry?.findMany
+    ) {
       return;
     }
     try {
@@ -506,7 +523,10 @@ export class DriverWalletService {
             : {};
         const tipAmount = Number(snap.tipAmount ?? snap.tip ?? 0);
         if (Number.isFinite(tipAmount) && tipAmount > 0) {
-          const shortCode = r.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+          const shortCode = r.id
+            .replace(/[^a-zA-Z0-9]/g, '')
+            .slice(-8)
+            .toUpperCase();
           const hasTipEntry = existingEntries.some((e) => {
             if (
               e.type !== WalletEntryType.ADJUSTMENT ||
@@ -526,7 +546,8 @@ export class DriverWalletService {
               e.rideId === r.id ||
               meta.bookingRef === r.id ||
               meta.rideId === r.id ||
-              (shortCode && (e.description || '').toUpperCase().includes(shortCode))
+              (shortCode &&
+                (e.description || '').toUpperCase().includes(shortCode))
             );
           });
 
@@ -554,7 +575,7 @@ export class DriverWalletService {
                     fromLabel: r.fromLabel,
                     toLabel: r.toLabel ?? null,
                     reconciledAt: new Date().toISOString(),
-                  } as Prisma.InputJsonValue,
+                  },
                 },
               })
               .catch(() => null);
@@ -583,7 +604,10 @@ export class DriverWalletService {
     await this.reconcileDriverCompletedRides(driver.id);
     const currency = this.walletCurrency();
     const balances = await this.computeBalances(driver.id, currency);
-    const eligibility = await this.evaluateWithdrawEligibility(driver, balances.available);
+    const eligibility = await this.evaluateWithdrawEligibility(
+      driver,
+      balances.available,
+    );
 
     const recent = await this.prisma.driverWalletEntry.findMany({
       where: { driverId: driver.id, currency },
@@ -646,12 +670,17 @@ export class DriverWalletService {
       driverId: driver.id,
       currency,
     };
-    if (query.type && Object.values(WalletEntryType).includes(query.type as WalletEntryType)) {
+    if (
+      query.type &&
+      Object.values(WalletEntryType).includes(query.type as WalletEntryType)
+    ) {
       where.type = query.type as WalletEntryType;
     }
     if (
       query.status &&
-      Object.values(WalletEntryStatus).includes(query.status as WalletEntryStatus)
+      Object.values(WalletEntryStatus).includes(
+        query.status as WalletEntryStatus,
+      )
     ) {
       where.status = query.status as WalletEntryStatus;
     }
@@ -685,7 +714,7 @@ export class DriverWalletService {
     const page = hasMore ? rows.slice(0, limit) : rows;
     return {
       items: page.map((e) => this.serializeEntry(e)),
-      nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
+      nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
     };
   }
 
@@ -696,14 +725,20 @@ export class DriverWalletService {
     ip?: string,
   ) {
     if (!idempotencyKey || !idempotencyKey.trim()) {
-      this.walletError('IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key header is required');
+      this.walletError(
+        'IDEMPOTENCY_KEY_REQUIRED',
+        'Idempotency-Key header is required',
+      );
     }
     const key = idempotencyKey.trim();
     const driver = await this.requireDriver(userId);
     const walletCurrency = this.walletCurrency();
     const reqCurrency = (body.currency ?? walletCurrency).toUpperCase();
     if (reqCurrency !== walletCurrency) {
-      this.walletError('CURRENCY_MISMATCH', `Wallet currency is ${walletCurrency}`);
+      this.walletError(
+        'CURRENCY_MISMATCH',
+        `Wallet currency is ${walletCurrency}`,
+      );
     }
 
     const amount = normalizeMoney(body.amount, walletCurrency);
@@ -721,7 +756,8 @@ export class DriverWalletService {
       ) {
         throw new ConflictException({
           code: 'IDEMPOTENCY_CONFLICT',
-          message: 'Idempotency key was reused with a different amount or currency',
+          message:
+            'Idempotency key was reused with a different amount or currency',
         });
       }
       return this.serializePayout(existing);
@@ -736,7 +772,10 @@ export class DriverWalletService {
 
         const again = await tx.driverPayout.findUnique({
           where: {
-            driverId_idempotencyKey: { driverId: driver.id, idempotencyKey: key },
+            driverId_idempotencyKey: {
+              driverId: driver.id,
+              idempotencyKey: key,
+            },
           },
         });
         if (again) {
@@ -746,7 +785,8 @@ export class DriverWalletService {
           ) {
             throw new ConflictException({
               code: 'IDEMPOTENCY_CONFLICT',
-              message: 'Idempotency key was reused with a different amount or currency',
+              message:
+                'Idempotency key was reused with a different amount or currency',
             });
           }
           return again.id;
@@ -847,7 +887,10 @@ export class DriverWalletService {
       ) {
         const raced = await this.prisma.driverPayout.findUnique({
           where: {
-            driverId_idempotencyKey: { driverId: driver.id, idempotencyKey: key },
+            driverId_idempotencyKey: {
+              driverId: driver.id,
+              idempotencyKey: key,
+            },
           },
         });
         if (raced) {
@@ -905,17 +948,18 @@ export class DriverWalletService {
         user.email,
         moneyToString(d(payout.amount), payout.currency),
         payout.currency,
-        mask
+        mask,
       );
 
-      const reviewThreshold = this.config.get<string>('wallet.manualReviewAlertCad') || '1000';
+      const reviewThreshold =
+        this.config.get<string>('wallet.manualReviewAlertCad') || '1000';
       if (d(amount).gte(normalizeMoney(reviewThreshold, walletCurrency))) {
         void this.emailEvents?.sendAdminLargeWithdrawalAlert(
           userId,
           driver.fullName,
           user.email,
           moneyToString(d(payout.amount), payout.currency),
-          payout.currency
+          payout.currency,
         );
       }
     }
@@ -1013,9 +1057,15 @@ export class DriverWalletService {
             failureReason: msg.slice(0, 500),
           },
         });
-        await this.audit(undefined, 'WALLET_PAYOUT_UNCERTAIN', 'DriverPayout', payout.id, {
-          reason: msg.slice(0, 500),
-        });
+        await this.audit(
+          undefined,
+          'WALLET_PAYOUT_UNCERTAIN',
+          'DriverPayout',
+          payout.id,
+          {
+            reason: msg.slice(0, 500),
+          },
+        );
         this.logger.error(
           `Payout ${payout.id} provider timeout/uncertain — funds remain locked`,
         );
@@ -1023,7 +1073,11 @@ export class DriverWalletService {
       }
 
       // Confirmed provider failure (e.g. Stripe returned error body)
-      await this.markPayoutFailed(payout.id, 'PROVIDER_ERROR', msg.slice(0, 500));
+      await this.markPayoutFailed(
+        payout.id,
+        'PROVIDER_ERROR',
+        msg.slice(0, 500),
+      );
     }
   }
 
@@ -1036,7 +1090,9 @@ export class DriverWalletService {
     },
   ) {
     await this.prisma.$transaction(async (tx) => {
-      const payout = await tx.driverPayout.findUnique({ where: { id: payoutId } });
+      const payout = await tx.driverPayout.findUnique({
+        where: { id: payoutId },
+      });
       if (!payout) return;
       if (payout.status === DriverPayoutStatus.SUCCEEDED) return;
       this.assertPayoutTransition(payout.status, DriverPayoutStatus.SUCCEEDED);
@@ -1064,7 +1120,10 @@ export class DriverWalletService {
       if ((tx as any).rideFinancial?.updateMany) {
         await tx.rideFinancial.updateMany({
           where: {
-            ride: { assignedDriverId: payout.driverId, status: RideStatus.COMPLETED },
+            ride: {
+              assignedDriverId: payout.driverId,
+              status: RideStatus.COMPLETED,
+            },
             driverPayoutStatus: {
               in: [DriverPayoutStatus.HELD, DriverPayoutStatus.REQUESTED],
             },
@@ -1081,9 +1140,16 @@ export class DriverWalletService {
           },
         });
       }
-      await this.audit(undefined, 'WALLET_PAYOUT_SUCCEEDED', 'DriverPayout', payoutId, {
-        amount: moneyToString(d(payout.amount), payout.currency),
-      }, tx);
+      await this.audit(
+        undefined,
+        'WALLET_PAYOUT_SUCCEEDED',
+        'DriverPayout',
+        payoutId,
+        {
+          amount: moneyToString(d(payout.amount), payout.currency),
+        },
+        tx,
+      );
     });
 
     const payout = await this.prisma.driverPayout.findUnique({
@@ -1114,11 +1180,15 @@ export class DriverWalletService {
     providerBatchId?: string,
   ) {
     await this.prisma.$transaction(async (tx) => {
-      const payout = await tx.driverPayout.findUnique({ where: { id: payoutId } });
+      const payout = await tx.driverPayout.findUnique({
+        where: { id: payoutId },
+      });
       if (!payout) return;
       if (payout.status === DriverPayoutStatus.FAILED) return;
       if (payout.status === DriverPayoutStatus.SUCCEEDED) {
-        throw new BadRequestException('Cannot fail a succeeded payout without reverse');
+        throw new BadRequestException(
+          'Cannot fail a succeeded payout without reverse',
+        );
       }
       this.assertPayoutTransition(payout.status, DriverPayoutStatus.FAILED);
 
@@ -1152,10 +1222,17 @@ export class DriverWalletService {
         }
       }
 
-      await this.audit(undefined, 'WALLET_PAYOUT_FAILED', 'DriverPayout', payoutId, {
-        failureCode,
-        failureReason,
-      }, tx);
+      await this.audit(
+        undefined,
+        'WALLET_PAYOUT_FAILED',
+        'DriverPayout',
+        payoutId,
+        {
+          failureCode,
+          failureReason,
+        },
+        tx,
+      );
     });
 
     const payout = await this.prisma.driverPayout.findUnique({
@@ -1183,7 +1260,7 @@ export class DriverWalletService {
           payout.driver.fullName,
           payout.driver.user.email,
           moneyToString(d(payout.amount), payout.currency),
-          payout.currency
+          payout.currency,
         );
       }
     }
@@ -1191,7 +1268,9 @@ export class DriverWalletService {
 
   async markPayoutReversed(payoutId: string, reason: string) {
     await this.prisma.$transaction(async (tx) => {
-      const payout = await tx.driverPayout.findUnique({ where: { id: payoutId } });
+      const payout = await tx.driverPayout.findUnique({
+        where: { id: payoutId },
+      });
       if (!payout) return;
       if (payout.status === DriverPayoutStatus.REVERSED) return;
       this.assertPayoutTransition(payout.status, DriverPayoutStatus.REVERSED);
@@ -1232,13 +1311,23 @@ export class DriverWalletService {
         }
       }
 
-      await this.audit(undefined, 'WALLET_PAYOUT_REVERSED', 'DriverPayout', payoutId, {
-        reason,
-      }, tx);
+      await this.audit(
+        undefined,
+        'WALLET_PAYOUT_REVERSED',
+        'DriverPayout',
+        payoutId,
+        {
+          reason,
+        },
+        tx,
+      );
     });
   }
 
-  private assertPayoutTransition(from: DriverPayoutStatus, to: DriverPayoutStatus) {
+  private assertPayoutTransition(
+    from: DriverPayoutStatus,
+    to: DriverPayoutStatus,
+  ) {
     const allowed: Record<DriverPayoutStatus, DriverPayoutStatus[]> = {
       [DriverPayoutStatus.REQUESTED]: [
         DriverPayoutStatus.PROCESSING,
@@ -1259,7 +1348,9 @@ export class DriverWalletService {
       [DriverPayoutStatus.REVERSED]: [],
     };
     if (!allowed[from]?.includes(to)) {
-      throw new BadRequestException(`Illegal payout transition ${from} → ${to}`);
+      throw new BadRequestException(
+        `Illegal payout transition ${from} → ${to}`,
+      );
     }
   }
 
@@ -1301,7 +1392,9 @@ export class DriverWalletService {
 
     const payout =
       (input.payoutId
-        ? await this.prisma.driverPayout.findUnique({ where: { id: input.payoutId } })
+        ? await this.prisma.driverPayout.findUnique({
+            where: { id: input.payoutId },
+          })
         : null) ??
       (input.providerPayoutId
         ? await this.prisma.driverPayout.findFirst({
@@ -1329,7 +1422,11 @@ export class DriverWalletService {
     }
 
     const t = input.type.toLowerCase();
-    if (t.includes('succeed') || t.includes('paid') || t.includes('transfer.created')) {
+    if (
+      t.includes('succeed') ||
+      t.includes('paid') ||
+      t.includes('transfer.created')
+    ) {
       await this.markPayoutSucceeded(payout.id, {
         providerPayoutId: input.providerPayoutId,
         providerStatus: input.type,
@@ -1419,9 +1516,15 @@ export class DriverWalletService {
       const report = await this.assertWalletIntegrity(dr.id);
       if (!report.ok) {
         anomalies += 1;
-        await this.audit(undefined, 'WALLET_INTEGRITY_ANOMALY', 'DriverProfile', dr.id, {
-          issues: report.issues,
-        });
+        await this.audit(
+          undefined,
+          'WALLET_INTEGRITY_ANOMALY',
+          'DriverProfile',
+          dr.id,
+          {
+            issues: report.issues,
+          },
+        );
       }
     }
 
@@ -1451,7 +1554,9 @@ export class DriverWalletService {
     }
     if (
       query.status &&
-      Object.values(WalletEntryStatus).includes(query.status as WalletEntryStatus)
+      Object.values(WalletEntryStatus).includes(
+        query.status as WalletEntryStatus,
+      )
     ) {
       where.status = query.status as WalletEntryStatus;
     }
@@ -1514,7 +1619,7 @@ export class DriverWalletService {
           !!e.availableAt &&
           e.availableAt > now,
       })),
-      nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
+      nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
     };
   }
 
@@ -1592,12 +1697,13 @@ export class DriverWalletService {
       entry.status === WalletEntryStatus.FAILED ||
       entry.status === WalletEntryStatus.REVERSED
     ) {
-      throw new BadRequestException('Cannot release a failed or reversed entry');
+      throw new BadRequestException(
+        'Cannot release a failed or reversed entry',
+      );
     }
 
     const now = await this.dbNow();
-    const alreadyAvailable =
-      !entry.availableAt || entry.availableAt <= now;
+    const alreadyAvailable = !entry.availableAt || entry.availableAt <= now;
 
     if (alreadyAvailable && entry.status === WalletEntryStatus.POSTED) {
       return {
@@ -1624,7 +1730,7 @@ export class DriverWalletService {
           holdReleasedBy: adminUserId,
           previousAvailableAt: previousAvailableAt?.toISOString() ?? null,
           releaseReason: reasonTrim,
-        } as Prisma.InputJsonValue,
+        },
       },
       include: {
         ride: {
@@ -1639,13 +1745,19 @@ export class DriverWalletService {
       },
     });
 
-    await this.audit(adminUserId, 'WALLET_HOLD_RELEASED', 'DriverWalletEntry', entry.id, {
-      driverId: entry.driverId,
-      amount: moneyToString(d(entry.amount), entry.currency),
-      currency: entry.currency,
-      previousAvailableAt: previousAvailableAt?.toISOString() ?? null,
-      reason: reasonTrim,
-    });
+    await this.audit(
+      adminUserId,
+      'WALLET_HOLD_RELEASED',
+      'DriverWalletEntry',
+      entry.id,
+      {
+        driverId: entry.driverId,
+        amount: moneyToString(d(entry.amount), entry.currency),
+        currency: entry.currency,
+        previousAvailableAt: previousAvailableAt?.toISOString() ?? null,
+        reason: reasonTrim,
+      },
+    );
 
     void this.notifications.sendToUser({
       userId: entry.driver.userId,
@@ -1672,8 +1784,12 @@ export class DriverWalletService {
     adminUserId: string,
     reason: string,
   ) {
-    const results: Array<{ entryId: string; ok: boolean; released?: boolean; error?: string }> =
-      [];
+    const results: Array<{
+      entryId: string;
+      ok: boolean;
+      released?: boolean;
+      error?: string;
+    }> = [];
     for (const id of entryIds) {
       try {
         const r = await this.adminReleaseEntry(id, adminUserId, reason);
@@ -1724,7 +1840,12 @@ export class DriverWalletService {
   async adminAdjustBalance(
     driverId: string,
     adminUserId: string,
-    body: { amount: string; direction: 'CREDIT' | 'DEBIT'; reason: string; currency?: string },
+    body: {
+      amount: string;
+      direction: 'CREDIT' | 'DEBIT';
+      reason: string;
+      currency?: string;
+    },
   ) {
     const reasonTrim = body.reason.trim();
     if (reasonTrim.length < 3) {
@@ -1781,17 +1902,23 @@ export class DriverWalletService {
         metaJson: {
           adjustedBy: adminUserId,
           adjustedAt: new Date().toISOString(),
-        } as Prisma.InputJsonValue,
+        },
       },
     });
 
-    await this.audit(adminUserId, 'WALLET_ADJUSTMENT', 'DriverWalletEntry', entry.id, {
-      driverId: driver.id,
-      direction,
-      amount: moneyToString(amount, currency),
-      currency,
-      reason: reasonTrim,
-    });
+    await this.audit(
+      adminUserId,
+      'WALLET_ADJUSTMENT',
+      'DriverWalletEntry',
+      entry.id,
+      {
+        driverId: driver.id,
+        direction,
+        amount: moneyToString(amount, currency),
+        currency,
+        reason: reasonTrim,
+      },
+    );
 
     void this.notifications.sendToUser({
       userId: driver.userId,
@@ -1989,13 +2116,13 @@ export class DriverWalletService {
 
     const stripeLinked = Boolean(
       driver.stripeAccountId &&
-        driver.stripeAccountId.trim() !== '' &&
-        driver.stripeAccountStatus !== 'UNLINKED',
+      driver.stripeAccountId.trim() !== '' &&
+      driver.stripeAccountStatus !== 'UNLINKED',
     );
     const stripeVerified = Boolean(
       stripeLinked &&
-        driver.stripePayoutsEnabled === true &&
-        driver.stripeAccountStatus === 'ACTIVE',
+      driver.stripePayoutsEnabled === true &&
+      driver.stripeAccountStatus === 'ACTIVE',
     );
 
     const useStripeVerification =
@@ -2065,7 +2192,9 @@ export class DriverWalletService {
       const daily = this.dailyLimit();
       if (daily) {
         const at = now ?? (await this.dbNow(tx));
-        const start = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+        const start = new Date(
+          Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()),
+        );
         const daySum = await (tx ?? this.prisma).driverPayout.aggregate({
           where: {
             driverId: driver.id,

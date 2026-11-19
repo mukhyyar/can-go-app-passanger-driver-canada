@@ -1,6 +1,19 @@
+jest.mock('@nestjs/config', () => ({
+  ConfigService: class MockConfigService {
+    get = jest.fn();
+  },
+}));
+jest.mock('@nestjs/jwt', () => ({
+  JwtService: class MockJwtService {
+    sign = jest.fn();
+    verify = jest.fn();
+  },
+}));
+
 import { RideStatus } from '@prisma/client';
 import {
   canTransition,
+  computeEnquiryDiscountState,
   computeRequestExpiresAt,
   isEligibleForUnfulfilledExpiry,
   isImmediateRide,
@@ -12,6 +25,7 @@ import {
   CANCELLED_ONLY,
   UNFULFILLED,
 } from './ride-lifecycle';
+import { RideLifecycleService } from './ride-lifecycle.service';
 
 const CFG = loadRideLifecycleConfig({
   RIDE_UNFULFILLED_GRACE_MINUTES: '60',
@@ -64,7 +78,10 @@ describe('ride lifecycle policy', () => {
 
   it('TEST 3: passenger cancel uses PASSENGER_CANCELLED transition, not EXPIRED', () => {
     expect(
-      canTransition(RideStatus.WAITING_FOR_OFFERS, RideStatus.PASSENGER_CANCELLED),
+      canTransition(
+        RideStatus.WAITING_FOR_OFFERS,
+        RideStatus.PASSENGER_CANCELLED,
+      ),
     ).toBe(true);
     expect(CANCELLED_ONLY).toContain(RideStatus.PASSENGER_CANCELLED);
     expect(CANCELLED_ONLY).not.toContain(RideStatus.EXPIRED);
@@ -181,14 +198,16 @@ describe('ride lifecycle policy', () => {
   });
 
   it('TEST 10: cancel vs assign race — illegal CANCELLED→DRIVER_ASSIGNED / BOOKED blocked', () => {
-    expect(canTransition(RideStatus.PASSENGER_CANCELLED, RideStatus.BOOKED)).toBe(
-      false,
-    );
+    expect(
+      canTransition(RideStatus.PASSENGER_CANCELLED, RideStatus.BOOKED),
+    ).toBe(false);
     expect(
       canTransition(RideStatus.PASSENGER_CANCELLED, RideStatus.PAYMENT_PENDING),
     ).toBe(false);
     expect(canTransition(RideStatus.COMPLETED, RideStatus.EXPIRED)).toBe(false);
-    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.EXPIRED)).toBe(false);
+    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.EXPIRED)).toBe(
+      false,
+    );
   });
 
   it('TEST 11: dry-run repair identifies incorrectly expired future ride', () => {
@@ -252,7 +271,11 @@ describe('ride lifecycle policy', () => {
 
   it('immediate vs scheduled detection uses threshold', () => {
     expect(
-      isImmediateRide(new Date(created.getTime() + 30 * 60 * 1000), created, CFG),
+      isImmediateRide(
+        new Date(created.getTime() + 30 * 60 * 1000),
+        created,
+        CFG,
+      ),
     ).toBe(true);
     expect(
       isImmediateRide(new Date(created.getTime() + 3 * DAY), created, CFG),
@@ -346,12 +369,24 @@ describe('ride lifecycle policy', () => {
   });
 
   it('allows cancellation transitions from TRIP_STARTED and IN_PROGRESS for stalled/overdue rides', () => {
-    expect(canTransition(RideStatus.TRIP_STARTED, RideStatus.PASSENGER_CANCELLED)).toBe(true);
-    expect(canTransition(RideStatus.TRIP_STARTED, RideStatus.DRIVER_CANCELLED)).toBe(true);
-    expect(canTransition(RideStatus.TRIP_STARTED, RideStatus.ADMIN_CANCELLED)).toBe(true);
-    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.PASSENGER_CANCELLED)).toBe(true);
-    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.DRIVER_CANCELLED)).toBe(true);
-    expect(canTransition(RideStatus.IN_PROGRESS, RideStatus.ADMIN_CANCELLED)).toBe(true);
+    expect(
+      canTransition(RideStatus.TRIP_STARTED, RideStatus.PASSENGER_CANCELLED),
+    ).toBe(true);
+    expect(
+      canTransition(RideStatus.TRIP_STARTED, RideStatus.DRIVER_CANCELLED),
+    ).toBe(true);
+    expect(
+      canTransition(RideStatus.TRIP_STARTED, RideStatus.ADMIN_CANCELLED),
+    ).toBe(true);
+    expect(
+      canTransition(RideStatus.IN_PROGRESS, RideStatus.PASSENGER_CANCELLED),
+    ).toBe(true);
+    expect(
+      canTransition(RideStatus.IN_PROGRESS, RideStatus.DRIVER_CANCELLED),
+    ).toBe(true);
+    expect(
+      canTransition(RideStatus.IN_PROGRESS, RideStatus.ADMIN_CANCELLED),
+    ).toBe(true);
   });
 
   it('serializeLifecycleFlags exposes isOverdue and canCancel correctly for stalled rides', () => {
@@ -372,5 +407,189 @@ describe('ride lifecycle policy', () => {
     );
     expect(stalledFlags.isOverdue).toBe(true);
     expect(stalledFlags.canCancel).toBe(true);
+  });
+
+  describe('Automatic 5% Discount for Unconfirmed Ride Enquiries (12h before expiry)', () => {
+    // Example from spec: Ride enquiry expires at 8:00 PM on November 20 -> 5% discount available at 8:00 AM on November 20
+    const expiresAt = new Date('2026-11-20T20:00:00.000Z');
+    const pickupAt = new Date('2026-11-20T19:00:00.000Z'); // expiresAt = pickupAt + 60m grace
+
+    it('becomes eligible at exactly 8:00 AM Nov 20 (12 hours before 8:00 PM expiry), not before, and expires at 8:00 PM', () => {
+      // 7:59 AM Nov 20 (> 12h remaining) -> not eligible yet
+      const before12h = computeEnquiryDiscountState(
+        {
+          status: RideStatus.OFFER_SELECTION,
+          pickupAt,
+          requestExpiresAt: expiresAt,
+        },
+        new Date('2026-11-20T07:59:00.000Z'),
+        CFG,
+      );
+      expect(before12h.eligible).toBe(false);
+      expect(before12h.discountPct).toBe(0);
+      expect(before12h.availableAt.toISOString()).toBe(
+        '2026-11-20T08:00:00.000Z',
+      );
+
+      // 8:00 AM Nov 20 (exactly 12h remaining) -> eligible for 5% discount
+      const at12h = computeEnquiryDiscountState(
+        {
+          status: RideStatus.OFFER_SELECTION,
+          pickupAt,
+          requestExpiresAt: expiresAt,
+        },
+        new Date('2026-11-20T08:00:00.000Z'),
+        CFG,
+      );
+      expect(at12h.eligible).toBe(true);
+      expect(at12h.discountPct).toBe(5);
+
+      // 2:00 PM Nov 20 (6h remaining) -> eligible for 5% discount
+      const within12h = computeEnquiryDiscountState(
+        {
+          status: RideStatus.WAITING_FOR_OFFERS,
+          pickupAt,
+          requestExpiresAt: expiresAt,
+        },
+        new Date('2026-11-20T14:00:00.000Z'),
+        CFG,
+      );
+      expect(within12h.eligible).toBe(true);
+      expect(within12h.discountPct).toBe(5);
+
+      // If passenger already finalized booking (BOOKED) -> NOT eligible
+      const alreadyBooked = computeEnquiryDiscountState(
+        {
+          status: RideStatus.BOOKED,
+          pickupAt,
+          requestExpiresAt: expiresAt,
+        },
+        new Date('2026-11-20T14:00:00.000Z'),
+        CFG,
+      );
+      expect(alreadyBooked.eligible).toBe(false);
+      expect(alreadyBooked.discountPct).toBe(0);
+
+      // 8:00 PM Nov 20 (enquiry expired) -> discount expired
+      const atExpiry = computeEnquiryDiscountState(
+        {
+          status: RideStatus.OFFER_SELECTION,
+          pickupAt,
+          requestExpiresAt: expiresAt,
+        },
+        new Date('2026-11-20T20:00:00.000Z'),
+        CFG,
+      );
+      expect(atExpiry.eligible).toBe(false);
+      expect(atExpiry.discountPct).toBe(0);
+      expect(atExpiry.isExpired).toBe(true);
+    });
+
+    it('processExpiringEnquiryDiscounts activates 5% discount on offers and dispatches Push + Email notifications', async () => {
+      const mockPrisma: any = {
+        ride: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'ride-nov20',
+              status: RideStatus.OFFER_SELECTION,
+              pickupAt,
+              requestExpiresAt: expiresAt,
+              fromLabel: 'Toronto Pearson Airport',
+              toLabel: 'Union Station',
+              priceSnapshot: { guidanceAmount: 100 },
+              passenger: {
+                userId: 'pax-user-1',
+                fullName: 'Alex Rider',
+                user: { id: 'pax-user-1', email: 'alex@example.com' },
+              },
+              offers: [
+                {
+                  id: 'offer-1',
+                  bidAmount: 100,
+                  returnPrice: null,
+                  priceSnapshot: {
+                    bidAmount: 100,
+                    subtotal: 100,
+                    platformFee: 20,
+                    driverEarning: 80,
+                    passengerTotal: 120,
+                    taxAmount: 0,
+                  },
+                },
+              ],
+            },
+          ]),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        offer: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+      };
+
+      const mockNotifications: any = {
+        notifyRideStatus: jest.fn().mockResolvedValue({}),
+      };
+      const mockEmailEvents: any = {
+        sendRideEnquiryDiscount: jest.fn().mockResolvedValue({}),
+      };
+      const mockTracking: any = {
+        emitRideEvent: jest.fn(),
+        emitToPassengers: jest.fn(),
+      };
+
+      const lifecycleSvc = new RideLifecycleService(
+        mockPrisma,
+        mockTracking,
+        mockEmailEvents,
+        mockNotifications,
+      );
+
+      const count = await lifecycleSvc.processExpiringEnquiryDiscounts(
+        new Date('2026-11-20T08:05:00.000Z'),
+      );
+
+      expect(count).toBe(1);
+      expect(mockPrisma.ride.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'ride-nov20' },
+          data: {
+            priceSnapshot: expect.objectContaining({
+              enquiryDiscountPct: 5,
+              enquiryDiscountActivatedAt: '2026-11-20T08:05:00.000Z',
+              enquiryDiscountExpiresAt: '2026-11-20T20:00:00.000Z',
+            }),
+          },
+        }),
+      );
+      expect(mockPrisma.offer.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'offer-1' },
+          data: {
+            priceSnapshot: expect.objectContaining({
+              originalPassengerTotal: 120,
+              enquiryDiscountPct: 5,
+              enquiryDiscountAmount: 5,
+              passengerTotal: 115,
+              canRideGrossRevenue: 35,
+            }),
+          },
+        }),
+      );
+      expect(mockNotifications.notifyRideStatus).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userIds: ['pax-user-1'],
+          rideId: 'ride-nov20',
+          eventId: 'ride.enquiry_discount_5pct.ride-nov20',
+        }),
+      );
+      expect(mockEmailEvents.sendRideEnquiryDiscount).toHaveBeenCalledWith(
+        'pax-user-1',
+        'alex@example.com',
+        expect.objectContaining({
+          rideId: 'ride-nov20',
+          discountPct: 5,
+        }),
+      );
+    });
   });
 });

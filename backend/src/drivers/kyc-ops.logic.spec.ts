@@ -155,9 +155,7 @@ describe('kyc-ops.logic', () => {
   });
 
   it('blocks KYC approval until required docs plus vehicle photo pass', () => {
-    expect(
-      canApproveKyc({ readyForKycApproval: false }, false),
-    ).toBe(false);
+    expect(canApproveKyc({ readyForKycApproval: false }, false)).toBe(false);
     expect(canApproveKyc({ readyForKycApproval: true }, false)).toBe(true);
     expect(canApproveKyc({ readyForKycApproval: false }, true)).toBe(true);
   });
@@ -183,15 +181,25 @@ describe('kyc-ops.logic', () => {
     const checks = buildVerificationChecks({
       docs: [
         { docType: 'selfie', status: 'APPROVED' },
-        { docType: 'license', status: 'PENDING', expiresAt: new Date('2028-03-18') },
+        {
+          docType: 'license',
+          status: 'PENDING',
+          expiresAt: new Date('2028-03-18'),
+        },
       ],
       vehiclePlate: 'ABC-123',
       now: new Date('2026-09-08'),
     });
-    expect(checks.find((c) => c.id === 'name_match')?.result).toBe('unavailable');
-    expect(checks.find((c) => c.id === 'licence_not_expired')?.result).toBe('pass');
+    expect(checks.find((c) => c.id === 'name_match')?.result).toBe(
+      'unavailable',
+    );
+    expect(checks.find((c) => c.id === 'licence_not_expired')?.result).toBe(
+      'pass',
+    );
     expect(checks.find((c) => c.id === 'plate_on_file')?.result).toBe('pass');
-    expect(checks.find((c) => c.id === 'vehicle_photo_present')?.result).toBe('fail');
+    expect(checks.find((c) => c.id === 'vehicle_photo_present')?.result).toBe(
+      'fail',
+    );
   });
 
   it('formats driver short ids and averages', () => {

@@ -34,9 +34,7 @@ export class TrackingGateway implements OnGatewayConnection {
     try {
       const token =
         (client.handshake.auth?.token as string | undefined) ??
-        (client.handshake.headers.authorization?.replace(/^Bearer\s+/i, '') as
-          | string
-          | undefined);
+        client.handshake.headers.authorization?.replace(/^Bearer\s+/i, '');
       if (!token) {
         client.disconnect(true);
         return;
@@ -120,7 +118,11 @@ export class TrackingGateway implements OnGatewayConnection {
   }
 
   /** Push a marketplace event to one or more driver user rooms. */
-  emitToDrivers(userIds: string[], event: string, payload: Record<string, unknown>) {
+  emitToDrivers(
+    userIds: string[],
+    event: string,
+    payload: Record<string, unknown>,
+  ) {
     if (!this.server || !userIds.length) return;
     for (const userId of userIds) {
       this.server.to(`driver:${userId}`).emit(event, payload);

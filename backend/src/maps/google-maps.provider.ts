@@ -89,10 +89,7 @@ export class GoogleMapsProvider implements MapsProvider {
     }
   }
 
-  async geocode(
-    query: string,
-    opts?: GeocodeOpts,
-  ): Promise<GeocodeResult[]> {
+  async geocode(query: string, opts?: GeocodeOpts): Promise<GeocodeResult[]> {
     this.assertKey();
     const q = query.trim();
     if (!q) return [];
@@ -132,7 +129,10 @@ export class GoogleMapsProvider implements MapsProvider {
     return [];
   }
 
-  async reverseGeocode(lat: number, lng: number): Promise<GeocodeResult | null> {
+  async reverseGeocode(
+    lat: number,
+    lng: number,
+  ): Promise<GeocodeResult | null> {
     this.assertKey();
     try {
       const uri = new URL('https://maps.googleapis.com/maps/api/geocode/json');
@@ -293,7 +293,9 @@ export class GoogleMapsProvider implements MapsProvider {
         const formatted = p.formattedAddress?.trim() || '';
         const display = p.displayName?.text?.trim() || '';
         const label =
-          display && formatted && !formatted.toLowerCase().startsWith(display.toLowerCase())
+          display &&
+          formatted &&
+          !formatted.toLowerCase().startsWith(display.toLowerCase())
             ? display
             : formatted.split(',')[0]?.trim() || display;
         if (!label) continue;
@@ -307,7 +309,9 @@ export class GoogleMapsProvider implements MapsProvider {
         const lat = p.location?.latitude ?? 0;
         const lng = p.location?.longitude ?? 0;
         out.push({
-          id: placeId ? `gplace-${placeId}` : `text-${lat}-${lng}-${out.length}`,
+          id: placeId
+            ? `gplace-${placeId}`
+            : `text-${lat}-${lng}-${out.length}`,
           label,
           subtitle,
           lat,
@@ -412,9 +416,7 @@ export class GoogleMapsProvider implements MapsProvider {
           if (!p.placeId) continue;
           const placeId = p.placeId;
           const label =
-            p.structuredFormat?.mainText?.text ||
-            p.text?.text ||
-            placeId;
+            p.structuredFormat?.mainText?.text || p.text?.text || placeId;
           const subtitle = p.structuredFormat?.secondaryText?.text;
           if (
             addSuggestion({
@@ -442,11 +444,7 @@ export class GoogleMapsProvider implements MapsProvider {
 
     // 2. Geocoding + Text Search on abbreviation variants (Canada only)
     if (suggestions.length < max || addressLike) {
-      const perVariant = Math.max(
-        max - suggestions.length,
-        reserved,
-        4,
-      );
+      const perVariant = Math.max(max - suggestions.length, reserved, 4);
       for (const variant of variants) {
         try {
           const geoPlaces = await this.geocodeAsPlaces(variant, perVariant);
@@ -470,8 +468,7 @@ export class GoogleMapsProvider implements MapsProvider {
     }
 
     suggestions.sort(
-      (a, b) =>
-        this.suggestionRelevance(q, b) - this.suggestionRelevance(q, a),
+      (a, b) => this.suggestionRelevance(q, b) - this.suggestionRelevance(q, a),
     );
     return suggestions.slice(0, max);
   }
@@ -557,7 +554,9 @@ export class GoogleMapsProvider implements MapsProvider {
 
     // 2. Fall back to Google Geocoding API by place_id (supports 100% of Google place IDs)
     try {
-      const geoUri = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+      const geoUri = new URL(
+        'https://maps.googleapis.com/maps/api/geocode/json',
+      );
       geoUri.searchParams.set('place_id', placeId);
       geoUri.searchParams.set('key', this.key!);
       if (opts?.languageCode) {
@@ -593,7 +592,9 @@ export class GoogleMapsProvider implements MapsProvider {
     // 3. Fall back to Google Geocoding API by address label if provided
     if (opts?.label?.trim()) {
       try {
-        const geoUri = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+        const geoUri = new URL(
+          'https://maps.googleapis.com/maps/api/geocode/json',
+        );
         geoUri.searchParams.set('address', opts.label.trim());
         geoUri.searchParams.set('key', this.key!);
         if (opts?.languageCode) {

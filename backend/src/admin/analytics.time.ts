@@ -1,4 +1,17 @@
-const MONTHS_OK = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_OK = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 export type DateRange = { start: Date; end: Date };
 
@@ -54,7 +67,14 @@ export function fromZoned(
 ): Date {
   const utcGuess = Date.UTC(y, m - 1, d, h, min, 0);
   const parts = zonedParts(new Date(utcGuess), timeZone);
-  const asIf = Date.UTC(parts.y, parts.m - 1, parts.d, parts.h, parts.min, parts.s);
+  const asIf = Date.UTC(
+    parts.y,
+    parts.m - 1,
+    parts.d,
+    parts.h,
+    parts.min,
+    parts.s,
+  );
   return new Date(utcGuess - (asIf - utcGuess));
 }
 
@@ -81,7 +101,11 @@ export function formatDay(date: Date, timeZone: string): string {
   return `${mon} ${p.d}`;
 }
 
-export function formatRangeLabel(start: Date, endExclusive: Date, timeZone: string): string {
+export function formatRangeLabel(
+  start: Date,
+  endExclusive: Date,
+  timeZone: string,
+): string {
   const endIncl = new Date(endExclusive.getTime() - 1);
   const a = zonedParts(start, timeZone);
   const b = zonedParts(endIncl, timeZone);
@@ -125,9 +149,14 @@ export function resolveAnalyticsRange(opts: {
   timezone?: string;
   now?: Date;
 }): ResolvedRange {
-  const timezone = opts.timezone && opts.timezone.length > 0 ? opts.timezone : 'America/Toronto';
+  const timezone =
+    opts.timezone && opts.timezone.length > 0
+      ? opts.timezone
+      : 'America/Toronto';
   const now = opts.now ?? new Date();
-  const range = RANGE_KEYS.has(opts.range ?? '') ? (opts.range as string) : '7d';
+  const range = RANGE_KEYS.has(opts.range ?? '')
+    ? (opts.range as string)
+    : '7d';
   const todayStart = startOfZonedDay(now, timezone);
   const tomorrow = addZonedDays(todayStart, 1, timezone);
   const p = zonedParts(now, timezone);
@@ -203,7 +232,14 @@ export function resolveAnalyticsRange(opts: {
     end: start,
   };
   const previousYear: DateRange = {
-    start: fromZoned(p.y - 1, zonedParts(start, timezone).m, zonedParts(start, timezone).d, 0, 0, timezone),
+    start: fromZoned(
+      p.y - 1,
+      zonedParts(start, timezone).m,
+      zonedParts(start, timezone).d,
+      0,
+      0,
+      timezone,
+    ),
     end: fromZoned(
       zonedParts(end, timezone).y - 1,
       zonedParts(new Date(end.getTime() - 1), timezone).m,
@@ -221,7 +257,11 @@ export function resolveAnalyticsRange(opts: {
   };
 
   const currentLabel = formatRangeLabel(start, end, timezone);
-  const previousLabel = formatRangeLabel(previous.start, previous.end, timezone);
+  const previousLabel = formatRangeLabel(
+    previous.start,
+    previous.end,
+    timezone,
+  );
   return {
     timezone,
     range,
@@ -240,7 +280,11 @@ export function parseIsoDate(iso: string, timeZone: string): Date {
   return fromZoned(Number(m[1]), Number(m[2]), Number(m[3]), 0, 0, timeZone);
 }
 
-export function iterateDays(start: Date, end: Date, timeZone: string): string[] {
+export function iterateDays(
+  start: Date,
+  end: Date,
+  timeZone: string,
+): string[] {
   const days: string[] = [];
   let cursor = startOfZonedDay(start, timeZone);
   const endDay = startOfZonedDay(new Date(end.getTime() - 1), timeZone);

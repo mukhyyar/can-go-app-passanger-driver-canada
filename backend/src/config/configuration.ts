@@ -52,11 +52,7 @@ export default () => ({
       new Set([
         'com.canride.passenger',
         'com.canride.driver',
-        ...(
-          process.env.APPLE_CLIENT_IDS ??
-          process.env.APPLE_CLIENT_ID ??
-          ''
-        )
+        ...(process.env.APPLE_CLIENT_IDS ?? process.env.APPLE_CLIENT_ID ?? '')
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean),
@@ -93,8 +89,7 @@ export default () => ({
   },
   admin: {
     totpEnforce: process.env.ADMIN_TOTP_ENFORCE === 'true',
-    passengerWebBase:
-      process.env.PASSENGER_WEB_BASE ?? 'http://127.0.0.1:3002',
+    passengerWebBase: process.env.PASSENGER_WEB_BASE ?? 'http://127.0.0.1:3002',
     adminWebBase: process.env.ADMIN_WEB_BASE ?? 'http://127.0.0.1:3001',
     impersonationTtlMinutes: parseInt(
       process.env.IMPERSONATION_TTL_MINUTES ?? '12',
@@ -117,7 +112,8 @@ export default () => ({
   launchGate: {
     allowDevPaymentInProduction:
       process.env.ALLOW_DEV_PAYMENT_IN_PRODUCTION === 'true',
-    allowMockSmsInProduction: process.env.ALLOW_MOCK_SMS_IN_PRODUCTION === 'true',
+    allowMockSmsInProduction:
+      process.env.ALLOW_MOCK_SMS_IN_PRODUCTION === 'true',
     /** Set true only after staging E2E green with real Payment/Payout/SMS. */
     stagingE2ePassed: process.env.STAGING_E2E_PASSED === 'true',
     /** Emergency only — bypasses STAGING_E2E_PASSED (still logged loudly). */
@@ -133,7 +129,10 @@ export default () => ({
       process.env.RIDE_UNFULFILLED_GRACE_MINUTES ?? '60',
       10,
     ),
-    paymentTtlMinutes: parseInt(process.env.RIDE_PAYMENT_TTL_MINUTES ?? '15', 10),
+    paymentTtlMinutes: parseInt(
+      process.env.RIDE_PAYMENT_TTL_MINUTES ?? '15',
+      10,
+    ),
     immediateThresholdMinutes: parseInt(
       process.env.RIDE_IMMEDIATE_THRESHOLD_MINUTES ?? '120',
       10,
@@ -161,7 +160,8 @@ export default () => ({
     maxWithdrawalCad: process.env.WALLET_MAX_WITHDRAWAL_CAD ?? '5000',
     manualReviewAlertCad: process.env.WALLET_MANUAL_REVIEW_ALERT_CAD ?? '5000',
     holdDays: parseInt(process.env.WALLET_HOLD_DAYS ?? '3', 10),
-    dailyWithdrawalLimitCad: process.env.WALLET_DAILY_WITHDRAWAL_LIMIT_CAD || '',
+    dailyWithdrawalLimitCad:
+      process.env.WALLET_DAILY_WITHDRAWAL_LIMIT_CAD || '',
     defaultCommissionPct: process.env.WALLET_DEFAULT_COMMISSION_PCT ?? '20',
   },
   email: {
@@ -180,7 +180,8 @@ export default () => ({
     smtpUser: process.env.SMTP_USER ?? 'no-reply@can-rides.ca',
     smtpPass: process.env.SMTP_PASS,
     fromAddress: process.env.SMTP_FROM ?? 'Can Ride <no-reply@can-rides.ca>',
-    assetBaseUrl: process.env.EMAIL_ASSET_BASE_URL ?? 'https://www.can-rides.ca/brand',
+    assetBaseUrl:
+      process.env.EMAIL_ASSET_BASE_URL ?? 'https://www.can-rides.ca/brand',
     appDeeplinkBaseUrl: process.env.APP_DEEPLINK_BASE_URL ?? 'canride://',
   },
   postRide: {
@@ -190,4 +191,3 @@ export default () => ({
     ),
   },
 });
-

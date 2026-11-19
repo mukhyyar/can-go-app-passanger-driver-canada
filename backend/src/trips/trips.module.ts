@@ -26,4 +26,3 @@ import { PostRideNotificationScheduler } from './post-ride-notifications.schedul
   exports: [TripService, PostRideNotificationService],
 })
 export class TripsModule {}
-

@@ -25,7 +25,10 @@ import {
   WalletEntryStatus,
   WalletEntryType,
 } from '@prisma/client';
-import { PricingService, type PriceSnapshot } from '../../marketplace/pricing.service';
+import {
+  PricingService,
+  type PriceSnapshot,
+} from '../../marketplace/pricing.service';
 import { OfferPresentationService } from '../../marketplace/offer-presentation.service';
 import { MarketplaceService } from '../../marketplace/marketplace.service';
 import { DriversService } from '../../drivers/drivers.service';
@@ -47,7 +50,7 @@ describe('Stripe Connect & Commercial Model End-to-End Flows (Document 2)', () =
     const presentation = new OfferPresentationService(
       {} as never,
       { get: jest.fn() } as never,
-      {} as never,
+      {},
     );
 
     it('calculates $120 passenger total, $80 driver net, and $40 CAN-RIDE gross revenue on a $100 fare', () => {
@@ -82,6 +85,288 @@ describe('Stripe Connect & Commercial Model End-to-End Flows (Document 2)', () =
       expect(breakdown?.ridePrice).toBe(100);
       expect(breakdown?.marketplaceFee).toBe(20);
       expect(breakdown?.total).toBe(120);
+    });
+
+    it('applies automatic 15% discount on return ride only, funded from CAN-RIDE commission', async () => {
+      const guidance: PriceSnapshot = {
+        currency: 'CAD',
+        serviceType: 'RIDE',
+        vehicleClass: 'sedan',
+        distanceKm: 50,
+        durationMin: 60,
+        guidanceAmount: 220,
+        minBid: 180,
+        maxBid: 320,
+        minFare: 15,
+        baseFare: 10,
+        perKm: 2,
+        perMinute: 0.5,
+        perHour: 0,
+        platformCommissionPct: 20,
+        taxPct: 0,
+        isRoundTrip: true,
+        legs: 2,
+      };
+
+      const snap = pricing.freezeBid(guidance, 220, {
+        outboundPrice: 120,
+        returnPrice: 100,
+      });
+
+      expect(snap.outboundPrice).toBe(120);
+      expect(snap.returnPrice).toBe(100);
+      expect(snap.returnDiscountPct).toBe(15);
+      expect(snap.returnDiscountAmount).toBe(15);
+      expect(snap.discountedReturnPrice).toBe(85);
+      expect(snap.originalPassengerTotal).toBe(264);
+      expect(snap.passengerTotal).toBe(249);
+      // Driver gets full 80% of $220 ($176); CAN-RIDE commission absorbs the $15 discount ($88 - $15 = $73)
+      expect(snap.driverEarning).toBe(176);
+      expect(snap.canRideGrossRevenue).toBe(73);
+
+      const breakdown = presentation.priceBreakdown(snap);
+      expect(breakdown?.outboundPrice).toBe(120);
+      expect(breakdown?.returnPrice).toBe(100);
+      expect(breakdown?.discountedReturnPrice).toBe(85);
+      expect(breakdown?.returnDiscountPct).toBe(15);
+      expect(breakdown?.returnDiscountAmount).toBe(15);
+      expect(breakdown?.discount).toBe(15);
+      expect(breakdown?.originalTotal).toBe(264);
+      expect(breakdown?.total).toBe(249);
+      expect(breakdown?.driverEarning).toBe(176);
+      expect(breakdown?.canRideGrossRevenue).toBe(73);
+
+      const mockPrisma: any = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'pass-user-1',
+            phoneVerifiedAt: new Date(),
+            isSuspended: false,
+            passengerProfile: { id: 'pass-1', userId: 'pass-user-1' },
+          }),
+        },
+        ride: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'ride-roundtrip',
+            passengerId: 'pass-1',
+            status: RideStatus.PAYMENT_PENDING,
+            currency: 'CAD',
+            selectedOfferId: 'offer-rt',
+            selectedOffer: {
+              id: 'offer-rt',
+              outboundPrice: 120,
+              returnPrice: 100,
+              priceSnapshot: snap,
+            },
+          }),
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'ride-roundtrip',
+            currency: 'CAD',
+            selectedOffer: {
+              id: 'offer-rt',
+              outboundPrice: 120,
+              returnPrice: 100,
+              priceSnapshot: snap,
+            },
+          }),
+        },
+        payment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockImplementation(({ create }) => ({
+            id: 'pay-rt',
+            ...create,
+          })),
+        },
+        rideFinancial: {
+          upsert: jest.fn().mockImplementation(({ create }) => create),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      };
+
+      const mockPayments = {
+        createIntent: jest.fn().mockResolvedValue({
+          provider: 'stripe',
+          intentId: 'pi_rt_249',
+          clientSecret: 'pi_rt_249_secret',
+          status: 'requires_payment',
+        }),
+      };
+
+      const mkt = new MarketplaceService(
+        mockPrisma,
+        pricing,
+        mockPayments as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        presentation,
+        {} as never,
+        { get: jest.fn() } as never,
+      );
+      jest
+        .spyOn(mkt, 'getRideForActor')
+        .mockResolvedValue({ id: 'ride-roundtrip' } as never);
+
+      await mkt.createPaymentIntent('pass-user-1', {
+        rideId: 'ride-roundtrip',
+        paymentMode: 'FULL',
+        termsAccepted: true,
+      } as never);
+
+      expect(mockPayments.createIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 249,
+          currency: 'CAD',
+        }),
+      );
+
+      expect(mockPrisma.rideFinancial.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            rideId: 'ride-roundtrip',
+          }),
+        }),
+      );
+      const rfCreate = mockPrisma.rideFinancial.upsert.mock.calls[0][0].create;
+      expect(Number(rfCreate.rideFare)).toBe(220);
+      expect(Number(rfCreate.marketplaceFee)).toBe(44);
+      expect(Number(rfCreate.passengerTotalCharged)).toBe(249);
+      expect(Number(rfCreate.driverCommission)).toBe(44);
+      expect(Number(rfCreate.driverNetEarning)).toBe(176);
+      expect(Number(rfCreate.canRideGrossRevenue)).toBe(73);
+    });
+
+    it('applies automatic 5% discount for unconfirmed ride enquiry within 12 hours of expiration', async () => {
+      const guidance: PriceSnapshot = {
+        currency: 'CAD',
+        serviceType: 'RIDE',
+        vehicleClass: 'sedan',
+        distanceKm: 25,
+        durationMin: 30,
+        guidanceAmount: 100,
+        minBid: 80,
+        maxBid: 150,
+        minFare: 15,
+        baseFare: 10,
+        perKm: 2,
+        perMinute: 0.5,
+        perHour: 0,
+        platformCommissionPct: 20,
+        taxPct: 0,
+      };
+
+      // Offer created earlier (before 12h window) had passengerTotal = 120
+      const initialSnap = pricing.freezeBid(guidance, 100);
+      expect(initialSnap.passengerTotal).toBe(120);
+
+      // Now only 6 hours remain before requestExpiresAt, and passenger completes payment
+      const now = new Date();
+      const requestExpiresAt = new Date(now.getTime() + 6 * 3600 * 1000);
+      const pickupAt = new Date(now.getTime() + 5 * 3600 * 1000);
+
+      const mockPrisma: any = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'pass-user-1',
+            phoneVerifiedAt: new Date(),
+            isSuspended: false,
+            passengerProfile: { id: 'pass-1', userId: 'pass-user-1' },
+          }),
+        },
+        ride: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'ride-expiring-5pct',
+            passengerId: 'pass-1',
+            status: RideStatus.PAYMENT_PENDING,
+            pickupAt,
+            requestExpiresAt,
+            currency: 'CAD',
+            selectedOfferId: 'offer-5pct',
+            selectedOffer: {
+              id: 'offer-5pct',
+              bidAmount: 100,
+              outboundPrice: 100,
+              returnPrice: null,
+              priceSnapshot: initialSnap,
+            },
+          }),
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'ride-expiring-5pct',
+            currency: 'CAD',
+            selectedOffer: {
+              id: 'offer-5pct',
+              bidAmount: 100,
+              outboundPrice: 100,
+              returnPrice: null,
+              priceSnapshot: initialSnap,
+            },
+          }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        offer: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        payment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findFirst: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockImplementation(({ create }) => ({
+            id: 'pay-5pct',
+            ...create,
+          })),
+        },
+        rideFinancial: {
+          upsert: jest.fn().mockImplementation(({ create }) => create),
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) },
+      };
+
+      const mockPayments = {
+        createIntent: jest.fn().mockResolvedValue({
+          provider: 'stripe',
+          intentId: 'pi_5pct_115',
+          clientSecret: 'pi_5pct_115_secret',
+          status: 'requires_payment',
+        }),
+      };
+
+      const mkt = new MarketplaceService(
+        mockPrisma,
+        pricing,
+        mockPayments as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        presentation,
+        {} as never,
+        { get: jest.fn() } as never,
+      );
+      jest
+        .spyOn(mkt, 'getRideForActor')
+        .mockResolvedValue({ id: 'ride-expiring-5pct' } as never);
+
+      await mkt.createPaymentIntent('pass-user-1', {
+        rideId: 'ride-expiring-5pct',
+        paymentMode: 'FULL',
+        termsAccepted: true,
+      } as never);
+
+      // $100 ride fare + $20 platform fee = $120 original total - $5 (5% discount) = $115 charged
+      expect(mockPayments.createIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 115,
+          currency: 'CAD',
+        }),
+      );
+
+      const rfCreate = mockPrisma.rideFinancial.upsert.mock.calls[0][0].create;
+      expect(Number(rfCreate.rideFare)).toBe(100);
+      expect(Number(rfCreate.marketplaceFee)).toBe(20);
+      expect(Number(rfCreate.passengerTotalCharged)).toBe(115);
+      expect(Number(rfCreate.driverCommission)).toBe(20);
+      // Driver still receives full 80% ($80); CAN-RIDE commission absorbs the $5 discount ($40 - $5 = $35)
+      expect(Number(rfCreate.driverNetEarning)).toBe(80);
+      expect(Number(rfCreate.canRideGrossRevenue)).toBe(35);
     });
 
     it('createPaymentIntent charges full $120 (including 20% marketplace fee) even for legacy snapshots', async () => {
@@ -131,9 +416,11 @@ describe('Stripe Connect & Commercial Model End-to-End Flows (Document 2)', () =
         payment: {
           findUnique: jest.fn().mockResolvedValue(null),
           findFirst: jest.fn().mockResolvedValue(null),
-          upsert: jest.fn().mockImplementation(({ create }) =>
-            Promise.resolve({ id: 'pay-100', ...create }),
-          ),
+          upsert: jest
+            .fn()
+            .mockImplementation(({ create }) =>
+              Promise.resolve({ id: 'pay-100', ...create }),
+            ),
         },
         rideFinancial: {
           upsert: jest.fn().mockResolvedValue({}),
@@ -302,7 +589,9 @@ describe('Stripe Connect & Commercial Model End-to-End Flows (Document 2)', () =
     it('blocks wallet withdrawal when Stripe payoutsEnabled is false or an open dispute exists', async () => {
       const mockPrisma: any = {
         user: {
-          findUnique: jest.fn().mockResolvedValue({ id: 'u1', isSuspended: false }),
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ id: 'u1', isSuspended: false }),
         },
         driverProfile: {
           findUnique: jest.fn().mockResolvedValue({
@@ -346,14 +635,23 @@ describe('Stripe Connect & Commercial Model End-to-End Flows (Document 2)', () =
 
       const walletSvc = new DriverWalletService(
         mockPrisma,
-        { get: jest.fn((k: string) => (k === 'wallet.currency' ? 'CAD' : null)) } as any,
+        {
+          get: jest.fn((k: string) => (k === 'wallet.currency' ? 'CAD' : null)),
+        } as any,
         { sendToUser: jest.fn() } as any,
-        { name: 'stripe', ensureBeneficiary: jest.fn(), createPayout: jest.fn(), parseWebhook: jest.fn() } as any,
+        {
+          name: 'stripe',
+          ensureBeneficiary: jest.fn(),
+          createPayout: jest.fn(),
+          parseWebhook: jest.fn(),
+        },
       );
 
       const summaryUnverified = await walletSvc.getWalletForUser('u1');
       expect(summaryUnverified.canWithdraw).toBe(false);
-      expect(summaryUnverified.cannotWithdrawReason).toBe('PAYOUT_METHOD_NOT_VERIFIED');
+      expect(summaryUnverified.cannotWithdrawReason).toBe(
+        'PAYOUT_METHOD_NOT_VERIFIED',
+      );
 
       // Now mark Stripe ACTIVE, but add an open dispute on a ride
       mockPrisma.driverProfile.findUnique.mockResolvedValue({
@@ -392,7 +690,13 @@ describe('Stripe Connect & Commercial Model End-to-End Flows (Document 2)', () =
       const body = JSON.stringify({
         id: 'evt_dispute_1',
         type: 'charge.dispute.created',
-        data: { object: { id: 'dp_1', payment_intent: 'pi_disputed_1', reason: 'fraudulent' } },
+        data: {
+          object: {
+            id: 'dp_1',
+            payment_intent: 'pi_disputed_1',
+            reason: 'fraudulent',
+          },
+        },
       });
 
       await expect(

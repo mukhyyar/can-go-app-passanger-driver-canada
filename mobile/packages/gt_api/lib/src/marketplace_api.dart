@@ -4,6 +4,14 @@ class MarketplaceApi {
   MarketplaceApi(this.client);
   final ApiClient client;
 
+  Future<List<dynamic>> listVehicleCategories() async {
+    final data =
+        await client.get('/marketplace/vehicle-categories', auth: false);
+    final list = data['_list'] ?? data['categories'] ?? data['items'];
+    if (list is List) return list;
+    return const [];
+  }
+
   Future<Map<String, dynamic>> quote({
     required String serviceType,
     required double fromLat,

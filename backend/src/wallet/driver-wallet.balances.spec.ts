@@ -126,7 +126,12 @@ describe('wallet balance rules', () => {
           payoutId: 'p1',
         },
       ],
-      [{ amount: normalizeMoney('40.00', 'CAD'), status: DriverPayoutStatus.PROCESSING }],
+      [
+        {
+          amount: normalizeMoney('40.00', 'CAD'),
+          status: DriverPayoutStatus.PROCESSING,
+        },
+      ],
       now,
     );
     expect(moneyToString(b.available, 'CAD')).toBe('60.00');
@@ -152,7 +157,12 @@ describe('wallet balance rules', () => {
           payoutId: 'p1',
         },
       ],
-      [{ amount: normalizeMoney('40.00', 'CAD'), status: DriverPayoutStatus.FAILED }],
+      [
+        {
+          amount: normalizeMoney('40.00', 'CAD'),
+          status: DriverPayoutStatus.FAILED,
+        },
+      ],
       now,
     );
     expect(moneyToString(b.available, 'CAD')).toBe('100.00');

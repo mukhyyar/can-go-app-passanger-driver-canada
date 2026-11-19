@@ -27,29 +27,31 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
 
   it('places never sends locationBias even when lat/lng are supplied', async () => {
     let capturedBody: Record<string, unknown> | null = null;
-    global.fetch = jest.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url.includes('places:autocomplete')) {
-        capturedBody = JSON.parse(init?.body as string);
-        return {
-          ok: true,
-          json: async () => ({
-            suggestions: [
-              {
-                placePrediction: {
-                  placeId: 'place-calgary-airport',
-                  text: { text: 'Calgary International Airport (YYC)' },
-                  structuredFormat: {
-                    mainText: { text: 'Calgary International Airport' },
-                    secondaryText: { text: 'Calgary, AB, Canada' },
+    global.fetch = jest
+      .fn()
+      .mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.includes('places:autocomplete')) {
+          capturedBody = JSON.parse(init?.body as string);
+          return {
+            ok: true,
+            json: async () => ({
+              suggestions: [
+                {
+                  placePrediction: {
+                    placeId: 'place-calgary-airport',
+                    text: { text: 'Calgary International Airport (YYC)' },
+                    structuredFormat: {
+                      mainText: { text: 'Calgary International Airport' },
+                      secondaryText: { text: 'Calgary, AB, Canada' },
+                    },
                   },
                 },
-              },
-            ],
-          }),
-        };
-      }
-      return { ok: false };
-    }) as never;
+              ],
+            }),
+          };
+        }
+        return { ok: false };
+      }) as never;
 
     const res = await provider.places('Calgary Airport', 5, {
       lat: 51.0486,
@@ -68,19 +70,21 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
 
   it('places uses Canada-only region codes', async () => {
     let capturedBody: Record<string, unknown> | null = null;
-    global.fetch = jest.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url.includes('places:autocomplete')) {
-        capturedBody = JSON.parse(init?.body as string);
-        return { ok: true, json: async () => ({ suggestions: [] }) };
-      }
-      if (url.includes('maps/api/geocode/json')) {
-        return {
-          ok: true,
-          json: async () => ({ status: 'ZERO_RESULTS', results: [] }),
-        };
-      }
-      return { ok: false };
-    }) as never;
+    global.fetch = jest
+      .fn()
+      .mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.includes('places:autocomplete')) {
+          capturedBody = JSON.parse(init?.body as string);
+          return { ok: true, json: async () => ({ suggestions: [] }) };
+        }
+        if (url.includes('maps/api/geocode/json')) {
+          return {
+            ok: true,
+            json: async () => ({ status: 'ZERO_RESULTS', results: [] }),
+          };
+        }
+        return { ok: false };
+      }) as never;
 
     await provider.places('Toronto', 5);
     expect(capturedBody!.includedRegionCodes).toEqual(['ca']);
@@ -101,7 +105,8 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
             status: 'OK',
             results: [
               {
-                formatted_address: '4523 16a St SW, Calgary, AB T2T 4L8, Canada',
+                formatted_address:
+                  '4523 16a St SW, Calgary, AB T2T 4L8, Canada',
                 place_id: 'place-4523',
                 geometry: {
                   location: { lat: 51.0134, lng: -114.0987 },
@@ -283,7 +288,8 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
             status: 'OK',
             results: [
               {
-                formatted_address: '4523 16a St SW, Calgary, AB T2T 4L8, Canada',
+                formatted_address:
+                  '4523 16a St SW, Calgary, AB T2T 4L8, Canada',
                 place_id: 'place-4523',
                 geometry: {
                   location: { lat: 51.0134, lng: -114.0987 },
@@ -399,34 +405,37 @@ describe('GoogleMapsProvider (places & placeDetails)', () => {
 
   it('places Text Search uses regionCode CA and no locationBias for address queries', async () => {
     let textBody: Record<string, unknown> | null = null;
-    global.fetch = jest.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url.includes('places:autocomplete')) {
-        return { ok: true, json: async () => ({ suggestions: [] }) };
-      }
-      if (url.includes('places:searchText')) {
-        textBody = JSON.parse(init?.body as string);
-        return {
-          ok: true,
-          json: async () => ({
-            places: [
-              {
-                id: 'places/text-masters-drive',
-                formattedAddress: 'Masters Drive SE, Calgary, AB T3M 0T2, Canada',
-                displayName: { text: 'Masters Drive SE' },
-                location: { latitude: 50.8947, longitude: -113.9101 },
-              },
-            ],
-          }),
-        };
-      }
-      if (url.includes('maps/api/geocode/json')) {
-        return {
-          ok: true,
-          json: async () => ({ status: 'ZERO_RESULTS', results: [] }),
-        };
-      }
-      return { ok: false };
-    }) as never;
+    global.fetch = jest
+      .fn()
+      .mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.includes('places:autocomplete')) {
+          return { ok: true, json: async () => ({ suggestions: [] }) };
+        }
+        if (url.includes('places:searchText')) {
+          textBody = JSON.parse(init?.body as string);
+          return {
+            ok: true,
+            json: async () => ({
+              places: [
+                {
+                  id: 'places/text-masters-drive',
+                  formattedAddress:
+                    'Masters Drive SE, Calgary, AB T3M 0T2, Canada',
+                  displayName: { text: 'Masters Drive SE' },
+                  location: { latitude: 50.8947, longitude: -113.9101 },
+                },
+              ],
+            }),
+          };
+        }
+        if (url.includes('maps/api/geocode/json')) {
+          return {
+            ok: true,
+            json: async () => ({ status: 'ZERO_RESULTS', results: [] }),
+          };
+        }
+        return { ok: false };
+      }) as never;
 
     const res = await provider.places('35 Masters Dr SE Calgary', 5);
     expect(textBody).not.toBeNull();

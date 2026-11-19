@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { MAPS_PROVIDER, type MapsProvider } from '../maps/maps-provider.interface';
+import {
+  MAPS_PROVIDER,
+  type MapsProvider,
+} from '../maps/maps-provider.interface';
 
 export type PriceSnapshot = {
   currency: string;
@@ -34,6 +37,15 @@ export type PriceSnapshot = {
   bidAmount?: number;
   outboundPrice?: number;
   returnPrice?: number;
+  discountedReturnPrice?: number;
+  returnDiscountPct?: number;
+  returnDiscountAmount?: number;
+  enquiryDiscountPct?: number;
+  enquiryDiscountAmount?: number;
+  enquiryDiscountApplied?: boolean;
+  enquiryDiscountActivatedAt?: string;
+  enquiryDiscountExpiresAt?: string;
+  originalPassengerTotal?: number;
   subtotal?: number;
   taxAmount?: number;
   platformFee?: number;
@@ -46,6 +58,185 @@ export type PriceSnapshot = {
   ruleId?: string;
   priceBand?: 'competitive' | 'typical' | 'above_typical';
 };
+
+export type VehicleCategoryConfig = {
+  id: string;
+  catalogId?: string;
+  slug: string;
+  name: string;
+  description: string;
+  basePrice: number;
+  fromPrice: string;
+  currency: string;
+  passengerSeats: number;
+  luggagePlaces: number;
+  seatsRange: string | null;
+  imageAsset: string;
+  isLuxury: boolean;
+  sortOrder: number;
+  active: boolean;
+};
+
+export const DEFAULT_VEHICLE_CATEGORIES: Array<{
+  slug: string;
+  title: string;
+  description: string;
+  basePrice: number;
+  passengerSeats: number;
+  luggagePlaces: number;
+  seatsRange?: string | null;
+  imageAsset: string;
+  isLuxury: boolean;
+  sortOrder: number;
+}> = [
+  {
+    slug: 'economy',
+    title: 'Economy',
+    description:
+      'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 2 standard bags',
+    basePrice: 22,
+    passengerSeats: 4,
+    luggagePlaces: 2,
+    seatsRange: null,
+    imageAsset: 'assets/vehicles/economy.png',
+    isLuxury: false,
+    sortOrder: 1,
+  },
+  {
+    slug: 'comfort',
+    title: 'Comfort',
+    description:
+      'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 2 standard bags',
+    basePrice: 35,
+    passengerSeats: 4,
+    luggagePlaces: 2,
+    seatsRange: null,
+    imageAsset: 'assets/vehicles/comfort.png',
+    isLuxury: false,
+    sortOrder: 2,
+  },
+  {
+    slug: 'suv_xl',
+    title: 'SUV (XL)',
+    description:
+      'Seating capacity: Up to 7 - 8 passengers\nLuggage capacity: Up to 4 standard bags',
+    basePrice: 55,
+    passengerSeats: 8,
+    luggagePlaces: 4,
+    seatsRange: '7 - 8',
+    imageAsset: 'assets/vehicles/suv_xl.png',
+    isLuxury: false,
+    sortOrder: 3,
+  },
+  {
+    slug: 'van',
+    title: '7-Seater / Minivan',
+    description:
+      'Seating capacity: Up to 7 - 8 passengers\nLuggage capacity: Up to 6 standard bags',
+    basePrice: 85,
+    passengerSeats: 8,
+    luggagePlaces: 6,
+    seatsRange: '7 - 8',
+    imageAsset: 'assets/vehicles/van.png',
+    isLuxury: false,
+    sortOrder: 4,
+  },
+  {
+    slug: 'minibus',
+    title: 'Mini bus',
+    description:
+      'Seating capacity: Up to 12 - 25 passengers\nLuggage capacity: Up to 10 standard bags',
+    basePrice: 110,
+    passengerSeats: 25,
+    luggagePlaces: 10,
+    seatsRange: '12 - 25',
+    imageAsset: 'assets/vehicles/minibus.png',
+    isLuxury: false,
+    sortOrder: 5,
+  },
+  {
+    slug: 'premium',
+    title: 'Premium',
+    description:
+      'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 2 standard bags',
+    basePrice: 65,
+    passengerSeats: 4,
+    luggagePlaces: 2,
+    seatsRange: null,
+    imageAsset: 'assets/vehicles/premium.png',
+    isLuxury: true,
+    sortOrder: 6,
+  },
+  {
+    slug: 'suv',
+    title: 'SUV',
+    description:
+      'Seating capacity: Up to 6 passengers\nLuggage capacity: Up to 4 standard bags',
+    basePrice: 75,
+    passengerSeats: 6,
+    luggagePlaces: 4,
+    seatsRange: null,
+    imageAsset: 'assets/vehicles/suv.png',
+    isLuxury: true,
+    sortOrder: 7,
+  },
+  {
+    slug: 'luxury',
+    title: 'Luxury Vehicle',
+    description:
+      'Seating capacity: Up to 4 passengers\nLuggage capacity: Up to 3 standard bags',
+    basePrice: 95,
+    passengerSeats: 4,
+    luggagePlaces: 3,
+    seatsRange: null,
+    imageAsset: 'assets/vehicles/premium.png',
+    isLuxury: true,
+    sortOrder: 8,
+  },
+];
+
+export function serializeVehicleCategoryRow(row: {
+  id?: string;
+  slug: string;
+  title: string;
+  description: string;
+  basePrice: number;
+  currency?: string;
+  active?: boolean;
+  meta?: unknown;
+}): VehicleCategoryConfig {
+  const meta =
+    row.meta && typeof row.meta === 'object'
+      ? (row.meta as Record<string, unknown>)
+      : {};
+  const categoryKey = row.slug.replace(/^vc-/, '');
+  const basePrice = Number(row.basePrice ?? 22);
+  const currency = (row.currency ?? 'CAD').toUpperCase();
+  const prefix = currency === 'CAD' ? 'CA$' : `${currency} `;
+  return {
+    id: categoryKey,
+    catalogId: row.id,
+    slug: categoryKey,
+    name: row.title,
+    description: row.description,
+    basePrice,
+    fromPrice: `from ${prefix}${Math.round(basePrice)}`,
+    currency,
+    passengerSeats: Number(meta.passengerSeats ?? 4),
+    luggagePlaces: Number(meta.luggagePlaces ?? 2),
+    seatsRange:
+      typeof meta.seatsRange === 'string' && meta.seatsRange.trim()
+        ? meta.seatsRange.trim()
+        : null,
+    imageAsset:
+      typeof meta.imageAsset === 'string' && meta.imageAsset.trim()
+        ? meta.imageAsset.trim()
+        : `assets/vehicles/${categoryKey}.png`,
+    isLuxury: Boolean(meta.isLuxury),
+    sortOrder: Number(meta.sortOrder ?? 99),
+    active: row.active !== false,
+  };
+}
 
 const PHASE3_TYPES = new Set([
   'RIDE',
@@ -205,6 +396,73 @@ export class PricingService implements OnModuleInit {
         update: {},
       });
     }
+
+    for (const vc of DEFAULT_VEHICLE_CATEGORIES) {
+      const catalogSlug = `vc-${vc.slug}`;
+      await this.prisma.catalogItem.upsert({
+        where: { slug: catalogSlug },
+        create: {
+          serviceType: 'VEHICLE_CATEGORY',
+          slug: catalogSlug,
+          title: vc.title,
+          description: vc.description,
+          city: '',
+          basePrice: vc.basePrice,
+          currency: 'CAD',
+          active: true,
+          meta: {
+            passengerSeats: vc.passengerSeats,
+            luggagePlaces: vc.luggagePlaces,
+            seatsRange: vc.seatsRange ?? null,
+            imageAsset: vc.imageAsset,
+            isLuxury: vc.isLuxury,
+            sortOrder: vc.sortOrder,
+          },
+        },
+        update: {},
+      });
+    }
+  }
+
+  async listActiveVehicleCategories(): Promise<VehicleCategoryConfig[]> {
+    try {
+      const rows = await this.prisma.catalogItem.findMany({
+        where: {
+          serviceType: 'VEHICLE_CATEGORY',
+          active: true,
+        },
+      });
+      if (!rows.length) {
+        return DEFAULT_VEHICLE_CATEGORIES.map((vc) =>
+          serializeVehicleCategoryRow({
+            slug: `vc-${vc.slug}`,
+            title: vc.title,
+            description: vc.description,
+            basePrice: vc.basePrice,
+            currency: 'CAD',
+            active: true,
+            meta: vc,
+          }),
+        );
+      }
+      return rows
+        .map((r) => serializeVehicleCategoryRow(r))
+        .sort(
+          (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+        );
+    } catch {
+      return DEFAULT_VEHICLE_CATEGORIES.map((vc) =>
+        serializeVehicleCategoryRow({
+          slug: `vc-${vc.slug}`,
+          title: vc.title,
+          description: vc.description,
+          basePrice: vc.basePrice,
+          currency: 'CAD',
+          active: true,
+          meta: vc,
+        }),
+      );
+    }
   }
 
   haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -251,7 +509,7 @@ export class PricingService implements OnModuleInit {
     let durationMin = 0;
     let hours = input.hours ?? 2;
     let days = input.days;
-    let catalogItemId = input.catalogItemId;
+    const catalogItemId = input.catalogItemId;
     let guidance = 0;
 
     const base = Number(rule.baseFare);
@@ -282,7 +540,7 @@ export class PricingService implements OnModuleInit {
             distanceKm = Math.round(route.distanceKm * 10) / 10;
             durationMin = Math.round(route.durationMin);
           }
-        } catch (_) {
+        } catch {
           // fallback to haversine below
         }
       }
@@ -375,7 +633,11 @@ export class PricingService implements OnModuleInit {
   freezeBid(
     guidance: PriceSnapshot,
     bidAmount: number,
-    opts?: { outboundPrice?: number; returnPrice?: number | null },
+    opts?: {
+      outboundPrice?: number;
+      returnPrice?: number | null;
+      enquiryDiscountPct?: number;
+    },
   ): PriceSnapshot {
     if (bidAmount < guidance.minBid - 0.001) {
       throw new BadRequestException(
@@ -389,19 +651,57 @@ export class PricingService implements OnModuleInit {
     }
 
     const driverBid = round2(bidAmount);
+    const isRoundTrip =
+      Boolean(guidance.isRoundTrip) ||
+      (guidance.legs != null && guidance.legs > 1) ||
+      (opts?.returnPrice != null && opts.returnPrice > 0);
+    const outbound =
+      opts?.outboundPrice != null
+        ? round2(opts.outboundPrice)
+        : isRoundTrip && opts?.returnPrice == null
+          ? round2(driverBid / 2)
+          : driverBid;
+    const returnPrice =
+      opts?.returnPrice != null
+        ? round2(opts.returnPrice)
+        : isRoundTrip
+          ? round2(Math.max(0, driverBid - outbound))
+          : undefined;
+
     const ridePrice = driverBid;
     const platformFee = round2(ridePrice * 0.2);
     const driverCommission = round2(ridePrice * 0.2);
-    const taxAmount = round2(
-      ridePrice * (guidance.taxPct / 100),
+    const taxAmount = round2(ridePrice * (guidance.taxPct / 100));
+    const originalPassengerTotal = round2(ridePrice + platformFee + taxAmount);
+
+    const hasReturnLeg = returnPrice != null && returnPrice > 0;
+    const returnDiscountPct = hasReturnLeg ? 15 : 0;
+    const returnDiscountAmount = hasReturnLeg
+      ? round2(returnPrice * (returnDiscountPct / 100))
+      : 0;
+    const discountedReturnPrice = hasReturnLeg
+      ? round2(returnPrice - returnDiscountAmount)
+      : undefined;
+
+    const rawEnquiryDiscountPct =
+      opts?.enquiryDiscountPct ?? guidance.enquiryDiscountPct ?? 0;
+    const enquiryDiscountPct =
+      rawEnquiryDiscountPct > 0 ? Number(rawEnquiryDiscountPct) : 0;
+    const enquiryDiscountAmount =
+      enquiryDiscountPct > 0
+        ? round2(ridePrice * (enquiryDiscountPct / 100))
+        : 0;
+
+    const totalDiscountAmount = round2(
+      returnDiscountAmount + enquiryDiscountAmount,
     );
-    const passengerTotal = round2(ridePrice + platformFee + taxAmount);
+    const passengerTotal = round2(
+      Math.max(0, originalPassengerTotal - totalDiscountAmount),
+    );
     const driverEarning = round2(ridePrice - driverCommission);
-    const canRideGrossRevenue = round2(platformFee + driverCommission);
-    const outbound =
-      opts?.outboundPrice != null ? round2(opts.outboundPrice) : driverBid;
-    const returnPrice =
-      opts?.returnPrice != null ? round2(opts.returnPrice) : undefined;
+    const canRideGrossRevenue = round2(
+      Math.max(0, platformFee + driverCommission - totalDiscountAmount),
+    );
 
     let priceBand: PriceSnapshot['priceBand'] = 'typical';
     const span = Math.max(0.01, guidance.maxBid - guidance.minBid);
@@ -414,6 +714,12 @@ export class PricingService implements OnModuleInit {
       bidAmount: driverBid,
       outboundPrice: outbound,
       returnPrice,
+      discountedReturnPrice,
+      returnDiscountPct,
+      returnDiscountAmount,
+      enquiryDiscountPct,
+      enquiryDiscountAmount,
+      originalPassengerTotal,
       subtotal: ridePrice,
       taxAmount,
       platformFee,
@@ -453,5 +759,5 @@ export function round2(n: number) {
 }
 
 export function asJson(snapshot: PriceSnapshot): Prisma.InputJsonValue {
-  return snapshot as unknown as Prisma.InputJsonValue;
+  return snapshot;
 }

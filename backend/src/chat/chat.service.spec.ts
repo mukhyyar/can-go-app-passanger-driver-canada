@@ -2,7 +2,11 @@ jest.mock('../notifications/notifications.service', () => ({
   NotificationsService: class MockNotificationsService {},
 }));
 
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { RideStatus, SupportCaseStatus, UserRole } from '@prisma/client';
 import { ChatService } from './chat.service';
 
@@ -23,7 +27,9 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         findUnique: jest.fn(),
       },
       chatThread: {
-        upsert: jest.fn().mockResolvedValue({ id: 'thread-1', rideId: 'ride-1' }),
+        upsert: jest
+          .fn()
+          .mockResolvedValue({ id: 'thread-1', rideId: 'ride-1' }),
       },
       chatMessage: {
         create: jest.fn().mockImplementation((args) =>
@@ -53,16 +59,22 @@ describe('ChatService with Ride Reports and Support Cases', () => {
 
   describe('Participant assertion & status gating', () => {
     it('throws NotFoundException if ride not found', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: UserRole.PASSENGER });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        role: UserRole.PASSENGER,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue(null);
 
-      await expect(service.send('user-1', 'ride-not-found', 'hello')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.send('user-1', 'ride-not-found', 'hello'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws ForbiddenException if user is not participant or admin', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'stranger', role: UserRole.PASSENGER });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'stranger',
+        role: UserRole.PASSENGER,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
         passenger: { userId: 'passenger-1' },
@@ -77,7 +89,10 @@ describe('ChatService with Ride Reports and Support Cases', () => {
     });
 
     it('rejects chat when ride is COMPLETED', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'passenger-1', role: UserRole.PASSENGER });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'passenger-1',
+        role: UserRole.PASSENGER,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
         passenger: { userId: 'passenger-1' },
@@ -86,13 +101,16 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         status: RideStatus.COMPLETED,
       });
 
-      await expect(service.send('passenger-1', 'ride-1', 'Hello')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.send('passenger-1', 'ride-1', 'Hello'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects chat when ride is CANCELLED', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'passenger-1', role: UserRole.PASSENGER });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'passenger-1',
+        role: UserRole.PASSENGER,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
         passenger: { userId: 'passenger-1' },
@@ -101,13 +119,16 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         status: RideStatus.PASSENGER_CANCELLED,
       });
 
-      await expect(service.send('passenger-1', 'ride-1', 'Hello')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.send('passenger-1', 'ride-1', 'Hello'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('marks thread as locked and includes lockReason in getOrCreateThread for terminal rides', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'passenger-1', role: UserRole.PASSENGER });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'passenger-1',
+        role: UserRole.PASSENGER,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
         passenger: { userId: 'passenger-1' },
@@ -130,7 +151,10 @@ describe('ChatService with Ride Reports and Support Cases', () => {
 
   describe('Admin message handling', () => {
     it('notifies customer when admin replies to ride chat', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'admin-1', role: UserRole.ADMIN });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'admin-1',
+        role: UserRole.ADMIN,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
         passenger: { userId: 'passenger-1' },
@@ -139,7 +163,11 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         status: RideStatus.COMPLETED,
       });
 
-      const msg = await service.send('admin-1', 'ride-1', 'We are reviewing your report.');
+      const msg = await service.send(
+        'admin-1',
+        'ride-1',
+        'We are reviewing your report.',
+      );
       expect(msg.body).toBe('We are reviewing your report.');
       expect(mockNotifications.sendToUser).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -153,7 +181,10 @@ describe('ChatService with Ride Reports and Support Cases', () => {
 
   describe('Role preservation & Zigzag alignment', () => {
     it('preserves distinct PASSENGER and DRIVER roles even when passenger and driver share the same userId', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'shared-user', role: UserRole.PASSENGER });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'shared-user',
+        role: UserRole.PASSENGER,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-shared',
         passenger: { userId: 'shared-user' },
@@ -182,7 +213,10 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         ],
       });
 
-      const thread = await service.getOrCreateThread('shared-user', 'ride-shared');
+      const thread = await service.getOrCreateThread(
+        'shared-user',
+        'ride-shared',
+      );
       expect(thread.messages).toHaveLength(2);
 
       const m1 = thread.messages[0];
@@ -195,7 +229,10 @@ describe('ChatService with Ride Reports and Support Cases', () => {
     });
 
     it('stores role tag when sending as PASSENGER or DRIVER', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: UserRole.PASSENGER });
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        role: UserRole.PASSENGER,
+      });
       mockPrisma.ride.findUnique.mockResolvedValue({
         id: 'ride-1',
         passenger: { userId: 'user-1' },
@@ -204,7 +241,12 @@ describe('ChatService with Ride Reports and Support Cases', () => {
         status: RideStatus.IN_PROGRESS,
       });
 
-      const sentPassenger = await service.send('user-1', 'ride-1', 'I am here', 'PASSENGER');
+      const sentPassenger = await service.send(
+        'user-1',
+        'ride-1',
+        'I am here',
+        'PASSENGER',
+      );
       expect(sentPassenger.body).toBe('I am here');
       expect(sentPassenger.senderRole).toBe('PASSENGER');
       expect(mockPrisma.chatMessage.create).toHaveBeenCalledWith(

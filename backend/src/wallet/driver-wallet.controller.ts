@@ -107,7 +107,10 @@ export class DriverWalletController {
       typeof rawObj.data === 'object' &&
       (rawObj.data as Record<string, unknown>).object &&
       typeof (rawObj.data as Record<string, unknown>).object === 'object'
-        ? ((rawObj.data as Record<string, unknown>).object as Record<string, unknown>)
+        ? ((rawObj.data as Record<string, unknown>).object as Record<
+            string,
+            unknown
+          >)
         : null;
     const providerPayoutId = String(
       rawObj.providerPayoutId ??

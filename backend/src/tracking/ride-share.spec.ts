@@ -180,7 +180,10 @@ describe('Ride Share Live Tracking Feature', () => {
         shareExpiresAt: null,
       });
 
-      const res = await service.revokeShareLink(mockPassengerUserId, mockRideId);
+      const res = await service.revokeShareLink(
+        mockPassengerUserId,
+        mockRideId,
+      );
       expect(res.revoked).toBe(true);
       expect(prismaMock.ride.update).toHaveBeenCalledWith({
         where: { id: mockRideId },
@@ -212,9 +215,9 @@ describe('Ride Share Live Tracking Feature', () => {
         shareExpiresAt: pastDate,
       });
 
-      await expect(
-        service.getPublicSharedTrip(mockShareToken),
-      ).rejects.toThrow('Trip share link has expired');
+      await expect(service.getPublicSharedTrip(mockShareToken)).rejects.toThrow(
+        'Trip share link has expired',
+      );
     });
 
     it('returns sanitized public trip tracking with driver and vehicle info', async () => {

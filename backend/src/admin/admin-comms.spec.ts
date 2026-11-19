@@ -98,7 +98,9 @@ describe('AdminOpsService - Communication & Notifications', () => {
       await service.listDeliveries('push');
       expect(prisma.notificationDelivery.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { OR: [{ channel: 'push' }, { channel: 'fcm' }, { provider: 'fcm' }] },
+          where: {
+            OR: [{ channel: 'push' }, { channel: 'fcm' }, { provider: 'fcm' }],
+          },
         }),
       );
     });
@@ -113,4 +115,3 @@ describe('AdminOpsService - Communication & Notifications', () => {
     });
   });
 });
-

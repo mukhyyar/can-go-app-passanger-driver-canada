@@ -52,7 +52,9 @@ export class EmailService {
     const pass = this.configService.get<string>('email.smtpPass');
 
     if (!pass && this.configService.get<string>('nodeEnv') !== 'production') {
-      this.logger.warn('SMTP_PASS is not set. Using JSON transport (logs emails).');
+      this.logger.warn(
+        'SMTP_PASS is not set. Using JSON transport (logs emails).',
+      );
       this.transporter = nodemailer.createTransport({
         jsonTransport: true,
       });
@@ -132,7 +134,10 @@ export class EmailService {
     }
 
     const from = this.configService.get<string>('email.fromAddress');
-    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const text = html
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     try {
       let messageId: string | undefined;
@@ -161,7 +166,9 @@ export class EmailService {
           await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
         }
       }
-      this.logger.log(`Email sent successfully to ${to} (Message ID: ${messageId})`);
+      this.logger.log(
+        `Email sent successfully to ${to} (Message ID: ${messageId})`,
+      );
 
       if (opts?.eventId) {
         try {
@@ -190,7 +197,10 @@ export class EmailService {
                   provider: this.transport,
                   providerMsgId: opts.eventId,
                   status: 'sent',
-                  dataJson: { eventId: opts.eventId, failedUserId: opts.userId },
+                  dataJson: {
+                    eventId: opts.eventId,
+                    failedUserId: opts.userId,
+                  },
                 },
               });
             } catch (fallbackErr) {
@@ -203,7 +213,10 @@ export class EmailService {
       }
     } catch (error) {
       const err = error as Error;
-      this.logger.error(`Failed to send email to ${to}: ${err.message}`, err.stack);
+      this.logger.error(
+        `Failed to send email to ${to}: ${err.message}`,
+        err.stack,
+      );
       if (opts?.eventId) {
         try {
           await this.prisma.notificationDelivery.create({
@@ -229,7 +242,10 @@ export class EmailService {
                   providerMsgId: opts.eventId,
                   status: 'failed',
                   errorCode: err.message?.slice(0, 255),
-                  dataJson: { eventId: opts.eventId, failedUserId: opts.userId },
+                  dataJson: {
+                    eventId: opts.eventId,
+                    failedUserId: opts.userId,
+                  },
                 },
               });
             } catch (fallbackErr) {
@@ -252,7 +268,11 @@ export class EmailService {
     }
   }
 
-  async sendEmail(to: string, subject: string, htmlBody: string): Promise<void> {
+  async sendEmail(
+    to: string,
+    subject: string,
+    htmlBody: string,
+  ): Promise<void> {
     await this.sendTemplate('raw', to, subject, htmlBody);
   }
 

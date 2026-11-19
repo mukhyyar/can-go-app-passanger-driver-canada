@@ -5,16 +5,23 @@ export const METRIC_DEFINITIONS: Record<string, string> = {
     'Completed trips ÷ valid ride requests × 100. Valid requests exclude payment-failed drafts that never entered the marketplace.',
   acceptanceRate: 'Accepted offers ÷ offers received × 100.',
   cancellationRate: 'Cancelled rides ÷ eligible ride requests × 100.',
-  driverCancellationRate: 'Driver-cancelled rides ÷ eligible ride requests × 100.',
-  passengerCancellationRate: 'Passenger-cancelled rides ÷ eligible ride requests × 100.',
+  driverCancellationRate:
+    'Driver-cancelled rides ÷ eligible ride requests × 100.',
+  passengerCancellationRate:
+    'Passenger-cancelled rides ÷ eligible ride requests × 100.',
   averageFare: 'Gross fare of completed rides ÷ completed rides.',
-  revenuePerRide: 'Platform commission (net of refunds allocated) ÷ completed rides.',
+  revenuePerRide:
+    'Platform commission (net of refunds allocated) ÷ completed rides.',
   paymentSuccessRate: 'Succeeded payments ÷ payment attempts × 100.',
-  repeatRideRate: 'Passengers with ≥2 completed rides ÷ passengers who took ≥1 completed ride × 100.',
-  redemptionRate: 'Promo codes redeemed on rides ÷ codes issued (max uses or issued count) × 100.',
-  demandSupplyRatio: 'Ride requests in the bucket ÷ available (online, not on-trip) drivers.',
+  repeatRideRate:
+    'Passengers with ≥2 completed rides ÷ passengers who took ≥1 completed ride × 100.',
+  redemptionRate:
+    'Promo codes redeemed on rides ÷ codes issued (max uses or issued count) × 100.',
+  demandSupplyRatio:
+    'Ride requests in the bucket ÷ available (online, not on-trip) drivers.',
   utilizationRate: 'Drivers on trip ÷ online drivers × 100.',
-  grossBookings: 'Succeeded / captured payment volume (gross merchandise value).',
+  grossBookings:
+    'Succeeded / captured payment volume (gross merchandise value).',
   netRevenue: 'Platform commission − succeeded refunds in the period.',
 };
 
@@ -36,15 +43,24 @@ export function changePct(current: number, previous: number): number | null {
   return round1(((current - previous) / Math.abs(previous)) * 100);
 }
 
-export function completionRate(completed: number, validRequests: number): number {
+export function completionRate(
+  completed: number,
+  validRequests: number,
+): number {
   return pct(completed, validRequests);
 }
 
-export function acceptanceRate(acceptedOffers: number, offersReceived: number): number {
+export function acceptanceRate(
+  acceptedOffers: number,
+  offersReceived: number,
+): number {
   return pct(acceptedOffers, offersReceived);
 }
 
-export function cancellationRate(cancelled: number, eligibleRequests: number): number {
+export function cancellationRate(
+  cancelled: number,
+  eligibleRequests: number,
+): number {
   return pct(cancelled, eligibleRequests);
 }
 
@@ -58,11 +74,17 @@ export function revenuePerRide(netRevenue: number, completed: number): number {
   return round2(netRevenue / completed);
 }
 
-export function paymentSuccessRate(succeeded: number, attempts: number): number {
+export function paymentSuccessRate(
+  succeeded: number,
+  attempts: number,
+): number {
   return pct(succeeded, attempts);
 }
 
-export function demandSupplyRatio(requests: number, availableDrivers: number): number {
+export function demandSupplyRatio(
+  requests: number,
+  availableDrivers: number,
+): number {
   if (!availableDrivers) return requests > 0 ? 99 : 0;
   return round1(requests / availableDrivers);
 }
@@ -98,7 +120,13 @@ export function funnelEdges(steps: FunnelStep[]): FunnelEdge[] {
 export function linearForecast(
   values: number[],
   horizon: number,
-): { history: number[]; forecast: number[]; lower: number[]; upper: number[]; method: string } {
+): {
+  history: number[];
+  forecast: number[];
+  lower: number[];
+  upper: number[];
+  method: string;
+} {
   const n = values.length;
   if (n < 2) {
     const last = values[n - 1] ?? 0;
@@ -136,7 +164,13 @@ export function linearForecast(
     lower.push(round2(Math.max(0, y - band)));
     upper.push(round2(y + band));
   }
-  return { history: values.map(round2), forecast, lower, upper, method: 'linear-regression' };
+  return {
+    history: values.map(round2),
+    forecast,
+    lower,
+    upper,
+    method: 'linear-regression',
+  };
 }
 
 export function weekdayFactor(values: number[], weekdayOf: number[]): number[] {
@@ -146,6 +180,8 @@ export function weekdayFactor(values: number[], weekdayOf: number[]): number[] {
     buckets[d].s += v;
     buckets[d].n += 1;
   });
-  const overall = values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
+  const overall = values.length
+    ? values.reduce((s, v) => s + v, 0) / values.length
+    : 0;
   return buckets.map((b) => (b.n && overall ? b.s / b.n / overall : 1));
 }

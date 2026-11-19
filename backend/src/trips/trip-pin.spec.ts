@@ -105,7 +105,9 @@ describe('TripService PIN validation on TRIP_STARTED', () => {
         '127.0.0.1',
         '9999',
       ),
-    ).rejects.toThrow('Invalid ride PIN. Please ask the passenger for their 4-digit ride PIN.');
+    ).rejects.toThrow(
+      'Invalid ride PIN. Please ask the passenger for their 4-digit ride PIN.',
+    );
   });
 
   it('allows TRIP_STARTED when driver provides correct PIN', async () => {

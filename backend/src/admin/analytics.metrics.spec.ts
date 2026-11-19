@@ -78,7 +78,11 @@ describe('analytics timezone ranges', () => {
 
   it('today stays inside the zoned calendar day', () => {
     const now = new Date('2026-09-08T19:00:00.000Z'); // 15:00 Toronto (EDT)
-    const r = resolveAnalyticsRange({ range: 'today', timezone: 'America/Toronto', now });
+    const r = resolveAnalyticsRange({
+      range: 'today',
+      timezone: 'America/Toronto',
+      now,
+    });
     const start = zonedParts(r.current.start, 'America/Toronto');
     expect(start.y).toBe(2026);
     expect(start.m).toBe(9);
@@ -89,7 +93,11 @@ describe('analytics timezone ranges', () => {
 
   it('last 7 days is inclusive of today and 6 prior zoned days', () => {
     const now = new Date('2026-09-08T12:00:00.000-04:00');
-    const r = resolveAnalyticsRange({ range: '7d', timezone: 'America/Toronto', now });
+    const r = resolveAnalyticsRange({
+      range: '7d',
+      timezone: 'America/Toronto',
+      now,
+    });
     const start = zonedParts(r.current.start, 'America/Toronto');
     expect(`${start.y}-${start.m}-${start.d}`).toBe('2026-9-2');
     expect(r.compareLabel).toContain('vs');
@@ -97,7 +105,11 @@ describe('analytics timezone ranges', () => {
 
   it('does not bucket UTC timestamps as the previous UTC date for Toronto evenings', () => {
     const now = new Date('2026-09-08T21:30:00.000-04:00');
-    const r = resolveAnalyticsRange({ range: 'today', timezone: 'America/Toronto', now });
+    const r = resolveAnalyticsRange({
+      range: 'today',
+      timezone: 'America/Toronto',
+      now,
+    });
     expect(r.currentLabel).toContain('Sep 8');
   });
 });

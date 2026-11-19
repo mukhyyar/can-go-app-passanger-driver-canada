@@ -5,7 +5,12 @@ jest.mock('@nestjs/config', () => ({
 }));
 
 import { DriverWalletService } from './driver-wallet.service';
-import { RideStatus, WalletDirection, WalletEntryStatus, WalletEntryType } from '@prisma/client';
+import {
+  RideStatus,
+  WalletDirection,
+  WalletEntryStatus,
+  WalletEntryType,
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 describe('DriverWalletService - creditEarningForCompletedRide', () => {
@@ -19,7 +24,9 @@ describe('DriverWalletService - creditEarningForCompletedRide', () => {
   beforeEach(() => {
     mockPrisma = {
       $transaction: jest.fn(async (callback) => callback(mockPrisma)),
-      $queryRaw: jest.fn().mockResolvedValue([{ now: new Date('2026-10-28T12:00:00.000Z') }]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValue([{ now: new Date('2026-10-28T12:00:00.000Z') }]),
       ride: {
         findUnique: jest.fn(),
       },
@@ -159,7 +166,8 @@ describe('DriverWalletService - creditEarningForCompletedRide', () => {
       ...data,
     }));
 
-    const result = await service.creditEarningForCompletedRide('ride-legacy-100');
+    const result =
+      await service.creditEarningForCompletedRide('ride-legacy-100');
 
     expect(result.created).toBe(true);
     expect(mockPrisma.driverWalletEntry.create).toHaveBeenCalledWith({
@@ -177,7 +185,8 @@ describe('DriverWalletService - creditEarningForCompletedRide', () => {
       currency: 'CAD',
     });
 
-    const result = await service.creditEarningForCompletedRide('ride-inprogress');
+    const result =
+      await service.creditEarningForCompletedRide('ride-inprogress');
     expect(result.created).toBe(false);
     expect(result.skippedReason).toBe('not_completed');
     expect(mockPrisma.driverWalletEntry.create).not.toHaveBeenCalled();

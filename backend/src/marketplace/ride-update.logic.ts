@@ -26,7 +26,10 @@ function sameNum(a: number | null | undefined, b: number | null | undefined) {
   return Math.abs(Number(a) - Number(b)) < 1e-9;
 }
 
-function sameInstant(a: Date | string | null | undefined, b: Date | string | null | undefined) {
+function sameInstant(
+  a: Date | string | null | undefined,
+  b: Date | string | null | undefined,
+) {
   if (a == null && b == null) return true;
   if (a == null || b == null) return false;
   return new Date(a).getTime() === new Date(b).getTime();

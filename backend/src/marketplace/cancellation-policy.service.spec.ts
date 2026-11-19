@@ -1,4 +1,10 @@
-import { AmountRuleType, CancellationPolicyTier, CancellationWindowType, FeeTreatmentType, Prisma } from '@prisma/client';
+import {
+  AmountRuleType,
+  CancellationPolicyTier,
+  CancellationWindowType,
+  FeeTreatmentType,
+  Prisma,
+} from '@prisma/client';
 import {
   CancellationPolicyService,
   DEFAULT_CANCELLATION_TIERS,
@@ -309,4 +315,3 @@ describe('CancellationPolicyService', () => {
     });
   });
 });
-

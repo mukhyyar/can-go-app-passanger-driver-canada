@@ -4,7 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RideStatus, SupportCaseStatus, UserRole } from '@prisma/client';
+import {
+  Prisma,
+  RideStatus,
+  SupportCaseStatus,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TERMINAL_RIDE_STATUSES } from '../marketplace/ride-lifecycle';
@@ -32,7 +37,11 @@ export class ChatService {
       .trim();
   }
 
-  private async assertParticipant(userId: string, rideId: string, enforceActive: boolean = false) {
+  private async assertParticipant(
+    userId: string,
+    rideId: string,
+    enforceActive: boolean = false,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const ride = await this.prisma.ride.findUnique({
       where: { id: rideId },
@@ -61,7 +70,11 @@ export class ChatService {
       throw new ForbiddenException('Not a chat participant');
     }
     const isTerminal = TERMINAL_RIDE_STATUSES.includes(ride.status);
-    if (enforceActive && !isAdmin && (!ALLOWED_STATUSES.includes(ride.status) || isTerminal)) {
+    if (
+      enforceActive &&
+      !isAdmin &&
+      (!ALLOWED_STATUSES.includes(ride.status) || isTerminal)
+    ) {
       const reason =
         ride.status === RideStatus.PASSENGER_CANCELLED ||
         ride.status === RideStatus.DRIVER_CANCELLED ||
@@ -132,9 +145,15 @@ export class ChatService {
       if (roleMatch) {
         senderRole = roleMatch[1] as 'PASSENGER' | 'DRIVER' | 'SUPPORT';
         cleanBody = m.body.slice(roleMatch[0].length);
-      } else if (m.senderId === passengerUserId && m.senderId !== driverUserId) {
+      } else if (
+        m.senderId === passengerUserId &&
+        m.senderId !== driverUserId
+      ) {
         senderRole = 'PASSENGER';
-      } else if (m.senderId === driverUserId && m.senderId !== passengerUserId) {
+      } else if (
+        m.senderId === driverUserId &&
+        m.senderId !== passengerUserId
+      ) {
         senderRole = 'DRIVER';
       } else if (m.senderId === passengerUserId) {
         senderRole = 'PASSENGER';
@@ -192,7 +211,7 @@ export class ChatService {
         action: 'contact.view',
         resource: 'Ride',
         resourceId: rideId,
-        meta: { otherParty } as Prisma.InputJsonValue,
+        meta: { otherParty },
       },
     });
 
@@ -260,7 +279,11 @@ export class ChatService {
       update: {},
     });
     const msg = await this.prisma.chatMessage.create({
-      data: { threadId: thread.id, senderId: userId, body: `${roleTag}${body}` },
+      data: {
+        threadId: thread.id,
+        senderId: userId,
+        body: `${roleTag}${body}`,
+      },
     });
     await this.prisma.auditLog.create({
       data: {
@@ -268,7 +291,7 @@ export class ChatService {
         action: 'chat.send',
         resource: 'ChatMessage',
         resourceId: msg.id,
-        meta: { rideId } as Prisma.InputJsonValue,
+        meta: { rideId },
       },
     });
 
@@ -276,7 +299,9 @@ export class ChatService {
 
     if (isAdmin || roleTag === '<!--role:SUPPORT-->') {
       // Admin sent message: notify ride participants
-      const targets = [passengerUserId, driverUserId].filter(Boolean) as string[];
+      const targets = [passengerUserId, driverUserId].filter(
+        Boolean,
+      ) as string[];
       for (const tId of targets) {
         const isPass = tId === passengerUserId;
         void this.notifications
@@ -322,10 +347,9 @@ export class ChatService {
               type: 'chat',
               rideId,
               messageId: msg.id,
-              deepLink:
-                isPassengerRecipient
-                  ? `/ride/${rideId}/chat`
-                  : `/chat/${rideId}`,
+              deepLink: isPassengerRecipient
+                ? `/ride/${rideId}/chat`
+                : `/chat/${rideId}`,
             },
           })
           .catch(() => undefined);

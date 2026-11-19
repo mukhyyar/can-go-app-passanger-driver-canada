@@ -14,7 +14,8 @@ export type QueueTab =
   | 'approved'
   | 'rejected';
 
-export type DocIndicator = 'approved' | 'pending' | 'attention' | 'rejected' | 'missing';
+export type DocIndicator =
+  'approved' | 'pending' | 'attention' | 'rejected' | 'missing';
 
 export type CheckResult = 'pass' | 'fail' | 'unavailable';
 
@@ -125,7 +126,10 @@ export function formatDuration(ms: number): string {
 
 export type ExpiryBand = 'expired' | '7' | '14' | '30' | null;
 
-export function expiryBand(expiresAt: Date | null | undefined, now = new Date()): ExpiryBand {
+export function expiryBand(
+  expiresAt: Date | null | undefined,
+  now = new Date(),
+): ExpiryBand {
   if (!expiresAt) return null;
   const diff = expiresAt.getTime() - now.getTime();
   if (diff < 0) return 'expired';
@@ -136,7 +140,10 @@ export function expiryBand(expiresAt: Date | null | undefined, now = new Date())
   return null;
 }
 
-export function expiryLabel(expiresAt: Date | null | undefined, now = new Date()): string | null {
+export function expiryLabel(
+  expiresAt: Date | null | undefined,
+  now = new Date(),
+): string | null {
   if (!expiresAt) return null;
   const diff = expiresAt.getTime() - now.getTime();
   const days = Math.round(Math.abs(diff) / (24 * 60 * 60 * 1000));
@@ -169,7 +176,9 @@ export function activeDocs<T extends LatestDoc>(docs: T[]): T[] {
   });
 }
 
-export function pickLatestByType<T extends LatestDoc>(docs: T[]): Record<string, T | undefined> {
+export function pickLatestByType<T extends LatestDoc>(
+  docs: T[],
+): Record<string, T | undefined> {
   const active = activeDocs(docs);
   const map: Record<string, T | undefined> = {};
   for (const type of QUEUE_DOC_TYPES) {
@@ -191,7 +200,9 @@ export function pickLatestByType<T extends LatestDoc>(docs: T[]): Record<string,
 export function progressFromDocs(docs: LatestDoc[]) {
   const latest = pickLatestByType(docs);
   const required = REQUIRED_DOC_TYPES.map((t) => latest[t]);
-  const approvedRequired = required.filter((d) => d?.status === 'APPROVED').length;
+  const approvedRequired = required.filter(
+    (d) => d?.status === 'APPROVED',
+  ).length;
   const vehicleApproved = latest.vehicle_photo?.status === 'APPROVED';
   const totalRequired = REQUIRED_DOC_TYPES.length + 1;
   const approvedTotal = approvedRequired + (vehicleApproved ? 1 : 0);
@@ -302,7 +313,9 @@ export function buildEligibility(input: {
 
   return {
     items,
-    allPass: items.filter((i) => i.id !== 'manual_override').every((i) => i.result === 'pass'),
+    allPass: items
+      .filter((i) => i.id !== 'manual_override')
+      .every((i) => i.result === 'pass'),
     progress,
   };
 }
@@ -391,13 +404,20 @@ export function averageMs(values: number[]): number | null {
   return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
-export function percentChange(current: number | null, previous: number | null): number | null {
+export function percentChange(
+  current: number | null,
+  previous: number | null,
+): number | null {
   if (current == null || previous == null || previous === 0) return null;
   return Math.round(((current - previous) / previous) * 100);
 }
 
 export function isOpenQueueStatus(status: string): boolean {
-  return status === 'PENDING_KYC' || status === 'IN_REVIEW' || status === 'ACTION_REQUIRED';
+  return (
+    status === 'PENDING_KYC' ||
+    status === 'IN_REVIEW' ||
+    status === 'ACTION_REQUIRED'
+  );
 }
 
 export function driverDocType(value: string): DriverDocType | null {

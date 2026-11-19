@@ -61,9 +61,14 @@ export const CANCELLED_OR_UNFULFILLED: RideStatus[] = [
   ...UNFULFILLED,
 ];
 
-export function parseAnalyticsQuery(q: Record<string, string | undefined>): AnalyticsQuery {
-  const compare = q.compare === 'year' ? 'year' : q.compare === 'none' ? 'none' : 'period';
-  const groupBy = (['hour', 'day', 'week', 'month'] as const).includes(q.groupBy as GroupBy)
+export function parseAnalyticsQuery(
+  q: Record<string, string | undefined>,
+): AnalyticsQuery {
+  const compare =
+    q.compare === 'year' ? 'year' : q.compare === 'none' ? 'none' : 'period';
+  const groupBy = (['hour', 'day', 'week', 'month'] as const).includes(
+    q.groupBy as GroupBy,
+  )
     ? (q.groupBy as GroupBy)
     : 'day';
   const horizon = Math.min(30, Math.max(3, Number(q.horizon ?? 7) || 7));
@@ -100,8 +105,12 @@ export function rideWhere(
     ...extra,
   };
   if (q.serviceType) where.serviceType = q.serviceType;
-  if (q.rideType && q.rideType !== q.serviceType) where.serviceType = q.rideType;
-  if (q.rideStatus && Object.values(RideStatus).includes(q.rideStatus as RideStatus)) {
+  if (q.rideType && q.rideType !== q.serviceType)
+    where.serviceType = q.rideType;
+  if (
+    q.rideStatus &&
+    Object.values(RideStatus).includes(q.rideStatus as RideStatus)
+  ) {
     where.status = q.rideStatus as RideStatus;
   }
   if (q.promo) where.promoCode = q.promo;
@@ -122,7 +131,10 @@ export function rideWhere(
 export function rideFilterSql(q: AnalyticsQuery): Prisma.Sql {
   const parts: Prisma.Sql[] = [];
   if (q.serviceType) parts.push(Prisma.sql`r."serviceType" = ${q.serviceType}`);
-  if (q.rideStatus && Object.values(RideStatus).includes(q.rideStatus as RideStatus)) {
+  if (
+    q.rideStatus &&
+    Object.values(RideStatus).includes(q.rideStatus as RideStatus)
+  ) {
     parts.push(Prisma.sql`r."status" = ${q.rideStatus}::"RideStatus"`);
   }
   if (q.promo) parts.push(Prisma.sql`r."promoCode" = ${q.promo}`);
@@ -132,7 +144,9 @@ export function rideFilterSql(q: AnalyticsQuery): Prisma.Sql {
   const label = q.zone || q.city;
   if (label) {
     const like = `%${label}%`;
-    parts.push(Prisma.sql`(r."fromLabel" ILIKE ${like} OR r."toLabel" ILIKE ${like})`);
+    parts.push(
+      Prisma.sql`(r."fromLabel" ILIKE ${like} OR r."toLabel" ILIKE ${like})`,
+    );
   }
   if (q.paymentMethod) {
     parts.push(
@@ -143,6 +157,17 @@ export function rideFilterSql(q: AnalyticsQuery): Prisma.Sql {
   return Prisma.join(parts, ' AND ');
 }
 
-export const PAID_STATUSES = ['succeeded', 'SUCCEEDED', 'captured', 'CAPTURED', 'paid'];
+export const PAID_STATUSES = [
+  'succeeded',
+  'SUCCEEDED',
+  'captured',
+  'CAPTURED',
+  'paid',
+];
 export const FAIL_STATUSES = ['failed', 'FAILED', 'canceled', 'CANCELLED'];
-export const PENDING_PAY = ['pending', 'PENDING', 'requires_action', 'processing'];
+export const PENDING_PAY = [
+  'pending',
+  'PENDING',
+  'requires_action',
+  'processing',
+];

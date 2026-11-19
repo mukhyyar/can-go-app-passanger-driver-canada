@@ -1,18 +1,31 @@
-import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { OfferStatus, Prisma, RideStatus } from '@prisma/client';
 import { EmailEventsService } from '../email/email-events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
-import { SMS_PROVIDER, type SmsProvider } from '../providers/sms/sms-provider.interface';
+import {
+  SMS_PROVIDER,
+  type SmsProvider,
+} from '../providers/sms/sms-provider.interface';
 import {
   assertTransition,
   canTransition,
+  computeEnquiryDiscountState,
   computeRequestExpiresAt,
+  ENQUIRY_DISCOUNT_PCT,
+  ENQUIRY_DISCOUNT_WINDOW_MS,
   isEligibleForUnfulfilledExpiry,
   loadRideLifecycleConfig,
   paymentTimeoutOutcome,
   proposeRepairForIncorrectExpiry,
+  UNCONFIRMED_ENQUIRY_STATUSES,
   type LifecycleActorType,
   type RepairProposal,
   type RideLifecycleConfig,
@@ -71,7 +84,9 @@ export class RideLifecycleService {
     actorId?: string;
     payload?: Record<string, unknown>;
     extraRideData?: RideScalarPatch;
-  }): Promise<{ ok: true } | { ok: false; reason: string; current?: RideStatus }> {
+  }): Promise<
+    { ok: true } | { ok: false; reason: string; current?: RideStatus }
+  > {
     const { rideId, from, to, actorType, actorId, payload, extraRideData } =
       params;
 
@@ -133,12 +148,12 @@ export class RideLifecycleService {
         const preBookingStatuses: RideStatus[] = [
           RideStatus.WAITING_FOR_OFFERS,
           RideStatus.OFFER_SELECTION,
-          RideStatus.PAYMENT_PENDING
+          RideStatus.PAYMENT_PENDING,
         ];
         if (!(actorType === 'passenger' && preBookingStatuses.includes(from))) {
           const r = await this.prisma.ride.findUnique({
             where: { id: rideId },
-            include: { passenger: { include: { user: true } } }
+            include: { passenger: { include: { user: true } } },
           });
           if (r?.passenger?.user?.email) {
             let by = 'the driver';
@@ -150,7 +165,7 @@ export class RideLifecycleService {
               r.id.slice(0, 8).toUpperCase(),
               by,
               'CAD 0.00',
-              5
+              5,
             );
           }
         }
@@ -376,7 +391,11 @@ export class RideLifecycleService {
 
       // 1. Push notifications
       const paxPushKey = `push:${r.id}:passenger`;
-      if (this.notifications && passengerUserId && !this.isAlertCooldownActive(paxPushKey, now)) {
+      if (
+        this.notifications &&
+        passengerUserId &&
+        !this.isAlertCooldownActive(paxPushKey, now)
+      ) {
         this.overdueAlertedAt.set(paxPushKey, now.getTime());
         void this.notifications.notifyRideStatus({
           userIds: [passengerUserId],
@@ -395,7 +414,11 @@ export class RideLifecycleService {
       }
 
       const drvPushKey = `push:${r.id}:driver`;
-      if (this.notifications && driverUserId && !this.isAlertCooldownActive(drvPushKey, now)) {
+      if (
+        this.notifications &&
+        driverUserId &&
+        !this.isAlertCooldownActive(drvPushKey, now)
+      ) {
         this.overdueAlertedAt.set(drvPushKey, now.getTime());
         void this.notifications.notifyRideStatus({
           userIds: [driverUserId],
@@ -450,7 +473,9 @@ export class RideLifecycleService {
                     },
                   });
                 } catch (e) {
-                  this.logger.warn(`Failed to send overdue SMS to passenger: ${e}`);
+                  this.logger.warn(
+                    `Failed to send overdue SMS to passenger: ${e}`,
+                  );
                 }
               }
             });
@@ -493,7 +518,9 @@ export class RideLifecycleService {
                     },
                   });
                 } catch (e) {
-                  this.logger.warn(`Failed to send overdue SMS to driver: ${e}`);
+                  this.logger.warn(
+                    `Failed to send overdue SMS to driver: ${e}`,
+                  );
                 }
               }
             });
@@ -542,12 +569,16 @@ export class RideLifecycleService {
                     },
                   );
                 } catch (e) {
-                  this.logger.warn(`Failed to send overdue email to passenger: ${e}`);
+                  this.logger.warn(
+                    `Failed to send overdue email to passenger: ${e}`,
+                  );
                 }
               }
             })
             .catch((e) => {
-              this.logger.warn(`Failed checking passenger overdue email status: ${e}`);
+              this.logger.warn(
+                `Failed checking passenger overdue email status: ${e}`,
+              );
             });
         }
       }
@@ -593,12 +624,16 @@ export class RideLifecycleService {
                     },
                   );
                 } catch (e) {
-                  this.logger.warn(`Failed to send overdue email to driver: ${e}`);
+                  this.logger.warn(
+                    `Failed to send overdue email to driver: ${e}`,
+                  );
                 }
               }
             })
             .catch((e) => {
-              this.logger.warn(`Failed checking driver overdue email status: ${e}`);
+              this.logger.warn(
+                `Failed checking driver overdue email status: ${e}`,
+              );
             });
         }
       }
@@ -615,6 +650,233 @@ export class RideLifecycleService {
     }
 
     return notified;
+  }
+
+  /**
+   * Automatic 5% Discount for Unconfirmed Ride Enquiries:
+   * When an unconfirmed ride enquiry has <= 12 hours remaining before expiration,
+   * automatically activate the 5% discount on the enquiry and its active offers,
+   * and notify the passenger via Push Notification and Email.
+   */
+  async processExpiringEnquiryDiscounts(now = new Date()): Promise<number> {
+    const windowCutoff = new Date(now.getTime() + ENQUIRY_DISCOUNT_WINDOW_MS);
+    const fallbackPickupMin = new Date(
+      now.getTime() - this.config.unfulfilledGraceMs,
+    );
+    const fallbackPickupMax = new Date(
+      windowCutoff.getTime() - this.config.unfulfilledGraceMs,
+    );
+
+    const candidates = await this.prisma.ride.findMany({
+      where: {
+        status: { in: UNCONFIRMED_ENQUIRY_STATUSES },
+        OR: [
+          {
+            requestExpiresAt: {
+              gt: now,
+              lte: windowCutoff,
+            },
+          },
+          {
+            requestExpiresAt: null,
+            pickupAt: {
+              gt: fallbackPickupMin,
+              lte: fallbackPickupMax,
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+        pickupAt: true,
+        requestExpiresAt: true,
+        fromLabel: true,
+        toLabel: true,
+        priceSnapshot: true,
+        passenger: {
+          select: {
+            userId: true,
+            fullName: true,
+            user: {
+              select: {
+                id: true,
+                email: true,
+              },
+            },
+          },
+        },
+        offers: {
+          where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] } },
+          select: {
+            id: true,
+            bidAmount: true,
+            returnPrice: true,
+            priceSnapshot: true,
+          },
+        },
+      },
+      take: 200,
+    });
+
+    let activated = 0;
+
+    for (const r of candidates) {
+      const state = computeEnquiryDiscountState(r, now, this.config);
+      if (!state.eligible) continue;
+
+      const snap =
+        r.priceSnapshot && typeof r.priceSnapshot === 'object'
+          ? (r.priceSnapshot as Record<string, unknown>)
+          : {};
+      const alreadyActivated = Boolean(snap.enquiryDiscountActivatedAt);
+
+      if (!alreadyActivated) {
+        const updatedRideSnap = {
+          ...snap,
+          enquiryDiscountPct: ENQUIRY_DISCOUNT_PCT,
+          enquiryDiscountActivatedAt: now.toISOString(),
+          enquiryDiscountExpiresAt: state.expiresAt.toISOString(),
+        };
+        await this.prisma.ride.update({
+          where: { id: r.id },
+          data: {
+            priceSnapshot: updatedRideSnap,
+          },
+        });
+      }
+
+      if (Array.isArray(r.offers)) {
+        for (const o of r.offers) {
+          const oSnap =
+            o.priceSnapshot && typeof o.priceSnapshot === 'object'
+              ? (o.priceSnapshot as Record<string, unknown>)
+              : {};
+          if (Number(oSnap.enquiryDiscountPct ?? 0) === ENQUIRY_DISCOUNT_PCT) {
+            continue;
+          }
+          const ridePrice = Number(
+            oSnap.bidAmount ?? oSnap.subtotal ?? o.bidAmount ?? 0,
+          );
+          if (ridePrice <= 0) continue;
+          const platformFee = Math.round(ridePrice * 0.2 * 100) / 100;
+          const taxAmount = Number(oSnap.taxAmount ?? 0);
+          const originalPassengerTotal =
+            Math.round((ridePrice + platformFee + taxAmount) * 100) / 100;
+          const returnPrice = Number(oSnap.returnPrice ?? o.returnPrice ?? 0);
+          const returnDiscountAmount =
+            oSnap.returnDiscountAmount != null
+              ? Number(oSnap.returnDiscountAmount)
+              : returnPrice > 0
+                ? Math.round(returnPrice * 0.15 * 100) / 100
+                : 0;
+          const enquiryDiscountAmount =
+            Math.round(ridePrice * (ENQUIRY_DISCOUNT_PCT / 100) * 100) / 100;
+          const totalDiscount =
+            Math.round((returnDiscountAmount + enquiryDiscountAmount) * 100) /
+            100;
+          const passengerTotal =
+            Math.round(
+              Math.max(0, originalPassengerTotal - totalDiscount) * 100,
+            ) / 100;
+          const canRideGrossRevenue =
+            Math.round(Math.max(0, platformFee * 2 - totalDiscount) * 100) /
+            100;
+
+          await this.prisma.offer.update({
+            where: { id: o.id },
+            data: {
+              priceSnapshot: {
+                ...oSnap,
+                originalPassengerTotal,
+                enquiryDiscountPct: ENQUIRY_DISCOUNT_PCT,
+                enquiryDiscountAmount,
+                passengerTotal,
+                canRideGrossRevenue,
+              },
+            },
+          });
+        }
+      }
+
+      if (!alreadyActivated) {
+        const passengerUserId = r.passenger?.userId;
+        const passengerEmail = r.passenger?.user?.email;
+        const passengerName = r.passenger?.fullName || 'Passenger';
+        const rideCode = r.id.slice(0, 8).toUpperCase();
+        const pickupStr = r.pickupAt.toLocaleString('en-CA', {
+          timeZone: 'America/Toronto',
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        });
+        const expiresStr = state.expiresAt.toLocaleString('en-CA', {
+          timeZone: 'America/Toronto',
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        });
+
+        if (this.notifications && passengerUserId) {
+          void this.notifications.notifyRideStatus({
+            userIds: [passengerUserId],
+            rideId: r.id,
+            status: 'ENQUIRY_DISCOUNT_AVAILABLE',
+            title: `5% Discount on Your Ride Enquiry!`,
+            body: `Only 12 hours left before your ride enquiry expires! Complete your booking now to automatically receive 5% off.`,
+            targetRole: ['PASSENGER', 'PASSENGER_WEB'],
+            eventId: `ride.enquiry_discount_5pct.${r.id}`,
+            data: {
+              type: 'RIDE_ENQUIRY_DISCOUNT',
+              discountPct: String(ENQUIRY_DISCOUNT_PCT),
+              expiresAt: state.expiresAt.toISOString(),
+              deepLink: `/offers/${r.id}`,
+            },
+          });
+        }
+
+        if (this.emailEvents && passengerUserId && passengerEmail) {
+          void this.emailEvents
+            .sendRideEnquiryDiscount(passengerUserId, passengerEmail, {
+              rideId: r.id,
+              rideCode,
+              passengerName,
+              pickupAt: pickupStr,
+              expiresAt: expiresStr,
+              fromLabel: r.fromLabel,
+              toLabel: r.toLabel || 'Destination',
+              discountPct: ENQUIRY_DISCOUNT_PCT,
+              actionUrl: `https://can-rides.ca/rides/${r.id}`,
+            })
+            .catch((e) => {
+              this.logger.warn(
+                `Failed to send enquiry discount email for ride ${r.id}: ${e}`,
+              );
+            });
+        }
+
+        this.tracking?.emitRideEvent(r.id, {
+          type: 'ride.discount.activated',
+          rideId: r.id,
+          discountPct: ENQUIRY_DISCOUNT_PCT,
+          expiresAt: state.expiresAt.toISOString(),
+        });
+        if (passengerUserId) {
+          this.tracking?.emitToPassengers(
+            [passengerUserId],
+            'marketplace.offer',
+            {
+              type: 'ride.discount.activated',
+              rideId: r.id,
+              discountPct: ENQUIRY_DISCOUNT_PCT,
+              expiresAt: state.expiresAt.toISOString(),
+            },
+          );
+        }
+
+        activated += 1;
+      }
+    }
+
+    return activated;
   }
 
   async handlePaymentWindowTimeouts(now = new Date()) {
@@ -771,7 +1033,7 @@ export class RideLifecycleService {
               to: proposal.to,
               reason: proposal.reason,
               actor: 'SYSTEM_MIGRATION',
-            } as Prisma.InputJsonValue,
+            },
           },
         });
       }

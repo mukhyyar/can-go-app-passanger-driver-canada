@@ -69,7 +69,9 @@ export class TwilioSmsProvider implements SmsProvider {
       this.logger.error(
         `Twilio SMS failed (status ${res.status}, code ${data.code ?? 'none'}): ${data.message ?? JSON.stringify(data)}`,
       );
-      throw new ServiceUnavailableException(data.message ?? 'Twilio SMS failed');
+      throw new ServiceUnavailableException(
+        data.message ?? 'Twilio SMS failed',
+      );
     }
     this.logger.log(`Twilio SMS dispatched: sid=${data.sid} to=${cleanedTo}`);
     return { providerMessageId: String(data.sid) };

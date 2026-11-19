@@ -66,7 +66,11 @@ export class ExpansionService {
     };
   }
 
-  async adminSetVip(adminId: string, passengerProfileId: string, isVip: boolean) {
+  async adminSetVip(
+    adminId: string,
+    passengerProfileId: string,
+    isVip: boolean,
+  ) {
     const updated = await this.prisma.passengerProfile.update({
       where: { id: passengerProfileId },
       data: { isVip, vipRequestedAt: isVip ? null : undefined },
@@ -82,7 +86,11 @@ export class ExpansionService {
     return updated;
   }
 
-  async redeemReferral(userId: string, code: string, role: 'PASSENGER' | 'DRIVER') {
+  async redeemReferral(
+    userId: string,
+    code: string,
+    role: 'PASSENGER' | 'DRIVER',
+  ) {
     const normalized = code.trim().toUpperCase();
     if (!normalized) throw new BadRequestException('Referral code required');
 
@@ -126,7 +134,7 @@ export class ExpansionService {
         action: 'referral.redeem',
         resource: 'ReferralRedemption',
         resourceId: row.id,
-        meta: { code: normalized, credit } as Prisma.InputJsonValue,
+        meta: { code: normalized, credit },
       },
     });
     return row;

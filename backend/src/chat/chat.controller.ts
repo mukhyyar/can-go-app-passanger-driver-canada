@@ -49,18 +49,12 @@ export class ChatController {
   }
 
   @Delete('messages/:messageId')
-  remove(
-    @CurrentUser() user: AuthUser,
-    @Param('messageId') messageId: string,
-  ) {
+  remove(@CurrentUser() user: AuthUser, @Param('messageId') messageId: string) {
     return this.chat.softDelete(user.id, messageId);
   }
 
   @Post('messages/:messageId/flag')
-  flag(
-    @CurrentUser() user: AuthUser,
-    @Param('messageId') messageId: string,
-  ) {
+  flag(@CurrentUser() user: AuthUser, @Param('messageId') messageId: string) {
     return this.chat.flag(user.id, messageId);
   }
 }

@@ -9,14 +9,25 @@ import {
   Optional,
 } from '@nestjs/common';
 import { EmailEventsService } from '../email/email-events.service';
-import { DriverPayoutStatus, Prisma, RideStatus, UserRole, WalletDirection, WalletEntryStatus, WalletEntryType } from '@prisma/client';
+import {
+  DriverPayoutStatus,
+  Prisma,
+  RideStatus,
+  UserRole,
+  WalletDirection,
+  WalletEntryStatus,
+  WalletEntryType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 import { DriverWalletService } from '../wallet/driver-wallet.service';
 import { StripeConnectService } from '../providers/stripe/stripe-connect.service';
 import { PostRideNotificationService } from './post-ride-notifications.service';
-import { PAYMENT_PROVIDER, type PaymentProvider } from '../providers/payment/payment-provider.interface';
+import {
+  PAYMENT_PROVIDER,
+  type PaymentProvider,
+} from '../providers/payment/payment-provider.interface';
 import {
   CancellationPolicyService,
   resolveIncludedWaitingMinutes,
@@ -61,8 +72,11 @@ export class TripService {
     private readonly wallet: DriverWalletService,
     @Optional() private readonly stripeConnect?: StripeConnectService,
     @Optional() private readonly emailEvents?: EmailEventsService,
-    @Optional() private readonly postRideNotifications?: PostRideNotificationService,
-    @Optional() @Inject(PAYMENT_PROVIDER) private readonly payments?: PaymentProvider,
+    @Optional()
+    private readonly postRideNotifications?: PostRideNotificationService,
+    @Optional()
+    @Inject(PAYMENT_PROVIDER)
+    private readonly payments?: PaymentProvider,
     @Optional() private readonly cancellationPolicy?: CancellationPolicyService,
     @Optional() private readonly locationStore?: LocationStoreService,
   ) {}
@@ -83,7 +97,6 @@ export class TripService {
     }
     return null;
   }
-
 
   async transition(
     userId: string,
@@ -116,8 +129,7 @@ export class TripService {
     if (!ride) throw new NotFoundException('Ride not found');
 
     const isAssignedDriver =
-      !!user.driverProfile &&
-      ride.assignedDriverId === user.driverProfile.id;
+      !!user.driverProfile && ride.assignedDriverId === user.driverProfile.id;
     const isPassenger = ride.passenger.userId === userId;
     const isAdmin =
       user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN;
@@ -150,11 +162,11 @@ export class TripService {
       };
     }
 
-    this.assertTransitionAllowed(
-      ride.status,
-      toStatus,
-      { isAssignedDriver, isPassenger, isAdmin },
-    );
+    this.assertTransitionAllowed(ride.status, toStatus, {
+      isAssignedDriver,
+      isPassenger,
+      isAdmin,
+    });
 
     let arrivedEvidence: Record<string, unknown> | undefined;
     if (toStatus === RideStatus.DRIVER_ARRIVED && isAssignedDriver) {
@@ -195,17 +207,20 @@ export class TripService {
     let verifiedPin: string | undefined;
     let tripStartEvidence: Record<string, unknown> | undefined;
     if (toStatus === RideStatus.TRIP_STARTED && isAssignedDriver) {
-      const snap = ride.priceSnapshot as Record<string, unknown> | null | undefined;
+      const snap = ride.priceSnapshot as
+        Record<string, unknown> | null | undefined;
       const expectedPin =
         (ride.startPin as string | null | undefined) ??
         (snap?.startPin as string | undefined) ??
         String(
           1000 +
             Math.abs(
-              ride.id.split('').reduce(
-                (acc, char) => ((acc << 5) - acc) + char.charCodeAt(0),
-                0,
-              ) % 9000,
+              ride.id
+                .split('')
+                .reduce(
+                  (acc, char) => (acc << 5) - acc + char.charCodeAt(0),
+                  0,
+                ) % 9000,
             ),
         );
       const cleanPin = (pin ?? '').trim();
@@ -395,7 +410,8 @@ export class TripService {
         contactVerified = true;
         contactMethod =
           contactMethod ??
-          ((contactEvent.payload as Record<string, unknown>).method as string) ??
+          ((contactEvent.payload as Record<string, unknown>)
+            .method as string) ??
           'CALL';
       }
 
@@ -532,14 +548,20 @@ export class TripService {
       });
     }
 
-    let refundInfo: { refunded: boolean; amount?: number } = { refunded: false };
+    let refundInfo: { refunded: boolean; amount?: number } = {
+      refunded: false,
+    };
     if (
       toStatus === RideStatus.PASSENGER_CANCELLED ||
       toStatus === RideStatus.DRIVER_CANCELLED ||
       toStatus === RideStatus.ADMIN_CANCELLED ||
       toStatus === RideStatus.NO_SHOW
     ) {
-      refundInfo = await this.handleCancellationRefund(rideId, toStatus, userId);
+      refundInfo = await this.handleCancellationRefund(
+        rideId,
+        toStatus,
+        userId,
+      );
     }
 
     const final = await this.prisma.ride.findUnique({ where: { id: rideId } });
@@ -582,7 +604,6 @@ export class TripService {
       }
     }
 
-
     if (driverUserId) {
       const driverBody =
         notifyStatus === RideStatus.NO_SHOW
@@ -615,7 +636,9 @@ export class TripService {
       const payment = await this.prisma.payment.findFirst({
         where: {
           rideId,
-          status: { in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'] },
+          status: {
+            in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'],
+          },
         },
         include: { refunds: true },
       });
@@ -661,7 +684,9 @@ export class TripService {
               : `Cancellation refund (${evalResult.passengerDisplayLabel})`;
           providerCompAmount = evalResult.providerCompAmount;
         } catch (e) {
-          this.logger.error(`Failed to evaluate cancellation policy for ride ${rideId}: ${e}`);
+          this.logger.error(
+            `Failed to evaluate cancellation policy for ride ${rideId}: ${e}`,
+          );
         }
       }
 
@@ -680,7 +705,7 @@ export class TripService {
             res.status === 'succeeded' || res.status === 'pending'
               ? res.status
               : 'succeeded';
-          gatewayResponse = res as unknown as Record<string, unknown>;
+          gatewayResponse = res;
         } catch (gatewayErr) {
           this.logger.error(
             `Gateway refund error for ride ${rideId}: ${gatewayErr}`,
@@ -702,7 +727,9 @@ export class TripService {
       });
       let refundRequesterId = validUser?.id;
       if (!refundRequesterId) {
-        const anyUser = await this.prisma.user.findFirst({ select: { id: true } });
+        const anyUser = await this.prisma.user.findFirst({
+          select: { id: true },
+        });
         refundRequesterId = anyUser?.id ?? actorId;
       }
 
@@ -753,7 +780,10 @@ export class TripService {
           });
         }
 
-        if (cancelledByStatus === RideStatus.NO_SHOW && providerCompAmount > 0) {
+        if (
+          cancelledByStatus === RideStatus.NO_SHOW &&
+          providerCompAmount > 0
+        ) {
           await tx.rideFinancial.updateMany({
             where: { rideId },
             data: {
@@ -781,7 +811,7 @@ export class TripService {
                 rideId: ride.id,
                 tier: evaluationLabel,
                 compensatedAt: new Date().toISOString(),
-              } as Prisma.InputJsonValue,
+              },
             },
           });
         }
@@ -845,7 +875,10 @@ export class TripService {
     const { isAssignedDriver, isPassenger, isAdmin } = actors;
 
     const driverNext: Partial<Record<RideStatus, RideStatus[]>> = {
-      [RideStatus.BOOKED]: [RideStatus.DRIVER_EN_ROUTE, RideStatus.DRIVER_CANCELLED],
+      [RideStatus.BOOKED]: [
+        RideStatus.DRIVER_EN_ROUTE,
+        RideStatus.DRIVER_CANCELLED,
+      ],
       [RideStatus.DRIVER_EN_ROUTE]: [
         RideStatus.DRIVER_ARRIVED,
         RideStatus.DRIVER_CANCELLED,
@@ -855,8 +888,14 @@ export class TripService {
         RideStatus.NO_SHOW,
         RideStatus.DRIVER_CANCELLED,
       ],
-      [RideStatus.TRIP_STARTED]: [RideStatus.COMPLETED, RideStatus.DRIVER_CANCELLED],
-      [RideStatus.IN_PROGRESS]: [RideStatus.COMPLETED, RideStatus.DRIVER_CANCELLED],
+      [RideStatus.TRIP_STARTED]: [
+        RideStatus.COMPLETED,
+        RideStatus.DRIVER_CANCELLED,
+      ],
+      [RideStatus.IN_PROGRESS]: [
+        RideStatus.COMPLETED,
+        RideStatus.DRIVER_CANCELLED,
+      ],
     };
 
     const passengerNext: Partial<Record<RideStatus, RideStatus[]>> = {

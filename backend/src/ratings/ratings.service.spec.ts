@@ -93,7 +93,9 @@ describe('RatingsService', () => {
         selectedOffer: { driver: { userId: driverUserId } },
         assignedDriverId: driverProfileId,
       });
-      mockPrisma.driverProfile.findUnique.mockResolvedValue({ id: driverProfileId });
+      mockPrisma.driverProfile.findUnique.mockResolvedValue({
+        id: driverProfileId,
+      });
       mockPrisma.rating.create.mockResolvedValue({
         id: 'rating-1',
         rideId,
@@ -103,7 +105,9 @@ describe('RatingsService', () => {
         moderationStatus: RatingModerationStatus.VISIBLE,
       });
 
-      const res = await ratingsService.create(driverUserId, rideId, { stars: 5 });
+      const res = await ratingsService.create(driverUserId, rideId, {
+        stars: 5,
+      });
       expect(res.id).toBe('rating-1');
       expect(mockPrisma.rating.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -272,11 +276,16 @@ describe('RatingsService', () => {
         passenger: { userId: passengerUserId },
         selectedOffer: { driver: { userId: driverUserId } },
       });
-      mockPrisma.driverProfile.findUnique.mockResolvedValue({ id: driverProfileId });
-      const p2002Error = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
-        code: 'P2002',
-        clientVersion: '5.x',
+      mockPrisma.driverProfile.findUnique.mockResolvedValue({
+        id: driverProfileId,
       });
+      const p2002Error = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint',
+        {
+          code: 'P2002',
+          clientVersion: '5.x',
+        },
+      );
       mockPrisma.rating.create.mockRejectedValue(p2002Error);
 
       await expect(
@@ -291,7 +300,9 @@ describe('RatingsService', () => {
         passenger: { userId: passengerUserId },
         selectedOffer: { driver: { userId: driverUserId } },
       });
-      mockPrisma.driverProfile.findUnique.mockResolvedValue({ id: driverProfileId });
+      mockPrisma.driverProfile.findUnique.mockResolvedValue({
+        id: driverProfileId,
+      });
       mockPrisma.rating.create.mockRejectedValue(new Error('Connection lost'));
 
       await expect(
@@ -307,7 +318,9 @@ describe('RatingsService', () => {
         passenger: { userId: dualUserId },
         selectedOffer: { driver: { userId: dualUserId } },
       });
-      mockPrisma.driverProfile.findUnique.mockResolvedValue({ id: 'driver-prof-dual' });
+      mockPrisma.driverProfile.findUnique.mockResolvedValue({
+        id: 'driver-prof-dual',
+      });
       mockPrisma.rating.create.mockResolvedValue({
         id: 'rating-driver-dual',
         stars: 5,
@@ -343,7 +356,9 @@ describe('RatingsService', () => {
         passenger: { userId: dualUserId },
         selectedOffer: { driver: { userId: dualUserId } },
       });
-      mockPrisma.driverProfile.findUnique.mockResolvedValue({ id: 'driver-prof-dual' });
+      mockPrisma.driverProfile.findUnique.mockResolvedValue({
+        id: 'driver-prof-dual',
+      });
       mockPrisma.rating.create.mockResolvedValue({
         id: 'rating-driver-dual-inferred',
         stars: 4,
@@ -382,9 +397,7 @@ describe('RatingsService', () => {
         role: UserRole.DRIVER,
         driverProfile: { id: driverProfileId },
       });
-      mockPrisma.rating.findMany.mockResolvedValue([
-        { id: 'r1', stars: 5 },
-      ]);
+      mockPrisma.rating.findMany.mockResolvedValue([{ id: 'r1', stars: 5 }]);
 
       const list = await ratingsService.listForRide(driverUserId, rideId);
       expect(list).toHaveLength(1);
@@ -492,9 +505,18 @@ describe('RatingsService', () => {
   describe('moderate', () => {
     it('approves a rating and records audit log', async () => {
       mockPrisma.rating.findUnique
-        .mockResolvedValueOnce({ id: 'rating-1', moderationStatus: RatingModerationStatus.PENDING_REVIEW })
-        .mockResolvedValueOnce({ id: 'rating-1', moderationStatus: RatingModerationStatus.VISIBLE });
-      mockPrisma.rating.update.mockResolvedValue({ id: 'rating-1', moderationStatus: RatingModerationStatus.VISIBLE });
+        .mockResolvedValueOnce({
+          id: 'rating-1',
+          moderationStatus: RatingModerationStatus.PENDING_REVIEW,
+        })
+        .mockResolvedValueOnce({
+          id: 'rating-1',
+          moderationStatus: RatingModerationStatus.VISIBLE,
+        });
+      mockPrisma.rating.update.mockResolvedValue({
+        id: 'rating-1',
+        moderationStatus: RatingModerationStatus.VISIBLE,
+      });
 
       const res = await ratingsService.moderate(adminUserId, 'rating-1', {
         status: RatingModerationStatus.VISIBLE,
@@ -517,9 +539,18 @@ describe('RatingsService', () => {
 
     it('hides a rating with note', async () => {
       mockPrisma.rating.findUnique
-        .mockResolvedValueOnce({ id: 'rating-2', moderationStatus: RatingModerationStatus.PENDING_REVIEW })
-        .mockResolvedValueOnce({ id: 'rating-2', moderationStatus: RatingModerationStatus.HIDDEN });
-      mockPrisma.rating.update.mockResolvedValue({ id: 'rating-2', moderationStatus: RatingModerationStatus.HIDDEN });
+        .mockResolvedValueOnce({
+          id: 'rating-2',
+          moderationStatus: RatingModerationStatus.PENDING_REVIEW,
+        })
+        .mockResolvedValueOnce({
+          id: 'rating-2',
+          moderationStatus: RatingModerationStatus.HIDDEN,
+        });
+      mockPrisma.rating.update.mockResolvedValue({
+        id: 'rating-2',
+        moderationStatus: RatingModerationStatus.HIDDEN,
+      });
 
       const res = await ratingsService.moderate(adminUserId, 'rating-2', {
         status: RatingModerationStatus.HIDDEN,

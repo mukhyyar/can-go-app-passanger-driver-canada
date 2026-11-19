@@ -44,6 +44,7 @@ export function BookingPage() {
   const [from, setFrom] = useState<Place | null>(null);
   const [to, setTo] = useState<Place | null>(null);
   const [perHourHasEnd, setPerHourHasEnd] = useState(false);
+  const [vehicleClasses, setVehicleClasses] = useState(VEHICLE_CLASSES);
   const [vehicleIds, setVehicleIds] = useState<string[]>(DEFAULT_VEHICLE_IDS);
   const [pickupNow, setPickupNow] = useState(true);
   const [pickupValue, setPickupValue] = useState('');
@@ -75,6 +76,33 @@ export function BookingPage() {
     if (cls && VEHICLE_CLASSES.some((v) => v.id === cls)) {
       setVehicleIds([cls]);
     }
+    api<
+      Array<{
+        id: string;
+        slug: string;
+        name: string;
+        fromPrice?: string;
+        passengerSeats?: number;
+        luggagePlaces?: number;
+        description?: string;
+      }>
+    >('/marketplace/vehicle-categories')
+      .then((list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          setVehicleClasses(
+            list.map((c) => ({
+              id: c.id || c.slug,
+              name: c.name,
+              fromPrice: c.fromPrice || 'from CA$25',
+              kind: 'sedan',
+              seats: c.passengerSeats ?? 4,
+              bags: c.luggagePlaces ?? 2,
+              blurb: c.description || '',
+            })),
+          );
+        }
+      })
+      .catch(() => undefined);
     const fromText = searchParams.get('from');
     const toText = searchParams.get('to');
     if (fromText) {
@@ -151,6 +179,22 @@ export function BookingPage() {
           hours,
         }),
       });
+
+      // Clear the booking form so returning to Home starts fresh
+      setFrom(null);
+      setTo(null);
+      setComment('');
+      setTerms(false);
+      setReturnOn(false);
+      setReturnValue('');
+      setPromoOn(false);
+      setPromo('');
+      setPickupNow(true);
+      setPickupValue('');
+      setAdults(1);
+      setChildSeats({ infant: 0, convertible: 0, booster: 0 });
+      setChildOpen(false);
+
       router.push(`/rides/${ride.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -304,15 +348,15 @@ export function BookingPage() {
           {service !== 'DELIVERY' && (
             <>
               <div className="vehicle-legend">
-                <span>Vehicle class</span>
+                <span>Preferred vehicle category</span>
                 <small>
                   {vehicleIds.length
-                    ? `${vehicleIds.length} selected`
-                    : 'None selected — tap the cars you want bids for'}
+                    ? `${vehicleIds.length} preferred (all eligible drivers can still submit offers)`
+                    : 'Select your preferred category — all eligible drivers can submit offers'}
                 </small>
               </div>
               <div className="vehicle-grid">
-                {VEHICLE_CLASSES.map((vc) => {
+                {vehicleClasses.map((vc) => {
                   const on = vehicleIds.includes(vc.id);
                   return (
                     <button

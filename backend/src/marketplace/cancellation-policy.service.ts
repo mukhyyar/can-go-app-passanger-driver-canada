@@ -42,11 +42,7 @@ export interface CancellationPolicyPublicView {
 }
 
 export type WaitingCategory =
-  | 'FLIGHT'
-  | 'AIRPORT_PORT'
-  | 'TRAIN_STATION'
-  | 'URGENT'
-  | 'OTHER';
+  'FLIGHT' | 'AIRPORT_PORT' | 'TRAIN_STATION' | 'URGENT' | 'OTHER';
 
 export interface WaitingDetailsResolution {
   category: WaitingCategory;
@@ -277,7 +273,9 @@ export class CancellationPolicyService {
       where: { tierKey },
     });
     if (!existing) {
-      throw new NotFoundException(`Cancellation policy tier ${tierKey} not found`);
+      throw new NotFoundException(
+        `Cancellation policy tier ${tierKey} not found`,
+      );
     }
 
     return this.prisma.cancellationPolicyTier.update({
@@ -294,7 +292,11 @@ export class CancellationPolicyService {
           ? { passengerRefundType: data.passengerRefundType }
           : {}),
         ...(data.passengerRefundValue != null
-          ? { passengerRefundValue: new Prisma.Decimal(data.passengerRefundValue) }
+          ? {
+              passengerRefundValue: new Prisma.Decimal(
+                data.passengerRefundValue,
+              ),
+            }
           : {}),
         ...(data.providerCompType != null
           ? { providerCompType: data.providerCompType }
@@ -302,7 +304,9 @@ export class CancellationPolicyService {
         ...(data.providerCompValue != null
           ? { providerCompValue: new Prisma.Decimal(data.providerCompValue) }
           : {}),
-        ...(data.feeTreatment != null ? { feeTreatment: data.feeTreatment } : {}),
+        ...(data.feeTreatment != null
+          ? { feeTreatment: data.feeTreatment }
+          : {}),
         ...(data.passengerDisplayLabel != null
           ? { passengerDisplayLabel: data.passengerDisplayLabel }
           : {}),
@@ -360,7 +364,9 @@ export class CancellationPolicyService {
         financial: true,
         payments: {
           where: {
-            status: { in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'] },
+            status: {
+              in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'],
+            },
           },
           orderBy: { createdAt: 'desc' },
         },
@@ -413,7 +419,9 @@ export class CancellationPolicyService {
 
     if (driverArrivedAndWaitingExpired) {
       matchedTier = tiers.find(
-        (t) => t.windowType === CancellationWindowType.DRIVER_ARRIVED_WAITING_EXPIRED,
+        (t) =>
+          t.windowType ===
+          CancellationWindowType.DRIVER_ARRIVED_WAITING_EXPIRED,
       );
     }
 
@@ -440,14 +448,16 @@ export class CancellationPolicyService {
 
     if (!matchedTier) {
       // Safe fallback tier
-      matchedTier = tiers[0] ?? (DEFAULT_CANCELLATION_TIERS[0] as unknown as CancellationPolicyTier);
+      matchedTier =
+        tiers[0] ??
+        (DEFAULT_CANCELLATION_TIERS[0] as unknown as CancellationPolicyTier);
     }
 
     // Extract financials
     const snap =
-      (ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
+      ride.priceSnapshot && typeof ride.priceSnapshot === 'object'
         ? (ride.priceSnapshot as Record<string, unknown>)
-        : {}) as Record<string, unknown>;
+        : {};
 
     const rideFare = ride.financial
       ? Number(ride.financial.rideFare)
@@ -455,7 +465,9 @@ export class CancellationPolicyService {
 
     const marketplaceFee = ride.financial
       ? Number(ride.financial.marketplaceFee)
-      : Number(snap.platformFee ?? snap.marketplaceFee ?? round2(rideFare * 0.2));
+      : Number(
+          snap.platformFee ?? snap.marketplaceFee ?? round2(rideFare * 0.2),
+        );
 
     const taxes = ride.financial
       ? Number(ride.financial.taxes)
@@ -465,8 +477,8 @@ export class CancellationPolicyService {
     const totalPaid = successfulPayment
       ? Number(successfulPayment.amount)
       : ride.financial
-      ? Number(ride.financial.passengerTotalCharged)
-      : round2(rideFare + marketplaceFee + taxes);
+        ? Number(ride.financial.passengerTotalCharged)
+        : round2(rideFare + marketplaceFee + taxes);
 
     const currency = ride.currency ?? 'CAD';
 
@@ -511,7 +523,9 @@ export class CancellationPolicyService {
     // 1. Passenger refund on base fare
     let fareRefund = 0;
     if (tier.passengerRefundType === AmountRuleType.PERCENTAGE) {
-      fareRefund = round2(rideFare * (Math.max(0, Math.min(100, paxVal)) / 100));
+      fareRefund = round2(
+        rideFare * (Math.max(0, Math.min(100, paxVal)) / 100),
+      );
     } else {
       fareRefund = round2(Math.min(rideFare, Math.max(0, paxVal)));
     }
@@ -524,8 +538,9 @@ export class CancellationPolicyService {
 
     // 3. Tax refund proportional to refund percentage
     let taxRefund = 0;
-    if (totalPaid > 0 && (fareRefund + feeRefund) > 0) {
-      const refundRatio = (fareRefund + feeRefund) / Math.max(1, rideFare + marketplaceFee);
+    if (totalPaid > 0 && fareRefund + feeRefund > 0) {
+      const refundRatio =
+        (fareRefund + feeRefund) / Math.max(1, rideFare + marketplaceFee);
       taxRefund = round2(taxes * Math.min(1, refundRatio));
     }
 
@@ -533,17 +548,25 @@ export class CancellationPolicyService {
       totalPaid,
       round2(fareRefund + feeRefund + taxRefund),
     );
-    const cancellationFee = Math.max(0, round2(totalPaid - passengerRefundAmount));
+    const cancellationFee = Math.max(
+      0,
+      round2(totalPaid - passengerRefundAmount),
+    );
 
     // 4. Provider compensation
     let providerCompAmount = 0;
     if (tier.providerCompType === AmountRuleType.PERCENTAGE) {
-      providerCompAmount = round2(rideFare * (Math.max(0, Math.min(100, provVal)) / 100));
+      providerCompAmount = round2(
+        rideFare * (Math.max(0, Math.min(100, provVal)) / 100),
+      );
     } else {
       providerCompAmount = round2(Math.min(rideFare, Math.max(0, provVal)));
     }
     // Cannot compensate more than the cancellation fee collected unless specifically subsidized
-    providerCompAmount = Math.min(providerCompAmount, cancellationFee > 0 ? cancellationFee : rideFare);
+    providerCompAmount = Math.min(
+      providerCompAmount,
+      cancellationFee > 0 ? cancellationFee : rideFare,
+    );
 
     // 5. CAN-RIDE retained revenue
     const canRideRetainedFee = Math.max(

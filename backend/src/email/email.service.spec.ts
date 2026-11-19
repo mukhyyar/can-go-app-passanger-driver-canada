@@ -18,7 +18,8 @@ describe('EmailService', () => {
     mockConfigService = {
       get: jest.fn((key: string) => {
         if (key === 'email.enabled') return true;
-        if (key === 'email.fromAddress') return 'Can Ride <no-reply@can-rides.ca>';
+        if (key === 'email.fromAddress')
+          return 'Can Ride <no-reply@can-rides.ca>';
         if (key === 'email.smtpHost') return 'mail.can-rides.ca';
         if (key === 'email.smtpPort') return 465;
         if (key === 'email.smtpUser') return 'no-reply@can-rides.ca';
@@ -30,7 +31,9 @@ describe('EmailService', () => {
     mockPrisma = {
       notificationDelivery: {
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'delivery_123', status: 'sent' }),
+        create: jest
+          .fn()
+          .mockResolvedValue({ id: 'delivery_123', status: 'sent' }),
       },
     };
 
@@ -153,7 +156,9 @@ describe('EmailService', () => {
 
   it('falls back to recording delivery without userId if foreign key fails', async () => {
     mockPrisma.notificationDelivery.create
-      .mockRejectedValueOnce(new Error('Foreign key constraint failed on userId'))
+      .mockRejectedValueOnce(
+        new Error('Foreign key constraint failed on userId'),
+      )
       .mockResolvedValueOnce({ id: 'fallback_del_1', status: 'sent' });
 
     await emailService.sendTemplate(
@@ -161,7 +166,10 @@ describe('EmailService', () => {
       'user@example.ca',
       'Urgent Action Required',
       '<p>Ride Stalled</p>',
-      { eventId: 'ride_delayed_alert_email_ride1_passenger', userId: 'invalid_usr' },
+      {
+        eventId: 'ride_delayed_alert_email_ride1_passenger',
+        userId: 'invalid_usr',
+      },
     );
 
     expect(mockTransporter.sendMail).toHaveBeenCalledTimes(1);
@@ -221,8 +229,12 @@ describe('EmailService', () => {
         'https://www.can-rides.ca/brand',
       );
 
-      expect(subject).toContain('Action Required: Your CAN-RIDE Trip is Delayed (CMVSFT7S)');
-      expect(html).toContain('https://www.can-rides.ca/brand/can-ride-logo.png');
+      expect(subject).toContain(
+        'Action Required: Your CAN-RIDE Trip is Delayed (CMVSFT7S)',
+      );
+      expect(html).toContain(
+        'https://www.can-rides.ca/brand/can-ride-logo.png',
+      );
       expect(html).toContain('alt="CAN-RIDE"');
     });
   });

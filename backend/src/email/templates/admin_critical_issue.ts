@@ -19,7 +19,7 @@ export function renderAdminCriticalIssue(
   const code = escapeHtml(data.rideCode);
   const category = escapeHtml(data.category);
   const adminUrl = escapeHtml(`${data.adminWebBaseUrl}/rides/${data.rideId}`);
-  
+
   const subject = `CRITICAL ISSUE REPORTED: Ride ${code}`;
   const html = layout(
     `

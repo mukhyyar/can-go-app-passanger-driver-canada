@@ -60,7 +60,8 @@ export class TokensService {
       } satisfies AccessPayload,
       {
         secret: this.config.get<string>('jwt.accessSecret'),
-        expiresIn: accessTtl as `${number}m` | `${number}h` | `${number}d` | number,
+        expiresIn: accessTtl as
+          `${number}m` | `${number}h` | `${number}d` | number,
       },
     );
 
@@ -105,7 +106,10 @@ export class TokensService {
       },
     });
 
-    const remainingMs = Math.max(30_000, params.expiresAt.getTime() - Date.now());
+    const remainingMs = Math.max(
+      30_000,
+      params.expiresAt.getTime() - Date.now(),
+    );
     const expiresInSec = Math.ceil(remainingMs / 1000);
 
     const accessToken = await this.jwt.signAsync(
@@ -140,7 +144,10 @@ export class TokensService {
     };
   }
 
-  async rotateRefresh(rawRefresh: string, meta?: { userAgent?: string; ip?: string }) {
+  async rotateRefresh(
+    rawRefresh: string,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
     const tokenHash = this.hashToken(rawRefresh);
     const existing = await this.prisma.refreshToken.findFirst({
       where: { tokenHash },
@@ -161,7 +168,9 @@ export class TokensService {
         where: { userId: existing.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      throw new UnauthorizedException('Refresh token reuse detected; sessions revoked');
+      throw new UnauthorizedException(
+        'Refresh token reuse detected; sessions revoked',
+      );
     }
 
     if (existing.expiresAt.getTime() < Date.now()) {
@@ -205,7 +214,8 @@ export class TokensService {
       } satisfies AccessPayload,
       {
         secret: this.config.get<string>('jwt.accessSecret'),
-        expiresIn: accessTtl as `${number}m` | `${number}h` | `${number}d` | number,
+        expiresIn: accessTtl as
+          `${number}m` | `${number}h` | `${number}d` | number,
       },
     );
 

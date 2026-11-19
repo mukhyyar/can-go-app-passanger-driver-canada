@@ -37,7 +37,10 @@ import {
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
-import { CurrentUser, type AuthUser } from './decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type AuthUser,
+} from './decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -80,7 +83,10 @@ export class AuthController {
 
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  register(@Body() dto: RegisterDto, @Req() req: { ip?: string; headers: Record<string, string> }) {
+  register(
+    @Body() dto: RegisterDto,
+    @Req() req: { ip?: string; headers: Record<string, string> },
+  ) {
     return this.auth.register(dto, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
@@ -89,7 +95,10 @@ export class AuthController {
 
   @Post('login')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  login(@Body() dto: LoginDto, @Req() req: { ip?: string; headers: Record<string, string> }) {
+  login(
+    @Body() dto: LoginDto,
+    @Req() req: { ip?: string; headers: Record<string, string> },
+  ) {
     return this.auth.login(dto, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
@@ -147,9 +156,7 @@ export class AuthController {
   @Get('me/avatar')
   @UseGuards(JwtAuthGuard)
   @Header('Cache-Control', 'private, max-age=300')
-  async getAvatar(
-    @CurrentUser() user: AuthUser,
-  ): Promise<StreamableFile> {
+  async getAvatar(@CurrentUser() user: AuthUser): Promise<StreamableFile> {
     const file = await this.auth.getAvatarContent(user.id);
     return new StreamableFile(file.body, {
       type: file.contentType,
@@ -240,14 +247,20 @@ export class AuthController {
   @Post('admin/2fa/enable')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-  adminTotpEnable(@CurrentUser() user: AuthUser, @Body() dto: AdminTotpEnableDto) {
+  adminTotpEnable(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: AdminTotpEnableDto,
+  ) {
     return this.auth.adminTotpEnable(user.id, dto);
   }
 
   @Post('admin/2fa/disable')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-  adminTotpDisable(@CurrentUser() user: AuthUser, @Body() dto: AdminTotpDisableDto) {
+  adminTotpDisable(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: AdminTotpDisableDto,
+  ) {
     return this.auth.adminTotpDisable(user.id, dto);
   }
 }

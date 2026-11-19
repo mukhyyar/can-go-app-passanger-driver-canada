@@ -56,6 +56,16 @@ export type OfferPresentation = {
   };
   priceBreakdown?: {
     ridePrice?: number;
+    outboundPrice?: number;
+    returnPrice?: number | null;
+    discountedReturnPrice?: number | null;
+    returnDiscountPct?: number;
+    returnDiscountAmount?: number;
+    enquiryDiscountPct?: number;
+    enquiryDiscountAmount?: number;
+    originalTotal?: number;
+    discount?: number;
+    platformFee?: number;
     marketplaceFee?: number;
     taxes?: number;
     total?: number;
@@ -68,11 +78,24 @@ export type RideOffer = {
   id: string;
   status?: string;
   bidAmount?: number;
+  outboundPrice?: number;
+  returnPrice?: number | null;
   currency?: string;
   vehicleClass?: string;
   vehicleId?: string | null;
   driverId?: string;
-  priceSnapshot?: { passengerTotal?: number; bidAmount?: number };
+  priceSnapshot?: {
+    passengerTotal?: number;
+    originalPassengerTotal?: number;
+    bidAmount?: number;
+    outboundPrice?: number;
+    returnPrice?: number;
+    returnDiscountPct?: number;
+    returnDiscountAmount?: number;
+    enquiryDiscountPct?: number;
+    enquiryDiscountAmount?: number;
+    discountedReturnPrice?: number;
+  };
   driver?: { fullName?: string | null; id?: string };
   vehicle?: { name?: string; vehicleClass?: string } | null;
   presentation?: OfferPresentation;
@@ -101,6 +124,12 @@ export type Ride = {
   canCancel?: boolean;
   requestExpiresAt?: string;
   paymentExpiresAt?: string;
+  enquiryDiscount?: {
+    eligible?: boolean;
+    discountPct?: number;
+    availableAt?: string;
+    expiresAt?: string;
+  };
   viewCount?: number;
   offerCount?: number;
   shortId?: string;
@@ -128,7 +157,7 @@ export type PaymentQuote = {
 export function friendlyRideStatus(status?: string): string {
   switch ((status ?? '').toUpperCase()) {
     case 'WAITING_FOR_OFFERS':
-      return 'Please wait for offers';
+      return 'Waiting for Offers from Drivers';
     case 'OFFER_SELECTION':
       return 'Please choose offer and book';
     case 'PAYMENT_PENDING':

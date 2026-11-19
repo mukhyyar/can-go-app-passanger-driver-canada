@@ -12,7 +12,7 @@ export function renderSupportReceived(
 ) {
   const code = escapeHtml(data.ticketId);
   const name = escapeHtml(data.userName);
-  
+
   const subject = `Support Request Received - Ticket #${code}`;
   const html = layout(
     `

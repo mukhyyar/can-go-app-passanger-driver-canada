@@ -9,7 +9,9 @@ export function digitsOnly(raw: string): string {
 /**
  * Canonicalize to `****1234`, or return null if the value looks unsafe / invalid.
  */
-export function normalizeAccountMask(raw: string | undefined | null): string | null {
+export function normalizeAccountMask(
+  raw: string | undefined | null,
+): string | null {
   if (raw == null) return null;
   const trimmed = String(raw).trim();
   if (!trimmed || trimmed.length > MASK_MAX_LEN) return null;

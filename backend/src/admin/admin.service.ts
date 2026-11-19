@@ -28,6 +28,10 @@ import type { SmsProvider } from '../providers/sms/sms-provider.interface';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LaunchGateService } from '../providers/launch-gate.service';
 import { FirebaseService } from '../firebase/firebase.service';
+import {
+  DEFAULT_VEHICLE_CATEGORIES,
+  serializeVehicleCategoryRow,
+} from '../marketplace/pricing.service';
 import { DriverWalletService } from '../wallet/driver-wallet.service';
 import {
   asNum,
@@ -58,7 +62,11 @@ const UNFULFILLED: RideStatus[] = [RideStatus.EXPIRED, RideStatus.NO_SHOW];
 const CANCELLED_OR_UNFULFILLED: RideStatus[] = [...CANCELLED, ...UNFULFILLED];
 
 /** City-center fallback so pending-KYC / unregistered vehicles still plot. */
-function fallbackCoord(id: string, baseLat?: number | null, baseLng?: number | null) {
+function fallbackCoord(
+  id: string,
+  baseLat?: number | null,
+  baseLng?: number | null,
+) {
   if (typeof baseLat === 'number' && typeof baseLng === 'number') {
     return { lat: baseLat, lng: baseLng };
   }
@@ -198,7 +206,9 @@ export class AdminOpsService {
       }),
       this.prisma.ride.count({ where: { createdAt: { gte: today } } }),
       this.prisma.ride.count({ where: { status: { in: OPEN_REQ } } }),
-      this.prisma.offer.count({ where: { createdAt: { gte: start, lte: end } } }),
+      this.prisma.offer.count({
+        where: { createdAt: { gte: start, lte: end } },
+      }),
       this.prisma.ride.findMany({
         where: { createdAt: { gte: start, lte: end } },
         select: {
@@ -210,10 +220,16 @@ export class AdminOpsService {
         },
       }),
       this.prisma.ride.count({
-        where: { status: RideStatus.COMPLETED, updatedAt: { gte: start, lte: end } },
+        where: {
+          status: RideStatus.COMPLETED,
+          updatedAt: { gte: start, lte: end },
+        },
       }),
       this.prisma.ride.count({
-        where: { status: { in: CANCELLED }, updatedAt: { gte: start, lte: end } },
+        where: {
+          status: { in: CANCELLED },
+          updatedAt: { gte: start, lte: end },
+        },
       }),
       this.prisma.ride.count({
         where: { status: RideStatus.ADMIN_CANCELLED },
@@ -267,8 +283,15 @@ export class AdminOpsService {
         snapField(snap, 'marketplaceFee') || snapField(snap, 'platformFee');
       const drvComm =
         snapField(snap, 'driverCommission') || snapField(snap, 'platformFee');
+      const returnDisc =
+        snapField(snap, 'returnDiscountAmount') ||
+        (snapField(snap, 'returnPrice') > 0
+          ? Math.round(snapField(snap, 'returnPrice') * 0.15 * 100) / 100
+          : 0);
+      const enquiryDisc = snapField(snap, 'enquiryDiscountAmount');
       const grossRev =
-        snapField(snap, 'canRideGrossRevenue') || mktFee + drvComm;
+        snapField(snap, 'canRideGrossRevenue') ||
+        Math.max(0, mktFee + drvComm - returnDisc - enquiryDisc);
       commission += grossRev;
       tax += snapField(snap, 'taxAmount') || snapField(snap, 'tax');
       driverShare += snapField(snap, 'driverEarning');
@@ -347,7 +370,12 @@ export class AdminOpsService {
     };
   }
 
-  async dashboardSeries(metric: string, range = '30d', from?: string, to?: string) {
+  async dashboardSeries(
+    metric: string,
+    range = '30d',
+    from?: string,
+    to?: string,
+  ) {
     const { start, end } = rangeStart(range, from, to);
     const rides = await this.prisma.ride.findMany({
       where: { createdAt: { gte: start, lte: end } },
@@ -375,7 +403,17 @@ export class AdminOpsService {
     });
 
     const bucket = (d: Date) => d.toISOString().slice(0, 10);
-    const days: Record<string, { rides: number; gmv: number; pax: number; drv: number; paid: number; fail: number }> = {};
+    const days: Record<
+      string,
+      {
+        rides: number;
+        gmv: number;
+        pax: number;
+        drv: number;
+        paid: number;
+        fail: number;
+      }
+    > = {};
     const walk = new Date(start);
     while (walk <= end) {
       days[walk.toISOString().slice(0, 10)] = {
@@ -414,9 +452,10 @@ export class AdminOpsService {
         r.payments.some((p) => /succeed|captur/i.test(p.status)),
       ).length,
       started: rides.filter((r) =>
-        r.events.some((e) =>
-          e.toStatus === RideStatus.TRIP_STARTED ||
-          e.toStatus === RideStatus.IN_PROGRESS,
+        r.events.some(
+          (e) =>
+            e.toStatus === RideStatus.TRIP_STARTED ||
+            e.toStatus === RideStatus.IN_PROGRESS,
         ),
       ).length,
       completed: rides.filter((r) => r.status === RideStatus.COMPLETED).length,
@@ -437,8 +476,8 @@ export class AdminOpsService {
 
     let bidSum = 0;
     let bidN = 0;
-    let ttfb: number[] = [];
-    let ttab: number[] = [];
+    const ttfb: number[] = [];
+    const ttab: number[] = [];
     for (const r of rides) {
       if (!r.offers.length) continue;
       const first = r.offers.reduce((a, b) =>
@@ -461,7 +500,9 @@ export class AdminOpsService {
     }));
 
     const approved = docs.filter((d) => d.status === 'APPROVED').length;
-    const kycRate = docs.length ? Math.round((approved / docs.length) * 1000) / 10 : 0;
+    const kycRate = docs.length
+      ? Math.round((approved / docs.length) * 1000) / 10
+      : 0;
 
     const trend = Object.entries(days)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -489,7 +530,8 @@ export class AdminOpsService {
 
   async search(q: string) {
     const query = q.trim();
-    if (query.length < 2) return { users: [], rides: [], payments: [], vehicles: [], promos: [] };
+    if (query.length < 2)
+      return { users: [], rides: [], payments: [], vehicles: [], promos: [] };
     const contains = { contains: query, mode: 'insensitive' as const };
     const rideIdHint = query.replace(/^CG-RIDE-/i, '');
 
@@ -648,7 +690,11 @@ export class AdminOpsService {
 
     if (params.kyc) {
       const kyc = params.kyc.toUpperCase();
-      if (Object.values(DriverApprovalStatus).includes(kyc as DriverApprovalStatus)) {
+      if (
+        Object.values(DriverApprovalStatus).includes(
+          kyc as DriverApprovalStatus,
+        )
+      ) {
         and.push({
           driverProfile: { approvalStatus: kyc as DriverApprovalStatus },
         });
@@ -657,7 +703,12 @@ export class AdminOpsService {
           role: UserRole.DRIVER,
           OR: [
             { driverProfile: null },
-            { driverProfile: { approvalStatus: DriverApprovalStatus.PENDING_KYC, kycSubmittedAt: null } },
+            {
+              driverProfile: {
+                approvalStatus: DriverApprovalStatus.PENDING_KYC,
+                kycSubmittedAt: null,
+              },
+            },
           ],
         });
       }
@@ -684,16 +735,26 @@ export class AdminOpsService {
       ];
       and.push({
         OR: [
-          { passengerProfile: { supportCases: { some: { status: { in: openStatuses } } } } },
-          { driverProfile: { supportCases: { some: { status: { in: openStatuses } } } } },
+          {
+            passengerProfile: {
+              supportCases: { some: { status: { in: openStatuses } } },
+            },
+          },
+          {
+            driverProfile: {
+              supportCases: { some: { status: { in: openStatuses } } },
+            },
+          },
         ],
       });
     }
 
     if (params.registeredFrom || params.registeredTo) {
       where.createdAt = {};
-      if (params.registeredFrom) where.createdAt.gte = new Date(params.registeredFrom);
-      if (params.registeredTo) where.createdAt.lte = new Date(params.registeredTo);
+      if (params.registeredFrom)
+        where.createdAt.gte = new Date(params.registeredFrom);
+      if (params.registeredTo)
+        where.createdAt.lte = new Date(params.registeredTo);
     }
 
     if (params.lastActiveFrom || params.lastActiveTo) {
@@ -720,7 +781,9 @@ export class AdminOpsService {
           { driverProfile: { vehicles: { some: { plate: contains } } } },
           {
             passengerProfile: {
-              rides: { some: { OR: [{ id: { contains: q, mode: 'insensitive' } }] } },
+              rides: {
+                some: { OR: [{ id: { contains: q, mode: 'insensitive' } }] },
+              },
             },
           },
           {
@@ -765,7 +828,10 @@ export class AdminOpsService {
       this.prisma.user.count(),
       this.prisma.user.count({
         where: {
-          OR: [{ role: UserRole.PASSENGER }, { passengerProfile: { isNot: null } }],
+          OR: [
+            { role: UserRole.PASSENGER },
+            { passengerProfile: { isNot: null } },
+          ],
         },
       }),
       this.prisma.user.count({
@@ -857,7 +923,10 @@ export class AdminOpsService {
     const where = this.buildUserWhere(params);
     const paginated = params.page != null || params.pageSize != null;
     const page = Math.max(1, params.page ?? 1);
-    const pageSize = Math.min(Math.max(params.pageSize ?? params.take ?? 25, 1), 100);
+    const pageSize = Math.min(
+      Math.max(params.pageSize ?? params.take ?? 25, 1),
+      100,
+    );
     const skip = paginated ? (page - 1) * pageSize : 0;
     const take = paginated ? pageSize : Math.min(params.take ?? 80, 200);
 
@@ -911,7 +980,11 @@ export class AdminOpsService {
         select: { lastSeenAt: true, ip: true, userAgent: true, deviceId: true },
       },
       watchlistEntries: { select: { id: true, reason: true }, take: 1 },
-      riskFlags: { where: { open: true }, select: { id: true, severity: true }, take: 5 },
+      riskFlags: {
+        where: { open: true },
+        select: { id: true, severity: true },
+        take: 5,
+      },
       _count: {
         select: {
           sessions: true,
@@ -957,8 +1030,10 @@ export class AdminOpsService {
       if (u.role === UserRole.SUPER_ADMIN) roles.push('SUPER_ADMIN');
       else if (u.role === UserRole.ADMIN) roles.push('ADMIN');
       else {
-        if (hasDriverProfile || u.role === UserRole.DRIVER) roles.push('DRIVER');
-        if (hasPassengerProfile || u.role === UserRole.PASSENGER) roles.push('PASSENGER');
+        if (hasDriverProfile || u.role === UserRole.DRIVER)
+          roles.push('DRIVER');
+        if (hasPassengerProfile || u.role === UserRole.PASSENGER)
+          roles.push('PASSENGER');
       }
 
       return {
@@ -1130,7 +1205,10 @@ export class AdminOpsService {
       where: rideWhere,
       _count: { _all: true },
     });
-    const totalRidesCount = rideStatusGroups.reduce((s, g) => s + g._count._all, 0);
+    const totalRidesCount = rideStatusGroups.reduce(
+      (s, g) => s + g._count._all,
+      0,
+    );
     const completed = rideStatusGroups
       .filter((g) => g.status === RideStatus.COMPLETED)
       .reduce((s, g) => s + g._count._all, 0);
@@ -1171,10 +1249,15 @@ export class AdminOpsService {
     let earnings = 0;
     if (user.driverProfile) {
       const driverId = user.driverProfile.id;
-      const walletCurrency = (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase();
+      const walletCurrency = (
+        process.env.WALLET_CURRENCY ?? 'CAD'
+      ).toUpperCase();
       if (this.wallet) {
         await this.wallet.reconcileDriverCompletedRides(driverId);
-        const balances = await this.wallet.computeBalances(driverId, walletCurrency);
+        const balances = await this.wallet.computeBalances(
+          driverId,
+          walletCurrency,
+        );
         earnings = asNum(balances.lifetimeEarned.toFixed(2));
       } else {
         const driverCompletedRides = await this.prisma.ride.findMany({
@@ -1195,7 +1278,11 @@ export class AdminOpsService {
           ) / 10;
 
     const timeline: Array<{ at: string; kind: string; label: string }> = [
-      { at: user.createdAt.toISOString(), kind: 'registered', label: 'Registered' },
+      {
+        at: user.createdAt.toISOString(),
+        kind: 'registered',
+        label: 'Registered',
+      },
     ];
     if (user.phoneVerifiedAt) {
       timeline.push({
@@ -1248,8 +1335,10 @@ export class AdminOpsService {
     if (user.role === UserRole.SUPER_ADMIN) roles.push('SUPER_ADMIN');
     else if (user.role === UserRole.ADMIN) roles.push('ADMIN');
     else {
-      if (hasDriverProfile || user.role === UserRole.DRIVER) roles.push('DRIVER');
-      if (hasPassengerProfile || user.role === UserRole.PASSENGER) roles.push('PASSENGER');
+      if (hasDriverProfile || user.role === UserRole.DRIVER)
+        roles.push('DRIVER');
+      if (hasPassengerProfile || user.role === UserRole.PASSENGER)
+        roles.push('PASSENGER');
     }
 
     return {
@@ -1281,8 +1370,11 @@ export class AdminOpsService {
         pickupAt: r.pickupAt,
         assignedDriverId: r.assignedDriverId,
         offerCount: r.offers?.length ?? 0,
-        fare: snapField(r.priceSnapshot, 'total') || snapField(r.priceSnapshot, 'passengerTotal'),
-        currency: (r.priceSnapshot as { currency?: string } | null)?.currency ?? 'CAD',
+        fare:
+          snapField(r.priceSnapshot, 'total') ||
+          snapField(r.priceSnapshot, 'passengerTotal'),
+        currency:
+          (r.priceSnapshot as { currency?: string } | null)?.currency ?? 'CAD',
       })),
       payments: payments.slice(0, 30),
       refunds,
@@ -1307,12 +1399,19 @@ export class AdminOpsService {
     let pts = 0;
     if (s.suspended) pts += 40;
     if (s.cancelled > 3) pts += 15;
-    if (s.completed > 0 && s.cancelled / (s.completed + s.cancelled) > 0.4) pts += 20;
+    if (s.completed > 0 && s.cancelled / (s.completed + s.cancelled) > 0.4)
+      pts += 20;
     pts += Math.min(20, s.failedPay * 5);
     pts += Math.min(15, s.flagged * 5);
     pts += Math.min(20, s.refunds * 8);
     const band =
-      pts >= 70 ? 'CRITICAL' : pts >= 45 ? 'HIGH' : pts >= 20 ? 'MEDIUM' : 'LOW';
+      pts >= 70
+        ? 'CRITICAL'
+        : pts >= 45
+          ? 'HIGH'
+          : pts >= 20
+            ? 'MEDIUM'
+            : 'LOW';
     return { score: pts, band };
   }
 
@@ -1338,12 +1437,18 @@ export class AdminOpsService {
         data: { revokedAt: new Date() },
       });
     }
-    await this.audit(adminId, isSuspended ? 'USER_SUSPEND' : 'USER_UNSUSPEND', 'User', userId, {
-      ip,
-      reason,
-      before: { isSuspended: user.isSuspended },
-      after: { isSuspended },
-    });
+    await this.audit(
+      adminId,
+      isSuspended ? 'USER_SUSPEND' : 'USER_UNSUSPEND',
+      'User',
+      userId,
+      {
+        ip,
+        reason,
+        before: { isSuspended: user.isSuspended },
+        after: { isSuspended },
+      },
+    );
     return { id: updated.id, isSuspended: updated.isSuspended };
   }
 
@@ -1359,19 +1464,22 @@ export class AdminOpsService {
     ]);
     if (!user) throw new NotFoundException('User not found');
     if (user.anonymizedAt) {
-      throw new BadRequestException('Cannot reset password for an anonymized account');
+      throw new BadRequestException(
+        'Cannot reset password for an anonymized account',
+      );
     }
     if (user.role === UserRole.SUPER_ADMIN) {
       throw new ForbiddenException('Cannot reset Super Admin password');
     }
     if (user.role === UserRole.ADMIN && admin?.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only Super Admin can reset an admin password');
+      throw new ForbiddenException(
+        'Only Super Admin can reset an admin password',
+      );
     }
 
     const generated = !dto.newPassword?.trim();
     const plain =
-      dto.newPassword?.trim() ||
-      `Cg-${randomBytes(9).toString('base64url')}`;
+      dto.newPassword?.trim() || `Cg-${randomBytes(9).toString('base64url')}`;
     if (plain.length < 8) {
       throw new BadRequestException('Password must be at least 8 characters');
     }
@@ -1405,7 +1513,9 @@ export class AdminOpsService {
       where: { id: userId },
       include: {
         passengerProfile: { select: { id: true, fullName: true } },
-        driverProfile: { select: { id: true, fullName: true, isActivated: true } },
+        driverProfile: {
+          select: { id: true, fullName: true, isActivated: true },
+        },
       },
     });
     if (!user) throw new NotFoundException('User not found');
@@ -1417,49 +1527,64 @@ export class AdminOpsService {
     if (passengerId) paymentWhere.push({ ride: { passengerId } });
     if (driverId) paymentWhere.push({ ride: { assignedDriverId: driverId } });
 
-    const [passengerRides, activePassengerRides, driverAssigned, activeDriverRides, payments, refunds, openCases, walletEntries, walletPayouts] =
-      await Promise.all([
-        passengerId
-          ? this.prisma.ride.count({ where: { passengerId } })
-          : Promise.resolve(0),
-        passengerId
-          ? this.prisma.ride.count({
-              where: { passengerId, status: { in: ACTIVE_TRIP } },
-            })
-          : Promise.resolve(0),
-        driverId
-          ? this.prisma.ride.count({ where: { assignedDriverId: driverId } })
-          : Promise.resolve(0),
-        driverId
-          ? this.prisma.ride.count({
-              where: { assignedDriverId: driverId, status: { in: ACTIVE_TRIP } },
-            })
-          : Promise.resolve(0),
-        paymentWhere.length
-          ? this.prisma.payment.count({ where: { OR: paymentWhere } })
-          : Promise.resolve(0),
-        this.prisma.refund.count({
-          where: { requestedById: userId },
-        }),
-        this.prisma.supportCase.count({
-          where: {
-            OR: [
-              ...(passengerId ? [{ passengerProfileId: passengerId }] : []),
-              ...(driverId ? [{ driverProfileId: driverId }] : []),
-              { createdById: userId },
-            ],
-          },
-        }),
-        driverId
-          ? this.prisma.driverWalletEntry.count({ where: { driverId } })
-          : Promise.resolve(0),
-        driverId
-          ? this.prisma.driverPayout.count({ where: { driverId } })
-          : Promise.resolve(0),
-      ]);
+    const [
+      passengerRides,
+      activePassengerRides,
+      driverAssigned,
+      activeDriverRides,
+      payments,
+      refunds,
+      openCases,
+      walletEntries,
+      walletPayouts,
+    ] = await Promise.all([
+      passengerId
+        ? this.prisma.ride.count({ where: { passengerId } })
+        : Promise.resolve(0),
+      passengerId
+        ? this.prisma.ride.count({
+            where: { passengerId, status: { in: ACTIVE_TRIP } },
+          })
+        : Promise.resolve(0),
+      driverId
+        ? this.prisma.ride.count({ where: { assignedDriverId: driverId } })
+        : Promise.resolve(0),
+      driverId
+        ? this.prisma.ride.count({
+            where: { assignedDriverId: driverId, status: { in: ACTIVE_TRIP } },
+          })
+        : Promise.resolve(0),
+      paymentWhere.length
+        ? this.prisma.payment.count({ where: { OR: paymentWhere } })
+        : Promise.resolve(0),
+      this.prisma.refund.count({
+        where: { requestedById: userId },
+      }),
+      this.prisma.supportCase.count({
+        where: {
+          OR: [
+            ...(passengerId ? [{ passengerProfileId: passengerId }] : []),
+            ...(driverId ? [{ driverProfileId: driverId }] : []),
+            { createdById: userId },
+          ],
+        },
+      }),
+      driverId
+        ? this.prisma.driverWalletEntry.count({ where: { driverId } })
+        : Promise.resolve(0),
+      driverId
+        ? this.prisma.driverPayout.count({ where: { driverId } })
+        : Promise.resolve(0),
+    ]);
 
     const hasMarketplaceHistory =
-      passengerRides + driverAssigned + payments + refunds + walletEntries + walletPayouts > 0;
+      passengerRides +
+        driverAssigned +
+        payments +
+        refunds +
+        walletEntries +
+        walletPayouts >
+      0;
     const hasActiveTrip = activePassengerRides + activeDriverRides > 0;
     const canHardDelete =
       !hasMarketplaceHistory &&
@@ -1492,7 +1617,9 @@ export class AdminOpsService {
         walletPayouts,
       },
       warnings: [
-        hasActiveTrip ? 'User has an active trip — resolve or cancel it before destructive actions.' : null,
+        hasActiveTrip
+          ? 'User has an active trip — resolve or cancel it before destructive actions.'
+          : null,
         hasMarketplaceHistory
           ? 'Financial / ride history exists — permanent delete is blocked; use anonymize to remove PII.'
           : null,
@@ -1555,19 +1682,32 @@ export class AdminOpsService {
       });
     }
 
-    await this.audit(adminId, dto.unarchive ? 'USER_UNARCHIVED' : 'USER_ARCHIVED', 'User', userId, {
-      ip,
-      reason: dto.reason.trim(),
-      before: { archivedAt: user.archivedAt, isSuspended: user.isSuspended },
-      after: { archivedAt: updated.archivedAt, isSuspended: updated.isSuspended },
-      meta: { impact: impact.counts },
-    });
+    await this.audit(
+      adminId,
+      dto.unarchive ? 'USER_UNARCHIVED' : 'USER_ARCHIVED',
+      'User',
+      userId,
+      {
+        ip,
+        reason: dto.reason.trim(),
+        before: { archivedAt: user.archivedAt, isSuspended: user.isSuspended },
+        after: {
+          archivedAt: updated.archivedAt,
+          isSuspended: updated.isSuspended,
+        },
+        meta: { impact: impact.counts },
+      },
+    );
 
     return {
       id: updated.id,
       archivedAt: updated.archivedAt,
       isSuspended: updated.isSuspended,
-      status: updated.archivedAt ? 'ARCHIVED' : updated.isSuspended ? 'SUSPENDED' : 'ACTIVE',
+      status: updated.archivedAt
+        ? 'ARCHIVED'
+        : updated.isSuspended
+          ? 'SUSPENDED'
+          : 'ACTIVE',
     };
   }
 
@@ -1588,7 +1728,10 @@ export class AdminOpsService {
     if (adminId === userId) {
       throw new ForbiddenException('Cannot anonymize your own account');
     }
-    if (impact.user.role === UserRole.SUPER_ADMIN || impact.user.role === UserRole.ADMIN) {
+    if (
+      impact.user.role === UserRole.SUPER_ADMIN ||
+      impact.user.role === UserRole.ADMIN
+    ) {
       throw new ForbiddenException('Cannot anonymize admin accounts');
     }
     if (impact.hasActiveTrip) {
@@ -1676,7 +1819,10 @@ export class AdminOpsService {
         displayName: impact.user.displayName,
       },
       after: { anonymized: true },
-      meta: { impact: impact.counts, retained: 'rides/payments/audit preserved' },
+      meta: {
+        impact: impact.counts,
+        retained: 'rides/payments/audit preserved',
+      },
     });
 
     return {
@@ -1708,18 +1854,28 @@ export class AdminOpsService {
 
     if (impact.user.role === UserRole.SUPER_ADMIN) {
       const remaining = await this.prisma.user.count({
-        where: { role: UserRole.SUPER_ADMIN, id: { not: userId }, archivedAt: null },
+        where: {
+          role: UserRole.SUPER_ADMIN,
+          id: { not: userId },
+          archivedAt: null,
+        },
       });
       if (remaining < 1) {
         throw new ForbiddenException('Cannot delete the last Super Admin');
       }
-      throw new ForbiddenException('Super Admin accounts cannot be permanently deleted');
+      throw new ForbiddenException(
+        'Super Admin accounts cannot be permanently deleted',
+      );
     }
     if (impact.user.role === UserRole.ADMIN) {
-      throw new ForbiddenException('Admin accounts cannot be permanently deleted');
+      throw new ForbiddenException(
+        'Admin accounts cannot be permanently deleted',
+      );
     }
     if (impact.hasActiveTrip) {
-      throw new BadRequestException('Cannot delete while user has an active trip');
+      throw new BadRequestException(
+        'Cannot delete while user has an active trip',
+      );
     }
     if (!impact.canHardDelete) {
       throw new BadRequestException(
@@ -1733,7 +1889,9 @@ export class AdminOpsService {
       data: { actorId: null },
     });
 
-    const authoredNotes = await this.prisma.kycReviewNote.count({ where: { authorId: userId } });
+    const authoredNotes = await this.prisma.kycReviewNote.count({
+      where: { authorId: userId },
+    });
     const authoredUserNotes = await this.prisma.userInternalNote.count({
       where: { authorId: userId },
     });
@@ -1795,7 +1953,8 @@ export class AdminOpsService {
     return {
       id: userId,
       status: 'DELETED',
-      message: 'Account permanently deleted. No marketplace history was present.',
+      message:
+        'Account permanently deleted. No marketplace history was present.',
     };
   }
 
@@ -1813,7 +1972,10 @@ export class AdminOpsService {
       include: { passengerProfile: true, driverProfile: true },
     });
     if (!target) throw new NotFoundException('User not found');
-    if (target.role === UserRole.ADMIN || target.role === UserRole.SUPER_ADMIN) {
+    if (
+      target.role === UserRole.ADMIN ||
+      target.role === UserRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Cannot impersonate an admin');
     }
     if (target.isSuspended) {
@@ -1822,7 +1984,8 @@ export class AdminOpsService {
 
     const raw = randomBytes(32).toString('base64url');
     const tokenHash = createHash('sha256').update(raw).digest('hex');
-    const minutes = this.config.get<number>('admin.impersonationTtlMinutes') ?? 12;
+    const minutes =
+      this.config.get<number>('admin.impersonationTtlMinutes') ?? 12;
     const expiresAt = new Date(Date.now() + minutes * 60_000);
     const readOnly = dto.readOnly !== false;
 
@@ -1840,7 +2003,8 @@ export class AdminOpsService {
     });
 
     const passengerBase =
-      this.config.get<string>('admin.passengerWebBase') ?? 'http://127.0.0.1:3002';
+      this.config.get<string>('admin.passengerWebBase') ??
+      'http://127.0.0.1:3002';
     const adminBase =
       this.config.get<string>('admin.adminWebBase') ?? 'http://127.0.0.1:3001';
     const loginUrl =
@@ -1875,7 +2039,10 @@ export class AdminOpsService {
   }
 
   async listUserNotes(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
     if (!user) throw new NotFoundException('User not found');
     return this.prisma.userInternalNote.findMany({
       where: { userId },
@@ -1894,7 +2061,10 @@ export class AdminOpsService {
     ip?: string,
   ) {
     if (!dto.body?.trim()) throw new BadRequestException('Note body required');
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
     if (!user) throw new NotFoundException('User not found');
     const note = await this.prisma.userInternalNote.create({
       data: {
@@ -1930,7 +2100,10 @@ export class AdminOpsService {
   ) {
     const label = dto.label?.trim();
     if (!label) throw new BadRequestException('Tag label required');
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
     if (!user) throw new NotFoundException('User not found');
     const slug = label
       .toLowerCase()
@@ -1955,8 +2128,15 @@ export class AdminOpsService {
     return assignment;
   }
 
-  async removeUserTag(adminId: string, userId: string, tagId: string, ip?: string) {
-    await this.prisma.userTagAssignment.deleteMany({ where: { userId, tagId } });
+  async removeUserTag(
+    adminId: string,
+    userId: string,
+    tagId: string,
+    ip?: string,
+  ) {
+    await this.prisma.userTagAssignment.deleteMany({
+      where: { userId, tagId },
+    });
     await this.audit(adminId, 'USER_TAG_REMOVED', 'User', userId, {
       ip,
       meta: { tagId },
@@ -1975,7 +2155,10 @@ export class AdminOpsService {
       include: { passengerProfile: true, driverProfile: true },
     });
     if (!target) throw new NotFoundException('User not found');
-    if (target.role === UserRole.ADMIN || target.role === UserRole.SUPER_ADMIN) {
+    if (
+      target.role === UserRole.ADMIN ||
+      target.role === UserRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Cannot issue login link for an admin');
     }
     if (target.isSuspended) {
@@ -2017,7 +2200,8 @@ export class AdminOpsService {
     });
 
     const passengerBase =
-      this.config.get<string>('admin.passengerWebBase') ?? 'http://127.0.0.1:3002';
+      this.config.get<string>('admin.passengerWebBase') ??
+      'http://127.0.0.1:3002';
     const adminBase =
       this.config.get<string>('admin.adminWebBase') ?? 'http://127.0.0.1:3001';
     const loginUrl =
@@ -2048,7 +2232,9 @@ export class AdminOpsService {
   }
 
   async revokeLoginLink(adminId: string, linkId: string, ip?: string) {
-    const link = await this.prisma.userLoginLink.findUnique({ where: { id: linkId } });
+    const link = await this.prisma.userLoginLink.findUnique({
+      where: { id: linkId },
+    });
     if (!link) throw new NotFoundException('Login link not found');
     if (link.revokedAt) return { id: link.id, status: 'REVOKED' };
     const updated = await this.prisma.userLoginLink.update({
@@ -2119,7 +2305,10 @@ export class AdminOpsService {
       where: { assignedDriverId: { in: driverIds } },
       _count: true,
     });
-    const counts = new Map<string, { completed: number; cancelled: number; active: number }>();
+    const counts = new Map<
+      string,
+      { completed: number; cancelled: number; active: number }
+    >();
     for (const row of rides) {
       if (!row.assignedDriverId) continue;
       const cur = counts.get(row.assignedDriverId) ?? {
@@ -2136,7 +2325,11 @@ export class AdminOpsService {
     return drivers.map((d) => {
       const loc = d.locationCurrent;
       const online = !!loc && loc.recordedAt >= onlineSince;
-      const stats = counts.get(d.id) ?? { completed: 0, cancelled: 0, active: 0 };
+      const stats = counts.get(d.id) ?? {
+        completed: 0,
+        cancelled: 0,
+        active: 0,
+      };
       const presence = d.user.isSuspended
         ? 'SUSPENDED'
         : d.approvalStatus === DriverApprovalStatus.PENDING_KYC
@@ -2209,7 +2402,13 @@ export class AdminOpsService {
         },
         documents: {
           where: { lifecycleStatus: 'CURRENT' },
-          select: { id: true, docType: true, status: true, originalFilename: true, expiresAt: true },
+          select: {
+            id: true,
+            docType: true,
+            status: true,
+            originalFilename: true,
+            expiresAt: true,
+          },
         },
       },
       orderBy: { updatedAt: 'desc' },
@@ -2238,7 +2437,8 @@ export class AdminOpsService {
       );
       const shouldApprove =
         !hasPendingOrRejected &&
-        ((regApproved && photoApproved) || v.driver?.approvalStatus === 'APPROVED');
+        ((regApproved && photoApproved) ||
+          v.driver?.approvalStatus === 'APPROVED');
 
       if (
         shouldApprove &&
@@ -2306,7 +2506,9 @@ export class AdminOpsService {
               'vehicle_registration',
               'vehicle_photo',
               'insurance',
-              ...(nextInspection === 'APPROVED' ? ['inspection_certificate'] : []),
+              ...(nextInspection === 'APPROVED'
+                ? ['inspection_certificate']
+                : []),
             ],
           },
           status: { in: ['PENDING', 'NEEDS_RESUBMISSION'] },
@@ -2376,17 +2578,41 @@ export class AdminOpsService {
         { fromLabel: { contains: params.q, mode: 'insensitive' } },
         { toLabel: { contains: params.q, mode: 'insensitive' } },
         { passenger: { userId: params.q } },
-        { passenger: { fullName: { contains: params.q, mode: 'insensitive' } } },
-        { passenger: { user: { email: { contains: params.q, mode: 'insensitive' } } } },
+        {
+          passenger: { fullName: { contains: params.q, mode: 'insensitive' } },
+        },
+        {
+          passenger: {
+            user: { email: { contains: params.q, mode: 'insensitive' } },
+          },
+        },
         { passenger: { user: { phoneE164: { contains: params.q } } } },
         { assignedDriverId: params.q },
         { originalDriverId: params.q },
         { originalDriver: { userId: params.q } },
         { selectedOffer: { driver: { userId: params.q } } },
         { offers: { some: { driver: { userId: params.q } } } },
-        { offers: { some: { driver: { fullName: { contains: params.q, mode: 'insensitive' } } } } },
-        { offers: { some: { driver: { user: { email: { contains: params.q, mode: 'insensitive' } } } } } },
-        { offers: { some: { driver: { user: { phoneE164: { contains: params.q } } } } } },
+        {
+          offers: {
+            some: {
+              driver: { fullName: { contains: params.q, mode: 'insensitive' } },
+            },
+          },
+        },
+        {
+          offers: {
+            some: {
+              driver: {
+                user: { email: { contains: params.q, mode: 'insensitive' } },
+              },
+            },
+          },
+        },
+        {
+          offers: {
+            some: { driver: { user: { phoneE164: { contains: params.q } } } },
+          },
+        },
       ];
     }
     const rides = await this.prisma.ride.findMany({
@@ -2417,7 +2643,9 @@ export class AdminOpsService {
         events: { orderBy: { createdAt: 'asc' } },
         payments: { include: { refunds: true } },
         ratings: true,
-        chatThread: { include: { messages: { orderBy: { createdAt: 'asc' } } } },
+        chatThread: {
+          include: { messages: { orderBy: { createdAt: 'asc' } } },
+        },
       },
     });
     if (!ride) throw new NotFoundException('Ride not found');
@@ -2433,7 +2661,11 @@ export class AdminOpsService {
         },
       });
     }
-    return { ...ride, publicCode: ridePublicCode(ride.id), assignedDriver: driver };
+    return {
+      ...ride,
+      publicCode: ridePublicCode(ride.id),
+      assignedDriver: driver,
+    };
   }
 
   async listOffers() {
@@ -2503,7 +2735,10 @@ export class AdminOpsService {
       }),
       this.prisma.driverProfile.findMany({
         where: {
-          OR: [{ isActivated: false }, { approvalStatus: DriverApprovalStatus.PENDING_KYC }],
+          OR: [
+            { isActivated: false },
+            { approvalStatus: DriverApprovalStatus.PENDING_KYC },
+          ],
         },
         select: driverSelect,
         take: 200,
@@ -2515,7 +2750,9 @@ export class AdminOpsService {
       lng: d.lng,
       live: d.recordedAt >= onlineSince,
       hasGps: true,
-      unregistered: !d.driver.isActivated || d.driver.approvalStatus === DriverApprovalStatus.PENDING_KYC,
+      unregistered:
+        !d.driver.isActivated ||
+        d.driver.approvalStatus === DriverApprovalStatus.PENDING_KYC,
       driver: {
         id: d.driver.id,
         fullName: d.driver.fullName,
@@ -2526,7 +2763,11 @@ export class AdminOpsService {
     }));
     for (const drv of pendingDrivers) {
       if (pingIds.has(drv.id)) continue;
-      const { lat, lng } = fallbackCoord(drv.id, drv.baseLatitude, drv.baseLongitude);
+      const { lat, lng } = fallbackCoord(
+        drv.id,
+        drv.baseLatitude,
+        drv.baseLongitude,
+      );
       mapped.push({
         lat,
         lng,
@@ -2569,7 +2810,10 @@ export class AdminOpsService {
     const gmv = succeeded.reduce((s, p) => s + asNum(p.amount), 0);
     const refunds = payments.reduce(
       (s, p) =>
-        s + p.refunds.filter((r) => r.status === 'succeeded').reduce((a, r) => a + asNum(r.amount), 0),
+        s +
+        p.refunds
+          .filter((r) => r.status === 'succeeded')
+          .reduce((a, r) => a + asNum(r.amount), 0),
       0,
     );
     // Deduplicate rides and only sum snapshot fields once per COMPLETED ride
@@ -2594,8 +2838,15 @@ export class AdminOpsService {
         snapField(snap, 'marketplaceFee') || snapField(snap, 'platformFee');
       const drvComm =
         snapField(snap, 'driverCommission') || snapField(snap, 'platformFee');
+      const returnDisc =
+        snapField(snap, 'returnDiscountAmount') ||
+        (snapField(snap, 'returnPrice') > 0
+          ? Math.round(snapField(snap, 'returnPrice') * 0.15 * 100) / 100
+          : 0);
+      const enquiryDisc = snapField(snap, 'enquiryDiscountAmount');
       const grossRev =
-        snapField(snap, 'canRideGrossRevenue') || mktFee + drvComm;
+        snapField(snap, 'canRideGrossRevenue') ||
+        Math.max(0, mktFee + drvComm - returnDisc - enquiryDisc);
       passengerMarketplaceFee += mktFee;
       driverCommission += drvComm;
       canRideGrossRevenue += grossRev;
@@ -2628,7 +2879,9 @@ export class AdminOpsService {
       orderBy: { createdAt: 'desc' },
       take: 150,
       include: {
-        ride: { select: { id: true, status: true, fromLabel: true, toLabel: true } },
+        ride: {
+          select: { id: true, status: true, fromLabel: true, toLabel: true },
+        },
         refunds: true,
       },
     });
@@ -2685,7 +2938,11 @@ export class AdminOpsService {
       id: string;
       fullName: string;
       userId: string;
-      user: { id: string; email: string | null; phoneE164: string | null } | null;
+      user: {
+        id: string;
+        email: string | null;
+        phoneE164: string | null;
+      } | null;
     } | null = null;
     if (payment.ride?.assignedDriverId) {
       assignedDriver = await this.prisma.driverProfile.findUnique({
@@ -2700,7 +2957,9 @@ export class AdminOpsService {
     }
 
     const financial = payment.rideId
-      ? await this.prisma.rideFinancial.findUnique({ where: { rideId: payment.rideId } })
+      ? await this.prisma.rideFinancial.findUnique({
+          where: { rideId: payment.rideId },
+        })
       : null;
 
     const auditLogs = await this.prisma.auditLog.findMany({
@@ -2769,18 +3028,23 @@ export class AdminOpsService {
     const type = amount >= remaining - 0.001 ? 'FULL' : 'PARTIAL';
     let gateway: { refundId: string; status: string };
     try {
-      gateway = await this.payments.refund(payment.providerRef ?? payment.id, amount);
+      gateway = await this.payments.refund(
+        payment.providerRef ?? payment.id,
+        amount,
+      );
     } catch (e) {
       const failed = await this.prisma.refund.create({
         data: {
           paymentId,
           amount,
           currency: payment.currency,
-          type: type as 'FULL' | 'PARTIAL',
+          type: type,
           reason: dto.reason.trim(),
           internalNote: dto.internalNote,
           status: 'failed',
-          gatewayResponse: { error: e instanceof Error ? e.message : String(e) },
+          gatewayResponse: {
+            error: e instanceof Error ? e.message : String(e),
+          },
           requestedById: adminId,
         },
       });
@@ -2796,12 +3060,15 @@ export class AdminOpsService {
         paymentId,
         amount,
         currency: payment.currency,
-        type: type as 'FULL' | 'PARTIAL',
+        type: type,
         reason: dto.reason.trim(),
         internalNote: dto.internalNote,
-        status: gateway.status === 'succeeded' || gateway.status === 'pending' ? gateway.status : 'succeeded',
+        status:
+          gateway.status === 'succeeded' || gateway.status === 'pending'
+            ? gateway.status
+            : 'succeeded',
         gatewayRefundId: gateway.refundId,
-        gatewayResponse: gateway as unknown as Prisma.InputJsonValue,
+        gatewayResponse: gateway,
         requestedById: adminId,
         approvedById: adminId,
       },
@@ -2835,7 +3102,10 @@ export class AdminOpsService {
     const walletCurrency = (process.env.WALLET_CURRENCY ?? 'CAD').toUpperCase();
     const [rides, walletDrivers] = await Promise.all([
       this.prisma.ride.findMany({
-        where: { status: RideStatus.COMPLETED, assignedDriverId: { not: null } },
+        where: {
+          status: RideStatus.COMPLETED,
+          assignedDriverId: { not: null },
+        },
         select: {
           assignedDriverId: true,
           priceSnapshot: true,
@@ -2849,12 +3119,23 @@ export class AdminOpsService {
       }),
     ]);
 
-    const byDriver = new Map<string, { earning: number; commission: number; n: number }>();
+    const byDriver = new Map<
+      string,
+      { earning: number; commission: number; n: number }
+    >();
     for (const r of rides) {
       if (!r.assignedDriverId) continue;
-      const cur = byDriver.get(r.assignedDriverId) ?? { earning: 0, commission: 0, n: 0 };
-      cur.earning = round2(cur.earning + snapField(r.priceSnapshot, 'driverEarning'));
-      cur.commission = round2(cur.commission + snapField(r.priceSnapshot, 'platformFee'));
+      const cur = byDriver.get(r.assignedDriverId) ?? {
+        earning: 0,
+        commission: 0,
+        n: 0,
+      };
+      cur.earning = round2(
+        cur.earning + snapField(r.priceSnapshot, 'driverEarning'),
+      );
+      cur.commission = round2(
+        cur.commission + snapField(r.priceSnapshot, 'platformFee'),
+      );
       cur.n += 1;
       byDriver.set(r.assignedDriverId, cur);
     }
@@ -2872,11 +3153,20 @@ export class AdminOpsService {
 
     const results = await Promise.all(
       drivers.map(async (d) => {
-        const snapStats = byDriver.get(d.id) ?? { earning: 0, commission: 0, n: 0 };
+        const snapStats = byDriver.get(d.id) ?? {
+          earning: 0,
+          commission: 0,
+          n: 0,
+        };
         if (this.wallet) {
           await this.wallet.reconcileDriverCompletedRides(d.id);
-          const balances = await this.wallet.computeBalances(d.id, walletCurrency);
-          const lifetimeEarnedNum = round2(asNum(balances.lifetimeEarned.toFixed(2)));
+          const balances = await this.wallet.computeBalances(
+            d.id,
+            walletCurrency,
+          );
+          const lifetimeEarnedNum = round2(
+            asNum(balances.lifetimeEarned.toFixed(2)),
+          );
           return {
             ...d,
             n: snapStats.n,
@@ -2954,7 +3244,9 @@ export class AdminOpsService {
       billingPeriod: payout.billingPeriod ?? null,
       outpaymentCurrency: payout.outpaymentCurrency ?? 'CAD',
       bankCountry: payout.bankCountry ?? 'Canada',
-      payoutMethod: payout.payoutMethod ?? (driver.stripeAccountId ? 'stripe_express' : null),
+      payoutMethod:
+        payout.payoutMethod ??
+        (driver.stripeAccountId ? 'stripe_express' : null),
       accountHolderName: payout.accountHolderName ?? null,
       accountMask: payout.accountMask ?? null,
       reviewedAt: payout.reviewedAt ?? null,
@@ -2999,7 +3291,9 @@ export class AdminOpsService {
       .map((d) => this.serializePayoutReview(d))
       .filter((r) => {
         if (wanted === 'ALL') {
-          return r.payoutStatus !== 'NOT_CONFIGURED' || Boolean(r.stripeAccountId);
+          return (
+            r.payoutStatus !== 'NOT_CONFIGURED' || Boolean(r.stripeAccountId)
+          );
         }
         return r.payoutStatus === wanted;
       });
@@ -3101,7 +3395,7 @@ export class AdminOpsService {
 
     const updated = await this.prisma.driverProfile.update({
       where: { id: driver.id },
-      data: { payoutSettingsJson: next as Prisma.InputJsonValue },
+      data: { payoutSettingsJson: next },
       select: {
         id: true,
         userId: true,
@@ -3156,7 +3450,9 @@ export class AdminOpsService {
   // ---------- Pricing / promos / cms / catalog ----------
 
   listFareRules() {
-    return this.prisma.fareRule.findMany({ orderBy: [{ serviceType: 'asc' }, { vehicleClass: 'asc' }] });
+    return this.prisma.fareRule.findMany({
+      orderBy: [{ serviceType: 'asc' }, { vehicleClass: 'asc' }],
+    });
   }
 
   async upsertFareRule(
@@ -3192,10 +3488,19 @@ export class AdminOpsService {
       data: {
         active: data.active,
         maxUses: data.maxUses,
-        endsAt: data.endsAt === undefined ? undefined : data.endsAt ? new Date(data.endsAt) : null,
+        endsAt:
+          data.endsAt === undefined
+            ? undefined
+            : data.endsAt
+              ? new Date(data.endsAt)
+              : null,
       },
     });
-    await this.audit(adminId, 'PROMO_CHANGE', 'PromoCode', id, { ip, before, after: row });
+    await this.audit(adminId, 'PROMO_CHANGE', 'PromoCode', id, {
+      ip,
+      before,
+      after: row,
+    });
     return row;
   }
 
@@ -3207,7 +3512,9 @@ export class AdminOpsService {
   }
 
   listCatalog() {
-    return this.prisma.catalogItem.findMany({ orderBy: { serviceType: 'asc' } });
+    return this.prisma.catalogItem.findMany({
+      orderBy: { serviceType: 'asc' },
+    });
   }
 
   async upsertCatalog(
@@ -3219,8 +3526,185 @@ export class AdminOpsService {
     const row = id
       ? await this.prisma.catalogItem.update({ where: { id }, data })
       : await this.prisma.catalogItem.create({ data });
-    await this.audit(adminId, 'CATALOG_UPSERT', 'CatalogItem', row.id, { ip, after: row });
+    await this.audit(adminId, 'CATALOG_UPSERT', 'CatalogItem', row.id, {
+      ip,
+      after: row,
+    });
     return row;
+  }
+
+  async listVehicleCategories() {
+    const rows = await this.prisma.catalogItem.findMany({
+      where: { serviceType: 'VEHICLE_CATEGORY' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!rows.length) {
+      for (const vc of DEFAULT_VEHICLE_CATEGORIES) {
+        const catalogSlug = `vc-${vc.slug}`;
+        await this.prisma.catalogItem.upsert({
+          where: { slug: catalogSlug },
+          create: {
+            serviceType: 'VEHICLE_CATEGORY',
+            slug: catalogSlug,
+            title: vc.title,
+            description: vc.description,
+            city: '',
+            basePrice: vc.basePrice,
+            currency: 'CAD',
+            active: true,
+            meta: {
+              passengerSeats: vc.passengerSeats,
+              luggagePlaces: vc.luggagePlaces,
+              seatsRange: vc.seatsRange ?? null,
+              imageAsset: vc.imageAsset,
+              isLuxury: vc.isLuxury,
+              sortOrder: vc.sortOrder,
+            },
+          },
+          update: {},
+        });
+      }
+      const seeded = await this.prisma.catalogItem.findMany({
+        where: { serviceType: 'VEHICLE_CATEGORY' },
+        orderBy: { createdAt: 'asc' },
+      });
+      return seeded
+        .map((r) => serializeVehicleCategoryRow(r))
+        .sort(
+          (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+        );
+    }
+    return rows
+      .map((r) => serializeVehicleCategoryRow(r))
+      .sort(
+        (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+      );
+  }
+
+  async upsertVehicleCategory(
+    adminId: string,
+    idOrSlug: string | undefined,
+    data: {
+      slug?: string;
+      name: string;
+      description?: string;
+      basePrice?: number;
+      currency?: string;
+      passengerSeats?: number;
+      luggagePlaces?: number;
+      seatsRange?: string | null;
+      imageAsset?: string;
+      isLuxury?: boolean;
+      sortOrder?: number;
+      active?: boolean;
+    },
+    ip?: string,
+  ) {
+    const rawSlug = (data.slug || idOrSlug || data.name)
+      .toLowerCase()
+      .trim()
+      .replace(/^vc-/, '')
+      .replace(/[^a-z0-9_]+/g, '_');
+    const catalogSlug = `vc-${rawSlug}`;
+    const passengerSeats = Number(data.passengerSeats ?? 4);
+    const luggagePlaces = Number(data.luggagePlaces ?? 2);
+    const seatsRange =
+      data.seatsRange && data.seatsRange.trim() ? data.seatsRange.trim() : null;
+    const description =
+      data.description?.trim() ||
+      `Seating capacity: Up to ${seatsRange ?? passengerSeats} passengers\nLuggage capacity: Up to ${luggagePlaces} standard bags`;
+    const meta = {
+      passengerSeats,
+      luggagePlaces,
+      seatsRange,
+      imageAsset: data.imageAsset?.trim() || `assets/vehicles/${rawSlug}.png`,
+      isLuxury: Boolean(data.isLuxury),
+      sortOrder: Number(data.sortOrder ?? 10),
+    };
+
+    const existing = idOrSlug
+      ? await this.prisma.catalogItem.findFirst({
+          where: {
+            serviceType: 'VEHICLE_CATEGORY',
+            OR: [
+              { id: idOrSlug },
+              { slug: idOrSlug },
+              { slug: `vc-${idOrSlug.replace(/^vc-/, '')}` },
+            ],
+          },
+        })
+      : await this.prisma.catalogItem.findUnique({
+          where: { slug: catalogSlug },
+        });
+
+    const row = existing
+      ? await this.prisma.catalogItem.update({
+          where: { id: existing.id },
+          data: {
+            title: data.name.trim(),
+            description,
+            basePrice: Number(data.basePrice ?? existing.basePrice ?? 25),
+            currency: (
+              data.currency ??
+              existing.currency ??
+              'CAD'
+            ).toUpperCase(),
+            active:
+              data.active !== undefined
+                ? Boolean(data.active)
+                : existing.active,
+            meta,
+          },
+        })
+      : await this.prisma.catalogItem.create({
+          data: {
+            serviceType: 'VEHICLE_CATEGORY',
+            slug: catalogSlug,
+            title: data.name.trim(),
+            description,
+            city: '',
+            basePrice: Number(data.basePrice ?? 25),
+            currency: (data.currency ?? 'CAD').toUpperCase(),
+            active: data.active !== false,
+            meta,
+          },
+        });
+
+    await this.audit(
+      adminId,
+      'VEHICLE_CATEGORY_UPSERT',
+      'CatalogItem',
+      row.id,
+      {
+        ip,
+        before: existing,
+        after: row,
+      },
+    );
+    return serializeVehicleCategoryRow(row);
+  }
+
+  async deleteVehicleCategory(adminId: string, idOrSlug: string, ip?: string) {
+    const existing = await this.prisma.catalogItem.findFirst({
+      where: {
+        serviceType: 'VEHICLE_CATEGORY',
+        OR: [
+          { id: idOrSlug },
+          { slug: idOrSlug },
+          { slug: `vc-${idOrSlug.replace(/^vc-/, '')}` },
+        ],
+      },
+    });
+    if (!existing) throw new NotFoundException('Vehicle category not found');
+    await this.prisma.catalogItem.delete({ where: { id: existing.id } });
+    await this.audit(
+      adminId,
+      'VEHICLE_CATEGORY_DELETE',
+      'CatalogItem',
+      existing.id,
+      { ip, before: existing },
+    );
+    return { ok: true, id: existing.id, slug: existing.slug };
   }
 
   listReferrals() {
@@ -3234,7 +3718,12 @@ export class AdminOpsService {
     const promos = await this.prisma.promoCode.findMany();
     const rides = await this.prisma.ride.findMany({
       where: { promoCode: { not: null } },
-      select: { promoCode: true, createdAt: true, status: true, priceSnapshot: true },
+      select: {
+        promoCode: true,
+        createdAt: true,
+        status: true,
+        priceSnapshot: true,
+      },
     });
     const usage: Record<string, { rides: number; discount: number }> = {};
     for (const r of rides) {
@@ -3245,7 +3734,12 @@ export class AdminOpsService {
     }
     const referrals = await this.prisma.referralRedemption.findMany();
     const pax = await this.prisma.passengerProfile.findMany({
-      select: { id: true, isVip: true, createdAt: true, _count: { select: { rides: true } } },
+      select: {
+        id: true,
+        isVip: true,
+        createdAt: true,
+        _count: { select: { rides: true } },
+      },
     });
     const returning = pax.filter((p) => p._count.rides >= 2).length;
     return {
@@ -3259,9 +3753,15 @@ export class AdminOpsService {
       },
       vip: {
         active: pax.filter((p) => p.isVip).length,
-        conversion: pax.length ? Math.round((pax.filter((p) => p.isVip).length / pax.length) * 1000) / 10 : 0,
+        conversion: pax.length
+          ? Math.round(
+              (pax.filter((p) => p.isVip).length / pax.length) * 1000,
+            ) / 10
+          : 0,
       },
-      repeatRideRate: pax.length ? Math.round((returning / pax.length) * 1000) / 10 : 0,
+      repeatRideRate: pax.length
+        ? Math.round((returning / pax.length) * 1000) / 10
+        : 0,
     };
   }
 
@@ -3272,7 +3772,9 @@ export class AdminOpsService {
       where: { flagged: true },
       orderBy: { createdAt: 'desc' },
       take: 100,
-      include: { thread: { include: { ride: { select: { id: true, status: true } } } } },
+      include: {
+        thread: { include: { ride: { select: { id: true, status: true } } } },
+      },
     });
   }
 
@@ -3316,9 +3818,7 @@ export class AdminOpsService {
         fromLabel: t.ride.fromLabel,
         toLabel: t.ride.toLabel,
         passengerName: t.ride.passenger.fullName,
-        driverName:
-          t.ride.selectedOffer?.driver.fullName ??
-          null,
+        driverName: t.ride.selectedOffer?.driver.fullName ?? null,
         messageCount: t._count.messages,
         lastMessage: last?.body ?? null,
         lastMessageAt: last?.createdAt ?? t.createdAt,
@@ -3403,7 +3903,7 @@ export class AdminOpsService {
           action: 'chat.admin.view',
           resource: 'ChatThread',
           resourceId: thread?.id ?? rideId,
-          meta: { rideId } as Prisma.InputJsonValue,
+          meta: { rideId },
         },
       });
     }
@@ -3475,7 +3975,7 @@ export class AdminOpsService {
         action: 'chat.admin.send',
         resource: 'ChatMessage',
         resourceId: msg.id,
-        meta: { rideId } as Prisma.InputJsonValue,
+        meta: { rideId },
       },
     });
 
@@ -3537,8 +4037,12 @@ export class AdminOpsService {
         where: rideWhere,
         select: { status: true, payments: { select: { status: true } } },
       });
-      const cancelled = rides.filter((r) => CANCELLED.includes(r.status)).length;
-      const completed = rides.filter((r) => r.status === RideStatus.COMPLETED).length;
+      const cancelled = rides.filter((r) =>
+        CANCELLED.includes(r.status),
+      ).length;
+      const completed = rides.filter(
+        (r) => r.status === RideStatus.COMPLETED,
+      ).length;
       const failedPay = rides.reduce(
         (s, r) => s + r.payments.filter((p) => /fail/i.test(p.status)).length,
         0,
@@ -3607,22 +4111,33 @@ export class AdminOpsService {
     });
   }
 
-  async listCases(params: { queue?: string; adminId?: string; type?: SupportCaseType }) {
+  async listCases(params: {
+    queue?: string;
+    adminId?: string;
+    type?: SupportCaseType;
+  }) {
     const where: Prisma.SupportCaseWhereInput = {};
     if (params.type) {
       where.type = params.type;
     }
     const q = params.queue;
     if (q === 'unassigned') where.assigneeId = null;
-    else if (q === 'assigned' && params.adminId) where.assigneeId = params.adminId;
+    else if (q === 'assigned' && params.adminId)
+      where.assigneeId = params.adminId;
     else if (q === 'pending') where.status = SupportCaseStatus.PENDING;
-    else if (q === 'under_review') where.status = SupportCaseStatus.UNDER_REVIEW;
+    else if (q === 'under_review')
+      where.status = SupportCaseStatus.UNDER_REVIEW;
     else if (q === 'legal') where.status = SupportCaseStatus.LEGAL_ISSUE;
     else if (q === 'escalated') where.status = SupportCaseStatus.ESCALATED;
-    else if (q === 'resolved') where.status = { in: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED] };
+    else if (q === 'resolved')
+      where.status = {
+        in: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED],
+      };
     else if (q === 'dismissed') where.status = SupportCaseStatus.DISMISSED;
     else if (q === 'sla') {
-      where.status = { notIn: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED] };
+      where.status = {
+        notIn: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED],
+      };
       where.slaDueAt = { lt: new Date() };
     } else if (q === 'open') {
       where.status = {
@@ -3637,7 +4152,9 @@ export class AdminOpsService {
       };
     } else if (q && q !== 'all') {
       const upperQ = q.toUpperCase();
-      if (Object.values(SupportCaseStatus).includes(upperQ as SupportCaseStatus)) {
+      if (
+        Object.values(SupportCaseStatus).includes(upperQ as SupportCaseStatus)
+      ) {
         where.status = upperQ as SupportCaseStatus;
       }
     }
@@ -3670,7 +4187,9 @@ export class AdminOpsService {
           pickupAt: true,
         },
       },
-      payment: { select: { id: true, amount: true, currency: true, status: true } },
+      payment: {
+        select: { id: true, amount: true, currency: true, status: true },
+      },
       notes: { orderBy: { createdAt: 'asc' as const }, take: 20 },
     };
 
@@ -3684,7 +4203,10 @@ export class AdminOpsService {
 
   async listCaseAssignees() {
     return this.prisma.user.findMany({
-      where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] }, isSuspended: false },
+      where: {
+        role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] },
+        isSuspended: false,
+      },
       select: {
         id: true,
         email: true,
@@ -3716,8 +4238,19 @@ export class AdminOpsService {
             user: { select: { id: true, email: true, phoneE164: true } },
           },
         },
-        ride: { select: { id: true, fromLabel: true, toLabel: true, status: true, serviceType: true, pickupAt: true } },
-        payment: { select: { id: true, amount: true, currency: true, status: true } },
+        ride: {
+          select: {
+            id: true,
+            fromLabel: true,
+            toLabel: true,
+            status: true,
+            serviceType: true,
+            pickupAt: true,
+          },
+        },
+        payment: {
+          select: { id: true, amount: true, currency: true, status: true },
+        },
         notes: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -3759,7 +4292,11 @@ export class AdminOpsService {
   async updateCase(
     adminId: string,
     id: string,
-    dto: { status?: SupportCaseStatus; assigneeId?: string | null; note?: string },
+    dto: {
+      status?: SupportCaseStatus;
+      assigneeId?: string | null;
+      note?: string;
+    },
   ) {
     const before = await this.prisma.supportCase.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Case not found');
@@ -3769,7 +4306,10 @@ export class AdminOpsService {
       if (dto.assigneeId !== undefined) {
         if (dto.assigneeId && before.status === SupportCaseStatus.OPEN) {
           nextStatus = SupportCaseStatus.ASSIGNED;
-        } else if (dto.assigneeId === null && before.status === SupportCaseStatus.ASSIGNED) {
+        } else if (
+          dto.assigneeId === null &&
+          before.status === SupportCaseStatus.ASSIGNED
+        ) {
           nextStatus = SupportCaseStatus.OPEN;
         }
       }
@@ -3788,7 +4328,10 @@ export class AdminOpsService {
         data: { caseId: id, authorId: adminId, body: dto.note.trim() },
       });
     }
-    await this.audit(adminId, 'CASE_UPDATE', 'SupportCase', id, { before, after: row });
+    await this.audit(adminId, 'CASE_UPDATE', 'SupportCase', id, {
+      before,
+      after: row,
+    });
     return this.prisma.supportCase.findUnique({
       where: { id },
       include: {
@@ -3810,8 +4353,19 @@ export class AdminOpsService {
             user: { select: { id: true, email: true, phoneE164: true } },
           },
         },
-        ride: { select: { id: true, fromLabel: true, toLabel: true, status: true, serviceType: true, pickupAt: true } },
-        payment: { select: { id: true, amount: true, currency: true, status: true } },
+        ride: {
+          select: {
+            id: true,
+            fromLabel: true,
+            toLabel: true,
+            status: true,
+            serviceType: true,
+            pickupAt: true,
+          },
+        },
+        payment: {
+          select: { id: true, amount: true, currency: true, status: true },
+        },
         notes: { orderBy: { createdAt: 'asc' } },
       },
     });
@@ -3820,16 +4374,28 @@ export class AdminOpsService {
   // ---------- Comms / platform ----------
 
   listTemplates() {
-    return this.prisma.notificationTemplate.findMany({ orderBy: { key: 'asc' } });
+    return this.prisma.notificationTemplate.findMany({
+      orderBy: { key: 'asc' },
+    });
   }
 
-  async upsertTemplate(
-    data: { id?: string; key: string; channel: string; title: string; body: string; active?: boolean },
-  ) {
+  async upsertTemplate(data: {
+    id?: string;
+    key: string;
+    channel: string;
+    title: string;
+    body: string;
+    active?: boolean;
+  }) {
     if (data.id) {
       return this.prisma.notificationTemplate.update({
         where: { id: data.id },
-        data: { channel: data.channel, title: data.title, body: data.body, active: data.active },
+        data: {
+          channel: data.channel,
+          title: data.title,
+          body: data.body,
+          active: data.active,
+        },
       });
     }
     return this.prisma.notificationTemplate.upsert({
@@ -3850,11 +4416,20 @@ export class AdminOpsService {
     if (channel && channel !== 'all') {
       const ch = channel.toLowerCase();
       if (ch === 'push' || ch === 'fcm') {
-        where.OR = [{ channel: 'push' }, { channel: 'fcm' }, { provider: 'fcm' }];
+        where.OR = [
+          { channel: 'push' },
+          { channel: 'fcm' },
+          { provider: 'fcm' },
+        ];
       } else if (ch === 'sms') {
         where.OR = [{ channel: 'sms' }, { provider: 'twilio' }];
       } else if (ch === 'email') {
-        where.OR = [{ channel: 'email' }, { provider: 'smtp' }, { provider: 'relay' }, { provider: 'resend' }];
+        where.OR = [
+          { channel: 'email' },
+          { provider: 'smtp' },
+          { provider: 'relay' },
+          { provider: 'resend' },
+        ];
       } else {
         where.channel = ch;
       }
@@ -3879,7 +4454,10 @@ export class AdminOpsService {
   }
 
   listCampaigns() {
-    return this.prisma.notificationCampaign.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
+    return this.prisma.notificationCampaign.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
   }
 
   async sendBroadcast(
@@ -3977,7 +4555,10 @@ export class AdminOpsService {
             status: 'failed',
           });
         }
-      } else if (dto.channel === 'push' || (dto.channel !== 'sms' && dto.channel !== 'email')) {
+      } else if (
+        dto.channel === 'push' ||
+        (dto.channel !== 'sms' && dto.channel !== 'email')
+      ) {
         const result = await this.notifications.sendToUser({
           userId: u.id,
           title: dto.title,
@@ -3998,9 +4579,15 @@ export class AdminOpsService {
       where: { id: campaign.id },
       data: { status: 'SENT' },
     });
-    await this.audit(adminId, 'NOTIFICATION_SEND', 'NotificationCampaign', campaign.id, {
-      meta: { sent, segment: dto.segment },
-    });
+    await this.audit(
+      adminId,
+      'NOTIFICATION_SEND',
+      'NotificationCampaign',
+      campaign.id,
+      {
+        meta: { sent, segment: dto.segment },
+      },
+    );
     return { campaign, sent, recipients: users.length };
   }
 
@@ -4024,9 +4611,7 @@ export class AdminOpsService {
         active: true,
         startsAt: { lte: now },
         OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-        ...(audience
-          ? { audience: { in: [audience, 'ALL', 'GUESTS'] } }
-          : {}),
+        ...(audience ? { audience: { in: [audience, 'ALL', 'GUESTS'] } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: 10,
@@ -4078,7 +4663,8 @@ export class AdminOpsService {
 
   listAudit(params: { action?: string; resource?: string; q?: string }) {
     const where: Prisma.AuditLogWhereInput = {};
-    if (params.action) where.action = { contains: params.action, mode: 'insensitive' };
+    if (params.action)
+      where.action = { contains: params.action, mode: 'insensitive' };
     if (params.resource) where.resource = params.resource;
     if (params.q) {
       where.OR = [
@@ -4106,11 +4692,17 @@ export class AdminOpsService {
   }
 
   listWebhooks() {
-    return this.prisma.webhookEvent.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    return this.prisma.webhookEvent.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
   }
 
   listErrors() {
-    return this.prisma.apiErrorEvent.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    return this.prisma.apiErrorEvent.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
   }
 
   listFlags() {
@@ -4161,7 +4753,15 @@ export class AdminOpsService {
         },
       });
       return toCsv(
-        ['id', 'publicCode', 'status', 'serviceType', 'from', 'to', 'createdAt'],
+        [
+          'id',
+          'publicCode',
+          'status',
+          'serviceType',
+          'from',
+          'to',
+          'createdAt',
+        ],
         rows.map((r) => [
           r.id,
           ridePublicCode(r.id),
@@ -4176,7 +4776,14 @@ export class AdminOpsService {
     if (kind === 'users') {
       const rows = await this.prisma.user.findMany({
         take: 500,
-        select: { id: true, email: true, phoneE164: true, role: true, isSuspended: true, createdAt: true },
+        select: {
+          id: true,
+          email: true,
+          phoneE164: true,
+          role: true,
+          isSuspended: true,
+          createdAt: true,
+        },
       });
       return toCsv(
         ['id', 'email', 'phone', 'role', 'suspended', 'createdAt'],
@@ -4281,11 +4888,21 @@ export class AdminOpsService {
       },
     });
     await this.syncZoneGeom(zone.id, dto);
-    await this.audit(actorId, 'OPERATING_ZONE_CREATED', 'OperatingZone', zone.id, {
-      ip,
-      meta: { source: 'ADMIN', driverId: driver.id },
-      after: { name: zone.name, zoneType: zone.zoneType, radiusKm: zone.radiusKm },
-    });
+    await this.audit(
+      actorId,
+      'OPERATING_ZONE_CREATED',
+      'OperatingZone',
+      zone.id,
+      {
+        ip,
+        meta: { source: 'ADMIN', driverId: driver.id },
+        after: {
+          name: zone.name,
+          zoneType: zone.zoneType,
+          radiusKm: zone.radiusKm,
+        },
+      },
+    );
     return zone;
   }
 
@@ -4343,16 +4960,26 @@ export class AdminOpsService {
       },
     });
     await this.syncZoneGeom(zone.id, dto);
-    await this.audit(actorId, 'OPERATING_ZONE_UPDATED', 'OperatingZone', zone.id, {
-      ip,
-      meta: { source: 'ADMIN', driverId: existing.driverId },
-      before: {
-        name: existing.name,
-        zoneType: existing.zoneType,
-        radiusKm: existing.radiusKm,
+    await this.audit(
+      actorId,
+      'OPERATING_ZONE_UPDATED',
+      'OperatingZone',
+      zone.id,
+      {
+        ip,
+        meta: { source: 'ADMIN', driverId: existing.driverId },
+        before: {
+          name: existing.name,
+          zoneType: existing.zoneType,
+          radiusKm: existing.radiusKm,
+        },
+        after: {
+          name: zone.name,
+          zoneType: zone.zoneType,
+          radiusKm: zone.radiusKm,
+        },
       },
-      after: { name: zone.name, zoneType: zone.zoneType, radiusKm: zone.radiusKm },
-    });
+    );
     return zone;
   }
 
@@ -4363,11 +4990,17 @@ export class AdminOpsService {
     });
     if (!existing) throw new NotFoundException('Zone not found');
     await this.prisma.operatingZone.delete({ where: { id: zoneId } });
-    await this.audit(actorId, 'OPERATING_ZONE_DELETED', 'OperatingZone', zoneId, {
-      ip,
-      meta: { source: 'ADMIN', driverId: existing.driverId },
-      before: { name: existing.name },
-    });
+    await this.audit(
+      actorId,
+      'OPERATING_ZONE_DELETED',
+      'OperatingZone',
+      zoneId,
+      {
+        ip,
+        meta: { source: 'ADMIN', driverId: existing.driverId },
+        before: { name: existing.name },
+      },
+    );
     return { ok: true };
   }
 
@@ -4451,7 +5084,7 @@ export class AdminOpsService {
       }
     } catch (err) {
       // Column may not exist until SQL migration applied; non-fatal for JSON path.
-      // eslint-disable-next-line no-console
+
       console.warn(
         '[AdminOpsService] PostGIS geom sync skipped/failed:',
         err instanceof Error ? err.message : err,
@@ -4466,5 +5099,8 @@ function round2(n: number) {
 
 function toCsv(headers: string[], rows: string[][]) {
   const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
-  return [headers.map(esc).join(','), ...rows.map((r) => r.map(esc).join(','))].join('\n');
+  return [
+    headers.map(esc).join(','),
+    ...rows.map((r) => r.map(esc).join(',')),
+  ].join('\n');
 }

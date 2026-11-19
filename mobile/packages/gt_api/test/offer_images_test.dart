@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gt_api/gt_api.dart';
-import 'package:gt_mock/gt_mock.dart';
 
 void main() {
   group('Offer vehicle images parsing', () {

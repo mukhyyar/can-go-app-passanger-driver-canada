@@ -78,11 +78,7 @@ export class StorageService implements OnModuleInit {
     }
   }
 
-  async putObject(params: {
-    key: string;
-    body: Buffer;
-    contentType: string;
-  }) {
+  async putObject(params: { key: string; body: Buffer; contentType: string }) {
     const client = this.assertClient();
     await client.send(
       new PutObjectCommand({

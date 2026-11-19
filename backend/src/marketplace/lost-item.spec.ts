@@ -102,9 +102,13 @@ describe('Lost & Found Change Request', () => {
     };
 
     expect(allowedByType['LOST_ITEM']).toEqual([RideStatus.COMPLETED]);
-    expect(allowedByType['LOST_ITEM'].includes(RideStatus.COMPLETED)).toBe(true);
+    expect(allowedByType['LOST_ITEM'].includes(RideStatus.COMPLETED)).toBe(
+      true,
+    );
     expect(allowedByType['LOST_ITEM'].includes(RideStatus.BOOKED)).toBe(false);
-    expect(allowedByType['LOST_ITEM'].includes(RideStatus.IN_PROGRESS)).toBe(false);
+    expect(allowedByType['LOST_ITEM'].includes(RideStatus.IN_PROGRESS)).toBe(
+      false,
+    );
   });
 
   it('correctly detects hasLostItemRequest from supportCases list', () => {
@@ -149,11 +153,21 @@ describe('Lost & Found Change Request', () => {
         status: SupportCaseStatus.RESOLVED,
         createdAt: new Date('2026-09-30T10:00:00Z'),
         notes: [
-          { body: 'Passenger contact phone: +14035551234\nNote: Black leather wallet' },
-          { body: '[LOST_ITEM_FOUND]\n[LOST_ITEM_PHOTO] https://storage.cango.ca/lost/wallet.jpg\nNote: Found in back pocket' },
-          { body: '[LOST_ITEM_PICKUP_LOCATION] Location: Calgary Downtown Westin Hotel Lobby' },
-          { body: '[LOST_ITEM_FEE_PAID] Amount: CAD 20.00\nPaymentId: pay-999' },
-          { body: '[LOST_ITEM_RETURNED]\n[HANDOVER_PHOTO] https://storage.cango.ca/lost/handover_proof.jpg\nNote: Returned to passenger' },
+          {
+            body: 'Passenger contact phone: +14035551234\nNote: Black leather wallet',
+          },
+          {
+            body: '[LOST_ITEM_FOUND]\n[LOST_ITEM_PHOTO] https://storage.cango.ca/lost/wallet.jpg\nNote: Found in back pocket',
+          },
+          {
+            body: '[LOST_ITEM_PICKUP_LOCATION] Location: Calgary Downtown Westin Hotel Lobby',
+          },
+          {
+            body: '[LOST_ITEM_FEE_PAID] Amount: CAD 20.00\nPaymentId: pay-999',
+          },
+          {
+            body: '[LOST_ITEM_RETURNED]\n[HANDOVER_PHOTO] https://storage.cango.ca/lost/handover_proof.jpg\nNote: Returned to passenger',
+          },
         ],
       },
     ];
@@ -166,7 +180,9 @@ describe('Lost & Found Change Request', () => {
     expect(details?.itemDescription).toBe('Black leather wallet');
     expect(details?.photoUrl).toBe('https://storage.cango.ca/lost/wallet.jpg');
     expect(details?.pickupLocation).toBe('Calgary Downtown Westin Hotel Lobby');
-    expect(details?.handoverPhotoUrl).toBe('https://storage.cango.ca/lost/handover_proof.jpg');
+    expect(details?.handoverPhotoUrl).toBe(
+      'https://storage.cango.ca/lost/handover_proof.jpg',
+    );
     expect(details?.returnFeeAmount).toBe(20.0);
     expect(details?.returnFeePaid).toBe(true);
     expect(details?.returnFeePaymentId).toBe('pay-999');
@@ -301,7 +317,9 @@ describe('Lost & Found Change Request', () => {
           passengerId: 'pass-profile-1',
           assignedDriverId: 'driver-profile-1',
           passenger: { userId: 'passenger-user-1' },
-          selectedOffer: { driver: { id: 'driver-profile-1', userId: 'driver-user-1' } },
+          selectedOffer: {
+            driver: { id: 'driver-profile-1', userId: 'driver-user-1' },
+          },
           supportCases: [
             {
               id: 'case-1',
@@ -392,7 +410,9 @@ describe('Lost & Found Change Request', () => {
           assignedDriverId: 'driver-profile-1',
           currency: 'CAD',
           passenger: { id: 'pass-profile-1', userId: 'passenger-user-1' },
-          selectedOffer: { driver: { id: 'driver-profile-1', userId: 'driver-user-1' } },
+          selectedOffer: {
+            driver: { id: 'driver-profile-1', userId: 'driver-user-1' },
+          },
           supportCases: [
             {
               id: 'case-1',
@@ -403,7 +423,10 @@ describe('Lost & Found Change Request', () => {
         }),
       },
       payment: {
-        upsert: jest.fn().mockResolvedValue({ id: 'payment-1', status: 'requires_payment_method' }),
+        upsert: jest.fn().mockResolvedValue({
+          id: 'payment-1',
+          status: 'requires_payment_method',
+        }),
       },
       driverWalletEntry: {
         findFirst: jest

@@ -2661,9 +2661,6 @@ class AppState extends ChangeNotifier {
             idempotencyKey: idem,
           );
         } else {
-          if (resolvedVehicleId == null) {
-            await ensureVehicle();
-          }
           await api.driver.createOffer(
             requestId,
             outboundPrice: outbound,

@@ -31,80 +31,89 @@ export interface ProviderReasonDefinition {
   sortOrder: number;
 }
 
-export const DEFAULT_PROVIDER_CANCELLATION_REASONS: ProviderReasonDefinition[] = [
-  {
-    code: 'UNSAFE_CONDITIONS',
-    label: 'Immediate Safety Threat',
-    description: 'Physical danger, threats, weapons, hostility, or hazardous environment',
-    isJustified: true,
-    requiresDetails: true,
-    sortOrder: 1,
-  },
-  {
-    code: 'UNLAWFUL_ACTIVITY',
-    label: 'Unlawful Activity',
-    description: 'Solicitation of illegal acts, illicit substances, or contraband',
-    isJustified: true,
-    requiresDetails: true,
-    sortOrder: 2,
-  },
-  {
-    code: 'PASSENGER_ISSUE',
-    label: 'Dangerous Passenger Conduct',
-    description: 'Passenger aggression, violence, intoxication, or safety violations',
-    isJustified: true,
-    requiresDetails: true,
-    sortOrder: 3,
-  },
-  {
-    code: 'VEHICLE_BREAKDOWN',
-    label: 'Unsafe Vehicle Condition',
-    description: 'Mechanical failure, flat tire, brake trouble, or compromised vehicle safety',
-    isJustified: true,
-    requiresDetails: false,
-    sortOrder: 4,
-  },
-  {
-    code: 'DRIVER_EMERGENCY',
-    label: 'Emergency',
-    description: 'Personal or passenger medical crisis, acute emergency, or collision',
-    isJustified: true,
-    requiresDetails: false,
-    sortOrder: 5,
-  },
-  {
-    code: 'LEGAL_RESTRICTION',
-    label: 'Legal Restriction',
-    description: 'Missing required child safety seat, excess passengers beyond seatbelts, or regulatory restriction',
-    isJustified: true,
-    requiresDetails: true,
-    sortOrder: 6,
-  },
-  {
-    code: 'WEATHER_ROAD_CONDITIONS',
-    label: 'Weather or Road Conditions',
-    description: 'Severe weather, impassable roads, flooding, or highway closures',
-    isJustified: true,
-    requiresDetails: false,
-    sortOrder: 7,
-  },
-  {
-    code: 'OTHER',
-    label: 'Other',
-    description: 'Any unlisted reason (requires explanation note)',
-    isJustified: false,
-    requiresDetails: true,
-    sortOrder: 8,
-  },
-  {
-    code: 'PROVIDER_NO_SHOW',
-    label: 'Provider Failed to Arrive (No-Show)',
-    description: 'Driver failed to reach pickup location within the required schedule and waiting window',
-    isJustified: false,
-    requiresDetails: false,
-    sortOrder: 9,
-  },
-];
+export const DEFAULT_PROVIDER_CANCELLATION_REASONS: ProviderReasonDefinition[] =
+  [
+    {
+      code: 'UNSAFE_CONDITIONS',
+      label: 'Immediate Safety Threat',
+      description:
+        'Physical danger, threats, weapons, hostility, or hazardous environment',
+      isJustified: true,
+      requiresDetails: true,
+      sortOrder: 1,
+    },
+    {
+      code: 'UNLAWFUL_ACTIVITY',
+      label: 'Unlawful Activity',
+      description:
+        'Solicitation of illegal acts, illicit substances, or contraband',
+      isJustified: true,
+      requiresDetails: true,
+      sortOrder: 2,
+    },
+    {
+      code: 'PASSENGER_ISSUE',
+      label: 'Dangerous Passenger Conduct',
+      description:
+        'Passenger aggression, violence, intoxication, or safety violations',
+      isJustified: true,
+      requiresDetails: true,
+      sortOrder: 3,
+    },
+    {
+      code: 'VEHICLE_BREAKDOWN',
+      label: 'Unsafe Vehicle Condition',
+      description:
+        'Mechanical failure, flat tire, brake trouble, or compromised vehicle safety',
+      isJustified: true,
+      requiresDetails: false,
+      sortOrder: 4,
+    },
+    {
+      code: 'DRIVER_EMERGENCY',
+      label: 'Emergency',
+      description:
+        'Personal or passenger medical crisis, acute emergency, or collision',
+      isJustified: true,
+      requiresDetails: false,
+      sortOrder: 5,
+    },
+    {
+      code: 'LEGAL_RESTRICTION',
+      label: 'Legal Restriction',
+      description:
+        'Missing required child safety seat, excess passengers beyond seatbelts, or regulatory restriction',
+      isJustified: true,
+      requiresDetails: true,
+      sortOrder: 6,
+    },
+    {
+      code: 'WEATHER_ROAD_CONDITIONS',
+      label: 'Weather or Road Conditions',
+      description:
+        'Severe weather, impassable roads, flooding, or highway closures',
+      isJustified: true,
+      requiresDetails: false,
+      sortOrder: 7,
+    },
+    {
+      code: 'OTHER',
+      label: 'Other',
+      description: 'Any unlisted reason (requires explanation note)',
+      isJustified: false,
+      requiresDetails: true,
+      sortOrder: 8,
+    },
+    {
+      code: 'PROVIDER_NO_SHOW',
+      label: 'Provider Failed to Arrive (No-Show)',
+      description:
+        'Driver failed to reach pickup location within the required schedule and waiting window',
+      isJustified: false,
+      requiresDetails: false,
+      sortOrder: 9,
+    },
+  ];
 
 @Injectable()
 export class DriverCancellationService implements OnModuleInit {
@@ -183,7 +192,9 @@ export class DriverCancellationService implements OnModuleInit {
       include: { driverProfile: true },
     });
     if (!user || !user.driverProfile) {
-      throw new ForbiddenException('Only approved drivers can cancel via this method');
+      throw new ForbiddenException(
+        'Only approved drivers can cancel via this method',
+      );
     }
 
     const ride = await this.prisma.ride.findUnique({
@@ -198,7 +209,9 @@ export class DriverCancellationService implements OnModuleInit {
     }
 
     if (ride.assignedDriverId !== user.driverProfile.id) {
-      throw new ForbiddenException('You are not the assigned driver for this ride');
+      throw new ForbiddenException(
+        'You are not the assigned driver for this ride',
+      );
     }
 
     const cancellableStatuses: RideStatus[] = [
@@ -355,7 +368,9 @@ export class DriverCancellationService implements OnModuleInit {
       const payment = await this.prisma.payment.findFirst({
         where: {
           rideId,
-          status: { in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'] },
+          status: {
+            in: ['succeeded', 'captured', 'paid', 'SUCCEEDED', 'CAPTURED'],
+          },
         },
         include: { refunds: true },
       });
@@ -387,14 +402,17 @@ export class DriverCancellationService implements OnModuleInit {
             res.status === 'succeeded' || res.status === 'pending'
               ? res.status
               : 'succeeded';
-          gatewayResponse = res as unknown as Record<string, unknown>;
+          gatewayResponse = res;
         } catch (gatewayErr) {
           this.logger.error(
             `Gateway refund error on driver cancel for ride ${rideId}: ${gatewayErr}`,
           );
           gatewayStatus = 'failed';
           gatewayResponse = {
-            error: gatewayErr instanceof Error ? gatewayErr.message : String(gatewayErr),
+            error:
+              gatewayErr instanceof Error
+                ? gatewayErr.message
+                : String(gatewayErr),
           };
         }
       }
@@ -421,7 +439,9 @@ export class DriverCancellationService implements OnModuleInit {
 
       return { refunded: true, amount: remaining };
     } catch (e) {
-      this.logger.error(`Failed to process full passenger refund for ride ${rideId}: ${e}`);
+      this.logger.error(
+        `Failed to process full passenger refund for ride ${rideId}: ${e}`,
+      );
       return { refunded: false };
     }
   }
@@ -551,9 +571,15 @@ export class DriverCancellationService implements OnModuleInit {
       isFlagged: d.unjustifiedCount >= threshold,
     }));
 
-    allDrivers.sort((a, b) => b.unjustifiedCount - a.unjustifiedCount || b.totalCancellations - a.totalCancellations);
+    allDrivers.sort(
+      (a, b) =>
+        b.unjustifiedCount - a.unjustifiedCount ||
+        b.totalCancellations - a.totalCancellations,
+    );
 
-    const flaggedOffenders = allDrivers.filter((d) => d.unjustifiedCount >= threshold);
+    const flaggedOffenders = allDrivers.filter(
+      (d) => d.unjustifiedCount >= threshold,
+    );
 
     return {
       windowDays: days,
@@ -588,7 +614,8 @@ export class DriverCancellationService implements OnModuleInit {
     const where: Prisma.DriverCancellationRecordWhereInput = {};
     if (params?.driverId) where.driverId = params.driverId;
     if (params?.reasonCode) where.reasonCode = params.reasonCode;
-    if (params?.isJustified !== undefined) where.isJustified = params.isJustified;
+    if (params?.isJustified !== undefined)
+      where.isJustified = params.isJustified;
 
     const [items, total] = await Promise.all([
       this.prisma.driverCancellationRecord.findMany({
@@ -758,9 +785,15 @@ export class DriverCancellationService implements OnModuleInit {
       where: { code },
       data: {
         ...(dto.label !== undefined ? { label: dto.label.trim() } : {}),
-        ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
-        ...(dto.isJustified !== undefined ? { isJustified: dto.isJustified } : {}),
-        ...(dto.requiresDetails !== undefined ? { requiresDetails: dto.requiresDetails } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description.trim() }
+          : {}),
+        ...(dto.isJustified !== undefined
+          ? { isJustified: dto.isJustified }
+          : {}),
+        ...(dto.requiresDetails !== undefined
+          ? { requiresDetails: dto.requiresDetails }
+          : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
       },
@@ -935,4 +968,3 @@ export class DriverCancellationService implements OnModuleInit {
     return record;
   }
 }
-

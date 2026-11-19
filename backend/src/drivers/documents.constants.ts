@@ -100,7 +100,10 @@ export const ADMIN_RECEIPT_SOURCES = [
   { id: 'EMAIL', label: 'Customer email' },
   { id: 'SUPPORT', label: 'Support ticket' },
   { id: 'IN_PERSON', label: 'In person' },
-  { id: 'MANUAL_VERIFICATION', label: 'Manual verification / admin correction' },
+  {
+    id: 'MANUAL_VERIFICATION',
+    label: 'Manual verification / admin correction',
+  },
   { id: 'MIGRATION', label: 'Migration' },
   { id: 'OTHER', label: 'Other' },
 ] as const;

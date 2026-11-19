@@ -47,7 +47,7 @@ export class RatingsService {
     const isPassenger = ride.passenger?.userId === userId;
     const isDriver =
       (driverUserId != null && driverUserId === userId) ||
-      (ride.selectedOffer?.driver?.userId === userId) ||
+      ride.selectedOffer?.driver?.userId === userId ||
       (!!userDriverProfile && ride.assignedDriverId === userDriverProfile.id);
 
     if (!isPassenger && !isDriver) {
@@ -127,9 +127,7 @@ export class RatingsService {
             Math.max(
               1,
               Math.round(
-                (dto.communicationStars +
-                  dto.driverStars +
-                  dto.vehicleStars) /
+                (dto.communicationStars + dto.driverStars + dto.vehicleStars) /
                   3,
               ),
             ),
@@ -145,10 +143,8 @@ export class RatingsService {
           stars: starsToSave,
           communicationStars:
             ratingRole === 'PASSENGER' ? dto.communicationStars! : null,
-          driverStars:
-            ratingRole === 'PASSENGER' ? dto.driverStars! : null,
-          vehicleStars:
-            ratingRole === 'PASSENGER' ? dto.vehicleStars! : null,
+          driverStars: ratingRole === 'PASSENGER' ? dto.driverStars! : null,
+          vehicleStars: ratingRole === 'PASSENGER' ? dto.vehicleStars! : null,
           comment: trimmedComment,
           moderationStatus,
         },
@@ -166,7 +162,7 @@ export class RatingsService {
             driverStars: rating.driverStars,
             vehicleStars: rating.vehicleStars,
             moderationStatus,
-          } as Prisma.InputJsonValue,
+          },
         },
       });
       return rating;
@@ -225,7 +221,8 @@ export class RatingsService {
     const isPassenger = ride.passenger?.userId === userId;
     const isDriver =
       ride.selectedOffer?.driver?.userId === userId ||
-      (!!user?.driverProfile && ride.assignedDriverId === user.driverProfile.id);
+      (!!user?.driverProfile &&
+        ride.assignedDriverId === user.driverProfile.id);
     const allowed = isPassenger || isDriver || isAdmin;
     if (!allowed) throw new ForbiddenException();
 
@@ -309,8 +306,14 @@ export class RatingsService {
     });
   }
 
-  async moderate(adminUserId: string, ratingId: string, dto: ModerateRatingDto) {
-    const rating = await this.prisma.rating.findUnique({ where: { id: ratingId } });
+  async moderate(
+    adminUserId: string,
+    ratingId: string,
+    dto: ModerateRatingDto,
+  ) {
+    const rating = await this.prisma.rating.findUnique({
+      where: { id: ratingId },
+    });
     if (!rating) throw new NotFoundException('Rating not found');
     await this.prisma.rating.update({
       where: { id: ratingId },
@@ -327,7 +330,7 @@ export class RatingsService {
         action: 'rating.moderate',
         resource: 'Rating',
         resourceId: ratingId,
-        meta: { status: dto.status, note: dto.note } as Prisma.InputJsonValue,
+        meta: { status: dto.status, note: dto.note },
       },
     });
     return this.prisma.rating.findUnique({

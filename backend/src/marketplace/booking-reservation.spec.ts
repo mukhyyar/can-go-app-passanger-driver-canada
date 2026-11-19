@@ -22,9 +22,9 @@ describe('booking reservation policy', () => {
   });
 
   it('does not allow BOOKED → OFFER_SELECTION (no unbooking via reopen)', () => {
-    expect(
-      canTransition(RideStatus.BOOKED, RideStatus.OFFER_SELECTION),
-    ).toBe(false);
+    expect(canTransition(RideStatus.BOOKED, RideStatus.OFFER_SELECTION)).toBe(
+      false,
+    );
   });
 
   it('payment TTL before pickup reopens offers instead of expiring ride', () => {
@@ -43,9 +43,9 @@ describe('booking reservation policy', () => {
   });
 
   it('BOOKED is a progressing status — cannot reopen marketplace from BOOKED', () => {
-    expect(
-      canTransition(RideStatus.BOOKED, RideStatus.OFFER_SELECTION),
-    ).toBe(false);
+    expect(canTransition(RideStatus.BOOKED, RideStatus.OFFER_SELECTION)).toBe(
+      false,
+    );
     expect(
       canTransition(RideStatus.BOOKED, RideStatus.WAITING_FOR_OFFERS),
     ).toBe(false);

@@ -18,7 +18,7 @@ export function renderRideScheduled(
   const from = escapeHtml(data.fromLabel);
   const to = escapeHtml(data.toLabel);
   const fare = escapeHtml(data.fare);
-  
+
   const subject = `Your Ride is Scheduled - ${code}`;
   const html = layout(
     `

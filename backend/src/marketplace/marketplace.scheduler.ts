@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
 
 /** Lightweight TTL worker for Phase 1c (BullMQ can replace later). */
@@ -24,7 +29,9 @@ export class MarketplaceScheduler implements OnModuleInit, OnModuleDestroy {
 
   private async tick() {
     if (this.isTickRunning) {
-      this.logger.debug('TTL sweep tick skipped: previous tick is still in progress.');
+      this.logger.debug(
+        'TTL sweep tick skipped: previous tick is still in progress.',
+      );
       return;
     }
     this.isTickRunning = true;

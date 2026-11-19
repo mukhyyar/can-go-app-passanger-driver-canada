@@ -27,7 +27,10 @@ export function validateRideSchedule(opts: RideScheduleValidationParams): void {
   }
 
   // If new ride or explicitly updated pickupAt, cannot be in the past
-  if (opts.isPickupExplicitlyUpdated !== false && opts.pickupAt.getTime() < nowGrace) {
+  if (
+    opts.isPickupExplicitlyUpdated !== false &&
+    opts.pickupAt.getTime() < nowGrace
+  ) {
     throw new BadRequestException('Pickup time cannot be in the past');
   }
 
@@ -38,7 +41,10 @@ export function validateRideSchedule(opts: RideScheduleValidationParams): void {
     if (Number.isNaN(opts.returnAt.getTime())) {
       throw new BadRequestException('Invalid returnAt');
     }
-    if (opts.isReturnExplicitlyUpdated !== false && opts.returnAt.getTime() < nowGrace) {
+    if (
+      opts.isReturnExplicitlyUpdated !== false &&
+      opts.returnAt.getTime() < nowGrace
+    ) {
       throw new BadRequestException('Return time cannot be in the past');
     }
     if (opts.returnAt.getTime() <= opts.pickupAt.getTime()) {

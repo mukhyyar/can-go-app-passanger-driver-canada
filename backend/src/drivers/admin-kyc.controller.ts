@@ -234,10 +234,7 @@ export class AdminKycController {
     );
     const safeName = sanitizeContentDispositionFilename(file.filename);
     res.setHeader('Content-Type', file.contentType);
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename="${safeName}"`,
-    );
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     return new StreamableFile(file.body);

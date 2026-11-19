@@ -70,6 +70,11 @@ export class MarketplaceController {
       : [];
   }
 
+  @Get('marketplace/vehicle-categories')
+  vehicleCategories() {
+    return this.pricing.listActiveVehicleCategories();
+  }
+
   @Post('pricing/quote')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60000 } })
@@ -127,10 +132,7 @@ export class MarketplaceController {
   @Get('rides/:id/cancellation-quote')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PASSENGER)
-  cancellationQuote(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  cancellationQuote(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.marketplace.getCancellationQuote(user.id, id);
   }
 
@@ -367,10 +369,7 @@ export class MarketplaceController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PASSENGER)
   @Throttle({ default: { limit: 60, ttl: 60000 } })
-  paymentQuote(
-    @CurrentUser() user: AuthUser,
-    @Body() dto: PaymentQuoteDto,
-  ) {
+  paymentQuote(@CurrentUser() user: AuthUser, @Body() dto: PaymentQuoteDto) {
     return this.marketplace.getPaymentQuote(user.id, dto);
   }
 
@@ -443,7 +442,12 @@ export class MarketplaceController {
     @Body() dto: SetLostItemPickupLocationDto,
     @Req() req: { ip?: string },
   ) {
-    return this.marketplace.setLostItemPickupLocation(user.id, rideId, dto, req.ip);
+    return this.marketplace.setLostItemPickupLocation(
+      user.id,
+      rideId,
+      dto,
+      req.ip,
+    );
   }
 
   @Post('rides/:rideId/lost-item/pay-fee')

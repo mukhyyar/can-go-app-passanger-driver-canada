@@ -27,10 +27,22 @@ describe('vehicle photo limit contract', () => {
       lifecycleStatus: DocumentLifecycleStatus;
       status: DocumentReviewStatus;
     }> = [
-      { lifecycleStatus: DocumentLifecycleStatus.CURRENT, status: DocumentReviewStatus.PENDING },
-      { lifecycleStatus: DocumentLifecycleStatus.CURRENT, status: DocumentReviewStatus.APPROVED },
-      { lifecycleStatus: DocumentLifecycleStatus.SUPERSEDED, status: DocumentReviewStatus.APPROVED },
-      { lifecycleStatus: DocumentLifecycleStatus.SOFT_DELETED, status: DocumentReviewStatus.PENDING },
+      {
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        status: DocumentReviewStatus.PENDING,
+      },
+      {
+        lifecycleStatus: DocumentLifecycleStatus.CURRENT,
+        status: DocumentReviewStatus.APPROVED,
+      },
+      {
+        lifecycleStatus: DocumentLifecycleStatus.SUPERSEDED,
+        status: DocumentReviewStatus.APPROVED,
+      },
+      {
+        lifecycleStatus: DocumentLifecycleStatus.SOFT_DELETED,
+        status: DocumentReviewStatus.PENDING,
+      },
     ];
     const active = rows.filter(
       (r) =>

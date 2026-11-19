@@ -24,8 +24,14 @@ export async function writeAudit(
         resource: input.resource,
         resourceId: input.resourceId,
         meta: (input.meta ?? {}) as Prisma.InputJsonValue,
-        before: input.before === undefined ? undefined : (input.before as Prisma.InputJsonValue),
-        after: input.after === undefined ? undefined : (input.after as Prisma.InputJsonValue),
+        before:
+          input.before === undefined
+            ? undefined
+            : (input.before as Prisma.InputJsonValue),
+        after:
+          input.after === undefined
+            ? undefined
+            : (input.after as Prisma.InputJsonValue),
         reason: input.reason,
         device: input.device,
         ip: input.ip,
@@ -58,10 +64,16 @@ export function snapField(snap: unknown, key: string): number {
 }
 
 export function startOfUtcDay(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
 }
 
-export function rangeStart(range: string, from?: string, to?: string): { start: Date; end: Date } {
+export function rangeStart(
+  range: string,
+  from?: string,
+  to?: string,
+): { start: Date; end: Date } {
   const end = to ? new Date(to) : new Date();
   if (from) return { start: new Date(from), end };
   const start = new Date(end);

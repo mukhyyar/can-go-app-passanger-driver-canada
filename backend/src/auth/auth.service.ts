@@ -70,21 +70,54 @@ export class AuthService {
     }
   }
 
+  /**
+   * Rejects registration or OAuth/email sign-in when an email address is already
+   * associated with the other application (Driver vs Passenger).
+   */
+  assertEmailNotRegisteredForOtherApp(
+    existing: {
+      role: UserRole;
+      passengerProfile?: unknown;
+      driverProfile?: unknown;
+    },
+    requestedRole?: UserRole,
+  ) {
+    if (!requestedRole) return;
+    if (
+      requestedRole === UserRole.PASSENGER &&
+      (existing.role === UserRole.DRIVER || Boolean(existing.driverProfile))
+    ) {
+      throw new ConflictException(
+        'This email address is already registered with a Driver account and cannot be used in the Passenger App. Please use a different email address.',
+      );
+    }
+    if (
+      requestedRole === UserRole.DRIVER &&
+      (existing.role === UserRole.PASSENGER ||
+        Boolean(existing.passengerProfile))
+    ) {
+      throw new ConflictException(
+        'This email address is already registered with a Passenger account and cannot be used in the Driver App. Please use a different email address.',
+      );
+    }
+  }
+
   /** Rejects password/OTP/OAuth when the account role does not match the requesting app. */
-  private assertMobileAppRole(userRole: UserRole, requestedRole?: UserRole) {
+  assertMobileAppRole(userRole: UserRole, requestedRole?: UserRole) {
     if (!requestedRole || userRole === requestedRole) {
       return;
     }
-    // Allow any mobile account (PASSENGER or DRIVER) to access both passenger and driver apps
-    if (
-      (userRole === UserRole.PASSENGER || userRole === UserRole.DRIVER) &&
-      (requestedRole === UserRole.PASSENGER || requestedRole === UserRole.DRIVER)
-    ) {
-      return;
+    if (userRole === UserRole.DRIVER && requestedRole === UserRole.PASSENGER) {
+      throw new ForbiddenException(
+        'This email address is already registered with a Driver account and cannot be used in the Passenger App. Please use a different email address.',
+      );
     }
-    throw new ForbiddenException(
-      'This account cannot sign in to this app.',
-    );
+    if (userRole === UserRole.PASSENGER && requestedRole === UserRole.DRIVER) {
+      throw new ForbiddenException(
+        'This email address is already registered with a Passenger account and cannot be used in the Driver App. Please use a different email address.',
+      );
+    }
+    throw new ForbiddenException('This account cannot sign in to this app.');
   }
 
   private async ensureProfileForRole<
@@ -121,92 +154,46 @@ export class AuthService {
     return user;
   }
 
-  async register(
-    dto: RegisterDto,
-    meta?: { userAgent?: string; ip?: string },
-  ) {
+  async register(dto: RegisterDto, meta?: { userAgent?: string; ip?: string }) {
     await this.requireDb();
     this.assertPassengerOrDriverRole(dto.role);
 
     const email = dto.email.trim().toLowerCase();
     const phoneE164 = dto.phoneE164.trim();
 
-    const existing = await this.prisma.user.findFirst({
-      where: { OR: [{ email }, { phoneE164 }] },
+    const existingByEmail = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
       include: { passengerProfile: true, driverProfile: true },
     });
-    if (existing) {
-      if (
-        existing.email &&
-        existing.email !== email &&
-        existing.phoneE164 &&
-        existing.phoneE164 !== phoneE164
-      ) {
-        throw new ConflictException('Email or phone already registered');
-      }
-
-      if (dto.role === UserRole.PASSENGER && existing.passengerProfile) {
+    if (existingByEmail) {
+      this.assertEmailNotRegisteredForOtherApp(existingByEmail, dto.role);
+      if (dto.role === UserRole.PASSENGER) {
         throw new ConflictException(
           'Passenger account already registered for this email/phone. Please log in.',
         );
       }
-      if (dto.role === UserRole.DRIVER && existing.driverProfile) {
+      throw new ConflictException(
+        'Driver account already registered for this email/phone. Please log in.',
+      );
+    }
+
+    const existingByPhone = await this.prisma.user.findFirst({
+      where: { phoneE164 },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+    if (existingByPhone) {
+      this.assertEmailNotRegisteredForOtherApp(existingByPhone, dto.role);
+      if (dto.role === UserRole.PASSENGER && existingByPhone.passengerProfile) {
+        throw new ConflictException(
+          'Passenger account already registered for this email/phone. Please log in.',
+        );
+      }
+      if (dto.role === UserRole.DRIVER && existingByPhone.driverProfile) {
         throw new ConflictException(
           'Driver account already registered for this email/phone. Please log in.',
         );
       }
-
-      if (existing.passwordHash) {
-        const ok = await this.passwords.verify(
-          existing.passwordHash,
-          dto.password,
-        );
-        if (!ok) {
-          throw new ConflictException(
-            'An account with this email/phone already exists. Please log in with your existing password.',
-          );
-        }
-      } else {
-        const passwordHash = await this.passwords.hash(dto.password);
-        await this.prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            passwordHash,
-            email: existing.email ?? email,
-            phoneE164: existing.phoneE164 ?? phoneE164,
-          },
-        });
-      }
-
-      await this.ensureProfileForRole(existing, dto.role, dto.fullName);
-
-      if (dto.role === UserRole.DRIVER) {
-        void this.emailEvents?.sendDriverAppReceived(
-          existing.id,
-          dto.fullName?.trim() ?? '',
-          existing.email ?? email,
-        );
-      }
-
-      const challenge = await this.otp.issue(phoneE164, 'verify_phone');
-      await this.audit(
-        existing.id,
-        'auth.register_role_profile',
-        'User',
-        existing.id,
-        meta?.ip,
-      );
-
-      return {
-        userId: existing.id,
-        role: dto.role,
-        requiresPhoneVerification: true,
-        challengeId: challenge.challengeId,
-        expiresAt: challenge.expiresAt,
-        ...(challenge.debugCode ? { debugCode: challenge.debugCode } : {}),
-        message:
-          'Verify phone OTP to complete registration and receive tokens',
-      };
+      throw new ConflictException('Email or phone already registered');
     }
 
     const passwordHash = await this.passwords.hash(dto.password);
@@ -299,7 +286,13 @@ export class AuthService {
         },
         include: { passengerProfile: true, driverProfile: true },
       });
-      await this.audit(user.id, 'auth.phone_register', 'User', user.id, meta?.ip);
+      await this.audit(
+        user.id,
+        'auth.phone_register',
+        'User',
+        user.id,
+        meta?.ip,
+      );
     }
 
     if (!user) {
@@ -375,7 +368,12 @@ export class AuthService {
 
     const user = await this.prisma.user.findFirst({
       where: dto.email
-        ? { email: dto.email.trim().toLowerCase() }
+        ? {
+            email: {
+              equals: dto.email.trim().toLowerCase(),
+              mode: 'insensitive',
+            },
+          }
         : { phoneE164: dto.phoneE164!.trim() },
       include: { passengerProfile: true, driverProfile: true },
     });
@@ -393,6 +391,7 @@ export class AuthService {
       throw new ForbiddenException('Account suspended');
     }
 
+    this.assertEmailNotRegisteredForOtherApp(user, dto.role);
     this.assertMobileAppRole(user.role, dto.role);
 
     if (dto.role) {
@@ -403,10 +402,7 @@ export class AuthService {
       (user.role === UserRole.PASSENGER || user.role === UserRole.DRIVER) &&
       !user.phoneVerifiedAt
     ) {
-      const challenge = await this.otp.issue(
-        user.phoneE164!,
-        'verify_phone',
-      );
+      const challenge = await this.otp.issue(user.phoneE164!, 'verify_phone');
       throw new ForbiddenException({
         code: 'PHONE_NOT_VERIFIED',
         message: 'Phone verification required',
@@ -456,7 +452,10 @@ export class AuthService {
     return { user: this.publicUser(user, sessionRole), ...tokens };
   }
 
-  async refresh(refreshToken: string, meta?: { userAgent?: string; ip?: string }) {
+  async refresh(
+    refreshToken: string,
+    meta?: { userAgent?: string; ip?: string },
+  ) {
     await this.requireDb();
     return this.tokens.rotateRefresh(refreshToken, meta);
   }
@@ -632,13 +631,13 @@ export class AuthService {
       await this.prisma.$transaction(async (tx) => {
         if (user.passengerProfile) {
           await tx.passengerProfile.update({
-            where: { id: user.passengerProfile!.id },
+            where: { id: user.passengerProfile.id },
             data: { avatarStorageKey: key },
           });
         }
         if (user.driverProfile) {
           await tx.driverProfile.update({
-            where: { id: user.driverProfile!.id },
+            where: { id: user.driverProfile.id },
             data: { avatarStorageKey: key },
           });
         }
@@ -692,13 +691,13 @@ export class AuthService {
     await this.prisma.$transaction(async (tx) => {
       if (user.passengerProfile) {
         await tx.passengerProfile.update({
-          where: { id: user.passengerProfile!.id },
+          where: { id: user.passengerProfile.id },
           data: { avatarStorageKey: null },
         });
       }
       if (user.driverProfile) {
         await tx.driverProfile.update({
-          where: { id: user.driverProfile!.id },
+          where: { id: user.driverProfile.id },
           data: { avatarStorageKey: null },
         });
       }
@@ -774,7 +773,11 @@ export class AuthService {
   async confirmPasswordReset(dto: PasswordResetConfirmDto) {
     await this.requireDb();
     const result = await this.otp.verify(dto.challengeId, dto.code);
-    if (!result.ok || result.purpose !== 'password_reset' || !result.phoneE164) {
+    if (
+      !result.ok ||
+      result.purpose !== 'password_reset' ||
+      !result.phoneE164
+    ) {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
 
@@ -890,7 +893,9 @@ export class AuthService {
     if (!rawToken?.trim()) {
       throw new BadRequestException('token required');
     }
-    const tokenHash = createHash('sha256').update(rawToken.trim()).digest('hex');
+    const tokenHash = createHash('sha256')
+      .update(rawToken.trim())
+      .digest('hex');
     const session = await this.prisma.impersonationSession.findUnique({
       where: { tokenHash },
       include: { target: true, admin: true },
@@ -964,7 +969,10 @@ export class AuthService {
       'User',
       actor.id,
     );
-    return { ok: true, adminUrl: this.config.get<string>('admin.adminWebBase') };
+    return {
+      ok: true,
+      adminUrl: this.config.get<string>('admin.adminWebBase'),
+    };
   }
 
   oauthConfig() {
@@ -1019,7 +1027,9 @@ export class AuthService {
       where: { phoneE164 },
     });
     if (existingPhone && existingPhone.id !== userId) {
-      throw new ConflictException('Phone already registered to another account');
+      throw new ConflictException(
+        'Phone already registered to another account',
+      );
     }
 
     await this.prisma.user.update({
@@ -1042,14 +1052,15 @@ export class AuthService {
     meta?: { userAgent?: string; ip?: string },
     requestedRole?: UserRole,
   ) {
+    if (identity.email) {
+      identity.email = identity.email.trim().toLowerCase();
+    }
     if (!identity.email && identity.provider === 'google') {
       throw new BadRequestException('Google account email is required');
     }
 
     const role =
-      requestedRole === UserRole.DRIVER
-        ? UserRole.DRIVER
-        : UserRole.PASSENGER;
+      requestedRole === UserRole.DRIVER ? UserRole.DRIVER : UserRole.PASSENGER;
 
     const linked = await this.prisma.oAuthAccount.findUnique({
       where: {
@@ -1066,11 +1077,13 @@ export class AuthService {
     let user = linked?.user ?? null;
 
     if (!user && identity.email) {
-      const byEmail = await this.prisma.user.findUnique({
-        where: { email: identity.email },
+      const byEmail = await this.prisma.user.findFirst({
+        where: { email: { equals: identity.email, mode: 'insensitive' } },
         include: { passengerProfile: true, driverProfile: true },
       });
       if (byEmail) {
+        this.assertEmailNotRegisteredForOtherApp(byEmail, role);
+        this.assertMobileAppRole(byEmail.role, role);
         await this.prisma.oAuthAccount.create({
           data: {
             userId: byEmail.id,
@@ -1084,6 +1097,7 @@ export class AuthService {
     }
 
     if (user) {
+      this.assertEmailNotRegisteredForOtherApp(user, role);
       this.assertMobileAppRole(user.role, role);
       if (role) {
         user = await this.ensureProfileForRole(user, role, identity.fullName);

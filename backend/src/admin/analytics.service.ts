@@ -84,11 +84,15 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         enableOfflineQueue: false,
       });
       void this.redis.connect().catch((err) => {
-        this.logger.warn(`Analytics Redis unavailable: ${err instanceof Error ? err.message : err}`);
+        this.logger.warn(
+          `Analytics Redis unavailable: ${err instanceof Error ? err.message : err}`,
+        );
         this.redis = null;
       });
     } catch (err) {
-      this.logger.warn(`Analytics Redis init failed: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `Analytics Redis init failed: ${err instanceof Error ? err.message : err}`,
+      );
       this.redis = null;
     }
   }
@@ -115,7 +119,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     });
   }
 
-  private async cached<T>(key: string, ttlSec: number, fn: () => Promise<T>): Promise<T> {
+  private async cached<T>(
+    key: string,
+    ttlSec: number,
+    fn: () => Promise<T>,
+  ): Promise<T> {
     const now = Date.now();
     const hit = this.mem.get(key);
     if (hit && hit.exp > now) return hit.data as T;
@@ -143,19 +151,44 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     return data;
   }
 
-  private cacheKey(section: string, q: AnalyticsQuery, resolved: ResolvedRange) {
+  private cacheKey(
+    section: string,
+    q: AnalyticsQuery,
+    resolved: ResolvedRange,
+  ) {
     return `cango:analytics:v1:${section}:${resolved.current.start.toISOString()}:${resolved.current.end.toISOString()}:${q.timezone}:${q.compare}:${q.city ?? ''}:${q.zone ?? ''}:${q.serviceType ?? ''}:${q.vehicleType ?? ''}:${q.paymentMethod ?? ''}:${q.rideStatus ?? ''}:${q.promo ?? ''}:${q.groupBy}:${q.demo}`;
   }
 
   async meta() {
-    const [serviceTypes, vehicles, providers, promos, cities, zones] = await Promise.all([
-      this.prisma.ride.groupBy({ by: ['serviceType'], _count: { _all: true } }).catch(() => []),
-      this.prisma.vehicle.findMany({ distinct: ['vehicleClass'], select: { vehicleClass: true }, take: 40 }),
-      this.prisma.payment.groupBy({ by: ['provider'], _count: { _all: true } }).catch(() => []),
-      this.prisma.promoCode.findMany({ where: { active: true }, select: { code: true }, take: 80 }),
-      this.prisma.catalogItem.findMany({ distinct: ['city'], select: { city: true }, take: 40 }),
-      this.prisma.operatingZone.findMany({ distinct: ['name'], select: { name: true }, take: 80 }),
-    ]);
+    const [serviceTypes, vehicles, providers, promos, cities, zones] =
+      await Promise.all([
+        this.prisma.ride
+          .groupBy({ by: ['serviceType'], _count: { _all: true } })
+          .catch(() => []),
+        this.prisma.vehicle.findMany({
+          distinct: ['vehicleClass'],
+          select: { vehicleClass: true },
+          take: 40,
+        }),
+        this.prisma.payment
+          .groupBy({ by: ['provider'], _count: { _all: true } })
+          .catch(() => []),
+        this.prisma.promoCode.findMany({
+          where: { active: true },
+          select: { code: true },
+          take: 80,
+        }),
+        this.prisma.catalogItem.findMany({
+          distinct: ['city'],
+          select: { city: true },
+          take: 40,
+        }),
+        this.prisma.operatingZone.findMany({
+          distinct: ['name'],
+          select: { name: true },
+          take: 80,
+        }),
+      ]);
     return {
       timezoneDefault: 'America/Toronto',
       serviceTypes: serviceTypes.map((s) => s.serviceType),
@@ -166,7 +199,15 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       zones: [...new Set(zones.map((z) => z.name))],
       rideStatuses: Object.values(RideStatus),
       driverStatuses: Object.values(DriverApprovalStatus),
-      passengerSegments: ['new', 'active', 'returning', 'frequent', 'high_value', 'at_risk', 'dormant'],
+      passengerSegments: [
+        'new',
+        'active',
+        'returning',
+        'frequent',
+        'high_value',
+        'at_risk',
+        'dormant',
+      ],
       definitions: METRIC_DEFINITIONS,
     };
   }
@@ -197,11 +238,20 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private canSafety(perms: string[]) {
-    return perms.includes('*') || perms.includes('analytics.safety') || perms.includes('risk.view');
+    return (
+      perms.includes('*') ||
+      perms.includes('analytics.safety') ||
+      perms.includes('risk.view')
+    );
   }
 
-  private async buildOverview(q: AnalyticsQuery, resolved: ResolvedRange, perms: string[]) {
-    const compareRange = q.compare === 'year' ? resolved.previousYear : resolved.previous;
+  private async buildOverview(
+    q: AnalyticsQuery,
+    resolved: ResolvedRange,
+    perms: string[],
+  ) {
+    const compareRange =
+      q.compare === 'year' ? resolved.previousYear : resolved.previous;
     const [cur, prev, series, live, currency] = await Promise.all([
       this.periodStats(q, resolved.current.start, resolved.current.end),
       this.periodStats(q, compareRange.start, compareRange.end),
@@ -209,52 +259,281 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       this.liveNow(),
       this.primaryCurrency(q, resolved.current.start, resolved.current.end),
     ]);
-    const empty = cur.requests === 0 && cur.gmv === 0 && cur.newPassengers === 0;
-    const spark = (key: 'rides' | 'gmv' | 'completed' | 'net') => series.map((s) => s[key]);
+    const empty =
+      cur.requests === 0 && cur.gmv === 0 && cur.newPassengers === 0;
+    const spark = (key: 'rides' | 'gmv' | 'completed' | 'net') =>
+      series.map((s) => s[key]);
     const financial = this.canFinancial(perms);
 
     const business: KpiCard[] = financial
       ? [
-          this.kpi('grossBookings', 'Gross Bookings', cur.gmv, prev.gmv, spark('gmv'), 'currency', 'grossBookings', 'revenue'),
-          this.kpi('netRevenue', 'Net Revenue', cur.netRevenue, prev.netRevenue, spark('net'), 'currency', 'netRevenue', 'revenue'),
-          this.kpi('completed', 'Completed Rides', cur.completed, prev.completed, spark('completed'), 'count', 'completionRate', 'rides:completed'),
-          this.kpi('requests', 'Total Ride Requests', cur.requests, prev.requests, spark('rides'), 'count', 'completionRate', 'rides'),
-          this.kpi('avgFare', 'Average Fare', cur.avgFare, prev.avgFare, spark('gmv'), 'currency', 'averageFare', 'revenue'),
-          this.kpi('revPerRide', 'Revenue per Ride', cur.revPerRide, prev.revPerRide, spark('net'), 'currency', 'revenuePerRide', 'revenue'),
-          this.kpi('commission', 'Platform Commission', cur.commission, prev.commission, spark('net'), 'currency', 'netRevenue', 'revenue'),
-          this.kpi('refunds', 'Refund Amount', cur.refunds, prev.refunds, spark('net'), 'currency', 'netRevenue', 'payments'),
+          this.kpi(
+            'grossBookings',
+            'Gross Bookings',
+            cur.gmv,
+            prev.gmv,
+            spark('gmv'),
+            'currency',
+            'grossBookings',
+            'revenue',
+          ),
+          this.kpi(
+            'netRevenue',
+            'Net Revenue',
+            cur.netRevenue,
+            prev.netRevenue,
+            spark('net'),
+            'currency',
+            'netRevenue',
+            'revenue',
+          ),
+          this.kpi(
+            'completed',
+            'Completed Rides',
+            cur.completed,
+            prev.completed,
+            spark('completed'),
+            'count',
+            'completionRate',
+            'rides:completed',
+          ),
+          this.kpi(
+            'requests',
+            'Total Ride Requests',
+            cur.requests,
+            prev.requests,
+            spark('rides'),
+            'count',
+            'completionRate',
+            'rides',
+          ),
+          this.kpi(
+            'avgFare',
+            'Average Fare',
+            cur.avgFare,
+            prev.avgFare,
+            spark('gmv'),
+            'currency',
+            'averageFare',
+            'revenue',
+          ),
+          this.kpi(
+            'revPerRide',
+            'Revenue per Ride',
+            cur.revPerRide,
+            prev.revPerRide,
+            spark('net'),
+            'currency',
+            'revenuePerRide',
+            'revenue',
+          ),
+          this.kpi(
+            'commission',
+            'Platform Commission',
+            cur.commission,
+            prev.commission,
+            spark('net'),
+            'currency',
+            'netRevenue',
+            'revenue',
+          ),
+          this.kpi(
+            'refunds',
+            'Refund Amount',
+            cur.refunds,
+            prev.refunds,
+            spark('net'),
+            'currency',
+            'netRevenue',
+            'payments',
+          ),
         ]
       : [
-          this.kpi('completed', 'Completed Rides', cur.completed, prev.completed, spark('completed'), 'count', 'completionRate', 'rides:completed'),
-          this.kpi('requests', 'Total Ride Requests', cur.requests, prev.requests, spark('rides'), 'count', 'completionRate', 'rides'),
+          this.kpi(
+            'completed',
+            'Completed Rides',
+            cur.completed,
+            prev.completed,
+            spark('completed'),
+            'count',
+            'completionRate',
+            'rides:completed',
+          ),
+          this.kpi(
+            'requests',
+            'Total Ride Requests',
+            cur.requests,
+            prev.requests,
+            spark('rides'),
+            'count',
+            'completionRate',
+            'rides',
+          ),
         ];
 
     const growth: KpiCard[] = [
-      this.kpi('passengers', 'Total Passengers', cur.totalPassengers, prev.totalPassengers, spark('rides'), 'count', '', 'passengers'),
-      this.kpi('newPax', 'New Passengers', cur.newPassengers, prev.newPassengers, spark('rides'), 'count', '', 'passengers'),
-      this.kpi('activePax', 'Active Passengers', cur.activePassengers, prev.activePassengers, spark('rides'), 'count', '', 'passengers'),
-      this.kpi('returningPax', 'Returning Passengers', cur.returningPassengers, prev.returningPassengers, spark('rides'), 'count', 'repeatRideRate', 'passengers'),
-      this.kpi('drivers', 'Total Drivers', cur.totalDrivers, prev.totalDrivers, spark('rides'), 'count', '', 'drivers'),
-      this.kpi('activeDrv', 'Active Drivers', cur.activeDrivers, prev.activeDrivers, spark('rides'), 'count', '', 'drivers'),
-      this.kpi('newDrv', 'New Drivers', cur.newDrivers, prev.newDrivers, spark('rides'), 'count', '', 'drivers'),
+      this.kpi(
+        'passengers',
+        'Total Passengers',
+        cur.totalPassengers,
+        prev.totalPassengers,
+        spark('rides'),
+        'count',
+        '',
+        'passengers',
+      ),
+      this.kpi(
+        'newPax',
+        'New Passengers',
+        cur.newPassengers,
+        prev.newPassengers,
+        spark('rides'),
+        'count',
+        '',
+        'passengers',
+      ),
+      this.kpi(
+        'activePax',
+        'Active Passengers',
+        cur.activePassengers,
+        prev.activePassengers,
+        spark('rides'),
+        'count',
+        '',
+        'passengers',
+      ),
+      this.kpi(
+        'returningPax',
+        'Returning Passengers',
+        cur.returningPassengers,
+        prev.returningPassengers,
+        spark('rides'),
+        'count',
+        'repeatRideRate',
+        'passengers',
+      ),
+      this.kpi(
+        'drivers',
+        'Total Drivers',
+        cur.totalDrivers,
+        prev.totalDrivers,
+        spark('rides'),
+        'count',
+        '',
+        'drivers',
+      ),
+      this.kpi(
+        'activeDrv',
+        'Active Drivers',
+        cur.activeDrivers,
+        prev.activeDrivers,
+        spark('rides'),
+        'count',
+        '',
+        'drivers',
+      ),
+      this.kpi(
+        'newDrv',
+        'New Drivers',
+        cur.newDrivers,
+        prev.newDrivers,
+        spark('rides'),
+        'count',
+        '',
+        'drivers',
+      ),
     ];
 
     const operations: KpiCard[] = [
-      this.kpi('completion', 'Ride Completion Rate', cur.completionRate, prev.completionRate, spark('completed'), 'percent', 'completionRate', 'funnel'),
-      this.kpi('acceptance', 'Acceptance Rate', cur.acceptanceRate, prev.acceptanceRate, spark('rides'), 'percent', 'acceptanceRate', 'drivers'),
-      this.kpi('drvCancel', 'Driver Cancellation Rate', cur.driverCancelRate, prev.driverCancelRate, spark('rides'), 'percent', 'driverCancellationRate', 'cancellations'),
-      this.kpi('paxCancel', 'Passenger Cancellation Rate', cur.paxCancelRate, prev.paxCancelRate, spark('rides'), 'percent', 'passengerCancellationRate', 'cancellations'),
-      this.kpi('eta', 'Average ETA', cur.avgEtaMin, prev.avgEtaMin, spark('rides'), 'duration', '', 'operations'),
-      this.kpi('pickup', 'Average Pickup Time', cur.avgPickupMin, prev.avgPickupMin, spark('rides'), 'duration', '', 'operations'),
-      this.kpi('duration', 'Average Trip Duration', cur.avgDurationMin, prev.avgDurationMin, spark('rides'), 'duration', '', 'rides'),
-      this.kpi('distance', 'Average Trip Distance', cur.avgDistanceKm, prev.avgDistanceKm, spark('rides'), 'distance', '', 'rides'),
+      this.kpi(
+        'completion',
+        'Ride Completion Rate',
+        cur.completionRate,
+        prev.completionRate,
+        spark('completed'),
+        'percent',
+        'completionRate',
+        'funnel',
+      ),
+      this.kpi(
+        'acceptance',
+        'Acceptance Rate',
+        cur.acceptanceRate,
+        prev.acceptanceRate,
+        spark('rides'),
+        'percent',
+        'acceptanceRate',
+        'drivers',
+      ),
+      this.kpi(
+        'drvCancel',
+        'Driver Cancellation Rate',
+        cur.driverCancelRate,
+        prev.driverCancelRate,
+        spark('rides'),
+        'percent',
+        'driverCancellationRate',
+        'cancellations',
+      ),
+      this.kpi(
+        'paxCancel',
+        'Passenger Cancellation Rate',
+        cur.paxCancelRate,
+        prev.paxCancelRate,
+        spark('rides'),
+        'percent',
+        'passengerCancellationRate',
+        'cancellations',
+      ),
+      this.kpi(
+        'eta',
+        'Average ETA',
+        cur.avgEtaMin,
+        prev.avgEtaMin,
+        spark('rides'),
+        'duration',
+        '',
+        'operations',
+      ),
+      this.kpi(
+        'pickup',
+        'Average Pickup Time',
+        cur.avgPickupMin,
+        prev.avgPickupMin,
+        spark('rides'),
+        'duration',
+        '',
+        'operations',
+      ),
+      this.kpi(
+        'duration',
+        'Average Trip Duration',
+        cur.avgDurationMin,
+        prev.avgDurationMin,
+        spark('rides'),
+        'duration',
+        '',
+        'rides',
+      ),
+      this.kpi(
+        'distance',
+        'Average Trip Distance',
+        cur.avgDistanceKm,
+        prev.avgDistanceKm,
+        spark('rides'),
+        'distance',
+        '',
+        'rides',
+      ),
     ];
 
     const funnel = this.funnelFromCounts(cur);
     return {
       demo: false,
       empty,
-      emptyMessage: empty ? 'No analytics data available for this period.' : null,
+      emptyMessage: empty
+        ? 'No analytics data available for this period.'
+        : null,
       currency,
       timezone: resolved.timezone,
       range: this.rangeMeta(resolved, q),
@@ -274,7 +553,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       start: resolved.current.start.toISOString(),
       end: resolved.current.end.toISOString(),
       label: resolved.currentLabel,
-      previousLabel: q.compare === 'year' ? formatPrevYear(resolved) : resolved.previousLabel,
+      previousLabel:
+        q.compare === 'year'
+          ? formatPrevYear(resolved)
+          : resolved.previousLabel,
       compareLabel:
         q.compare === 'none'
           ? resolved.currentLabel
@@ -335,10 +617,17 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       returning,
       timing,
     ] = await Promise.all([
-      this.prisma.ride.groupBy({ by: ['status'], where, _count: { _all: true } }),
+      this.prisma.ride.groupBy({
+        by: ['status'],
+        where,
+        _count: { _all: true },
+      }),
       this.prisma.ride.count({ where }),
       this.prisma.offer.count({
-        where: { createdAt: { gte: start, lt: end }, ride: this.rideRelationFilter(q) },
+        where: {
+          createdAt: { gte: start, lt: end },
+          ride: this.rideRelationFilter(q),
+        },
       }),
       this.prisma.offer.count({
         where: {
@@ -384,18 +673,28 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     const paxCancel = byStatus[RideStatus.PASSENGER_CANCELLED] ?? 0;
     const drvCancel = byStatus[RideStatus.DRIVER_CANCELLED] ?? 0;
     const cancelled = CANCELLED.reduce((s, st) => s + (byStatus[st] ?? 0), 0);
-    const unfulfilled = UNFULFILLED.reduce((s, st) => s + (byStatus[st] ?? 0), 0);
-    const valid = Math.max(1, requests - (byStatus[RideStatus.PAYMENT_FAILED] ?? 0));
+    const unfulfilled = UNFULFILLED.reduce(
+      (s, st) => s + (byStatus[st] ?? 0),
+      0,
+    );
+    const valid = Math.max(
+      1,
+      requests - (byStatus[RideStatus.PAYMENT_FAILED] ?? 0),
+    );
     const gmv = asNum(gmvAgg._sum.amount);
     const refunds = asNum(refundAgg._sum.amount);
     const commission = snap.platformFee;
     const netRevenue = round2(commission - refunds);
-    const searching = (byStatus[RideStatus.WAITING_FOR_OFFERS] ?? 0) + (byStatus[RideStatus.OFFER_SELECTION] ?? 0);
+    const searching =
+      (byStatus[RideStatus.WAITING_FOR_OFFERS] ?? 0) +
+      (byStatus[RideStatus.OFFER_SELECTION] ?? 0);
     const assigned =
-      (byStatus[RideStatus.BOOKED] ?? 0) + (byStatus[RideStatus.DRIVER_EN_ROUTE] ?? 0);
+      (byStatus[RideStatus.BOOKED] ?? 0) +
+      (byStatus[RideStatus.DRIVER_EN_ROUTE] ?? 0);
     const arrived = byStatus[RideStatus.DRIVER_ARRIVED] ?? 0;
     const started =
-      (byStatus[RideStatus.TRIP_STARTED] ?? 0) + (byStatus[RideStatus.IN_PROGRESS] ?? 0);
+      (byStatus[RideStatus.TRIP_STARTED] ?? 0) +
+      (byStatus[RideStatus.IN_PROGRESS] ?? 0);
     // Failed payment only — EXPIRED counted under unfulfilled, not double-counted as failed
     const failed = byStatus[RideStatus.PAYMENT_FAILED] ?? 0;
 
@@ -524,7 +823,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
 
   private async timingAverages(q: AnalyticsQuery, start: Date, end: Date) {
     const extra = rideFilterSql(q);
-    const rows = await this.prisma.$queryRaw<Array<{ eta: number | null; pickup: number | null }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ eta: number | null; pickup: number | null }>
+    >`
       SELECT
         COALESCE(AVG(EXTRACT(EPOCH FROM (arr."createdAt" - enr."createdAt")) / 60.0), 0) AS eta,
         COALESCE(AVG(EXTRACT(EPOCH FROM (st."createdAt" - arr."createdAt")) / 60.0), 0) AS pickup
@@ -564,9 +865,22 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   private async dailySeries(q: AnalyticsQuery, resolved: ResolvedRange) {
     const tz = pgTz(resolved.timezone);
     const extra = rideFilterSql(q);
-    const trunc = q.groupBy === 'hour' ? 'hour' : q.groupBy === 'week' ? 'week' : q.groupBy === 'month' ? 'month' : 'day';
+    const trunc =
+      q.groupBy === 'hour'
+        ? 'hour'
+        : q.groupBy === 'week'
+          ? 'week'
+          : q.groupBy === 'month'
+            ? 'month'
+            : 'day';
     const rows = await this.prisma.$queryRaw<
-      Array<{ bucket: Date; rides: number; completed: number; gmv: number; net: number }>
+      Array<{
+        bucket: Date;
+        rides: number;
+        completed: number;
+        gmv: number;
+        net: number;
+      }>
     >`
       SELECT
         date_trunc(${trunc}, r."createdAt" AT TIME ZONE ${tz}) AS bucket,
@@ -586,7 +900,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       GROUP BY 1
       ORDER BY 1
     `;
-    const days = iterateDays(resolved.current.start, resolved.current.end, resolved.timezone);
+    const days = iterateDays(
+      resolved.current.start,
+      resolved.current.end,
+      resolved.timezone,
+    );
     const map = new Map(
       rows.map((r) => [
         isoBucket(r.bucket, trunc),
@@ -623,17 +941,30 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       _count: { _all: true },
     });
     if (!rows.length) {
-      const p = await this.prisma.passengerProfile.findFirst({ select: { currency: true } });
+      const p = await this.prisma.passengerProfile.findFirst({
+        select: { currency: true },
+      });
       return p?.currency ?? 'CAD';
     }
     return rows.sort((a, b) => b._count._all - a._count._all)[0].currency;
   }
 
-  private funnelFromCounts(cur: Awaited<ReturnType<AdminAnalyticsService['periodStats']>>) {
+  private funnelFromCounts(
+    cur: Awaited<ReturnType<AdminAnalyticsService['periodStats']>>,
+  ) {
     const requested = cur.requests;
-    const search = Math.max(cur.searching, cur.assigned + cur.arrived + cur.started + cur.completed);
-    const accepted = Math.max(cur.assigned + cur.arrived + cur.started + cur.completed, cur.acceptedOffers);
-    const arrived = Math.max(cur.arrived + cur.started + cur.completed, cur.arrived);
+    const search = Math.max(
+      cur.searching,
+      cur.assigned + cur.arrived + cur.started + cur.completed,
+    );
+    const accepted = Math.max(
+      cur.assigned + cur.arrived + cur.started + cur.completed,
+      cur.acceptedOffers,
+    );
+    const arrived = Math.max(
+      cur.arrived + cur.started + cur.completed,
+      cur.arrived,
+    );
     const started = Math.max(cur.started + cur.completed, cur.started);
     const steps: FunnelStep[] = [
       { key: 'requested', label: 'Ride Requested', value: requested },
@@ -648,7 +979,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
 
   async liveNow() {
     const onlineSince = new Date(Date.now() - 5 * 60_000);
-    const today = resolveAnalyticsRange({ range: 'today', timezone: 'America/Toronto' });
+    const today = resolveAnalyticsRange({
+      range: 'today',
+      timezone: 'America/Toronto',
+    });
     const [
       online,
       onTrip,
@@ -660,18 +994,30 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       todayRequests,
       todayPay,
     ] = await Promise.all([
-      this.prisma.driverLocationCurrent.count({ where: { recordedAt: { gte: onlineSince } } }),
+      this.prisma.driverLocationCurrent.count({
+        where: { recordedAt: { gte: onlineSince } },
+      }),
       this.prisma.ride.count({ where: { status: { in: ACTIVE_TRIP } } }),
       this.prisma.ride.count({ where: { status: { in: ACTIVE_TRIP } } }),
-      this.prisma.ride.count({ where: { status: RideStatus.WAITING_FOR_OFFERS } }),
+      this.prisma.ride.count({
+        where: { status: RideStatus.WAITING_FOR_OFFERS },
+      }),
       this.prisma.ride.count({ where: { status: { in: OPEN_REQ } } }),
       this.prisma.ride.count({
-        where: { status: RideStatus.COMPLETED, createdAt: { gte: today.current.start } },
+        where: {
+          status: RideStatus.COMPLETED,
+          createdAt: { gte: today.current.start },
+        },
       }),
       this.prisma.ride.count({
-        where: { status: { in: CANCELLED }, createdAt: { gte: today.current.start } },
+        where: {
+          status: { in: CANCELLED },
+          createdAt: { gte: today.current.start },
+        },
       }),
-      this.prisma.ride.count({ where: { createdAt: { gte: today.current.start } } }),
+      this.prisma.ride.count({
+        where: { createdAt: { gte: today.current.start } },
+      }),
       this.prisma.payment.aggregate({
         where: {
           status: { in: PAID_STATUSES },
@@ -693,7 +1039,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       shortage: ratio >= 1.5,
       todayRevenue: round2(asNum(todayPay._sum.amount)),
       todayCompleted,
-      todayCancellationRate: cancellationRate(todayCancelled, Math.max(1, todayRequests)),
+      todayCancellationRate: cancellationRate(
+        todayCancelled,
+        Math.max(1, todayRequests),
+      ),
     };
   }
 
@@ -782,7 +1131,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       case 'safety':
         return this.safetySection(q, resolved, perms);
       case 'live':
-        return { live: await this.liveNow(), lastUpdated: new Date().toISOString() };
+        return {
+          live: await this.liveNow(),
+          lastUpdated: new Date().toISOString(),
+        };
       case 'heatmap':
         return this.hourDayHeatmap(q, resolved);
       default:
@@ -791,43 +1143,131 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private async ridesSection(q: AnalyticsQuery, resolved: ResolvedRange) {
-    const compareRange = q.compare === 'year' ? resolved.previousYear : resolved.previous;
-    const [cur, prev, series, byHour, byStatus, byVehicle, byZone, byDistance, byDuration] =
-      await Promise.all([
-        this.periodStats(q, resolved.current.start, resolved.current.end),
-        this.periodStats(q, compareRange.start, compareRange.end),
-        this.dailySeries(q, resolved),
-        this.countByHour(q, resolved),
-        this.prisma.ride.groupBy({
-          by: ['status'],
-          where: rideWhere(resolved.current.start, resolved.current.end, q),
-          _count: { _all: true },
-        }),
-        this.countByVehicle(q, resolved),
-        this.zoneTable(q, resolved),
-        this.bucketNumeric(q, resolved, 'distanceKm', [2, 5, 10, 20, 40]),
-        this.bucketNumeric(q, resolved, 'durationMin', [10, 20, 40, 60, 90]),
-      ]);
-    const peak = byHour.reduce((a, b) => (b.value > a.value ? b : a), { hour: 0, value: 0 });
+    const compareRange =
+      q.compare === 'year' ? resolved.previousYear : resolved.previous;
+    const [
+      cur,
+      prev,
+      series,
+      byHour,
+      byStatus,
+      byVehicle,
+      byZone,
+      byDistance,
+      byDuration,
+    ] = await Promise.all([
+      this.periodStats(q, resolved.current.start, resolved.current.end),
+      this.periodStats(q, compareRange.start, compareRange.end),
+      this.dailySeries(q, resolved),
+      this.countByHour(q, resolved),
+      this.prisma.ride.groupBy({
+        by: ['status'],
+        where: rideWhere(resolved.current.start, resolved.current.end, q),
+        _count: { _all: true },
+      }),
+      this.countByVehicle(q, resolved),
+      this.zoneTable(q, resolved),
+      this.bucketNumeric(q, resolved, 'distanceKm', [2, 5, 10, 20, 40]),
+      this.bucketNumeric(q, resolved, 'durationMin', [10, 20, 40, 60, 90]),
+    ]);
+    const peak = byHour.reduce((a, b) => (b.value > a.value ? b : a), {
+      hour: 0,
+      value: 0,
+    });
     return {
       demo: false,
       empty: cur.requests === 0,
       range: this.rangeMeta(resolved, q),
       lastUpdated: new Date().toISOString(),
       kpis: [
-        this.kpi('requests', 'Requests', cur.requests, prev.requests, series.map((s) => s.rides), 'count', 'completionRate', 'rides'),
-        this.kpi('search', 'Searching for Driver', cur.searching, prev.searching, series.map((s) => s.rides), 'count', '', 'rides'),
-        this.kpi('assigned', 'Driver Assigned', cur.assigned, prev.assigned, series.map((s) => s.rides), 'count', '', 'rides'),
-        this.kpi('arrived', 'Driver Arrived', cur.arrived, prev.arrived, series.map((s) => s.rides), 'count', '', 'rides'),
-        this.kpi('started', 'Trips Started', cur.started, prev.started, series.map((s) => s.rides), 'count', '', 'rides'),
-        this.kpi('completed', 'Completed', cur.completed, prev.completed, series.map((s) => s.completed), 'count', 'completionRate', 'rides:completed'),
-        this.kpi('cancelled', 'Cancelled', cur.cancelled, prev.cancelled, series.map((s) => s.rides), 'count', 'cancellationRate', 'cancellations'),
-        this.kpi('failed', 'Failed / Expired', cur.failed, prev.failed, series.map((s) => s.rides), 'count', '', 'rides:failed'),
+        this.kpi(
+          'requests',
+          'Requests',
+          cur.requests,
+          prev.requests,
+          series.map((s) => s.rides),
+          'count',
+          'completionRate',
+          'rides',
+        ),
+        this.kpi(
+          'search',
+          'Searching for Driver',
+          cur.searching,
+          prev.searching,
+          series.map((s) => s.rides),
+          'count',
+          '',
+          'rides',
+        ),
+        this.kpi(
+          'assigned',
+          'Driver Assigned',
+          cur.assigned,
+          prev.assigned,
+          series.map((s) => s.rides),
+          'count',
+          '',
+          'rides',
+        ),
+        this.kpi(
+          'arrived',
+          'Driver Arrived',
+          cur.arrived,
+          prev.arrived,
+          series.map((s) => s.rides),
+          'count',
+          '',
+          'rides',
+        ),
+        this.kpi(
+          'started',
+          'Trips Started',
+          cur.started,
+          prev.started,
+          series.map((s) => s.rides),
+          'count',
+          '',
+          'rides',
+        ),
+        this.kpi(
+          'completed',
+          'Completed',
+          cur.completed,
+          prev.completed,
+          series.map((s) => s.completed),
+          'count',
+          'completionRate',
+          'rides:completed',
+        ),
+        this.kpi(
+          'cancelled',
+          'Cancelled',
+          cur.cancelled,
+          prev.cancelled,
+          series.map((s) => s.rides),
+          'count',
+          'cancellationRate',
+          'cancellations',
+        ),
+        this.kpi(
+          'failed',
+          'Failed / Expired',
+          cur.failed,
+          prev.failed,
+          series.map((s) => s.rides),
+          'count',
+          '',
+          'rides:failed',
+        ),
       ],
       funnel: this.funnelFromCounts(cur),
       byHour,
       byDay: series,
-      byStatus: byStatus.map((s) => ({ label: s.status, value: s._count._all })),
+      byStatus: byStatus.map((s) => ({
+        label: s.status,
+        value: s._count._all,
+      })),
       byVehicle,
       byZone,
       byDistance,
@@ -845,7 +1285,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   private async countByHour(q: AnalyticsQuery, resolved: ResolvedRange) {
     const tz = pgTz(resolved.timezone);
     const extra = rideFilterSql(q);
-    const rows = await this.prisma.$queryRaw<Array<{ hour: number; n: number }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ hour: number; n: number }>
+    >`
       SELECT EXTRACT(HOUR FROM r."createdAt" AT TIME ZONE ${tz})::int AS hour, COUNT(*)::int AS n
       FROM "Ride" r
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
@@ -853,7 +1295,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       GROUP BY 1 ORDER BY 1
     `;
     const map = new Map(rows.map((r) => [r.hour, r.n]));
-    return Array.from({ length: 24 }, (_, hour) => ({ hour, value: map.get(hour) ?? 0 }));
+    return Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      value: map.get(hour) ?? 0,
+    }));
   }
 
   private async countByVehicle(q: AnalyticsQuery, resolved: ResolvedRange) {
@@ -911,7 +1356,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   ) {
     const extra = rideFilterSql(q);
     const expr = Prisma.raw(`(r."priceSnapshot"->>'${field}')::numeric`);
-    const rows = await this.prisma.$queryRaw<Array<{ bucket: string; value: number }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ bucket: string; value: number }>
+    >`
       SELECT
         CASE
           ${Prisma.join(
@@ -934,11 +1381,19 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     return rows;
   }
 
-  private async revenueSection(q: AnalyticsQuery, resolved: ResolvedRange, perms: string[]) {
+  private async revenueSection(
+    q: AnalyticsQuery,
+    resolved: ResolvedRange,
+    perms: string[],
+  ) {
     if (!this.canFinancial(perms)) {
-      return { denied: true, message: 'Missing analytics.financial permission.' };
+      return {
+        denied: true,
+        message: 'Missing analytics.financial permission.',
+      };
     }
-    const compareRange = q.compare === 'year' ? resolved.previousYear : resolved.previous;
+    const compareRange =
+      q.compare === 'year' ? resolved.previousYear : resolved.previous;
     const [cur, prev, series] = await Promise.all([
       this.periodStats(q, resolved.current.start, resolved.current.end),
       this.periodStats(q, compareRange.start, compareRange.end),
@@ -952,7 +1407,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       { key: 'taxes', label: 'Taxes', value: cur.tax },
       { key: 'discounts', label: 'Discounts', value: -cur.discounts },
       { key: 'refunds', label: 'Refunds', value: -cur.refunds },
-      { key: 'driverEarnings', label: 'Driver Earnings', value: -cur.driverEarnings },
+      {
+        key: 'driverEarnings',
+        label: 'Driver Earnings',
+        value: -cur.driverEarnings,
+      },
       { key: 'net', label: 'Platform Net Revenue', value: cur.netRevenue },
     ];
     return {
@@ -974,21 +1433,97 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       })),
       breakdown,
       kpis: [
-        this.kpi('gmv', 'Gross Bookings', cur.gmv, prev.gmv, series.map((s) => s.gmv), 'currency', 'grossBookings', 'revenue'),
-        this.kpi('net', 'Net Revenue', cur.netRevenue, prev.netRevenue, series.map((s) => s.net), 'currency', 'netRevenue', 'revenue'),
-        this.kpi('commission', 'Platform Commission', cur.commission, prev.commission, series.map((s) => s.net), 'currency', 'netRevenue', 'revenue'),
-        this.kpi('driver', 'Driver Earnings', cur.driverEarnings, prev.driverEarnings, series.map((s) => s.gmv), 'currency', '', 'drivers'),
-        this.kpi('tax', 'Taxes', cur.tax, prev.tax, series.map((s) => s.gmv), 'currency', '', 'revenue'),
-        this.kpi('disc', 'Discounts', cur.discounts, prev.discounts, series.map((s) => s.gmv), 'currency', '', 'promotions'),
-        this.kpi('ref', 'Refunds', cur.refunds, prev.refunds, series.map((s) => s.net), 'currency', '', 'payments'),
-        this.kpi('tips', 'Tips', cur.tips, prev.tips, series.map((s) => s.gmv), 'currency', '', 'revenue'),
+        this.kpi(
+          'gmv',
+          'Gross Bookings',
+          cur.gmv,
+          prev.gmv,
+          series.map((s) => s.gmv),
+          'currency',
+          'grossBookings',
+          'revenue',
+        ),
+        this.kpi(
+          'net',
+          'Net Revenue',
+          cur.netRevenue,
+          prev.netRevenue,
+          series.map((s) => s.net),
+          'currency',
+          'netRevenue',
+          'revenue',
+        ),
+        this.kpi(
+          'commission',
+          'Platform Commission',
+          cur.commission,
+          prev.commission,
+          series.map((s) => s.net),
+          'currency',
+          'netRevenue',
+          'revenue',
+        ),
+        this.kpi(
+          'driver',
+          'Driver Earnings',
+          cur.driverEarnings,
+          prev.driverEarnings,
+          series.map((s) => s.gmv),
+          'currency',
+          '',
+          'drivers',
+        ),
+        this.kpi(
+          'tax',
+          'Taxes',
+          cur.tax,
+          prev.tax,
+          series.map((s) => s.gmv),
+          'currency',
+          '',
+          'revenue',
+        ),
+        this.kpi(
+          'disc',
+          'Discounts',
+          cur.discounts,
+          prev.discounts,
+          series.map((s) => s.gmv),
+          'currency',
+          '',
+          'promotions',
+        ),
+        this.kpi(
+          'ref',
+          'Refunds',
+          cur.refunds,
+          prev.refunds,
+          series.map((s) => s.net),
+          'currency',
+          '',
+          'payments',
+        ),
+        this.kpi(
+          'tips',
+          'Tips',
+          cur.tips,
+          prev.tips,
+          series.map((s) => s.gmv),
+          'currency',
+          '',
+          'revenue',
+        ),
       ],
     };
   }
 
   private async driversSection(q: AnalyticsQuery, resolved: ResolvedRange) {
     const onlineSince = new Date(Date.now() - 5 * 60_000);
-    const whereRides = rideWhere(resolved.current.start, resolved.current.end, q);
+    const whereRides = rideWhere(
+      resolved.current.start,
+      resolved.current.end,
+      q,
+    );
     const [
       total,
       approved,
@@ -1003,10 +1538,18 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       top,
     ] = await Promise.all([
       this.prisma.driverProfile.count(),
-      this.prisma.driverProfile.count({ where: { approvalStatus: DriverApprovalStatus.APPROVED } }),
-      this.prisma.driverProfile.count({ where: { approvalStatus: DriverApprovalStatus.PENDING_KYC } }),
-      this.prisma.driverProfile.count({ where: { approvalStatus: DriverApprovalStatus.SUSPENDED } }),
-      this.prisma.driverLocationCurrent.count({ where: { recordedAt: { gte: onlineSince } } }),
+      this.prisma.driverProfile.count({
+        where: { approvalStatus: DriverApprovalStatus.APPROVED },
+      }),
+      this.prisma.driverProfile.count({
+        where: { approvalStatus: DriverApprovalStatus.PENDING_KYC },
+      }),
+      this.prisma.driverProfile.count({
+        where: { approvalStatus: DriverApprovalStatus.SUSPENDED },
+      }),
+      this.prisma.driverLocationCurrent.count({
+        where: { recordedAt: { gte: onlineSince } },
+      }),
       this.prisma.ride.count({ where: { status: { in: ACTIVE_TRIP } } }),
       this.prisma.ride.findMany({
         where: { ...whereRides, assignedDriverId: { not: null } },
@@ -1014,7 +1557,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         select: { assignedDriverId: true },
       }),
       this.prisma.offer.count({
-        where: { createdAt: { gte: resolved.current.start, lt: resolved.current.end } },
+        where: {
+          createdAt: { gte: resolved.current.start, lt: resolved.current.end },
+        },
       }),
       this.prisma.offer.count({
         where: {
@@ -1023,13 +1568,17 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         },
       }),
       this.prisma.rating.aggregate({
-        where: { createdAt: { gte: resolved.current.start, lt: resolved.current.end } },
+        where: {
+          createdAt: { gte: resolved.current.start, lt: resolved.current.end },
+        },
         _avg: { stars: true },
       }),
       this.topDrivers(q, resolved),
     ]);
     const extra = rideFilterSql(q);
-    const byHour = await this.prisma.$queryRaw<Array<{ hour: number; n: number }>>`
+    const byHour = await this.prisma.$queryRaw<
+      Array<{ hour: number; n: number }>
+    >`
       SELECT EXTRACT(HOUR FROM r."createdAt" AT TIME ZONE ${pgTz(resolved.timezone)})::int AS hour,
              COUNT(DISTINCT r."assignedDriverId")::int AS n
       FROM "Ride" r
@@ -1045,7 +1594,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     const drvCancel = await this.prisma.ride.count({
       where: { ...whereRides, status: RideStatus.DRIVER_CANCELLED },
     });
-    const snap = await this.snapshotSums(q, resolved.current.start, resolved.current.end);
+    const snap = await this.snapshotSums(
+      q,
+      resolved.current.start,
+      resolved.current.end,
+    );
     const tripHours = (snap.avgDuration * completed) / 60;
     const onlineHoursProxy = round1(Math.max(tripHours * 1.35, tripHours));
     return {
@@ -1068,12 +1621,24 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         driversAvailable: available,
         utilizationRate: pct(onTrip, online || 1),
         acceptanceRate: acceptanceRate(selected, offers),
-        cancellationRate: cancellationRate(drvCancel, Math.max(1, completed + drvCancel)),
-        completionRate: completionRate(completed, Math.max(1, completed + drvCancel)),
+        cancellationRate: cancellationRate(
+          drvCancel,
+          Math.max(1, completed + drvCancel),
+        ),
+        completionRate: completionRate(
+          completed,
+          Math.max(1, completed + drvCancel),
+        ),
         averageRating: round1(asNum(ratings._avg.stars)),
-        averageEarnings: activeIds.length ? round2(snap.driverEarning / activeIds.length) : 0,
-        earningsPerOnlineHour: onlineHoursProxy ? round2(snap.driverEarning / onlineHoursProxy) : 0,
-        tripsPerDriver: activeIds.length ? round1(completed / activeIds.length) : 0,
+        averageEarnings: activeIds.length
+          ? round2(snap.driverEarning / activeIds.length)
+          : 0,
+        earningsPerOnlineHour: onlineHoursProxy
+          ? round2(snap.driverEarning / onlineHoursProxy)
+          : 0,
+        tripsPerDriver: activeIds.length
+          ? round1(completed / activeIds.length)
+          : 0,
         onlineHours: onlineHoursProxy,
         idleTime: round1(Math.max(0, onlineHoursProxy - tripHours)),
       },
@@ -1152,9 +1717,13 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       _count: { _all: true },
     });
     return rows.map((r) => {
-      const off = offers.find((o) => o.driverId === r.driver_id)?._count._all ?? 0;
-      const sel = selected.find((o) => o.driverId === r.driver_id)?._count._all ?? 0;
-      const can = cancel.find((o) => o.assignedDriverId === r.driver_id)?._count._all ?? 0;
+      const off =
+        offers.find((o) => o.driverId === r.driver_id)?._count._all ?? 0;
+      const sel =
+        selected.find((o) => o.driverId === r.driver_id)?._count._all ?? 0;
+      const can =
+        cancel.find((o) => o.assignedDriverId === r.driver_id)?._count._all ??
+        0;
       return {
         driverId: r.driver_id,
         userId: r.user_id,
@@ -1163,7 +1732,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         earnings: round2(asNum(r.earnings)),
         onlineHours: round1((Number(r.trips) * 25) / 60),
         acceptancePct: acceptanceRate(sel, off),
-        cancellationPct: cancellationRate(can, Math.max(1, Number(r.trips) + can)),
+        cancellationPct: cancellationRate(
+          can,
+          Math.max(1, Number(r.trips) + can),
+        ),
         rating: round1(asNum(r.rating)),
         revenueGenerated: round2(asNum(r.revenue)),
       };
@@ -1171,7 +1743,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private async earningsDistribution(resolved: ResolvedRange) {
-    const rows = await this.prisma.$queryRaw<Array<{ bucket: string; value: number }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ bucket: string; value: number }>
+    >`
       SELECT bucket, COUNT(*)::int AS value FROM (
         SELECT
           CASE
@@ -1194,10 +1768,15 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     return rows;
   }
 
-  private async ratingStars(resolved: ResolvedRange, _who: 'driver' | 'passenger') {
+  private async ratingStars(
+    resolved: ResolvedRange,
+    _who: 'driver' | 'passenger',
+  ) {
     const groups = await this.prisma.rating.groupBy({
       by: ['stars'],
-      where: { createdAt: { gte: resolved.current.start, lt: resolved.current.end } },
+      where: {
+        createdAt: { gte: resolved.current.start, lt: resolved.current.end },
+      },
       _count: { _all: true },
     });
     return [5, 4, 3, 2, 1].map((stars) => ({
@@ -1228,12 +1807,18 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       this.passengerSpend(start, end),
       this.ridesPerPassenger(start, end),
       this.prisma.ride.count({
-        where: rideWhere(start, end, { ...q, rideStatus: RideStatus.PASSENGER_CANCELLED }),
+        where: rideWhere(start, end, {
+          ...q,
+          rideStatus: RideStatus.PASSENGER_CANCELLED,
+        }),
       }),
       this.dailyRegistrations(resolved),
     ]);
     const active = await this.prisma.ride.findMany({
-      where: { createdAt: { gte: start, lt: end }, status: RideStatus.COMPLETED },
+      where: {
+        createdAt: { gte: start, lt: end },
+        status: RideStatus.COMPLETED,
+      },
       distinct: ['passengerId'],
       select: { passengerId: true },
     });
@@ -1243,7 +1828,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       select: { passengerId: true },
     });
     const segments = await this.passengerSegments(resolved);
-    const requests = await this.prisma.ride.count({ where: rideWhere(start, end, q) });
+    const requests = await this.prisma.ride.count({
+      where: rideWhere(start, end, q),
+    });
     return {
       demo: false,
       empty: total === 0,
@@ -1284,7 +1871,14 @@ export class AdminAnalyticsService implements OnModuleDestroy {
 
   private async passengerSpend(start: Date, end: Date) {
     const rows = await this.prisma.$queryRaw<
-      Array<{ avg: number; ltv: number; b0: number; b1: number; b2: number; b3: number }>
+      Array<{
+        avg: number;
+        ltv: number;
+        b0: number;
+        b1: number;
+        b2: number;
+        b3: number;
+      }>
     >`
       SELECT
         COALESCE(AVG(spend), 0) AS avg,
@@ -1407,7 +2001,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private async regToFirstRide(resolved: ResolvedRange) {
-    const rows = await this.prisma.$queryRaw<Array<{ registered: number; first_ride: number }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ registered: number; first_ride: number }>
+    >`
       SELECT
         COUNT(*)::int AS registered,
         COUNT(*) FILTER (WHERE first_ride IS NOT NULL)::int AS first_ride
@@ -1421,7 +2017,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     `;
     const registered = rows[0]?.registered ?? 0;
     const first = rows[0]?.first_ride ?? 0;
-    return { registered, firstRide: first, conversionPct: pct(first, registered) };
+    return {
+      registered,
+      firstRide: first,
+      conversionPct: pct(first, registered),
+    };
   }
 
   private async geographySection(q: AnalyticsQuery, resolved: ResolvedRange) {
@@ -1435,7 +2035,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         AND ${extra}
       LIMIT 800
     `;
-    const drops = await this.prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+    const drops = await this.prisma.$queryRaw<
+      Array<{ lat: number; lng: number }>
+    >`
       SELECT r."toLat" AS lat, r."toLng" AS lng
       FROM "Ride" r
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
@@ -1460,9 +2062,15 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       layers: {
         requests: points.map((p) => ({ lat: p.lat, lng: p.lng, weight: 1 })),
         pickups: points.map((p) => ({ lat: p.lat, lng: p.lng, weight: 1 })),
-        dropoffs: drops.filter((d) => d.lat != null).map((d) => ({ lat: d.lat, lng: d.lng, weight: 1 })),
+        dropoffs: drops
+          .filter((d) => d.lat != null)
+          .map((d) => ({ lat: d.lat, lng: d.lng, weight: 1 })),
         drivers: drivers.map((d) => ({ lat: d.lat, lng: d.lng, weight: 1 })),
-        cancellations: cancels.map((p) => ({ lat: p.lat, lng: p.lng, weight: 1 })),
+        cancellations: cancels.map((p) => ({
+          lat: p.lat,
+          lng: p.lng,
+          weight: 1,
+        })),
       },
       zones: zones.map((z) => ({
         zone: z.zone,
@@ -1476,7 +2084,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     };
   }
 
-  private async cancellationsSection(q: AnalyticsQuery, resolved: ResolvedRange) {
+  private async cancellationsSection(
+    q: AnalyticsQuery,
+    resolved: ResolvedRange,
+  ) {
     const extra = rideFilterSql(q);
     const tz = pgTz(resolved.timezone);
     const rows = await this.prisma.$queryRaw<
@@ -1500,7 +2111,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       GROUP BY 1, 2
       ORDER BY n DESC
     `;
-    const byHour = await this.prisma.$queryRaw<Array<{ hour: number; n: number }>>`
+    const byHour = await this.prisma.$queryRaw<
+      Array<{ hour: number; n: number }>
+    >`
       SELECT EXTRACT(HOUR FROM r."createdAt" AT TIME ZONE ${tz})::int AS hour, COUNT(*)::int AS n
       FROM "Ride" r
       WHERE r."createdAt" >= ${resolved.current.start} AND r."createdAt" < ${resolved.current.end}
@@ -1511,7 +2124,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     const trend = await this.dailySeries(q, { ...resolved });
     const highDrivers = await this.highCancelActors('driver', resolved);
     const highPax = await this.highCancelActors('passenger', resolved);
-    const cur = await this.periodStats(q, resolved.current.start, resolved.current.end);
+    const cur = await this.periodStats(
+      q,
+      resolved.current.start,
+      resolved.current.end,
+    );
     return {
       demo: false,
       empty: cur.cancelled === 0,
@@ -1519,7 +2136,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       lastUpdated: new Date().toISOString(),
       rate: cur.driverCancelRate + cur.paxCancelRate,
       kpis: {
-        cancellationRate: cancellationRate(cur.cancelled, Math.max(1, cur.requests)),
+        cancellationRate: cancellationRate(
+          cur.cancelled,
+          Math.max(1, cur.requests),
+        ),
         passenger: cur.paxCancelRate,
         driver: cur.driverCancelRate,
       },
@@ -1531,16 +2151,30 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         value: byHour.find((x) => x.hour === hour)?.n ?? 0,
       })),
       byZone: await this.zoneTable(q, resolved),
-      trend: trend.map((s) => ({ date: s.date, rides: s.rides, completed: s.completed })),
+      trend: trend.map((s) => ({
+        date: s.date,
+        rides: s.rides,
+        completed: s.completed,
+      })),
       highCancelDrivers: highDrivers,
       highPassengers: highPax,
     };
   }
 
-  private async highCancelActors(kind: 'driver' | 'passenger', resolved: ResolvedRange) {
+  private async highCancelActors(
+    kind: 'driver' | 'passenger',
+    resolved: ResolvedRange,
+  ) {
     if (kind === 'driver') {
       return this.prisma.$queryRaw<
-        Array<{ id: string; name: string; user_id: string; cancelled: number; total: number; rate: number }>
+        Array<{
+          id: string;
+          name: string;
+          user_id: string;
+          cancelled: number;
+          total: number;
+          rate: number;
+        }>
       >`
         SELECT d.id, d."fullName" AS name, d."userId" AS user_id,
           COUNT(*) FILTER (WHERE r."status" = 'DRIVER_CANCELLED')::int AS cancelled,
@@ -1556,7 +2190,14 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       `;
     }
     return this.prisma.$queryRaw<
-      Array<{ id: string; name: string; user_id: string; cancelled: number; total: number; rate: number }>
+      Array<{
+        id: string;
+        name: string;
+        user_id: string;
+        cancelled: number;
+        total: number;
+        rate: number;
+      }>
     >`
       SELECT p.id, p."fullName" AS name, p."userId" AS user_id,
         COUNT(*) FILTER (WHERE r."status" = 'PASSENGER_CANCELLED')::int AS cancelled,
@@ -1572,36 +2213,53 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     `;
   }
 
-  private async paymentsSection(q: AnalyticsQuery, resolved: ResolvedRange, perms: string[]) {
+  private async paymentsSection(
+    q: AnalyticsQuery,
+    resolved: ResolvedRange,
+    perms: string[],
+  ) {
     if (!this.canFinancial(perms)) {
-      return { denied: true, message: 'Missing analytics.financial permission.' };
+      return {
+        denied: true,
+        message: 'Missing analytics.financial permission.',
+      };
     }
     const where: Prisma.PaymentWhereInput = {
       createdAt: { gte: resolved.current.start, lt: resolved.current.end },
       ...(q.paymentMethod ? { provider: q.paymentMethod } : {}),
     };
-    const [all, succeeded, failed, pending, refunded, byProvider, volume] = await Promise.all([
-      this.prisma.payment.count({ where }),
-      this.prisma.payment.aggregate({
-        where: { ...where, status: { in: PAID_STATUSES } },
-        _sum: { amount: true },
-        _count: { _all: true },
-      }),
-      this.prisma.payment.count({ where: { ...where, status: { in: FAIL_STATUSES } } }),
-      this.prisma.payment.count({ where: { ...where, status: { in: PENDING_PAY } } }),
-      this.prisma.refund.aggregate({
-        where: { createdAt: { gte: resolved.current.start, lt: resolved.current.end } },
-        _sum: { amount: true },
-        _count: { _all: true },
-      }),
-      this.prisma.payment.groupBy({
-        by: ['provider', 'status'],
-        where,
-        _count: { _all: true },
-        _sum: { amount: true },
-      }),
-      this.dailySeries(q, resolved),
-    ]);
+    const [all, succeeded, failed, pending, refunded, byProvider, volume] =
+      await Promise.all([
+        this.prisma.payment.count({ where }),
+        this.prisma.payment.aggregate({
+          where: { ...where, status: { in: PAID_STATUSES } },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        this.prisma.payment.count({
+          where: { ...where, status: { in: FAIL_STATUSES } },
+        }),
+        this.prisma.payment.count({
+          where: { ...where, status: { in: PENDING_PAY } },
+        }),
+        this.prisma.refund.aggregate({
+          where: {
+            createdAt: {
+              gte: resolved.current.start,
+              lt: resolved.current.end,
+            },
+          },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+        this.prisma.payment.groupBy({
+          by: ['provider', 'status'],
+          where,
+          _count: { _all: true },
+          _sum: { amount: true },
+        }),
+        this.dailySeries(q, resolved),
+      ]);
     const cashLike = await this.prisma.payment.count({
       where: { ...where, provider: { in: ['cash', 'CASH', 'dev'] } },
     });
@@ -1660,18 +2318,39 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     };
   }
 
-  private async cohortMatrix(kind: 'passenger' | 'driver', grain: 'week' | 'month', tz: string) {
+  private async cohortMatrix(
+    kind: 'passenger' | 'driver',
+    grain: 'week' | 'month',
+    tz: string,
+  ) {
     const tzSafe = pgTz(tz);
     const trunc = grain === 'month' ? 'month' : 'week';
-    const step = grain === 'month' ? Prisma.sql`interval '1 month'` : Prisma.sql`interval '1 week'`;
-    const lookback = grain === 'month' ? Prisma.sql`interval '8 month'` : Prisma.sql`interval '8 week'`;
-    const idExpr = kind === 'driver' ? Prisma.sql`r."assignedDriverId"` : Prisma.sql`r."passengerId"`;
+    const step =
+      grain === 'month'
+        ? Prisma.sql`interval '1 month'`
+        : Prisma.sql`interval '1 week'`;
+    const lookback =
+      grain === 'month'
+        ? Prisma.sql`interval '8 month'`
+        : Prisma.sql`interval '8 week'`;
+    const idExpr =
+      kind === 'driver'
+        ? Prisma.sql`r."assignedDriverId"`
+        : Prisma.sql`r."passengerId"`;
     const fromProfile =
       kind === 'driver'
         ? Prisma.sql`"DriverProfile" d JOIN "User" u ON u.id = d."userId"`
         : Prisma.sql`"PassengerProfile" d JOIN "User" u ON u.id = d."userId"`;
     const rows = await this.prisma.$queryRaw<
-      Array<{ cohort: Date; users: number; w0: number; w1: number; w2: number; w3: number; w4: number }>
+      Array<{
+        cohort: Date;
+        users: number;
+        w0: number;
+        w1: number;
+        w2: number;
+        w3: number;
+        w4: number;
+      }>
     >`
       WITH cohort AS (
         SELECT d.id, date_trunc(${trunc}, u."createdAt" AT TIME ZONE ${tzSafe}) AS c
@@ -1706,7 +2385,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     w3: number;
     w4: number;
   }) {
-    const label = r.cohort instanceof Date ? r.cohort.toISOString().slice(0, 10) : String(r.cohort);
+    const label =
+      r.cohort instanceof Date
+        ? r.cohort.toISOString().slice(0, 10)
+        : String(r.cohort);
     return {
       cohort: label,
       users: Number(r.users),
@@ -1715,9 +2397,17 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private async dxRetention(kind: 'passenger' | 'driver') {
-    const idCol = kind === 'driver' ? Prisma.sql`r."assignedDriverId"` : Prisma.sql`r."passengerId"`;
-    const r2id = kind === 'driver' ? Prisma.sql`r2."assignedDriverId"` : Prisma.sql`r2."passengerId"`;
-    const rows = await this.prisma.$queryRaw<Array<{ d1: number; d7: number; d30: number; react: number }>>`
+    const idCol =
+      kind === 'driver'
+        ? Prisma.sql`r."assignedDriverId"`
+        : Prisma.sql`r."passengerId"`;
+    const r2id =
+      kind === 'driver'
+        ? Prisma.sql`r2."assignedDriverId"`
+        : Prisma.sql`r2."passengerId"`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ d1: number; d7: number; d30: number; react: number }>
+    >`
       WITH first AS (
         SELECT ${idCol} AS id, MIN(r."createdAt") AS first_at
         FROM "Ride" r
@@ -1755,7 +2445,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private async funnelSection(q: AnalyticsQuery, resolved: ResolvedRange) {
-    const cur = await this.periodStats(q, resolved.current.start, resolved.current.end);
+    const cur = await this.periodStats(
+      q,
+      resolved.current.start,
+      resolved.current.end,
+    );
     return {
       demo: false,
       empty: cur.requests === 0,
@@ -1775,7 +2469,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       this.zoneTable(q, resolved),
     ]);
     const extra = rideFilterSql(q);
-    const supplyHour = await this.prisma.$queryRaw<Array<{ hour: number; drivers: number }>>`
+    const supplyHour = await this.prisma.$queryRaw<
+      Array<{ hour: number; drivers: number }>
+    >`
       SELECT EXTRACT(HOUR FROM r."createdAt" AT TIME ZONE ${pgTz(resolved.timezone)})::int AS hour,
              COUNT(DISTINCT r."assignedDriverId")::int AS drivers
       FROM "Ride" r
@@ -1834,7 +2530,14 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     const tz = pgTz(resolved.timezone);
     const extra = rideFilterSql(q);
     const rows = await this.prisma.$queryRaw<
-      Array<{ dow: number; hour: number; requests: number; revenue: number; cancels: number; drivers: number }>
+      Array<{
+        dow: number;
+        hour: number;
+        requests: number;
+        revenue: number;
+        cancels: number;
+        drivers: number;
+      }>
     >`
       SELECT
         EXTRACT(DOW FROM r."createdAt" AT TIME ZONE ${tz})::int AS dow,
@@ -1857,7 +2560,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       cancelPct: pct(Number(r.cancels), Number(r.requests)),
       eta: 0,
     }));
-    return { cells, metrics: ['requests', 'revenue', 'supply', 'cancelPct', 'eta'] };
+    return {
+      cells,
+      metrics: ['requests', 'revenue', 'supply', 'cancelPct', 'eta'],
+    };
   }
 
   private async forecastSection(q: AnalyticsQuery, resolved: ResolvedRange) {
@@ -1956,12 +2662,20 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private async ratingsSection(q: AnalyticsQuery, resolved: ResolvedRange) {
-    const where = { createdAt: { gte: resolved.current.start, lt: resolved.current.end } };
+    const where = {
+      createdAt: { gte: resolved.current.start, lt: resolved.current.end },
+    };
     const [agg, dist, complaints, lowest, trend] = await Promise.all([
-      this.prisma.rating.aggregate({ where, _avg: { stars: true }, _count: { _all: true } }),
+      this.prisma.rating.aggregate({
+        where,
+        _avg: { stars: true },
+        _count: { _all: true },
+      }),
       this.ratingStars(resolved, 'driver'),
       this.prisma.supportCase.count({
-        where: { createdAt: { gte: resolved.current.start, lt: resolved.current.end } },
+        where: {
+          createdAt: { gte: resolved.current.start, lt: resolved.current.end },
+        },
       }),
       this.lowestRatedDrivers(resolved),
       this.ratingTrend(resolved),
@@ -1991,13 +2705,18 @@ export class AdminAnalyticsService implements OnModuleDestroy {
 
   private async ratingTrend(resolved: ResolvedRange) {
     const tz = pgTz(resolved.timezone);
-    const rows = await this.prisma.$queryRaw<Array<{ date: Date; avg: number }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ date: Date; avg: number }>
+    >`
       SELECT date_trunc('day', "createdAt" AT TIME ZONE ${tz}) AS date, AVG(stars)::numeric AS avg
       FROM "Rating"
       WHERE "createdAt" >= ${resolved.current.start} AND "createdAt" < ${resolved.current.end}
       GROUP BY 1 ORDER BY 1
     `;
-    return rows.map((r) => ({ date: isoBucket(r.date, 'day'), avg: round1(asNum(r.avg)) }));
+    return rows.map((r) => ({
+      date: isoBucket(r.date, 'day'),
+      avg: round1(asNum(r.avg)),
+    }));
   }
 
   private async lowestRatedDrivers(resolved: ResolvedRange) {
@@ -2019,7 +2738,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private async improvedDrivers(resolved: ResolvedRange) {
-    return this.prisma.$queryRaw<Array<{ user_id: string; name: string; delta: number }>>`
+    return this.prisma.$queryRaw<
+      Array<{ user_id: string; name: string; delta: number }>
+    >`
       SELECT u.id AS user_id, COALESCE(d."fullName", 'Driver') AS name,
              AVG(rt.stars) FILTER (WHERE rt."createdAt" >= ${resolved.current.start}) -
              AVG(rt.stars) FILTER (WHERE rt."createdAt" < ${resolved.current.start}) AS delta
@@ -2034,39 +2755,56 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     `;
   }
 
-  private async safetySection(q: AnalyticsQuery, resolved: ResolvedRange, perms: string[]) {
+  private async safetySection(
+    q: AnalyticsQuery,
+    resolved: ResolvedRange,
+    perms: string[],
+  ) {
     if (!this.canSafety(perms)) {
       return { denied: true, message: 'Missing analytics.safety permission.' };
     }
     const start = resolved.current.start;
     const end = resolved.current.end;
-    const [sos, reports, driverComplaints, paxComplaints, suspensions, fraud, trend] =
-      await Promise.all([
-        this.prisma.supportCase.count({
-          where: { type: 'SAFETY', createdAt: { gte: start, lt: end } },
-        }),
-        this.prisma.supportCase.count({
-          where: { createdAt: { gte: start, lt: end } },
-        }),
-        this.prisma.supportCase.count({
-          where: { createdAt: { gte: start, lt: end }, driverProfileId: { not: null } },
-        }),
-        this.prisma.supportCase.count({
-          where: { createdAt: { gte: start, lt: end }, passengerProfileId: { not: null } },
-        }),
-        this.prisma.user.count({
-          where: { isSuspended: true, updatedAt: { gte: start, lt: end } },
-        }),
-        this.prisma.riskFlag.count({
-          where: { createdAt: { gte: start, lt: end } },
-        }),
-        this.prisma.$queryRaw<Array<{ date: Date; n: number }>>`
+    const [
+      sos,
+      reports,
+      driverComplaints,
+      paxComplaints,
+      suspensions,
+      fraud,
+      trend,
+    ] = await Promise.all([
+      this.prisma.supportCase.count({
+        where: { type: 'SAFETY', createdAt: { gte: start, lt: end } },
+      }),
+      this.prisma.supportCase.count({
+        where: { createdAt: { gte: start, lt: end } },
+      }),
+      this.prisma.supportCase.count({
+        where: {
+          createdAt: { gte: start, lt: end },
+          driverProfileId: { not: null },
+        },
+      }),
+      this.prisma.supportCase.count({
+        where: {
+          createdAt: { gte: start, lt: end },
+          passengerProfileId: { not: null },
+        },
+      }),
+      this.prisma.user.count({
+        where: { isSuspended: true, updatedAt: { gte: start, lt: end } },
+      }),
+      this.prisma.riskFlag.count({
+        where: { createdAt: { gte: start, lt: end } },
+      }),
+      this.prisma.$queryRaw<Array<{ date: Date; n: number }>>`
           SELECT date_trunc('day', "createdAt" AT TIME ZONE ${pgTz(resolved.timezone)}) AS date, COUNT(*)::int AS n
           FROM "SupportCase"
           WHERE "createdAt" >= ${start} AND "createdAt" < ${end}
           GROUP BY 1 ORDER BY 1
         `,
-      ]);
+    ]);
     return {
       demo: false,
       empty: reports === 0 && fraud === 0,
@@ -2082,7 +2820,10 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         accountSuspensions: suspensions,
         fraudFlags: fraud,
       },
-      trend: trend.map((t) => ({ date: isoBucket(t.date, 'day'), cases: Number(t.n) })),
+      trend: trend.map((t) => ({
+        date: isoBucket(t.date, 'day'),
+        cases: Number(t.n),
+      })),
       note: 'Counts only — case details and identities are hidden on this dashboard.',
     };
   }
@@ -2144,7 +2885,9 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       }),
       this.prisma.ride.count({ where }),
     ]);
-    const driverIds = rows.map((r) => r.assignedDriverId).filter(Boolean) as string[];
+    const driverIds = rows
+      .map((r) => r.assignedDriverId)
+      .filter(Boolean) as string[];
     const drivers = driverIds.length
       ? await this.prisma.driverProfile.findMany({
           where: { id: { in: driverIds } },
@@ -2170,7 +2913,8 @@ export class AdminAnalyticsService implements OnModuleDestroy {
           destination: r.toLabel,
           zone: r.fromLabel.split(',')[0],
           fare: round2(
-            snapField(r.priceSnapshot, 'passengerTotal') || snapField(r.priceSnapshot, 'bidAmount'),
+            snapField(r.priceSnapshot, 'passengerTotal') ||
+              snapField(r.priceSnapshot, 'bidAmount'),
           ),
           currency: r.currency,
           status: r.status,
@@ -2182,11 +2926,17 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     };
   }
 
-  async exportReport(q: AnalyticsQuery, section: string, format: string, perms: string[]) {
-    const data = (await this.section(section === 'overview' ? 'overview' : section, q, perms)) as Record<
-      string,
-      unknown
-    >;
+  async exportReport(
+    q: AnalyticsQuery,
+    section: string,
+    format: string,
+    perms: string[],
+  ) {
+    const data = (await this.section(
+      section === 'overview' ? 'overview' : section,
+      q,
+      perms,
+    )) as Record<string, unknown>;
     const generatedAt = new Date().toISOString();
     const resolved = this.resolve(q);
     const lines: string[][] = [
@@ -2194,14 +2944,27 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       ['Generated at', generatedAt],
       ['Period', resolved.currentLabel],
       ['Timezone', resolved.timezone],
-      ['Filters', JSON.stringify({ city: q.city, zone: q.zone, serviceType: q.serviceType, promo: q.promo })],
+      [
+        'Filters',
+        JSON.stringify({
+          city: q.city,
+          zone: q.zone,
+          serviceType: q.serviceType,
+          promo: q.promo,
+        }),
+      ],
       [],
     ];
     const kpis = (data as { kpis?: unknown }).kpis;
     if (Array.isArray(kpis)) {
       lines.push(['Metric', 'Value', 'Previous', 'Change %']);
       for (const k of kpis as KpiCard[]) {
-        lines.push([k.label, String(k.value), String(k.previous), String(k.changePct ?? '')]);
+        lines.push([
+          k.label,
+          String(k.value),
+          String(k.previous),
+          String(k.changePct ?? ''),
+        ]);
       }
     } else if (kpis && typeof kpis === 'object') {
       lines.push(['Metric', 'Value']);
@@ -2210,9 +2973,17 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       }
     }
     if (format === 'xlsx') {
-      return { filename: `cango-analytics-${section}.xls`, mime: 'application/vnd.ms-excel', body: toSpreadsheet(lines) };
+      return {
+        filename: `cango-analytics-${section}.xls`,
+        mime: 'application/vnd.ms-excel',
+        body: toSpreadsheet(lines),
+      };
     }
-    return { filename: `cango-analytics-${section}.csv`, mime: 'text/csv', body: toCsv(lines) };
+    return {
+      filename: `cango-analytics-${section}.csv`,
+      mime: 'text/csv',
+      body: toCsv(lines),
+    };
   }
 
   async customReport(
@@ -2276,7 +3047,12 @@ export class AdminAnalyticsService implements OnModuleDestroy {
 
   async saveView(adminId: string, name: string, kind: string, query: unknown) {
     return this.prisma.analyticsSavedView.create({
-      data: { adminId, name, kind: kind || 'filter', query: query as Prisma.InputJsonValue },
+      data: {
+        adminId,
+        name,
+        kind: kind || 'filter',
+        query: query as Prisma.InputJsonValue,
+      },
     });
   }
 
@@ -2286,7 +3062,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
   }
 
   private demoOverview(resolved: ResolvedRange, q: AnalyticsQuery) {
-    const days = iterateDays(resolved.current.start, resolved.current.end, resolved.timezone);
+    const days = iterateDays(
+      resolved.current.start,
+      resolved.current.end,
+      resolved.timezone,
+    );
     const trend = days.map((date, i) => {
       const v = seeded(date, 40, 90);
       return {
@@ -2298,7 +3078,13 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       };
     });
     const spark = trend.map((t) => t.gmv);
-    const mk = (key: string, label: string, value: number, unit: KpiCard['unit'], drill: string): KpiCard =>
+    const mk = (
+      key: string,
+      label: string,
+      value: number,
+      unit: KpiCard['unit'],
+      drill: string,
+    ): KpiCard =>
       this.kpi(key, label, value, round2(value * 0.89), spark, unit, '', drill);
     return {
       demo: true,
@@ -2323,7 +3109,13 @@ export class AdminAnalyticsService implements OnModuleDestroy {
           mk('passengers', 'Total Passengers', 12840, 'count', 'passengers'),
           mk('newPax', 'New Passengers', 640, 'count', 'passengers'),
           mk('activePax', 'Active Passengers', 3920, 'count', 'passengers'),
-          mk('returningPax', 'Returning Passengers', 2710, 'count', 'passengers'),
+          mk(
+            'returningPax',
+            'Returning Passengers',
+            2710,
+            'count',
+            'passengers',
+          ),
           mk('drivers', 'Total Drivers', 860, 'count', 'drivers'),
           mk('activeDrv', 'Active Drivers', 310, 'count', 'drivers'),
           mk('newDrv', 'New Drivers', 28, 'count', 'drivers'),
@@ -2331,8 +3123,20 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         operations: [
           mk('completion', 'Ride Completion Rate', 85.9, 'percent', 'funnel'),
           mk('acceptance', 'Acceptance Rate', 91.2, 'percent', 'drivers'),
-          mk('drvCancel', 'Driver Cancellation Rate', 4.1, 'percent', 'cancellations'),
-          mk('paxCancel', 'Passenger Cancellation Rate', 8.8, 'percent', 'cancellations'),
+          mk(
+            'drvCancel',
+            'Driver Cancellation Rate',
+            4.1,
+            'percent',
+            'cancellations',
+          ),
+          mk(
+            'paxCancel',
+            'Passenger Cancellation Rate',
+            8.8,
+            'percent',
+            'cancellations',
+          ),
           mk('eta', 'Average ETA', 6.4, 'duration', 'operations'),
           mk('pickup', 'Average Pickup Time', 3.1, 'duration', 'operations'),
           mk('duration', 'Average Trip Duration', 22.4, 'duration', 'rides'),
@@ -2359,9 +3163,18 @@ export class AdminAnalyticsService implements OnModuleDestroy {
         ]),
       },
       insights: [
-        { severity: 'positive', text: 'Ride demand increased 12.8% compared with the previous period.' },
-        { severity: 'warning', text: 'Downtown cancellation rate is above the platform average.' },
-        { severity: 'info', text: 'Figures below are labeled Demo Data and are not production metrics.' },
+        {
+          severity: 'positive',
+          text: 'Ride demand increased 12.8% compared with the previous period.',
+        },
+        {
+          severity: 'warning',
+          text: 'Downtown cancellation rate is above the platform average.',
+        },
+        {
+          severity: 'info',
+          text: 'Figures below are labeled Demo Data and are not production metrics.',
+        },
       ],
       live: {
         onlineDrivers: 42,
@@ -2380,7 +3193,11 @@ export class AdminAnalyticsService implements OnModuleDestroy {
     };
   }
 
-  private async demoSection(section: string, resolved: ResolvedRange, q: AnalyticsQuery) {
+  private async demoSection(
+    section: string,
+    resolved: ResolvedRange,
+    q: AnalyticsQuery,
+  ) {
     const overview = this.demoOverview(resolved, q);
     if (section === 'overview') return overview;
     const hours = Array.from({ length: 24 }, (_, hour) => ({
@@ -2394,18 +3211,31 @@ export class AdminAnalyticsService implements OnModuleDestroy {
       lastUpdated: new Date().toISOString(),
     };
     if (section === 'forecast') {
-      const demand = linearForecast(overview.trend.map((t) => t.rides), q.forecastHorizon);
+      const demand = linearForecast(
+        overview.trend.map((t) => t.rides),
+        q.forecastHorizon,
+      );
       return {
         ...base,
         method: demand.method,
         estimated: true,
-        disclaimer: 'Statistical estimate on demo series — not a trained ML model.',
+        disclaimer:
+          'Statistical estimate on demo series — not a trained ML model.',
         horizon: q.forecastHorizon,
         dates: overview.trend.map((t) => t.date),
         demand,
-        revenue: linearForecast(overview.trend.map((t) => t.gmv), q.forecastHorizon),
-        requiredSupply: linearForecast(overview.trend.map((t) => t.completed), q.forecastHorizon),
-        cancellations: linearForecast(overview.trend.map((t) => Math.round(t.rides * 0.12)), q.forecastHorizon),
+        revenue: linearForecast(
+          overview.trend.map((t) => t.gmv),
+          q.forecastHorizon,
+        ),
+        requiredSupply: linearForecast(
+          overview.trend.map((t) => t.completed),
+          q.forecastHorizon,
+        ),
+        cancellations: linearForecast(
+          overview.trend.map((t) => Math.round(t.rides * 0.12)),
+          q.forecastHorizon,
+        ),
       };
     }
     return { ...base, ...overview, byHour: hours, kpis: overview.kpis };
@@ -2426,7 +3256,8 @@ function formatPrevYear(resolved: ResolvedRange) {
 
 function seeded(seed: string, min: number, max: number) {
   let h = 2166136261;
-  for (let i = 0; i < seed.length; i += 1) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  for (let i = 0; i < seed.length; i += 1)
+    h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
   const u = (h >>> 0) / 2 ** 32;
   return min + u * (max - min);
 }
@@ -2451,5 +3282,8 @@ function toSpreadsheet(rows: string[][]) {
 }
 
 function escapeXml(s: string) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

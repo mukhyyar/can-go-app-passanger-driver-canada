@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:driver/offer/offer_helpers.dart';
 import 'package:driver/screens/offer_review_screen.dart';
 import 'package:driver/screens/request_detail_screen.dart';
-import 'package:driver/screens/requests_screen.dart';
 import 'package:driver/state/app_state.dart';
 
 class MockOfferAppState extends AppState {

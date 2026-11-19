@@ -1,8 +1,5 @@
 export type OtpPurpose =
-  | 'register'
-  | 'login'
-  | 'verify_phone'
-  | 'password_reset';
+  'register' | 'login' | 'verify_phone' | 'password_reset';
 
 export interface OtpProvider {
   readonly name: string;

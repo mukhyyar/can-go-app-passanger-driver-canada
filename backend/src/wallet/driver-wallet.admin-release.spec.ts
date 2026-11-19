@@ -1,4 +1,8 @@
-import { WalletDirection, WalletEntryStatus, WalletEntryType } from '@prisma/client';
+import {
+  WalletDirection,
+  WalletEntryStatus,
+  WalletEntryType,
+} from '@prisma/client';
 
 /** Pure rule mirroring adminReleaseEntry eligibility. */
 function canReleaseEarning(entry: {
@@ -20,8 +24,7 @@ function canReleaseEarning(entry: {
   ) {
     return { releasable: false, alreadyAvailable: false };
   }
-  const alreadyAvailable =
-    !entry.availableAt || entry.availableAt <= entry.now;
+  const alreadyAvailable = !entry.availableAt || entry.availableAt <= entry.now;
   if (alreadyAvailable && entry.status === WalletEntryStatus.POSTED) {
     return { releasable: false, alreadyAvailable: true };
   }

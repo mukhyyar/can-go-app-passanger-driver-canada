@@ -13,11 +13,7 @@ import { RideStatus } from '@prisma/client';
  */
 
 export type LifecycleActorType =
-  | 'passenger'
-  | 'driver'
-  | 'admin'
-  | 'system'
-  | 'worker';
+  'passenger' | 'driver' | 'admin' | 'system' | 'worker';
 
 export type RideLifecycleConfig = {
   unfulfilledGraceMs: number;
@@ -33,7 +29,10 @@ export function loadRideLifecycleConfig(
 ): RideLifecycleConfig {
   const graceMin = parsePositiveInt(env.RIDE_UNFULFILLED_GRACE_MINUTES, 60);
   const payMin = parsePositiveInt(env.RIDE_PAYMENT_TTL_MINUTES, 15);
-  const immediateMin = parsePositiveInt(env.RIDE_IMMEDIATE_THRESHOLD_MINUTES, 120);
+  const immediateMin = parsePositiveInt(
+    env.RIDE_IMMEDIATE_THRESHOLD_MINUTES,
+    120,
+  );
   const overdueMin = parsePositiveInt(env.RIDE_OVERDUE_GRACE_MINUTES, 30);
   return {
     unfulfilledGraceMs: graceMin * MINUTE,
@@ -55,6 +54,57 @@ export const OPEN_MARKETPLACE_STATUSES: RideStatus[] = [
   RideStatus.OFFER_SELECTION,
 ];
 
+/** Pre-booking unconfirmed enquiry statuses (eligible for 12-hour 5% discount before booking is finalized). */
+export const UNCONFIRMED_ENQUIRY_STATUSES: RideStatus[] = [
+  RideStatus.WAITING_FOR_OFFERS,
+  RideStatus.OFFER_SELECTION,
+  RideStatus.PAYMENT_PENDING,
+];
+
+export const ENQUIRY_DISCOUNT_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
+export const ENQUIRY_DISCOUNT_PCT = 5;
+
+export function computeEnquiryDiscountState(
+  ride: {
+    status: RideStatus;
+    pickupAt?: Date | null;
+    requestExpiresAt?: Date | null;
+  },
+  now: Date = new Date(),
+  config: RideLifecycleConfig = loadRideLifecycleConfig(),
+) {
+  if (
+    !ride.requestExpiresAt &&
+    (!ride.pickupAt || !(ride.pickupAt instanceof Date))
+  ) {
+    return {
+      eligible: false,
+      discountPct: 0,
+      availableAt: now,
+      expiresAt: now,
+      isExpired: false,
+    };
+  }
+  const expiresAt =
+    ride.requestExpiresAt ?? computeRequestExpiresAt(ride.pickupAt!, config);
+  const availableAt = new Date(
+    expiresAt.getTime() - ENQUIRY_DISCOUNT_WINDOW_MS,
+  );
+  const isUnconfirmed = UNCONFIRMED_ENQUIRY_STATUSES.includes(ride.status);
+  const remainingMs = expiresAt.getTime() - now.getTime();
+  const isExpired = ride.status === RideStatus.EXPIRED || remainingMs <= 0;
+  const isWithinWindow =
+    remainingMs > 0 && remainingMs <= ENQUIRY_DISCOUNT_WINDOW_MS;
+  const eligible = isUnconfirmed && isWithinWindow;
+  return {
+    eligible,
+    discountPct: eligible ? ENQUIRY_DISCOUNT_PCT : 0,
+    availableAt,
+    expiresAt,
+    isExpired,
+  };
+}
+
 export const TERMINAL_RIDE_STATUSES: RideStatus[] = [
   RideStatus.COMPLETED,
   RideStatus.PASSENGER_CANCELLED,
@@ -73,7 +123,10 @@ export const CANCELLED_ONLY: RideStatus[] = [
 ];
 
 /** Unfulfilled / missed marketplace outcomes (not cancellations). */
-export const UNFULFILLED: RideStatus[] = [RideStatus.EXPIRED, RideStatus.NO_SHOW];
+export const UNFULFILLED: RideStatus[] = [
+  RideStatus.EXPIRED,
+  RideStatus.NO_SHOW,
+];
 
 /** Payment failures (distinct from ride expiry). */
 export const FAILED_PAYMENT: RideStatus[] = [RideStatus.PAYMENT_FAILED];
@@ -172,7 +225,9 @@ export function isImmediateRide(
   createdAt: Date,
   config: RideLifecycleConfig = loadRideLifecycleConfig(),
 ): boolean {
-  return pickupAt.getTime() - createdAt.getTime() <= config.immediateThresholdMs;
+  return (
+    pickupAt.getTime() - createdAt.getTime() <= config.immediateThresholdMs
+  );
 }
 
 /**
@@ -219,7 +274,10 @@ export function isEligibleForUnfulfilledExpiry(
   const cutoff = unfulfilledCutoffAt(ride.pickupAt, config);
   if (cutoff.getTime() > now.getTime()) return false;
 
-  if (ride.requestExpiresAt && ride.requestExpiresAt.getTime() > now.getTime()) {
+  if (
+    ride.requestExpiresAt &&
+    ride.requestExpiresAt.getTime() > now.getTime()
+  ) {
     return false;
   }
 
@@ -236,11 +294,13 @@ export function paymentTimeoutOutcome(
   config: RideLifecycleConfig = loadRideLifecycleConfig(),
 ): 'expire' | 'reopen_offers' | 'noop' {
   if (ride.status !== RideStatus.PAYMENT_PENDING) return 'noop';
-  if (isEligibleForUnfulfilledExpiry(
-    { ...ride, status: RideStatus.WAITING_FOR_OFFERS },
-    now,
-    config,
-  )) {
+  if (
+    isEligibleForUnfulfilledExpiry(
+      { ...ride, status: RideStatus.WAITING_FOR_OFFERS },
+      now,
+      config,
+    )
+  ) {
     return 'expire';
   }
   // Still before / within pickup window → do not kill the ride
@@ -322,15 +382,20 @@ export function isOverdueBooking(
   return false;
 }
 
-export function serializeLifecycleFlags(ride: {
-  status: RideStatus;
-  pickupAt: Date;
-  requestExpiresAt?: Date | null;
-  paymentExpiresAt?: Date | null;
-}, now: Date = new Date(), config: RideLifecycleConfig = loadRideLifecycleConfig()) {
+export function serializeLifecycleFlags(
+  ride: {
+    status: RideStatus;
+    pickupAt: Date;
+    requestExpiresAt?: Date | null;
+    paymentExpiresAt?: Date | null;
+  },
+  now: Date = new Date(),
+  config: RideLifecycleConfig = loadRideLifecycleConfig(),
+) {
   const open = OPEN_MARKETPLACE_STATUSES.includes(ride.status);
   const terminal = TERMINAL_RIDE_STATUSES.includes(ride.status);
   const isOverdue = isOverdueBooking(ride, now, config);
+  const enquiryDiscount = computeEnquiryDiscountState(ride, now, config);
   return {
     canCancel:
       (
@@ -348,6 +413,11 @@ export function serializeLifecycleFlags(ride: {
     isTerminal: terminal,
     isOverdue,
     scheduledPickupAt: ride.pickupAt,
+    enquiryDiscount: {
+      eligible: enquiryDiscount.eligible,
+      discountPct: enquiryDiscount.discountPct,
+      availableAt: enquiryDiscount.availableAt,
+      expiresAt: enquiryDiscount.expiresAt,
+    },
   };
 }
-

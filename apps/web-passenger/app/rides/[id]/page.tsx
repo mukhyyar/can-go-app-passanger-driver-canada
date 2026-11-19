@@ -7,6 +7,7 @@ import { isPastDate, toLocalInputValue } from '../../../lib/datetime';
 import {
   formatMoney,
   friendlyRideStatus,
+  type OfferPresentation,
   type PaymentQuote,
   type Ride,
   type RideOffer,
@@ -27,6 +28,7 @@ type CancellationTierItem = {
 
 type QuoteResponse = {
   paymentQuote: PaymentQuote;
+  priceBreakdown?: OfferPresentation['priceBreakdown'];
   partialEnabled?: boolean;
   cancellationPolicy?: {
     title?: string;
@@ -263,13 +265,24 @@ export default function RideDetailPage() {
       <SiteHeader onLogin={() => setAuthOpen(true)} />
       <div className="layout">
         <div className="form-col">
-          <button
-            className="linkish"
-            type="button"
-            onClick={() => router.push('/rides')}
-          >
-            ← My trips
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8 }}>
+            <button
+              className="linkish"
+              type="button"
+              onClick={() => router.push('/')}
+              style={{ fontWeight: 600 }}
+            >
+              ← Back to Home
+            </button>
+            <span style={{ color: '#cbd5e1' }}>|</span>
+            <button
+              className="linkish"
+              type="button"
+              onClick={() => router.push('/rides')}
+            >
+              My trips
+            </button>
+          </div>
           <h1 style={{ marginTop: 8 }}>{friendlyRideStatus(ride?.status)}</h1>
           {ride && (
             <p className="muted">
@@ -348,20 +361,68 @@ export default function RideDetailPage() {
               </div>
             )}
           {error && <div className="error-banner">{error}</div>}
+          {(ride?.enquiryDiscount?.eligible ||
+            offers.some(
+              (o) =>
+                (o.presentation?.priceBreakdown?.enquiryDiscountAmount ??
+                  o.priceSnapshot?.enquiryDiscountAmount ??
+                  0) > 0,
+            )) && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '10px 14px',
+                borderRadius: 10,
+                background: '#dcfce7',
+                border: '1px solid #86efac',
+                color: '#14532d',
+                fontWeight: 700,
+                fontSize: 13.5,
+              }}
+            >
+              5% Special Offer Active — Complete your booking before this
+              enquiry expires to save 5%!
+            </div>
+          )}
           {waiting && (
             <p className="muted">
-              Drivers are bidding on your request. This page refreshes
-              automatically.
+              Drivers are bidding on your request. Your enquiry remains active in
+              the background — you can return to Home to create another booking
+              or track this enquiry anytime under My trips.
             </p>
           )}
 
           <div className="card-list" style={{ marginTop: 16 }}>
             {offers.map((o: RideOffer) => {
               const p = o.presentation;
+              const pb = p?.priceBreakdown;
               const total =
+                pb?.total ??
                 p?.passengerTotal ??
                 o.priceSnapshot?.passengerTotal ??
                 o.bidAmount;
+              const returnDisc =
+                pb?.returnDiscountAmount ??
+                o.priceSnapshot?.returnDiscountAmount ??
+                0;
+              const enquiryDisc =
+                pb?.enquiryDiscountAmount ??
+                o.priceSnapshot?.enquiryDiscountAmount ??
+                0;
+              const discountAmount =
+                pb?.discount ?? returnDisc + enquiryDisc;
+              const originalTotal =
+                pb?.originalTotal ??
+                o.priceSnapshot?.originalPassengerTotal ??
+                (total != null && discountAmount > 0
+                  ? total + discountAmount
+                  : undefined);
+              const discountLabel =
+                returnDisc > 0 && enquiryDisc > 0
+                  ? '15% Return + 5% Enquiry Discount'
+                  : enquiryDisc > 0
+                    ? '5% Enquiry Discount'
+                    : '15% Return Ride Discount';
               const title =
                 p?.vehicleDisplayName ||
                 o.vehicle?.name ||
@@ -405,9 +466,37 @@ export default function RideDetailPage() {
                             .join(' · ')}
                         </p>
                       )}
+                      {discountAmount > 0 && (
+                        <div
+                          style={{
+                            marginTop: 6,
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            background: '#dcfce7',
+                            color: '#15803d',
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {discountLabel} (-
+                          {formatMoney(discountAmount, currency)})
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div>
+                  <div style={{ textAlign: 'right' }}>
+                    {discountAmount > 0 && originalTotal != null && (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: '#64748b',
+                          textDecoration: 'line-through',
+                        }}
+                      >
+                        {formatMoney(originalTotal, currency)}
+                      </div>
+                    )}
                     <b>{formatMoney(total, currency)}</b>
                     {canBook && o.status === 'ACTIVE' && (
                       <button
@@ -428,6 +517,148 @@ export default function RideDetailPage() {
           {payingOfferId && pq && (
             <div className="offer-card" style={{ marginTop: 16, display: 'column', alignItems: 'stretch' }}>
               <h3 style={{ margin: 0 }}>Payment</h3>
+              {quote?.priceBreakdown && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    fontSize: 13,
+                  }}
+                >
+                  {quote.priceBreakdown.returnPrice != null &&
+                    quote.priceBreakdown.returnPrice > 0 && (
+                      <>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: 4,
+                          }}
+                        >
+                          <span>Initial journey fare</span>
+                          <span>
+                            {formatMoney(
+                              quote.priceBreakdown.outboundPrice,
+                              pq.totalCurrency,
+                            )}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: 4,
+                          }}
+                        >
+                          <span>Return journey fare</span>
+                          <span>
+                            {formatMoney(
+                              quote.priceBreakdown.returnPrice,
+                              pq.totalCurrency,
+                            )}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span>Ride fare</span>
+                    <span>
+                      {formatMoney(
+                        quote.priceBreakdown.ridePrice,
+                        pq.totalCurrency,
+                      )}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span>Platform fee (20%)</span>
+                    <span>
+                      {formatMoney(
+                        quote.priceBreakdown.platformFee ??
+                          quote.priceBreakdown.marketplaceFee,
+                        pq.totalCurrency,
+                      )}
+                    </span>
+                  </div>
+                  {(quote.priceBreakdown.discount ??
+                    (quote.priceBreakdown.returnDiscountAmount ?? 0) +
+                      (quote.priceBreakdown.enquiryDiscountAmount ?? 0)) >
+                    0 && (
+                    <>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: 4,
+                        }}
+                      >
+                        <span>Original fare</span>
+                        <span style={{ textDecoration: 'line-through' }}>
+                          {formatMoney(
+                            quote.priceBreakdown.originalTotal,
+                            pq.totalCurrency,
+                          )}
+                        </span>
+                      </div>
+                      {(quote.priceBreakdown.returnDiscountAmount ?? 0) > 0 && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: 4,
+                            color: '#15803d',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>15% Return ride discount</span>
+                          <span>
+                            -
+                            {formatMoney(
+                              quote.priceBreakdown.returnDiscountAmount,
+                              pq.totalCurrency,
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {(quote.priceBreakdown.enquiryDiscountAmount ?? 0) >
+                        0 && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginBottom: 4,
+                            color: '#15803d',
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>5% Enquiry discount</span>
+                          <span>
+                            -
+                            {formatMoney(
+                              quote.priceBreakdown.enquiryDiscountAmount,
+                              pq.totalCurrency,
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
               <label style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <input
                   type="radio"
@@ -447,7 +678,7 @@ export default function RideDetailPage() {
                 </label>
               )}
               <p style={{ marginTop: 12 }}>
-                Total{' '}
+                Final discounted fare{' '}
                 <b>{formatMoney(pq.totalAmount, pq.totalCurrency)}</b>
               </p>
               {paymentMode === 'PARTIAL' && (

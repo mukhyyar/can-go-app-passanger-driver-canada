@@ -77,7 +77,9 @@ export type Permission = (typeof PERMISSIONS)[number];
 
 const ALL = [...PERMISSIONS];
 
-const VIEWS = PERMISSIONS.filter((p) => p.endsWith('.view') || p === 'reports.export');
+const VIEWS = PERMISSIONS.filter(
+  (p) => p.endsWith('.view') || p === 'reports.export',
+);
 
 export const ROLE_SEEDS: Array<{
   slug: string;

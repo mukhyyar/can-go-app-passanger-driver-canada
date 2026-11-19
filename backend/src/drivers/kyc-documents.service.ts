@@ -93,7 +93,12 @@ export class KycDocumentsService {
       );
     }
     // Spoofing: client claims an allowed type, but bytes are a disallowed type.
-    if (clientMime && ALLOWED_MIME.has(clientMime) && detectedMime && !ALLOWED_MIME.has(detectedMime)) {
+    if (
+      clientMime &&
+      ALLOWED_MIME.has(clientMime) &&
+      detectedMime &&
+      !ALLOWED_MIME.has(detectedMime)
+    ) {
       throw new BadRequestException(
         `MIME type mismatch (magic-byte check): claimed ${clientMime}, detected ${detectedMime}`,
       );
@@ -107,7 +112,9 @@ export class KycDocumentsService {
           : mime === 'image/webp'
             ? 'webp'
             : 'jpg');
-    const checksumSha256 = createHash('sha256').update(file.buffer).digest('hex');
+    const checksumSha256 = createHash('sha256')
+      .update(file.buffer)
+      .digest('hex');
     const key = `drivers/${driverId}/${docType}/${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
     await this.storage.putObject({
       key,
@@ -183,9 +190,12 @@ export class KycDocumentsService {
             expiresAt: true,
           },
         });
-        if (!previous) throw new NotFoundException('Document to replace not found');
+        if (!previous)
+          throw new NotFoundException('Document to replace not found');
         if (previous.docType !== docType) {
-          throw new BadRequestException('docType must match the document being replaced');
+          throw new BadRequestException(
+            'docType must match the document being replaced',
+          );
         }
         if (previous.lifecycleStatus !== DocumentLifecycleStatus.CURRENT) {
           throw new BadRequestException(
@@ -283,7 +293,8 @@ export class KycDocumentsService {
         });
       }
 
-      const groupId = previous?.documentGroupId ?? randomBytes(12).toString('hex');
+      const groupId =
+        previous?.documentGroupId ?? randomBytes(12).toString('hex');
       const versionNumber = (previous?.versionNumber ?? 0) + 1;
 
       const created = await tx.driverDocument.create({
@@ -339,19 +350,33 @@ export class KycDocumentsService {
     dto: AdminUploadDocumentDto,
     ip?: string,
   ) {
-    this.assertPerm(actor, 'kyc.document.upload', 'kyc.document.replace', 'kyc.approve');
+    this.assertPerm(
+      actor,
+      'kyc.document.upload',
+      'kyc.document.replace',
+      'kyc.approve',
+    );
     if (dto.replaceDocumentId) {
-      this.assertPerm(actor, 'kyc.document.replace', 'kyc.approve', 'kyc.override');
+      this.assertPerm(
+        actor,
+        'kyc.document.replace',
+        'kyc.approve',
+        'kyc.override',
+      );
     }
     if (!file) throw new BadRequestException('File is required');
-    if (!DRIVER_DOC_TYPES.includes(dto.docType as DriverDocType)) {
+    if (!DRIVER_DOC_TYPES.includes(dto.docType)) {
       throw new BadRequestException(`Invalid docType: ${dto.docType}`);
     }
-    const source = (dto.uploadSource ?? 'ADMIN_PORTAL') as DocumentUploadSource;
+    const source = dto.uploadSource ?? 'ADMIN_PORTAL';
     if (!DOCUMENT_UPLOAD_SOURCES.includes(source)) {
       throw new BadRequestException('Invalid uploadSource');
     }
-    if (source !== 'ADMIN_PORTAL' && !dto.sourceReference?.trim() && !dto.adminNote?.trim()) {
+    if (
+      source !== 'ADMIN_PORTAL' &&
+      !dto.sourceReference?.trim() &&
+      !dto.adminNote?.trim()
+    ) {
       // Encourage provenance for external sources
       if (!dto.reason?.trim()) {
         throw new BadRequestException(
@@ -386,7 +411,7 @@ export class KycDocumentsService {
     try {
       result = await this.createVersion({
         driverId,
-        docType: dto.docType as DriverDocType,
+        docType: dto.docType,
         stored,
         vehicleId: dto.vehicleId,
         uploadSource: source,
@@ -424,17 +449,25 @@ export class KycDocumentsService {
     const action = result.previous
       ? 'KYC_DOCUMENT_VERSION_CREATED'
       : 'KYC_DOCUMENT_UPLOADED';
-    await this.audit(actor.id, action, 'DriverDocument', result.created.id, ip, {
-      driverId,
-      documentId: result.created.id,
-      previousVersionId: result.previous?.id ?? null,
-      docType: dto.docType,
-      versionNumber: result.created.versionNumber,
-      uploadSource: source,
-      sourceReference: dto.sourceReference ?? null,
-      reason: dto.reason ?? null,
-      checksumSha256: stored.checksumSha256,
-    }, dto.reason ?? null);
+    await this.audit(
+      actor.id,
+      action,
+      'DriverDocument',
+      result.created.id,
+      ip,
+      {
+        driverId,
+        documentId: result.created.id,
+        previousVersionId: result.previous?.id ?? null,
+        docType: dto.docType,
+        versionNumber: result.created.versionNumber,
+        uploadSource: source,
+        sourceReference: dto.sourceReference ?? null,
+        reason: dto.reason ?? null,
+        checksumSha256: stored.checksumSha256,
+      },
+      dto.reason ?? null,
+    );
 
     if (result.previous) {
       await this.audit(
@@ -597,10 +630,14 @@ export class KycDocumentsService {
         profileData.licenceJurisdiction = dto.issuingJurisdiction?.trim() ?? '';
       }
       if (dto.issueDate !== undefined) {
-        profileData.licenceIssueDate = dto.issueDate ? new Date(dto.issueDate) : null;
+        profileData.licenceIssueDate = dto.issueDate
+          ? new Date(dto.issueDate)
+          : null;
       }
       if (dto.expiresAt !== undefined) {
-        profileData.licenceExpiryDate = dto.expiresAt ? new Date(dto.expiresAt) : null;
+        profileData.licenceExpiryDate = dto.expiresAt
+          ? new Date(dto.expiresAt)
+          : null;
       }
     }
 
@@ -684,7 +721,12 @@ export class KycDocumentsService {
     dto: RestoreDocumentDto,
     ip?: string,
   ) {
-    this.assertPerm(actor, 'kyc.document.restore', 'kyc.approve', 'kyc.override');
+    this.assertPerm(
+      actor,
+      'kyc.document.restore',
+      'kyc.approve',
+      'kyc.override',
+    );
     const driver = await this.requireDriver(driverId);
     this.assertFresh(driver.updatedAt, dto.expectedUpdatedAt);
     const doc = await this.prisma.driverDocument.findFirst({
@@ -765,7 +807,7 @@ export class KycDocumentsService {
     const updated = await this.prisma.driverDocument.update({
       where: { id: documentId },
       data: {
-        status: dto.status as DocumentReviewStatus,
+        status: dto.status,
         rejectionReason: dto.status === 'REJECTED' ? dto.reason : null,
         adminNote: dto.note?.trim() || doc.adminNote,
         reviewedAt: new Date(),
@@ -827,7 +869,8 @@ export class KycDocumentsService {
           !docVehicleId || docVehicleId === v.id;
 
         const regDocs = currentDocs.filter(
-          (d) => d.docType === 'vehicle_registration' && matchesVehicle(d.vehicleId),
+          (d) =>
+            d.docType === 'vehicle_registration' && matchesVehicle(d.vehicleId),
         );
         const photoDocs = currentDocs.filter(
           (d) => d.docType === 'vehicle_photo' && matchesVehicle(d.vehicleId),
@@ -836,7 +879,9 @@ export class KycDocumentsService {
           (d) => d.docType === 'insurance' && matchesVehicle(d.vehicleId),
         );
         const inspDocs = currentDocs.filter(
-          (d) => d.docType === 'inspection_certificate' && matchesVehicle(d.vehicleId),
+          (d) =>
+            d.docType === 'inspection_certificate' &&
+            matchesVehicle(d.vehicleId),
         );
 
         const coreVehicleDocs = [...regDocs, ...photoDocs, ...insDocs];
@@ -983,7 +1028,9 @@ export class KycDocumentsService {
       reviewedById: doc.reviewedById,
       softDeletedAt: doc.softDeletedAt ?? null,
       archivedAt: doc.archivedAt ?? null,
-      isCurrent: (doc.lifecycleStatus ?? DocumentLifecycleStatus.CURRENT) === DocumentLifecycleStatus.CURRENT,
+      isCurrent:
+        (doc.lifecycleStatus ?? DocumentLifecycleStatus.CURRENT) ===
+        DocumentLifecycleStatus.CURRENT,
       isHistorical:
         (doc.lifecycleStatus ?? DocumentLifecycleStatus.CURRENT) !==
         DocumentLifecycleStatus.CURRENT,
@@ -1025,12 +1072,20 @@ export class KycDocumentsService {
       where: { id: documentId },
       data,
     });
-    await this.audit(actor.id, action, 'DriverDocument', documentId, ip, {
-      driverId,
-      previousLifecycle: doc.lifecycleStatus,
-      newLifecycle: next,
-      note: dto.note ?? null,
-    }, dto.reason);
+    await this.audit(
+      actor.id,
+      action,
+      'DriverDocument',
+      documentId,
+      ip,
+      {
+        driverId,
+        previousLifecycle: doc.lifecycleStatus,
+        newLifecycle: next,
+        note: dto.note ?? null,
+      },
+      dto.reason,
+    );
     return this.serializeDoc(updated);
   }
 
@@ -1088,8 +1143,12 @@ export class KycDocumentsService {
           resourceId,
           ip,
           reason: reason ?? undefined,
-          before: before === undefined ? undefined : (before as Prisma.InputJsonValue),
-          after: after === undefined ? undefined : (after as Prisma.InputJsonValue),
+          before:
+            before === undefined
+              ? undefined
+              : (before as Prisma.InputJsonValue),
+          after:
+            after === undefined ? undefined : (after as Prisma.InputJsonValue),
           meta: (meta ?? {}) as Prisma.InputJsonValue,
         },
       });

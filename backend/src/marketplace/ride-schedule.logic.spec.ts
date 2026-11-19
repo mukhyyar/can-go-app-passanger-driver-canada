@@ -56,7 +56,9 @@ describe('ride-schedule.logic', () => {
         returnAt: null,
         now: fixedNow,
       }),
-    ).toThrow(new BadRequestException('returnAt required for round-trip rides'));
+    ).toThrow(
+      new BadRequestException('returnAt required for round-trip rides'),
+    );
   });
 
   it('rejects returnAt in the past', () => {

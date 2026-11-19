@@ -10,7 +10,9 @@ export class MockSmsProvider implements SmsProvider {
 
   async sendSms(toE164: string, body: string) {
     const providerMessageId = `mock_sms_${randomUUID()}`;
-    this.logger.log(`[MockSMS] to=${toE164} id=${providerMessageId} body=${body}`);
+    this.logger.log(
+      `[MockSMS] to=${toE164} id=${providerMessageId} body=${body}`,
+    );
     return { providerMessageId };
   }
 }

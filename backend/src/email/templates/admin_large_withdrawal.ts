@@ -19,7 +19,7 @@ export function renderAdminLargeWithdrawal(
   const amount = escapeHtml(data.amount);
   const currency = escapeHtml(data.currency);
   const adminUrl = escapeHtml(`${data.adminWebBaseUrl}/drivers/${data.userId}`);
-  
+
   const subject = `ALERT: Large Withdrawal Requested (${amount} ${currency})`;
   const html = layout(
     `

@@ -70,7 +70,9 @@ describe('Provider Fails to Arrive (Section 11) - MarketplaceService', () => {
 
     mockPayments = {
       name: 'stripe',
-      refund: jest.fn().mockResolvedValue({ refundId: 're_123', status: 'succeeded' }),
+      refund: jest
+        .fn()
+        .mockResolvedValue({ refundId: 're_123', status: 'succeeded' }),
     };
 
     mockDriverCancellation = {
@@ -95,10 +97,12 @@ describe('Provider Fails to Arrive (Section 11) - MarketplaceService', () => {
     );
 
     // Mock serializeRide / getRideForActor internal call
-    (service as any).getRideForActor = jest.fn().mockImplementation((userId, rideId) => ({
-      id: rideId,
-      status: 'UPDATED',
-    }));
+    (service as any).getRideForActor = jest
+      .fn()
+      .mockImplementation((userId, rideId) => ({
+        id: rideId,
+        status: 'UPDATED',
+      }));
   });
 
   describe('attemptReplacement', () => {
@@ -192,9 +196,9 @@ describe('Provider Fails to Arrive (Section 11) - MarketplaceService', () => {
         passenger: { userId: 'user_pax_1' },
       });
 
-      await expect(service.attemptReplacement('user_pax_1', 'ride_123')).rejects.toThrow(
-        'No assigned provider to replace',
-      );
+      await expect(
+        service.attemptReplacement('user_pax_1', 'ride_123'),
+      ).rejects.toThrow('No assigned provider to replace');
     });
   });
 
@@ -233,7 +237,10 @@ describe('Provider Fails to Arrive (Section 11) - MarketplaceService', () => {
 
       // Offers withdrawn
       expect(mockPrisma.offer.updateMany).toHaveBeenCalledWith({
-        where: { rideId: 'ride_123', status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] } },
+        where: {
+          rideId: 'ride_123',
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.SELECTED] },
+        },
         data: { status: OfferStatus.WITHDRAWN },
       });
 

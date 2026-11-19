@@ -9,7 +9,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { RideStatus, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -21,7 +27,6 @@ import {
 import { TripService } from './trip.service';
 import { PostRideNotificationService } from './post-ride-notifications.service';
 import { DriverCancellationService } from '../marketplace/driver-cancellation.service';
-
 
 class TripTransitionDto {
   @IsString()
@@ -103,29 +108,19 @@ export class TripsController {
       });
     }
 
-    return this.trips.transition(
-      user.id,
-      id,
-      dto.status,
-      req.ip,
-      dto.pin,
-      {
-        reasonCode: dto.reasonCode,
-        reasonDetails: dto.reasonDetails ?? dto.earlyDropoffReason,
-        lat: dto.lat,
-        lng: dto.lng,
-        contactMethod: dto.contactMethod,
-        forceEarlyDropoff: dto.forceEarlyDropoff,
-      },
-    );
+    return this.trips.transition(user.id, id, dto.status, req.ip, dto.pin, {
+      reasonCode: dto.reasonCode,
+      reasonDetails: dto.reasonDetails ?? dto.earlyDropoffReason,
+      lat: dto.lat,
+      lng: dto.lng,
+      contactMethod: dto.contactMethod,
+      forceEarlyDropoff: dto.forceEarlyDropoff,
+    });
   }
 
   @Get(':id/invoice')
   @Header('Content-Type', 'text/html')
-  getInvoice(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-  ) {
+  getInvoice(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.postRideNotifications.getPrintableInvoiceHtml(
       user.id,
       id,
@@ -133,7 +128,6 @@ export class TripsController {
     );
   }
 }
-
 
 /** Convenience aliases for drivers */
 @Controller('driver/rides')
@@ -314,4 +308,3 @@ export class DriverTripController {
     );
   }
 }
-

@@ -54,8 +54,6 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _debugHint;
   String _oauthProvider = 'google';
   OAuthConfig? _oauthConfig;
-  bool _oauthConfigLoading = true;
-  String? _oauthConfigError;
 
   _OtpOrigin _otpOrigin = _OtpOrigin.phone;
   String _otpPurpose = 'verify_phone';
@@ -86,7 +84,6 @@ class _AuthScreenState extends State<AuthScreen> {
     final cached = context.read<AppState>().cachedOAuthConfig;
     if (cached != null) {
       _oauthConfig = cached;
-      _oauthConfigLoading = false;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadOAuthConfig();
@@ -177,27 +174,13 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _loadOAuthConfig() async {
     if (!mounted) return;
-    if (_oauthConfig == null) {
-      setState(() {
-        _oauthConfigLoading = true;
-        _oauthConfigError = null;
-      });
-    }
     try {
       final cfg = await context.read<AppState>().loadOAuthConfig();
       if (!mounted) return;
       setState(() {
         _oauthConfig = cfg;
-        _oauthConfigLoading = false;
-        _oauthConfigError = null;
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _oauthConfigLoading = false;
-        _oauthConfigError = e.toString();
-      });
-    }
+    } catch (_) {}
   }
 
   @override
@@ -324,8 +307,6 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) {
         setState(() {
           _oauthConfig = config;
-          _oauthConfigLoading = false;
-          _oauthConfigError = null;
         });
       }
       final cfg = config.google;
@@ -387,8 +368,6 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) {
         setState(() {
           _oauthConfig = config;
-          _oauthConfigLoading = false;
-          _oauthConfigError = null;
         });
       }
       final cfg = config.apple;

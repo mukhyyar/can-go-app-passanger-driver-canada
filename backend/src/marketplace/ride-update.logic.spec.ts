@@ -32,9 +32,7 @@ describe('ride-update.logic', () => {
   });
 
   it('flags route / time / vehicle changes as material', () => {
-    expect(
-      isMaterialRideEdit(base, { ...base, fromLat: 1.1 }),
-    ).toBe(true);
+    expect(isMaterialRideEdit(base, { ...base, fromLat: 1.1 })).toBe(true);
     expect(
       isMaterialRideEdit(base, {
         ...base,

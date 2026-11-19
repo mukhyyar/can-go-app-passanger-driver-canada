@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { DriverWalletService } from './driver-wallet.service';
 
 /** Periodic wallet repair: missing earnings, maturity notifications, integrity. */

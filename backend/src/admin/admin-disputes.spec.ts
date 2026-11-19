@@ -71,7 +71,10 @@ describe('AdminOpsService - Dispute Situation Management', () => {
     });
 
     it('filters pending disputes when queue=pending', async () => {
-      await service.listCases({ type: SupportCaseType.DISPUTE, queue: 'pending' });
+      await service.listCases({
+        type: SupportCaseType.DISPUTE,
+        queue: 'pending',
+      });
       expect(prisma.supportCase.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
@@ -83,7 +86,10 @@ describe('AdminOpsService - Dispute Situation Management', () => {
     });
 
     it('filters under review disputes when queue=under_review', async () => {
-      await service.listCases({ type: SupportCaseType.DISPUTE, queue: 'under_review' });
+      await service.listCases({
+        type: SupportCaseType.DISPUTE,
+        queue: 'under_review',
+      });
       expect(prisma.supportCase.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
@@ -95,7 +101,10 @@ describe('AdminOpsService - Dispute Situation Management', () => {
     });
 
     it('filters legal hold disputes when queue=legal', async () => {
-      await service.listCases({ type: SupportCaseType.DISPUTE, queue: 'legal' });
+      await service.listCases({
+        type: SupportCaseType.DISPUTE,
+        queue: 'legal',
+      });
       expect(prisma.supportCase.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
@@ -107,12 +116,17 @@ describe('AdminOpsService - Dispute Situation Management', () => {
     });
 
     it('filters resolved and dismissed disputes when queue=resolved', async () => {
-      await service.listCases({ type: SupportCaseType.DISPUTE, queue: 'resolved' });
+      await service.listCases({
+        type: SupportCaseType.DISPUTE,
+        queue: 'resolved',
+      });
       expect(prisma.supportCase.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             type: SupportCaseType.DISPUTE,
-            status: { in: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED] },
+            status: {
+              in: [SupportCaseStatus.RESOLVED, SupportCaseStatus.DISMISSED],
+            },
           },
         }),
       );
@@ -158,7 +172,9 @@ describe('AdminOpsService - Dispute Situation Management', () => {
       expect(prisma.supportCase.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'case-disp-1' },
-          data: expect.objectContaining({ status: SupportCaseStatus.LEGAL_ISSUE }),
+          data: expect.objectContaining({
+            status: SupportCaseStatus.LEGAL_ISSUE,
+          }),
         }),
       );
       expect(prisma.supportCaseNote.create).toHaveBeenCalledWith({
@@ -205,7 +221,9 @@ describe('AdminOpsService - Dispute Situation Management', () => {
         .mockResolvedValueOnce({
           id: 'case-disp-3',
           status: SupportCaseStatus.RESOLVED,
-          notes: [{ id: 'n-3', body: 'Partial refund issued and driver warned' }],
+          notes: [
+            { id: 'n-3', body: 'Partial refund issued and driver warned' },
+          ],
         });
 
       prisma.supportCase.update.mockResolvedValue({
@@ -222,4 +240,3 @@ describe('AdminOpsService - Dispute Situation Management', () => {
     });
   });
 });
-

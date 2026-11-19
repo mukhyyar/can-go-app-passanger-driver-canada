@@ -189,6 +189,22 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     pickupAt = DateTime.tryParse(pickupRaw.toString());
   }
 
+  DateTime? requestExpiresAt;
+  final reqExpRaw = json['requestExpiresAt'];
+  if (reqExpRaw != null) {
+    requestExpiresAt = DateTime.tryParse(reqExpRaw.toString());
+  }
+
+  final enquiryDiscountRaw = json['enquiryDiscount'];
+  final enquiryDiscountMap =
+      enquiryDiscountRaw is Map ? enquiryDiscountRaw : null;
+  final hasEnquiryDiscount =
+      (enquiryDiscountMap != null && enquiryDiscountMap['eligible'] == true) ||
+          (snapMap != null && _asDouble(snapMap['enquiryDiscountPct']) > 0);
+  final enquiryDiscountPct = enquiryDiscountMap != null
+      ? _asDouble(enquiryDiscountMap['discountPct'])
+      : (snapMap != null ? _asDouble(snapMap['enquiryDiscountPct']) : 0.0);
+
   final isOverdue = json['isOverdue'] == true ||
       (json['flags'] is Map && json['flags']['isOverdue'] == true);
 
@@ -224,6 +240,9 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     shareToken: json['shareToken']?.toString(),
     shareUrl: json['shareUrl']?.toString(),
     pickupAt: pickupAt,
+    requestExpiresAt: requestExpiresAt,
+    hasEnquiryDiscount: hasEnquiryDiscount,
+    enquiryDiscountPct: enquiryDiscountPct,
     isOverdue: isOverdue,
     isChatLocked: json['isChatLocked'] == true || isTerminalRideStatus(json['status']?.toString()),
     originalDriverId: isTerminalRideStatus(json['status']?.toString())
@@ -240,6 +259,9 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
         : (json['originalDriver'] is Map
             ? (json['originalDriver'] as Map)['phoneE164']?.toString()
             : null),
+    vehicleClassIds: json['vehicleClassIds'] is List
+        ? (json['vehicleClassIds'] as List).map((e) => e.toString()).toList()
+        : const [],
   );
 }
 
@@ -267,11 +289,31 @@ Offer offerFromServer(Map<String, dynamic> json) {
 
   double rawBid = _asDouble(json['bidAmount']);
   if (rawBid <= 0) rawBid = _asDouble(json['outboundPrice']);
+  final rawOutboundPrice =
+      _asDouble(json['outboundPrice'] ?? snapMap?['outboundPrice']);
+  final rawReturnPrice =
+      _asDouble(json['returnPrice'] ?? snapMap?['returnPrice']);
+  final rawEnquiryDiscountPct = _asDouble(snapMap?['enquiryDiscountPct']);
 
   final priceBreakdown = breakdownMap != null
-      ? OfferPriceBreakdown.fromJson(breakdownMap)
+      ? OfferPriceBreakdown.fromJson({
+          ...breakdownMap,
+          if (breakdownMap['outboundPrice'] == null && rawOutboundPrice > 0)
+            'outboundPrice': rawOutboundPrice,
+          if (breakdownMap['returnPrice'] == null && rawReturnPrice > 0)
+            'returnPrice': rawReturnPrice,
+          if (breakdownMap['enquiryDiscountPct'] == null &&
+              rawEnquiryDiscountPct > 0)
+            'enquiryDiscountPct': rawEnquiryDiscountPct,
+        })
       : (rawBid > 0
-          ? OfferPriceBreakdown.fromBasePrice(rawBid, currency: currency)
+          ? OfferPriceBreakdown.fromBasePrice(
+              rawBid,
+              currency: currency,
+              outboundPrice: rawOutboundPrice > 0 ? rawOutboundPrice : rawBid,
+              returnPrice: rawReturnPrice > 0 ? rawReturnPrice : 0,
+              enquiryDiscountPct: rawEnquiryDiscountPct,
+            )
           : null);
 
   double price = priceBreakdown?.total ?? _asDouble(pres['passengerTotal']);
@@ -427,6 +469,7 @@ Offer offerFromServer(Map<String, dynamic> json) {
         vehicleMap?['name']?.toString(),
     plate: isOfferTerminal ? null : (pres['plate']?.toString() ?? vehicleMap?['plate']?.toString()),
     driverName: driverNameOrNull,
+    matchesVehiclePreference: json['matchesVehiclePreference'] != false,
   );
 }
 

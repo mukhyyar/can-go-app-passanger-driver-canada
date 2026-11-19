@@ -17,7 +17,10 @@ describe('Seating Capacity Constraints', () => {
   });
 
   it('rejects vehicle offer when vehicle seating capacity is less than requested passenger count', () => {
-    const checkCapacity = (vehicleSeats: number, requestedPassengers: number) => {
+    const checkCapacity = (
+      vehicleSeats: number,
+      requestedPassengers: number,
+    ) => {
       if (vehicleSeats < requestedPassengers) {
         throw new BadRequestException(
           `Vehicle seating capacity (${vehicleSeats} seats) is insufficient for requested passenger count (${requestedPassengers} passengers)`,

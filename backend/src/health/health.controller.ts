@@ -43,7 +43,8 @@ export class HealthController {
         };
       },
       async (): Promise<HealthIndicatorResult> => {
-        const url = this.config.get<string>('redisUrl') ?? 'redis://127.0.0.1:6379';
+        const url =
+          this.config.get<string>('redisUrl') ?? 'redis://127.0.0.1:6379';
         const redis = new Redis(url, {
           maxRetriesPerRequest: 1,
           connectTimeout: 1500,

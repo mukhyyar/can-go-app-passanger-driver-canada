@@ -9,7 +9,10 @@ import {
 } from '@nestjs/common';
 import { RideStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { LocationStoreService, type LiveLocation } from './location-store.service';
+import {
+  LocationStoreService,
+  type LiveLocation,
+} from './location-store.service';
 import { TrackingGateway } from './tracking.gateway';
 
 const ACTIVE_TRIP: RideStatus[] = [
@@ -50,7 +53,12 @@ export class TrackingService {
     }
     const driver = user.driverProfile;
 
-    if (input.lat < -90 || input.lat > 90 || input.lng < -180 || input.lng > 180) {
+    if (
+      input.lat < -90 ||
+      input.lat > 90 ||
+      input.lng < -180 ||
+      input.lng > 180
+    ) {
       throw new BadRequestException('Invalid coordinates');
     }
 
@@ -126,9 +134,12 @@ export class TrackingService {
     await this.store.setCurrent(loc);
 
     // Downsample trail during trip (~>50m or 20s)
-    if (rideId && ACTIVE_TRIP.includes(
-      (await this.prisma.ride.findUnique({ where: { id: rideId } }))!.status,
-    )) {
+    if (
+      rideId &&
+      ACTIVE_TRIP.includes(
+        (await this.prisma.ride.findUnique({ where: { id: rideId } }))!.status,
+      )
+    ) {
       await this.maybeSample(rideId, driver.id, loc);
     }
 
@@ -224,7 +235,9 @@ export class TrackingService {
     });
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.passenger.userId !== userId) {
-      throw new ForbiddenException('Only the ride passenger can share this trip');
+      throw new ForbiddenException(
+        'Only the ride passenger can share this trip',
+      );
     }
 
     const now = new Date();
@@ -243,7 +256,8 @@ export class TrackingService {
       });
     }
 
-    const webBase = process.env.PASSENGER_WEB_BASE || 'https://www.can-rides.ca';
+    const webBase =
+      process.env.PASSENGER_WEB_BASE || 'https://www.can-rides.ca';
     const shareUrl = `${webBase.replace(/\/$/, '')}/track/${shareToken}`;
 
     return {
@@ -262,7 +276,9 @@ export class TrackingService {
     });
     if (!ride) throw new NotFoundException('Ride not found');
     if (ride.passenger.userId !== userId) {
-      throw new ForbiddenException('Only the ride passenger can revoke this trip share link');
+      throw new ForbiddenException(
+        'Only the ride passenger can revoke this trip share link',
+      );
     }
 
     await this.prisma.ride.update({
@@ -326,7 +342,9 @@ export class TrackingService {
       const fullName =
         (driverUser as any)?.fullName ?? driverProfile?.fullName ?? 'Driver';
       const avatarUrl =
-        (driverUser as any)?.avatarUrl ?? driverProfile?.avatarStorageKey ?? null;
+        (driverUser as any)?.avatarUrl ??
+        driverProfile?.avatarStorageKey ??
+        null;
 
       driverInfo = {
         firstName: fullName.split(' ')[0] ?? 'Driver',
@@ -379,8 +397,7 @@ export class TrackingService {
       (ride.passenger?.user as any)?.fullName ??
       ride.passenger?.fullName ??
       'Passenger';
-    const passengerFirstName =
-      passengerFullName.split(' ')[0] ?? 'Passenger';
+    const passengerFirstName = passengerFullName.split(' ')[0] ?? 'Passenger';
 
     return {
       rideId: ride.id,

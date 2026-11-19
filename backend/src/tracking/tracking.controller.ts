@@ -60,7 +60,10 @@ export class TrackingController {
   @Post('tracking/location')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.DRIVER)
-  updateLocation(@CurrentUser() user: AuthUser, @Body() dto: LocationUpdateDto) {
+  updateLocation(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: LocationUpdateDto,
+  ) {
     return this.tracking.ingest(user.id, dto);
   }
 

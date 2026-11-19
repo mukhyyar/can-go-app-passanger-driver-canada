@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PostRideNotificationService } from './post-ride-notifications.service';
 
 /**
@@ -6,7 +11,9 @@ import { PostRideNotificationService } from './post-ride-notifications.service';
  * Runs in accordance with the approved delay (e.g. 60 minutes post-completion).
  */
 @Injectable()
-export class PostRideNotificationScheduler implements OnModuleInit, OnModuleDestroy {
+export class PostRideNotificationScheduler
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(PostRideNotificationScheduler.name);
   private timer?: NodeJS.Timeout;
 
@@ -28,9 +35,12 @@ export class PostRideNotificationScheduler implements OnModuleInit, OnModuleDest
 
   private async tick() {
     try {
-      const result = await this.postRideNotifications.processDueTippingReminders();
+      const result =
+        await this.postRideNotifications.processDueTippingReminders();
       if (result.sent > 0) {
-        this.logger.log(`Tipping reminder sweep: sent=${result.sent} skipped=${result.skipped}`);
+        this.logger.log(
+          `Tipping reminder sweep: sent=${result.sent} skipped=${result.skipped}`,
+        );
       }
     } catch (err) {
       this.logger.warn(

@@ -19,9 +19,12 @@ export class DocumentsExpiryScheduler implements OnModuleInit, OnModuleDestroy {
       void this.tick();
     }, 5000);
 
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, 5 * 60 * 1000);
+    this.timer = setInterval(
+      () => {
+        void this.tick();
+      },
+      5 * 60 * 1000,
+    );
     this.timer.unref?.();
   }
 

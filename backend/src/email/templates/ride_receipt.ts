@@ -10,13 +10,10 @@ interface RideReceiptData {
   total: string;
 }
 
-export function renderRideReceipt(
-  data: RideReceiptData,
-  assetBaseUrl: string,
-) {
+export function renderRideReceipt(data: RideReceiptData, assetBaseUrl: string) {
   const code = escapeHtml(data.rideCode);
   const driverName = escapeHtml(data.driverName);
-  
+
   const subject = `Your CAN-RIDE Receipt - ${code}`;
   const html = layout(
     `

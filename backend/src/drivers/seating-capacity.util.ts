@@ -1,4 +1,6 @@
-export function getDefaultSeatingCapacity(vehicleClass?: string | null): number {
+export function getDefaultSeatingCapacity(
+  vehicleClass?: string | null,
+): number {
   if (!vehicleClass) return 4;
   switch (vehicleClass.toLowerCase().trim()) {
     case 'suv_xl':
