@@ -10,6 +10,7 @@ import '../offer/offer_helpers.dart';
 import '../state/app_state.dart';
 import '../utils/error_utils.dart';
 import 'brand_chrome.dart';
+import 'stripe_instructions_sheet.dart';
 
 class RequestsScreen extends StatefulWidget {
   const RequestsScreen({super.key});
@@ -484,34 +485,37 @@ class _RequestsScreenState extends State<RequestsScreen>
               ),
             ),
           )
-        else if (s.isOffline)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE5E7EB),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFD1D5DB)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.cloud_off_rounded, color: Colors.grey.shade700, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'You are offline. Turn on the switch below to receive requests.',
-                      style: TextStyle(
-                        color: Colors.grey.shade800,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+        else ...[
+          if (s.requiresStripePayouts) _StripePayoutActionBanner(s: s),
+          if (s.isOffline)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5E7EB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFD1D5DB)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_off_rounded, color: Colors.grey.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'You are offline. Turn on the switch below to receive requests.',
+                        style: TextStyle(
+                          color: Colors.grey.shade800,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
+        ],
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1335,6 +1339,245 @@ class _MetaChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StripePayoutActionBanner extends StatefulWidget {
+  const _StripePayoutActionBanner({required this.s});
+
+  final AppState s;
+
+  @override
+  State<_StripePayoutActionBanner> createState() =>
+      _StripePayoutActionBannerState();
+}
+
+class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
+  bool _loading = false;
+
+  Future<void> _launch() async {
+    setState(() => _loading = true);
+    try {
+      await widget.s.launchStripeVerification();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to launch Stripe: ${cleanErrorMessage(e)}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    try {
+      await widget.s.refreshStripeStatus();
+      await widget.s.refreshOpenRequests();
+      if (mounted && widget.s.isStripePayoutsVerified) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: GtColors.green,
+            content: Text(
+              '🎉 Stripe payout verification active! You can now submit offers.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Refresh failed: ${cleanErrorMessage(e)}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.s;
+    final isLinked = s.stripeAccountId != null && s.stripeAccountId!.isNotEmpty;
+    final statusText = isLinked ? 'Verification in progress' : 'Setup required';
+    final statusColor = isLinked ? Colors.blue.shade700 : Colors.amber.shade900;
+    final statusBg = isLinked ? Colors.blue.shade50 : Colors.amber.shade100;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFBFBFE),
+          border: Border.all(
+            color: const Color(0xFF635BFF).withValues(alpha: 0.35),
+            width: 1.5,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF635BFF).withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF635BFF).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance,
+                    color: Color(0xFF635BFF),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Action Required: Set Up Direct Payouts',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1E1B4B),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusBg,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Connect your Canadian bank account via Stripe Express to submit price offers and receive CAD direct deposits.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF4B5563),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_loading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF635BFF),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF635BFF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.open_in_new, size: 15),
+                      label: Text(
+                        isLinked ? 'Continue Verification' : 'Set Up Payouts',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      onPressed: _launch,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF374151),
+                      side: const BorderSide(color: Color(0xFFD1D5DB)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.refresh, size: 15),
+                    label: const Text(
+                      'Check Status',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onPressed: _refresh,
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    tooltip: 'What is required?',
+                    icon: const Icon(
+                      Icons.help_outline,
+                      size: 18,
+                      color: Color(0xFF6B7280),
+                    ),
+                    onPressed: () => StripeInstructionsSheet.show(context),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

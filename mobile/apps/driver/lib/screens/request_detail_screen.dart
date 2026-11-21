@@ -12,6 +12,7 @@ import '../offer/offer_helpers.dart';
 import '../state/app_state.dart';
 import '../utils/error_utils.dart';
 import 'offer_review_screen.dart';
+import 'stripe_instructions_sheet.dart';
 
 class RequestDetailScreen extends StatefulWidget {
   const RequestDetailScreen({super.key, required this.requestId});
@@ -286,6 +287,10 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
   Future<void> _submitOffer() async {
     final s = context.read<AppState>();
+    if (s.requiresStripePayouts) {
+      await StripeInstructionsSheet.show(context);
+      return;
+    }
     if (!s.canSubmitOffers) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -396,6 +401,28 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       );
     }
     if (_error != null || _request == null) {
+      final isStripeError = _error != null &&
+          (_error!.toLowerCase().contains('stripe') ||
+              _error!.toLowerCase().contains('payout'));
+      if (isStripeError) {
+        return Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => context.go('/'),
+            ),
+          ),
+          body: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: _StripeErrorCard(
+                error: _error!,
+                onReload: _load,
+              ),
+            ),
+          ),
+        );
+      }
       return Scaffold(
         appBar: AppBar(
           leading: IconButton(
@@ -1343,6 +1370,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                           ],
                         ),
                       ),
+                    ] else if (s.requiresStripePayouts) ...[
+                      _StripeBiddingGateCard(
+                        s: s,
+                        req: req,
+                        onVerificationDone: _load,
+                      ),
                     ] else ...[
                       if (isOfferExpired && !isRequestClosed) ...[
                         Container(
@@ -1956,6 +1989,431 @@ class _Chip extends StatelessWidget {
               color: textColor ?? GtColors.text,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StripeErrorCard extends StatefulWidget {
+  const _StripeErrorCard({
+    required this.error,
+    required this.onReload,
+  });
+
+  final String error;
+  final Future<void> Function() onReload;
+
+  @override
+  State<_StripeErrorCard> createState() => _StripeErrorCardState();
+}
+
+class _StripeErrorCardState extends State<_StripeErrorCard> {
+  bool _loading = false;
+
+  Future<void> _launch(AppState s) async {
+    setState(() => _loading = true);
+    try {
+      await s.launchStripeVerification();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to launch Stripe: ${cleanErrorMessage(e)}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _checkStatus(AppState s) async {
+    setState(() => _loading = true);
+    try {
+      await s.refreshStripeStatus();
+      await widget.onReload();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Status check failed: ${cleanErrorMessage(e)}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF635BFF).withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF635BFF).withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF635BFF).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.account_balance,
+                color: Color(0xFF635BFF),
+                size: 36,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Stripe Payout Setup Required',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1E1B4B),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'To view ride details and submit price offers to passengers, please complete your one-time Stripe Express payout verification for CAD direct bank deposits.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              color: Color(0xFF4B5563),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'What you will need in Stripe:',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: GtColors.text,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  '• Canadian bank transit & institution numbers\n• Canadian government photo ID\n• Takes ~2 minutes in secure Stripe portal',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF4B5563),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (_loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: CircularProgressIndicator(color: Color(0xFF635BFF)),
+              ),
+            )
+          else ...[
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF635BFF),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text(
+                'Complete Stripe Verification',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              onPressed: () => _launch(s),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(44),
+                foregroundColor: GtColors.text,
+                side: const BorderSide(color: Color(0xFFD1D5DB)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text(
+                'Check Verification Status',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              onPressed: () => _checkStatus(s),
+            ),
+            const SizedBox(height: 6),
+            TextButton(
+              onPressed: () => context.go('/'),
+              child: const Text(
+                'Back to requests',
+                style: TextStyle(color: GtColors.textSecondary),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StripeBiddingGateCard extends StatefulWidget {
+  const _StripeBiddingGateCard({
+    required this.s,
+    required this.req,
+    required this.onVerificationDone,
+  });
+
+  final AppState s;
+  final DriverRequest req;
+  final Future<void> Function() onVerificationDone;
+
+  @override
+  State<_StripeBiddingGateCard> createState() => _StripeBiddingGateCardState();
+}
+
+class _StripeBiddingGateCardState extends State<_StripeBiddingGateCard> {
+  bool _loading = false;
+
+  Future<void> _launch() async {
+    setState(() => _loading = true);
+    try {
+      await widget.s.launchStripeVerification();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to launch Stripe: ${cleanErrorMessage(e)}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _checkStatus() async {
+    setState(() => _loading = true);
+    try {
+      await widget.s.refreshStripeStatus();
+      if (widget.s.isStripePayoutsVerified) {
+        await widget.onVerificationDone();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: GtColors.green,
+              content: Text(
+                '🎉 Stripe verified! You can now submit your offer.',
+              ),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Stripe verification still pending. Please complete onboarding in the browser.',
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Check failed: ${cleanErrorMessage(e)}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBFBFE),
+        border: Border.all(
+          color: const Color(0xFF635BFF).withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF635BFF).withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF635BFF).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.account_balance,
+                  color: Color(0xFF635BFF),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Direct Payouts Setup Required',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: Color(0xFF1E1B4B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'To submit your price offer on this ride and receive CAD earnings directly to your bank account, please complete your one-time Stripe Express setup.',
+            style: TextStyle(
+              fontSize: 13,
+              color: Color(0xFF4B5563),
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Quick setup with Stripe Express:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: GtColors.text,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  '• Canadian bank transit & institution number\n• Canadian government photo ID\n• Takes ~2 minutes in secure Stripe portal',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Color(0xFF6B7280),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: CircularProgressIndicator(color: Color(0xFF635BFF)),
+              ),
+            )
+          else ...[
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF635BFF),
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text(
+                'Set Up Payouts to Submit Offer',
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+              ),
+              onPressed: _launch,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF374151),
+                      side: const BorderSide(color: Color(0xFFD1D5DB)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text(
+                      'Check Status',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onPressed: _checkStatus,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => StripeInstructionsSheet.show(context),
+                  child: const Text(
+                    'What is required?',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF635BFF)),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

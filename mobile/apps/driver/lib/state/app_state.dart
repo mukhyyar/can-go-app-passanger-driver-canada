@@ -7,6 +7,7 @@ import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../offer/offer_helpers.dart';
 import '../payment/payment_details_rules.dart';
@@ -924,6 +925,22 @@ class AppState extends ChangeNotifier {
         ? Map<String, dynamic>.from(profile['accountStatus'] as Map)
         : null;
 
+    if (profile['stripeAccountId'] != null) {
+      stripeAccountId = profile['stripeAccountId'] as String?;
+    } else if (accountStatus?['stripeAccountId'] != null) {
+      stripeAccountId = accountStatus!['stripeAccountId'] as String?;
+    }
+    if (profile['stripeAccountStatus'] != null) {
+      stripeAccountStatus = profile['stripeAccountStatus'] as String;
+    } else if (accountStatus?['stripeAccountStatus'] != null) {
+      stripeAccountStatus = accountStatus!['stripeAccountStatus'] as String;
+    }
+    if (profile['stripePayoutsEnabled'] != null) {
+      stripePayoutsEnabled = profile['stripePayoutsEnabled'] == true;
+    } else if (accountStatus?['stripePayoutsEnabled'] != null) {
+      stripePayoutsEnabled = accountStatus!['stripePayoutsEnabled'] == true;
+    }
+
     isIndividual = true;
     fullName = profile['fullName'] as String? ?? fullName;
     legalName = '';
@@ -1094,6 +1111,40 @@ class AppState extends ChangeNotifier {
     if (!isAuthenticated) throw StateError('Not authenticated');
     final res = await api.driver.stripeDashboardLink();
     return res['url'] as String? ?? '';
+  }
+
+  bool get isStripePayoutsVerified =>
+      stripeAccountId != null &&
+      stripeAccountId!.isNotEmpty &&
+      stripePayoutsEnabled &&
+      stripeAccountStatus == 'ACTIVE';
+
+  bool get requiresStripePayouts {
+    if (!isActivated) return false;
+    if (isStripePayoutsVerified) return false;
+    if (accountStatus != null) {
+      return accountStatus!['payoutVerificationRequired'] == true;
+    }
+    if (stripeAccountId != null && stripeAccountId!.isNotEmpty) {
+      return !isStripePayoutsVerified;
+    }
+    return false;
+  }
+
+  Future<bool> launchStripeVerification() async {
+    try {
+      final url = isStripePayoutsVerified
+          ? await getStripeDashboardUrl()
+          : await getStripeOnboardingUrl();
+      if (url.isNotEmpty) {
+        final uri = Uri.parse(url);
+        return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      return false;
+    } catch (e) {
+      debugPrint('launchStripeVerification error: $e');
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> savePaymentDetails({
@@ -1535,6 +1586,7 @@ class AppState extends ChangeNotifier {
     if (hasExpiredDocuments) return false;
     if (hasReuploadRequest) return false;
     if (!hasApprovedVehicle) return false;
+    if (requiresStripePayouts) return false;
     return approvalStatus.toUpperCase() == 'APPROVED';
   }
 
@@ -1551,6 +1603,9 @@ class AppState extends ChangeNotifier {
     }
     if (!isActivated || approvalStatus.toUpperCase() != 'APPROVED') {
       return 'You will be able to offer your price after activation. Please complete your profile verification.';
+    }
+    if (requiresStripePayouts) {
+      return 'Complete your Stripe Connect payout verification before submitting ride offers.';
     }
     if (vehicles.isEmpty) {
       return 'No vehicle on file. Please add your vehicle in Settings to start offering rides.';
@@ -1965,6 +2020,11 @@ class AppState extends ChangeNotifier {
   /// Called when app returns to foreground.
   Future<void> onAppResumed() async {
     if (!isAuthenticated || !isActivated) return;
+    if (requiresStripePayouts) {
+      try {
+        await refreshStripeStatus();
+      } catch (_) {}
+    }
     await refreshOpenRequests();
     await refreshMyRides();
     await startMarketplaceRealtime();
@@ -2429,6 +2489,8 @@ class AppState extends ChangeNotifier {
           plate: '—',
           vehicleClass: 'economy',
           amenities: Map<String, dynamic>.from(amenities),
+          approvalStatus: 'APPROVED',
+          inspectionStatus: 'APPROVED',
         ),
       ];
       return vehicles;

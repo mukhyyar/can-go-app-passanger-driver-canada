@@ -57,6 +57,9 @@ const _mockVehicle = DriverVehicle(
   name: 'Camry',
   plate: 'ABC1234',
   vehicleClass: 'Sedan',
+  approvalStatus: 'APPROVED',
+  inspectionStatus: 'APPROVED',
+  isActive: true,
 );
 
 void main() {
@@ -219,6 +222,8 @@ void main() {
     final appState = MockOfferAppState();
     appState.hasSeenWelcome = true;
     appState.loaded = true;
+    appState.isActivated = true;
+    appState.approvalStatus = 'APPROVED';
     appState.openRequests = [_mockRequest];
     appState.vehicles = [_mockVehicle];
     appState.saveOfferDraft(_mockRequest.id, _mockDraft);

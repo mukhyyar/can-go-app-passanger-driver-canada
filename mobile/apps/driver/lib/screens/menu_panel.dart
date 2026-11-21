@@ -250,11 +250,15 @@ class _DriverMenuPanelState extends State<DriverMenuPanel> {
                 onTap: () => _open('/wallet'),
               ),
               _MenuTile(
-                icon: Icons.payments_outlined,
-                label: 'Payment details',
-                subtitle: s.paymentSummaryLabel.isEmpty
-                    ? s.outpaymentCurrency
-                    : s.paymentSummaryLabel,
+                icon: Icons.account_balance,
+                label: 'Direct Payouts (Stripe)',
+                subtitle: s.requiresStripePayouts
+                    ? 'Action required · Set up bank payouts'
+                    : (s.isStripePayoutsVerified
+                        ? 'CAD Direct Deposits · Verified ✓'
+                        : (s.paymentSummaryLabel.isEmpty
+                            ? s.outpaymentCurrency
+                            : s.paymentSummaryLabel)),
                 onTap: () => _open('/onboarding/payment'),
               ),
               _MenuTile(

@@ -1967,7 +1967,9 @@ export class MarketplaceService {
   // ---------- Driver matching / offers ----------
 
   async listOpenRequests(userId: string) {
-    const driver = await this.requireActivatedDriver(userId);
+    const driver = await this.requireActivatedDriver(userId, {
+      requirePayouts: false,
+    });
     const openStatuses: RideStatus[] = [
       RideStatus.WAITING_FOR_OFFERS,
       RideStatus.OFFER_SELECTION,
@@ -2078,7 +2080,9 @@ export class MarketplaceService {
 
   /** Booked / in-progress / completed trips assigned to this driver. */
   async listDriverRides(userId: string) {
-    const driver = await this.requireActivatedDriver(userId);
+    const driver = await this.requireActivatedDriver(userId, {
+      requirePayouts: false,
+    });
     const statuses: RideStatus[] = [
       RideStatus.BOOKED,
       RideStatus.DRIVER_EN_ROUTE,
@@ -2148,7 +2152,9 @@ export class MarketplaceService {
   }
 
   async getDriverRequest(userId: string, rideId: string) {
-    const driver = await this.requireActivatedDriver(userId);
+    const driver = await this.requireActivatedDriver(userId, {
+      requirePayouts: false,
+    });
     const dismissed = await this.prisma.requestDismissal.findUnique({
       where: {
         rideId_driverId: { rideId, driverId: driver.id },
@@ -2193,6 +2199,10 @@ export class MarketplaceService {
     const isCompleted = (ride.status as RideStatus) === RideStatus.COMPLETED;
     const passengerObj = (ride as Record<string, unknown>).passenger as
       Record<string, unknown> | null | undefined;
+    const stripePayoutsVerified =
+      Boolean(driver.stripeAccountId) &&
+      Boolean(driver.stripePayoutsEnabled) &&
+      driver.stripeAccountStatus === 'ACTIVE';
     return {
       ...ride,
       passengerName: isCompleted
@@ -2200,11 +2210,15 @@ export class MarketplaceService {
         : ((passengerObj?.fullName as string | undefined) ?? null),
       eligibleVehicles: vehicles.map((v) => this.serializeVehicle(v)),
       offerValidityOptions: this.offerValidityLabels(),
+      stripePayoutsVerified,
+      payoutVerificationRequired: !stripePayoutsVerified,
     };
   }
 
   async skipRequest(userId: string, rideId: string, ip?: string) {
-    const driver = await this.requireActivatedDriver(userId);
+    const driver = await this.requireActivatedDriver(userId, {
+      requirePayouts: false,
+    });
     const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
     if (!ride) throw new NotFoundException('Ride not found');
     if (
@@ -2238,7 +2252,9 @@ export class MarketplaceService {
     dto: CreateOfferDto,
     ip?: string,
   ) {
-    const driver = await this.requireActivatedDriver(userId);
+    const driver = await this.requireActivatedDriver(userId, {
+      requirePayouts: true,
+    });
 
     if (dto.idempotencyKey) {
       const prior = await this.prisma.offer.findUnique({
@@ -2404,7 +2420,9 @@ export class MarketplaceService {
     dto: UpdateOfferDto,
     ip?: string,
   ) {
-    const driver = await this.requireActivatedDriver(userId);
+    const driver = await this.requireActivatedDriver(userId, {
+      requirePayouts: true,
+    });
 
     if (dto.idempotencyKey) {
       const prior = await this.prisma.offer.findUnique({
@@ -2565,7 +2583,9 @@ export class MarketplaceService {
   }
 
   async withdrawOffer(userId: string, offerId: string, ip?: string) {
-    const driver = await this.requireActivatedDriver(userId);
+    const driver = await this.requireActivatedDriver(userId, {
+      requirePayouts: false,
+    });
     const offer = await this.prisma.offer.findFirst({
       where: { id: offerId, driverId: driver.id },
     });
@@ -4769,7 +4789,10 @@ export class MarketplaceService {
     return user.passengerProfile;
   }
 
-  private async requireActivatedDriver(userId: string) {
+  private async requireActivatedDriver(
+    userId: string,
+    options?: { requirePayouts?: boolean },
+  ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { driverProfile: true },
@@ -4832,18 +4855,21 @@ export class MarketplaceService {
         `Cannot accept rides or make offers: your ${expiredDoc.docType} has expired. Please upload an updated document for verification.`,
       );
     }
-    if (
-      this.stripeConnect?.isConfigured?.() ||
-      user.driverProfile.stripeAccountId
-    ) {
+    const requirePayouts = options?.requirePayouts ?? true;
+    if (requirePayouts) {
       if (
-        !user.driverProfile.stripeAccountId ||
-        !user.driverProfile.stripePayoutsEnabled ||
-        user.driverProfile.stripeAccountStatus !== 'ACTIVE'
+        this.stripeConnect?.isConfigured?.() ||
+        user.driverProfile.stripeAccountId
       ) {
-        throw new ForbiddenException(
-          'Complete your Stripe Connect payout verification before submitting ride offers or accepting bookings.',
-        );
+        if (
+          !user.driverProfile.stripeAccountId ||
+          !user.driverProfile.stripePayoutsEnabled ||
+          user.driverProfile.stripeAccountStatus !== 'ACTIVE'
+        ) {
+          throw new ForbiddenException(
+            'Complete your Stripe Connect payout verification before submitting ride offers or accepting bookings.',
+          );
+        }
       }
     }
     return user.driverProfile;

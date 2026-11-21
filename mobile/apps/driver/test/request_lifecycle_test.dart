@@ -67,9 +67,27 @@ void main() {
     testWidgets(
         'expired driver offer on active request shows offer expired guidance and NOT request expired',
         (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final appState = AppState();
       appState.hasSeenWelcome = true;
       appState.loaded = true;
+      appState.isActivated = true;
+      appState.approvalStatus = 'APPROVED';
+      appState.vehicles = [
+        const DriverVehicle(
+          id: 'v1',
+          name: 'Camry',
+          plate: 'ABC',
+          vehicleClass: 'Economy',
+          approvalStatus: 'APPROVED',
+          inspectionStatus: 'APPROVED',
+          isActive: true,
+        ),
+      ];
 
       final req = driverRequestFromServer({
         'id': 'active_req_expired_offer',
@@ -131,6 +149,19 @@ void main() {
       final appState = AppState();
       appState.hasSeenWelcome = true;
       appState.loaded = true;
+      appState.isActivated = true;
+      appState.approvalStatus = 'APPROVED';
+      appState.vehicles = [
+        const DriverVehicle(
+          id: 'v1',
+          name: 'Camry',
+          plate: 'ABC',
+          vehicleClass: 'Economy',
+          approvalStatus: 'APPROVED',
+          inspectionStatus: 'APPROVED',
+          isActive: true,
+        ),
+      ];
 
       final req = driverRequestFromServer({
         'id': 'expired_req_id',

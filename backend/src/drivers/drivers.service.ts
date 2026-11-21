@@ -1469,12 +1469,20 @@ export class DriversService {
     },
     counts: { zoneCount: number; vehicleCount: number },
   ) {
+    const stripeActive =
+      Boolean(driver.stripeAccountId) &&
+      Boolean(driver.stripePayoutsEnabled) &&
+      driver.stripeAccountStatus === 'ACTIVE';
+
     if (driver.approvalStatus === DriverApprovalStatus.SUSPENDED) {
       return {
         state: 'SUSPENDED',
         label: 'Suspended',
         cta: null,
         checklist,
+        payoutVerificationRequired: false,
+        stripeAccountStatus: driver.stripeAccountStatus ?? 'UNLINKED',
+        stripePayoutsEnabled: Boolean(driver.stripePayoutsEnabled),
       };
     }
     if (driver.approvalStatus === DriverApprovalStatus.REJECTED) {
@@ -1483,14 +1491,25 @@ export class DriversService {
         label: 'Action required',
         cta: { label: 'Review documents', route: '/onboarding/documents' },
         checklist,
+        payoutVerificationRequired: false,
+        stripeAccountStatus: driver.stripeAccountStatus ?? 'UNLINKED',
+        stripePayoutsEnabled: Boolean(driver.stripePayoutsEnabled),
       };
     }
     if (driver.isActivated) {
+      const payoutRequired =
+        !stripeActive &&
+        (this.stripeConnect?.isConfigured?.() || Boolean(driver.stripeAccountId));
       return {
         state: 'ACTIVE',
         label: 'Activated partner',
-        cta: null,
+        cta: payoutRequired
+          ? { label: 'Set up Stripe payouts', route: '/onboarding/payment' }
+          : null,
         checklist,
+        payoutVerificationRequired: payoutRequired,
+        stripeAccountStatus: driver.stripeAccountStatus ?? 'UNLINKED',
+        stripePayoutsEnabled: Boolean(driver.stripePayoutsEnabled),
       };
     }
 
@@ -1551,10 +1570,6 @@ export class DriversService {
     }
 
     const payout = this.parsePayout(driver.payoutSettingsJson);
-    const stripeActive =
-      Boolean(driver.stripeAccountId) &&
-      Boolean(driver.stripePayoutsEnabled) &&
-      driver.stripeAccountStatus === 'ACTIVE';
     const stripeNeedsAction =
       driver.stripeAccountStatus === 'REQUIREMENTS_DUE' ||
       driver.stripeAccountStatus === 'RESTRICTED';

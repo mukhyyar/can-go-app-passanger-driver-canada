@@ -15,8 +15,20 @@ class MockSwitchAppState extends AppState {
   MockSwitchAppState() {
     isAuthenticated = true;
     isActivated = true;
+    approvalStatus = 'APPROVED';
     drivingEnabled = true;
     unreadNotificationCount = 5;
+    vehicles = [
+      const DriverVehicle(
+        id: 'v1',
+        name: 'Camry',
+        plate: 'ABC',
+        vehicleClass: 'economy',
+        approvalStatus: 'APPROVED',
+        inspectionStatus: 'APPROVED',
+        isActive: true,
+      ),
+    ];
   }
 
   @override
