@@ -659,9 +659,9 @@ class _StatusHero extends StatelessWidget {
       default:
         return (
           icon: Icons.account_balance_wallet_outlined,
-          color: GtColors.textMuted,
-          title: 'Not configured',
-          subtitle: 'Add your payout preferences and bank last-4 to get paid.',
+          color: const Color(0xFF635BFF),
+          title: 'Direct Payouts Ready',
+          subtitle: 'Connect with Stripe Express below to enable automated Canadian direct deposits.',
         );
     }
   }
@@ -847,6 +847,180 @@ class _StripeConnectCardState extends State<_StripeConnectCard>
       iconData = Icons.account_balance;
     }
 
+    if (!isActive) {
+      return Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFF635BFF),
+              Color(0xFF4F46E5),
+              Color(0xFF3730A3),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF635BFF).withValues(alpha: 0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Direct Payouts (Stripe)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        isPending
+                            ? 'Verification in progress · Action required'
+                            : 'Canadian CAD Bank Deposits',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.88),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isPending
+                        ? Colors.amber.shade300
+                        : Colors.white.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    isPending ? 'PENDING' : 'STRIPE EXPRESS',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: isPending ? const Color(0xFF78350F) : Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              isPending
+                  ? 'Your Stripe account needs verification or additional documents before payouts can be deposited. Tap below to complete setup.'
+                  : 'Connect your Canadian bank account securely via Stripe Express for automated trip payouts and official tax reporting.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.95),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: const [
+                _StripeBenefitPill(icon: Icons.check_circle_outline, label: 'CAD Direct Deposit'),
+                _StripeBenefitPill(icon: Icons.bolt, label: 'Automated Payouts'),
+                _StripeBenefitPill(icon: Icons.receipt_long_outlined, label: 'CRA Tax Slips'),
+              ],
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade900.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 46,
+                    child: ElevatedButton.icon(
+                      onPressed: _loading ? null : () => _handleStripeAction(s),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF4F46E5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 2,
+                        shadowColor: Colors.black.withValues(alpha: 0.25),
+                      ),
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4F46E5)),
+                            )
+                          : Icon(
+                              isPending ? Icons.pending_actions : Icons.open_in_new,
+                              size: 18,
+                            ),
+                      label: Text(
+                        isPending ? 'Complete Verification' : 'Set Up Stripe Payouts',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                      ),
+                    ),
+                  ),
+                ),
+                if (isLinked) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: IconButton(
+                      tooltip: 'Refresh Status',
+                      onPressed: _loading ? null : () => _refresh(s),
+                      icon: const Icon(Icons.refresh, size: 20, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return GtCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -932,6 +1106,39 @@ class _StripeConnectCardState extends State<_StripeConnectCard>
                 ),
               ],
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StripeBenefitPill extends StatelessWidget {
+  const _StripeBenefitPill({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: Colors.white),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
         ],
       ),

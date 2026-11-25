@@ -23,7 +23,7 @@
         android:glEsVersion="0x00020000"
         android:required="true"/>
     <application
-        android:label="CAN-RIDE Driver"
+        android:label="Can-Ride Driver"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

@@ -1,6 +1,6 @@
 {
-    "name": "CAN-RIDE Driver",
-    "short_name": "CAN-RIDE Driver",
+    "name": "Can-Ride Driver",
+    "short_name": "Can-Ride Driver",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",

@@ -69,7 +69,7 @@ class _DriverAppState extends State<DriverApp> {
         listenable: _state,
         builder: (context, _) {
           return MaterialApp.router(
-            title: 'CAN-RIDE Driver',
+            title: 'Can-Ride Driver',
             debugShowCheckedModeBanner: false,
             theme: GtTheme.light(),
             routerConfig: _router,

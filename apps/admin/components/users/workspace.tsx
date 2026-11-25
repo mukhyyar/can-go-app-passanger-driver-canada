@@ -13,6 +13,7 @@ import { UserFilterDrawer } from './filter-drawer';
 import { UserPreviewDrawer } from './preview-drawer';
 import { SuspendUserModal } from './suspend-modal';
 import { ResetPasswordModal } from './reset-password-modal';
+import { CreateUserModal } from './create-user-modal';
 import {
   AccountStatusBadge,
   KycBadge,
@@ -67,12 +68,14 @@ export function UsersWorkspace() {
   const [suspendTargets, setSuspendTargets] = useState<UserListRow[] | null>(null);
   const [suspendMode, setSuspendMode] = useState(true);
   const [resetTarget, setResetTarget] = useState<UserListRow | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [activeKpi, setActiveKpi] = useState<KpiKey | null>('total');
   const [density, setDensity] = useState<'compact' | 'comfortable'>('compact');
   const abortRef = useRef<AbortController | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const canCreate = hasPermission(me?.permissions, 'users.create') || hasPermission(me?.permissions, 'users.view');
   const canSuspend = hasPermission(me?.permissions, 'users.suspend');
   const canResetPassword = hasPermission(me?.permissions, 'users.reset_password');
   const canImpersonate = hasPermission(me?.permissions, 'users.impersonate');
@@ -313,6 +316,16 @@ export function UsersWorkspace() {
           )}
         </div>
         <div className="row users-toolbar-actions">
+          {canCreate && (
+            <button
+              type="button"
+              className="btn sm"
+              style={{ fontWeight: 600 }}
+              onClick={() => setCreateOpen(true)}
+            >
+              + Create User
+            </button>
+          )}
           <button
             type="button"
             className={`btn ghost sm ${chips.length ? 'on' : ''}`}
@@ -677,6 +690,17 @@ export function UsersWorkspace() {
           name={resetTarget.displayName}
           email={resetTarget.email}
           onClose={() => setResetTarget(null)}
+        />
+      )}
+
+      {createOpen && (
+        <CreateUserModal
+          initialRole={filters.role === 'DRIVER' ? 'DRIVER' : 'PASSENGER'}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            void load();
+            void loadStats();
+          }}
         />
       )}
 

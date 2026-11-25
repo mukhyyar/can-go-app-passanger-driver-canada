@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AdminCreateUserDto } from './admin.dto';
 import {
   DriverApprovalStatus,
   Prisma,
@@ -1450,6 +1452,197 @@ export class AdminOpsService {
       },
     );
     return { id: updated.id, isSuspended: updated.isSuspended };
+  }
+
+  async createUser(adminId: string, dto: AdminCreateUserDto, ip?: string) {
+    if (dto.role !== UserRole.PASSENGER && dto.role !== UserRole.DRIVER) {
+      throw new BadRequestException('Role must be PASSENGER or DRIVER');
+    }
+
+    const fullName = (dto.fullName ?? '').trim();
+    if (!fullName) {
+      throw new BadRequestException('Full name is required');
+    }
+
+    const phoneE164 = (dto.phoneE164 ?? '').trim();
+    if (!phoneE164 || !/^\+[1-9]\d{7,14}$/.test(phoneE164)) {
+      throw new BadRequestException(
+        'Phone number must be in E.164 format (e.g. +14165551234)',
+      );
+    }
+
+    const email = dto.email?.trim().toLowerCase() || null;
+
+    // Check email uniqueness and cross-app role separation
+    if (email) {
+      const existingByEmail = await this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
+        include: { passengerProfile: true, driverProfile: true },
+      });
+      if (existingByEmail) {
+        if (
+          existingByEmail.role === UserRole.DRIVER ||
+          existingByEmail.driverProfile
+        ) {
+          throw new ConflictException(
+            'This email address is already registered with a Driver account and cannot be used for a Passenger account.',
+          );
+        }
+        if (
+          existingByEmail.role === UserRole.PASSENGER ||
+          existingByEmail.passengerProfile
+        ) {
+          throw new ConflictException(
+            'This email address is already registered with a Passenger account and cannot be used for a Driver account.',
+          );
+        }
+        throw new ConflictException('This email is already in use.');
+      }
+    }
+
+    // Check phone uniqueness and cross-app role separation
+    const existingByPhone = await this.prisma.user.findFirst({
+      where: { phoneE164 },
+      include: { passengerProfile: true, driverProfile: true },
+    });
+    if (existingByPhone) {
+      if (
+        existingByPhone.role === UserRole.DRIVER ||
+        existingByPhone.driverProfile
+      ) {
+        throw new ConflictException(
+          'This phone number is already registered with a Driver account.',
+        );
+      }
+      if (
+        existingByPhone.role === UserRole.PASSENGER ||
+        existingByPhone.passengerProfile
+      ) {
+        throw new ConflictException(
+          'This phone number is already registered with a Passenger account.',
+        );
+      }
+      throw new ConflictException('This phone number is already in use.');
+    }
+
+    // Password handling
+    let rawPassword = (dto.password ?? '').trim();
+    if (rawPassword) {
+      if (rawPassword.length < 8) {
+        throw new BadRequestException('Password must be at least 8 characters');
+      }
+    } else {
+      rawPassword = `CR-${randomBytes(6).toString('hex')}`;
+    }
+
+    const passwordHash = await this.passwords.hash(rawPassword);
+    const phoneVerifiedAt = dto.phoneVerified !== false ? new Date() : null;
+
+    let user;
+    if (dto.role === UserRole.PASSENGER) {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          phoneE164,
+          passwordHash,
+          role: UserRole.PASSENGER,
+          phoneVerifiedAt,
+          passengerProfile: {
+            create: {
+              fullName,
+              isVip: Boolean(dto.isVip),
+            },
+          },
+        },
+        include: {
+          passengerProfile: true,
+        },
+      });
+    } else {
+      const approvalStatus =
+        dto.approvalStatus ?? DriverApprovalStatus.APPROVED;
+      const isActivated =
+        dto.isActivated !== undefined
+          ? dto.isActivated
+          : approvalStatus === DriverApprovalStatus.APPROVED;
+
+      const vehiclePlate = dto.vehiclePlate?.trim().toUpperCase();
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          phoneE164,
+          passwordHash,
+          role: UserRole.DRIVER,
+          phoneVerifiedAt,
+          driverProfile: {
+            create: {
+              fullName,
+              legalName: fullName,
+              approvalStatus,
+              isActivated,
+              drivingEnabled: isActivated,
+              baseLocation: dto.baseLocation?.trim() ?? '',
+              ...(vehiclePlate
+                ? {
+                    vehicles: {
+                      create: {
+                        name:
+                          `${dto.vehicleMake ?? ''} ${dto.vehicleModel ?? ''}`.trim() ||
+                          'Primary Vehicle',
+                        make: dto.vehicleMake?.trim() ?? null,
+                        model: dto.vehicleModel?.trim() ?? null,
+                        year: dto.vehicleYear ? Number(dto.vehicleYear) : null,
+                        color: dto.vehicleColor?.trim() ?? '',
+                        plate: vehiclePlate,
+                        vehicleClass:
+                          dto.vehicleClass?.trim().toLowerCase() || 'sedan',
+                        isDefault: true,
+                        isActive: true,
+                        approvalStatus:
+                          approvalStatus === DriverApprovalStatus.APPROVED
+                            ? 'APPROVED'
+                            : 'PENDING',
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
+        include: {
+          driverProfile: {
+            include: {
+              vehicles: true,
+            },
+          },
+        },
+      });
+    }
+
+    await this.audit(adminId, 'USER_CREATE', 'User', user.id, {
+      ip,
+      meta: {
+        role: user.role,
+        fullName,
+        phoneE164,
+        email,
+        phoneVerified: Boolean(phoneVerifiedAt),
+        approvalStatus: dto.approvalStatus,
+      },
+    });
+
+    return {
+      id: user.id,
+      role: user.role,
+      fullName,
+      email: user.email,
+      phoneE164: user.phoneE164,
+      temporaryPassword: rawPassword,
+      phoneVerified: Boolean(user.phoneVerifiedAt),
+      createdAt: user.createdAt,
+      passengerProfile: (user as any).passengerProfile ?? null,
+      driverProfile: (user as any).driverProfile ?? null,
+    };
   }
 
   async resetUserPassword(

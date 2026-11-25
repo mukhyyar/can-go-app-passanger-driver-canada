@@ -30,6 +30,7 @@ import { DriverWalletService } from '../wallet/driver-wallet.service';
 import { CancellationPolicyService } from '../marketplace/cancellation-policy.service';
 import { DriverCancellationService } from '../marketplace/driver-cancellation.service';
 import {
+  AdminCreateUserDto,
   BroadcastDto,
   BulkSuspendDto,
   CaseCreateDto,
@@ -151,6 +152,16 @@ export class AdminOpsController {
       sort,
       order,
     });
+  }
+
+  @Post('users')
+  @RequirePermission('users.view')
+  createUser(
+    @CurrentUser() admin: AuthUser,
+    @Body() dto: AdminCreateUserDto,
+    @Req() req: { ip?: string },
+  ) {
+    return this.ops.createUser(admin.id, dto, req.ip);
   }
 
   @Post('users/bulk-suspend')

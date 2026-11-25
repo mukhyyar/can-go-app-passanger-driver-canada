@@ -315,6 +315,28 @@ class AppState extends ChangeNotifier {
     await _afterAuth();
   }
 
+  Future<Map<String, dynamic>> requestPasswordReset({
+    String? email,
+    String? phoneE164,
+  }) {
+    return api.auth.requestPasswordReset(
+      email: email,
+      phoneE164: phoneE164,
+    );
+  }
+
+  Future<Map<String, dynamic>> confirmPasswordReset({
+    required String challengeId,
+    required String code,
+    required String newPassword,
+  }) {
+    return api.auth.confirmPasswordReset(
+      challengeId: challengeId,
+      code: code,
+      newPassword: newPassword,
+    );
+  }
+
   Future<void> login({
     required String email,
     required String password,

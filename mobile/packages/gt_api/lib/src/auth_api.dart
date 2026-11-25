@@ -294,6 +294,36 @@ class AuthApi {
   Future<Map<String, dynamic>> redeemReferral(String code) =>
       client.post('/referrals/redeem', body: {'code': code});
 
+  Future<Map<String, dynamic>> requestPasswordReset({
+    String? email,
+    String? phoneE164,
+  }) {
+    return client.post(
+      '/auth/password-reset/request',
+      auth: false,
+      body: {
+        if (email != null && email.isNotEmpty) 'email': email.trim().toLowerCase(),
+        if (phoneE164 != null && phoneE164.isNotEmpty) 'phoneE164': phoneE164.trim(),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> confirmPasswordReset({
+    required String challengeId,
+    required String code,
+    required String newPassword,
+  }) {
+    return client.post(
+      '/auth/password-reset/confirm',
+      auth: false,
+      body: {
+        'challengeId': challengeId,
+        'code': code.trim(),
+        'newPassword': newPassword,
+      },
+    );
+  }
+
   Future<OAuthResult> _applyOAuthResult(Map<String, dynamic> data) async {
     final result = OAuthResult.fromJson(data);
     if (!result.requiresPhoneLink && result.session != null) {

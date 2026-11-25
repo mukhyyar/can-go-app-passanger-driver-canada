@@ -61,7 +61,7 @@ class _PassengerAppState extends State<PassengerApp> {
     return ChangeNotifierProvider.value(
       value: _state,
       child: MaterialApp.router(
-        title: 'CAN-RIDE Passenger',
+        title: 'Can-Ride',
         theme: GtTheme.light(),
         debugShowCheckedModeBanner: false,
         routerConfig: _router,

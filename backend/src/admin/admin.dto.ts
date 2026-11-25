@@ -4,13 +4,17 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsEmail,
+  IsEnum,
   IsIn,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   MinLength,
 } from 'class-validator';
+import { UserRole, DriverApprovalStatus } from '@prisma/client';
 
 export class ImpersonateDto {
   @IsString()
@@ -464,4 +468,76 @@ export class TerminateDriverDto {
   @IsString()
   @MinLength(3)
   reason!: string;
+}
+
+export class AdminCreateUserDto {
+  @IsEnum(UserRole)
+  role!: UserRole;
+
+  @IsString()
+  @MinLength(1)
+  fullName!: string;
+
+  @IsString()
+  @Matches(/^\+[1-9]\d{7,14}$/, {
+    message: 'phoneE164 must be E.164 (e.g. +14165551234)',
+  })
+  phoneE164!: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  password?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  phoneVerified?: boolean;
+
+  // Passenger fields
+  @IsOptional()
+  @IsBoolean()
+  isVip?: boolean;
+
+  // Driver fields
+  @IsOptional()
+  @IsEnum(DriverApprovalStatus)
+  approvalStatus?: DriverApprovalStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  isActivated?: boolean;
+
+  @IsOptional()
+  @IsString()
+  baseLocation?: string;
+
+  // Optional driver vehicle
+  @IsOptional()
+  @IsString()
+  vehicleMake?: string;
+
+  @IsOptional()
+  @IsString()
+  vehicleModel?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  vehicleYear?: number;
+
+  @IsOptional()
+  @IsString()
+  vehicleColor?: string;
+
+  @IsOptional()
+  @IsString()
+  vehiclePlate?: string;
+
+  @IsOptional()
+  @IsString()
+  vehicleClass?: string;
 }

@@ -1412,25 +1412,28 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
     final s = widget.s;
     final isLinked = s.stripeAccountId != null && s.stripeAccountId!.isNotEmpty;
     final statusText = isLinked ? 'Verification in progress' : 'Setup required';
-    final statusColor = isLinked ? Colors.blue.shade700 : Colors.amber.shade900;
-    final statusBg = isLinked ? Colors.blue.shade50 : Colors.amber.shade100;
+    final statusColor = isLinked ? const Color(0xFF78350F) : Colors.white;
+    final statusBg = isLinked ? Colors.amber.shade300 : Colors.white.withValues(alpha: 0.22);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: const Color(0xFFFBFBFE),
-          border: Border.all(
-            color: const Color(0xFF635BFF).withValues(alpha: 0.35),
-            width: 1.5,
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFF635BFF),
+              Color(0xFF4338CA),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF635BFF).withValues(alpha: 0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: const Color(0xFF635BFF).withValues(alpha: 0.35),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -1443,12 +1446,12 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF635BFF).withValues(alpha: 0.12),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(
                     Icons.account_balance,
-                    color: Color(0xFF635BFF),
+                    color: Colors.white,
                     size: 22,
                   ),
                 ),
@@ -1465,7 +1468,7 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                               style: TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w800,
-                                color: Color(0xFF1E1B4B),
+                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -1482,7 +1485,7 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                               statusText,
                               style: TextStyle(
                                 fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w800,
                                 color: statusColor,
                               ),
                             ),
@@ -1490,11 +1493,11 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         'Connect your Canadian bank account via Stripe Express to submit price offers and receive CAD direct deposits.',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF4B5563),
+                          color: Colors.white.withValues(alpha: 0.92),
                           height: 1.35,
                         ),
                       ),
@@ -1513,7 +1516,7 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFF635BFF),
+                      color: Colors.white,
                     ),
                   ),
                 ),
@@ -1522,10 +1525,10 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
               Row(
                 children: [
                   Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF635BFF),
-                        foregroundColor: Colors.white,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF4338CA),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 8,
@@ -1533,6 +1536,7 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
+                        elevation: 1,
                         visualDensity: VisualDensity.compact,
                       ),
                       icon: const Icon(Icons.open_in_new, size: 15),
@@ -1549,8 +1553,8 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF374151),
-                      side: const BorderSide(color: Color(0xFFD1D5DB)),
+                      foregroundColor: Colors.white,
+                      side: BorderSide(color: Colors.white.withValues(alpha: 0.6)),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 8,
@@ -1560,12 +1564,13 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                       ),
                       visualDensity: VisualDensity.compact,
                     ),
-                    icon: const Icon(Icons.refresh, size: 15),
+                    icon: const Icon(Icons.refresh, size: 15, color: Colors.white),
                     label: const Text(
                       'Check Status',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
                     onPressed: _refresh,
@@ -1573,10 +1578,10 @@ class _StripePayoutActionBannerState extends State<_StripePayoutActionBanner> {
                   const SizedBox(width: 4),
                   IconButton(
                     tooltip: 'What is required?',
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.help_outline,
                       size: 18,
-                      color: Color(0xFF6B7280),
+                      color: Colors.white.withValues(alpha: 0.85),
                     ),
                     onPressed: () => StripeInstructionsSheet.show(context),
                   ),

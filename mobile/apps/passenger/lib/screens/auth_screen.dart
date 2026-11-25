@@ -22,6 +22,8 @@ enum _AuthStep {
   otp,
   oauthLocal,
   oauthPhone,
+  forgotPassword,
+  resetPassword,
 }
 
 enum _OtpOrigin { phone, register, oauthPhone, email }
@@ -43,6 +45,9 @@ class _AuthScreenState extends State<AuthScreen> {
   final _phone = TextEditingController(text: '+1');
   final _name = TextEditingController();
   final _otp = TextEditingController();
+  final _resetOtp = TextEditingController();
+  final _newPassword = TextEditingController();
+  final _confirmPassword = TextEditingController();
   final _credentials = CredentialStore(namespace: 'passenger');
   final _biometrics = GtBiometricAuth();
 
@@ -53,6 +58,7 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _linkToken;
   String? _error;
   String? _debugHint;
+  String? _resetNotice;
   OAuthConfig? _oauthConfig;
 
   _OtpOrigin _otpOrigin = _OtpOrigin.phone;
@@ -193,6 +199,9 @@ class _AuthScreenState extends State<AuthScreen> {
     _phone.dispose();
     _name.dispose();
     _otp.dispose();
+    _resetOtp.dispose();
+    _newPassword.dispose();
+    _confirmPassword.dispose();
     super.dispose();
   }
 
@@ -668,6 +677,10 @@ class _AuthScreenState extends State<AuthScreen> {
         return 'Add your phone';
       case _AuthStep.otp:
         return 'Verify your phone';
+      case _AuthStep.forgotPassword:
+        return 'Reset password';
+      case _AuthStep.resetPassword:
+        return 'Set new password';
     }
   }
 
@@ -688,6 +701,10 @@ class _AuthScreenState extends State<AuthScreen> {
         return 'Passengers need a verified phone number to book rides.';
       case _AuthStep.otp:
         return 'Enter the 6-digit code sent to';
+      case _AuthStep.forgotPassword:
+        return 'Enter your registered email address to receive a verification code.';
+      case _AuthStep.resetPassword:
+        return 'Enter the 6-digit code sent to your phone and choose a new password.';
     }
   }
 
@@ -702,9 +719,17 @@ class _AuthScreenState extends State<AuthScreen> {
       case _AuthStep.oauthPhone:
         return _goMethods;
       case _AuthStep.register:
+      case _AuthStep.forgotPassword:
         return () => setState(() {
               _step = _AuthStep.email;
               _error = null;
+              _resetNotice = null;
+            });
+      case _AuthStep.resetPassword:
+        return () => setState(() {
+              _step = _AuthStep.forgotPassword;
+              _error = null;
+              _resetNotice = null;
             });
       case _AuthStep.otp:
         return _onChangeNumber;
@@ -770,6 +795,8 @@ class _AuthScreenState extends State<AuthScreen> {
           if (_step == _AuthStep.oauthLocal) _oauthLocalForm(),
           if (_step == _AuthStep.oauthPhone) _oauthPhoneForm(),
           if (_step == _AuthStep.otp) _otpForm(),
+          if (_step == _AuthStep.forgotPassword) _forgotPasswordForm(),
+          if (_step == _AuthStep.resetPassword) _resetPasswordForm(),
         ],
       ),
     );
@@ -836,9 +863,31 @@ class _AuthScreenState extends State<AuthScreen> {
             onSubmitted: (_) => _onEmailLogin(),
           ),
           const SizedBox(height: 8),
-          GtAuthRememberMe(
-            value: _rememberMe,
-            onChanged: (v) => setState(() => _rememberMe = v ?? false),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: GtAuthRememberMe(
+                  value: _rememberMe,
+                  onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                ),
+              ),
+              TextButton(
+                onPressed: _busy ? null : _openForgotPassword,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text(
+                  'Forgot password?',
+                  style: TextStyle(
+                    color: GtColors.brand,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
           ),
           if (_hasSavedCredentials && _biometricAvailable) ...[
             const SizedBox(height: 12),
@@ -1147,6 +1196,272 @@ class _AuthScreenState extends State<AuthScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  void _openForgotPassword() {
+    setState(() {
+      _step = _AuthStep.forgotPassword;
+      _error = null;
+      _resetNotice = null;
+      _resetOtp.clear();
+      _newPassword.clear();
+      _confirmPassword.clear();
+    });
+  }
+
+  Future<void> _onRequestPasswordReset({bool isResend = false}) async {
+    final email = _email.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _error = 'Please enter a valid email address.');
+      return;
+    }
+    await _run(() async {
+      final app = context.read<AppState>();
+      final res = await app.requestPasswordReset(email: email);
+      final cid = res['challengeId'] as String?;
+      final debugCode = res['debugCode']?.toString();
+      if (cid == null || cid.isEmpty) {
+        setState(() {
+          _resetNotice = res['message']?.toString() ??
+              'If an account exists with this email, a verification code has been sent.';
+        });
+        return;
+      }
+      setState(() {
+        _challengeId = cid;
+        _debugHint = debugCode;
+        _step = _AuthStep.resetPassword;
+        _error = null;
+        _resetNotice =
+            isResend ? 'Verification code resent successfully.' : null;
+        _resendLeft = _resendSeconds;
+      });
+      _startResendTimer();
+    });
+  }
+
+  Future<void> _onConfirmPasswordReset() async {
+    final cid = _challengeId;
+    final code = _resetOtp.text.replaceAll(RegExp(r'\D'), '');
+    final newPass = _newPassword.text;
+    final confirmPass = _confirmPassword.text;
+
+    if (cid == null || cid.isEmpty) {
+      setState(() => _error = 'Session expired. Please request a new code.');
+      return;
+    }
+    if (code.length != _otpLength) {
+      setState(() => _error = 'Please enter the 6-digit verification code.');
+      return;
+    }
+    if (newPass.length < 8) {
+      setState(
+          () => _error = 'New password must be at least 8 characters long.');
+      return;
+    }
+    if (newPass != confirmPass) {
+      setState(() => _error = 'Passwords do not match. Please re-enter.');
+      return;
+    }
+
+    await _run(() async {
+      final app = context.read<AppState>();
+      await app.confirmPasswordReset(
+        challengeId: cid,
+        code: code,
+        newPassword: newPass,
+      );
+
+      _resetOtp.clear();
+      _newPassword.clear();
+      _confirmPassword.clear();
+
+      if (!mounted) return;
+      setState(() {
+        _step = _AuthStep.email;
+        _password.clear();
+        _error = null;
+        _debugHint = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Password reset successfully. Please sign in with your new password.',
+          ),
+          backgroundColor: GtColors.green,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    });
+  }
+
+  Widget _forgotPasswordForm() {
+    return AutofillGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email, AutofillHints.username],
+            decoration: GtAuthFieldDecoration.of(
+              'Registered email',
+              hint: 'name@example.com',
+            ),
+            onSubmitted: (_) => _onRequestPasswordReset(),
+          ),
+          if (_resetNotice != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _resetNotice!,
+              style: const TextStyle(
+                color: GtColors.green,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          const SizedBox(height: 16),
+          GtAuthPrimaryButton(
+            label: 'Send verification code',
+            busy: _busy,
+            onPressed: () => _onRequestPasswordReset(),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                      _step = _AuthStep.email;
+                      _error = null;
+                      _resetNotice = null;
+                    }),
+            child: const Text('Back to sign in'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resetPasswordForm() {
+    return AutofillGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_debugHint != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFC9B07A)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'DEVELOPMENT MODE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                      color: Color(0xFF8A6D2B),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Test Reset Code: $_debugHint',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5C4A1F),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          TextField(
+            controller: _resetOtp,
+            keyboardType: TextInputType.number,
+            maxLength: _otpLength,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: GtAuthFieldDecoration.of(
+              '6-digit verification code',
+              hint: 'Enter 6-digit code',
+            ),
+          ),
+          const SizedBox(height: 12),
+          GtAuthPasswordField(
+            controller: _newPassword,
+            label: 'New password',
+            hint: 'Minimum 8 characters',
+            autofillHints: const [AutofillHints.newPassword],
+          ),
+          const SizedBox(height: 12),
+          GtAuthPasswordField(
+            controller: _confirmPassword,
+            label: 'Confirm new password',
+            hint: 'Re-enter your new password',
+            autofillHints: const [AutofillHints.newPassword],
+            onSubmitted: (_) => _onConfirmPasswordReset(),
+          ),
+          if (_resetNotice != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _resetNotice!,
+              style: const TextStyle(
+                color: GtColors.green,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          const SizedBox(height: 16),
+          GtAuthPrimaryButton(
+            label: 'Reset password',
+            busy: _busy,
+            onPressed: _onConfirmPasswordReset,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                "Didn't receive a code?",
+                style: TextStyle(fontSize: 13, color: GtColors.textSecondary),
+              ),
+              TextButton(
+                onPressed: (_busy || _resendLeft > 0)
+                    ? null
+                    : () => _onRequestPasswordReset(isResend: true),
+                child: Text(
+                  _resendLeft > 0
+                      ? 'Resend (${_formatCountdown(_resendLeft)})'
+                      : 'Resend',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                      _step = _AuthStep.email;
+                      _error = null;
+                      _resetNotice = null;
+                    }),
+            child: const Text('Cancel and back to sign in'),
+          ),
+        ],
+      ),
     );
   }
 }
