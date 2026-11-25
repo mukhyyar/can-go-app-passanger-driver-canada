@@ -44,6 +44,13 @@ class PushService with WidgetsBindingObserver {
         sound: true,
       );
 
+      // On iOS, allow heads-up banners, sound, and badge while the app is in the foreground
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
       _tokenRefreshSub = messaging.onTokenRefresh.listen((token) {
         unawaited(_registerToken(token));
       });
@@ -94,11 +101,18 @@ class PushService with WidgetsBindingObserver {
     _syncing = true;
     try {
       if (defaultTargetPlatform == TargetPlatform.iOS) {
-        final apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+        // Wait/poll for APNs token to resolve from Apple (takes 1-3 seconds on startup)
+        String? apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+        var retries = 0;
+        while (apnsToken == null && retries < 10) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          apnsToken = await FirebaseMessaging.instance.getAPNSToken();
+          retries++;
+        }
         if (apnsToken == null) {
-          // On iOS Simulator or before APNs handshake on device, APNs token is null.
-          // Calling getToken() without APNs throws [firebase_messaging/apns-token-not-set].
-          _tokenSyncedForSession = true;
+          // On iOS Simulator or if APNs handshake is delayed, do NOT lock _tokenSyncedForSession.
+          // Leaving it false allows lifecycle resume or retry to sync once APNs is available.
+          debugPrint('PushService.syncToken: APNs token not available yet.');
           return;
         }
       }
@@ -109,7 +123,7 @@ class PushService with WidgetsBindingObserver {
         _tokenSyncedForSession = true;
       }
     } catch (e) {
-      _tokenSyncedForSession = true;
+      // Do NOT set _tokenSyncedForSession = true on error so it can retry on next resume/trigger
       debugPrint('PushService.syncToken: $e');
     } finally {
       _syncing = false;
@@ -142,6 +156,7 @@ class PushService with WidgetsBindingObserver {
       offerId: data['offerId']?.toString(),
       type: data['type']?.toString(),
     );
+    unawaited(app.refreshUnreadNotificationCount());
   }
 
   void stop() {

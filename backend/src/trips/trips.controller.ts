@@ -3,9 +3,11 @@ import {
   Controller,
   Get,
   Header,
+  NotFoundException,
   Optional,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -146,10 +148,35 @@ export class DriverTripController {
       : [];
   }
 
+  @Get(':id/en-route-eligibility')
+  async getEnRouteEligibility(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+  ) {
+    const driverLat = lat ? parseFloat(lat) : undefined;
+    const driverLng = lng ? parseFloat(lng) : undefined;
+    const driverCoords =
+      driverLat != null &&
+      driverLng != null &&
+      !Number.isNaN(driverLat) &&
+      !Number.isNaN(driverLng)
+        ? { lat: driverLat, lng: driverLng }
+        : null;
+    const eligibility = await this.trips.checkEnRouteEligibility(
+      id,
+      driverCoords,
+    );
+    if (!eligibility) throw new NotFoundException('Ride not found');
+    return eligibility;
+  }
+
   @Post(':id/en-route')
   enRoute(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
+    @Body() body: { lat?: number; lng?: number } | undefined,
     @Req() req: { ip?: string },
   ) {
     return this.trips.transition(
@@ -157,6 +184,11 @@ export class DriverTripController {
       id,
       RideStatus.DRIVER_EN_ROUTE,
       req.ip,
+      undefined,
+      {
+        lat: body?.lat,
+        lng: body?.lng,
+      },
     );
   }
 

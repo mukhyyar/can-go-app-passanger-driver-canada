@@ -19,6 +19,8 @@ export type PushPayload = {
   eventId?: string;
   /** Target app role (e.g. 'DRIVER', 'PASSENGER', or array). If omitted, inferred from payload or sent to all tokens. */
   targetRole?: AppRoleValue | AppRoleValue[];
+  /** Optional explicit badge count to display on the app icon. If omitted, calculated from unread deliveries. */
+  badge?: number;
 };
 
 @Injectable()
@@ -284,6 +286,28 @@ export class NotificationsService {
       return { sent: 0, skipped: true, reason: 'fcm_unconfigured' };
     }
 
+    let unreadDeliveries = 0;
+    try {
+      if (this.prisma?.notificationDelivery?.count) {
+        unreadDeliveries = await this.prisma.notificationDelivery.count({
+          where: {
+            userId: payload.userId,
+            readAt: null,
+            OR: [{ title: { not: null } }, { body: { not: null } }],
+          },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to count unread deliveries for badge: ${e}`);
+    }
+
+    const badgeCount =
+      payload.badge !== undefined
+        ? payload.badge
+        : payload.title || payload.body
+          ? unreadDeliveries + 1
+          : unreadDeliveries;
+
     let sent = 0;
     for (const t of tokens) {
       try {
@@ -299,6 +323,7 @@ export class NotificationsService {
             priority: 'high',
             notification: {
               channelId: 'can_ride_high',
+              notificationCount: badgeCount,
               ...(resolvedImageUrl ? { imageUrl: resolvedImageUrl } : {}),
             },
           },
@@ -306,6 +331,7 @@ export class NotificationsService {
             payload: {
               aps: {
                 sound: 'default',
+                badge: badgeCount,
                 contentAvailable: true,
                 mutableContent: !!resolvedImageUrl,
               },

@@ -274,6 +274,8 @@ class _RideList extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    ServiceTypeBadge(serviceType: r.serviceType, compact: true),
                     if (r.hasReturnTrip) ...[
                       const SizedBox(width: 8),
                       Container(

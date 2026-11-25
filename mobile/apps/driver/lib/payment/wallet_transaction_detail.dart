@@ -84,8 +84,18 @@ List<WalletDetailRow> walletEntryDetailRows(Map<String, dynamic> e) {
   final rideMap = ride is Map ? Map<String, dynamic>.from(ride) : null;
 
   return [
-    WalletDetailRow(label: 'Type', value: walletNonEmpty(e['type'])),
-    WalletDetailRow(label: 'Status', value: walletNonEmpty(e['status'])),
+    WalletDetailRow(
+      label: 'Type',
+      value: walletNonEmpty(e['type']) != null
+          ? formatStatus(e['type'])
+          : null,
+    ),
+    WalletDetailRow(
+      label: 'Status',
+      value: walletNonEmpty(e['status']) != null
+          ? formatStatus(e['status'])
+          : null,
+    ),
     WalletDetailRow(
       label: 'Amount',
       value: formatWalletMoney(

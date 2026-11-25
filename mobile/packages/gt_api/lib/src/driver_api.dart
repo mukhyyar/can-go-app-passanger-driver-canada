@@ -85,6 +85,37 @@ class DriverApi {
         idempotencyKey: idempotencyKey,
       );
 
+  Future<Map<String, dynamic>> emailFinancialSummary({
+    required String type,
+    required int year,
+    int? month,
+  }) =>
+      client.post(
+        '/driver/me/wallet/financial-summary/email',
+        body: {
+          'type': type,
+          'year': year,
+          if (month != null) 'month': month,
+        },
+      );
+
+  Future<Map<String, dynamic>> getFinancialSummary({
+    required String type,
+    required int year,
+    int? month,
+  }) {
+    final q = <String, String>{
+      'type': type,
+      'year': '$year',
+      if (month != null) 'month': '$month',
+    };
+    final qs = q.entries
+        .map((e) =>
+            '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    return client.get('/driver/me/wallet/financial-summary?$qs');
+  }
+
   Future<Map<String, dynamic>> documentsStatus() =>
       client.get('/driver/documents');
 
@@ -316,8 +347,35 @@ class DriverApi {
   Future<Map<String, dynamic>> withdrawOffer(String offerId) =>
       client.post('/offers/$offerId/withdraw', body: {});
 
-  Future<Map<String, dynamic>> enRoute(String rideId) =>
-      client.post('/driver/rides/$rideId/en-route', body: {});
+  Future<Map<String, dynamic>> enRoute(
+    String rideId, {
+    double? lat,
+    double? lng,
+  }) =>
+      client.post(
+        '/driver/rides/$rideId/en-route',
+        body: {
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        },
+      );
+
+  Future<Map<String, dynamic>> getEnRouteEligibility(
+    String rideId, {
+    double? lat,
+    double? lng,
+  }) async {
+    final qs = [
+      if (lat != null) 'lat=$lat',
+      if (lng != null) 'lng=$lng',
+    ].join('&');
+    final Object? data = await client.get(
+      '/driver/rides/$rideId/en-route-eligibility${qs.isEmpty ? '' : '?$qs'}',
+    );
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return <String, dynamic>{};
+  }
 
   Future<Map<String, dynamic>> arrived(
     String rideId, {

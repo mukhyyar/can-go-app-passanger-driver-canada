@@ -244,6 +244,7 @@ RideRequest rideFromServer(Map<String, dynamic> json) {
     hasEnquiryDiscount: hasEnquiryDiscount,
     enquiryDiscountPct: enquiryDiscountPct,
     isOverdue: isOverdue,
+    serviceType: json['serviceType']?.toString(),
     isChatLocked: json['isChatLocked'] == true || isTerminalRideStatus(json['status']?.toString()),
     originalDriverId: isTerminalRideStatus(json['status']?.toString())
         ? null
@@ -934,6 +935,10 @@ DriverRequest driverRequestFromServer(Map<String, dynamic> json) {
     isOverdue: isOverdue,
     isChatLocked: json['isChatLocked'] == true || isReqTerminal,
     originalDriverId: isReqTerminal ? null : json['originalDriverId']?.toString(),
+    enRouteEligibility: json['enRouteEligibility'] is Map
+        ? Map<String, dynamic>.from(json['enRouteEligibility'] as Map)
+        : null,
+    serviceType: json['serviceType']?.toString(),
   );
 }
 

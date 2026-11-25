@@ -33,6 +33,10 @@ import {
   renderRideEnquiryDiscount,
   RideEnquiryDiscountData,
 } from './templates/ride_enquiry_discount';
+import {
+  renderDriverFinancialSummary,
+  DriverFinancialSummaryData,
+} from './templates/driver_financial_summary';
 
 @Injectable()
 export class EmailEventsService {
@@ -444,6 +448,28 @@ export class EmailEventsService {
       {
         userId,
         eventId: `ride_enquiry_discount_email_${data.rideId}`,
+      },
+    );
+  }
+
+  async sendDriverFinancialSummary(
+    userId: string,
+    email: string,
+    data: DriverFinancialSummaryData,
+  ) {
+    const { subject, html } = renderDriverFinancialSummary(
+      data,
+      this.assetBaseUrl,
+    );
+    const eventId = `driver_financial_summary_${userId}_${data.periodType}_${data.periodLabel.replace(/\s+/g, '_')}`;
+    await this.emailService.sendTemplate(
+      'driver_financial_summary',
+      email,
+      subject,
+      html,
+      {
+        userId,
+        eventId,
       },
     );
   }

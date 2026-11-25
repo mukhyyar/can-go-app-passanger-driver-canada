@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gt_api/gt_api.dart';
+import 'package:gt_ui/gt_ui.dart';
 
 const String _tooManyRequestsMessage =
     'Too many attempts. Please wait a minute and try again.';
@@ -13,6 +14,22 @@ String cleanErrorMessage(
   if (error == null) return fallback;
 
   if (error is ApiException) {
+    final flat = error.flatBody;
+    final code = error.code ?? flat['code']?.toString();
+    final flatMsg = flat['message']?.toString();
+    if (code == 'DRIVER_NOT_ELIGIBLE') {
+      if (flatMsg != null &&
+          flatMsg.isNotEmpty &&
+          flatMsg != 'DRIVER_NOT_ELIGIBLE') {
+        return _cleanRawString(flatMsg, fallback: fallback);
+      }
+      final openDisputes = (flat['openDisputesCount'] as num?)?.toInt();
+      if (openDisputes != null && openDisputes > 0) {
+        return 'Driver Not Eligible: Payouts are temporarily on hold due to $openDisputes open dispute${openDisputes > 1 ? 's' : ''} under review.';
+      }
+      return 'Driver Not Eligible: Payouts are currently on hold for this account.';
+    }
+
     final msg = error.message.trim();
     if (error.statusCode == 429 || msg.toLowerCase().contains('throttler')) {
       return _tooManyRequestsMessage;
@@ -117,12 +134,13 @@ String _cleanRawString(String raw, {required String fallback}) {
 
 String _humanizeStatusEnums(String text) {
   var result = text;
-  final statusMap = <String, String>{
+
+  const statusMap = <String, String>{
     'IN_PROGRESS': 'In progress',
     'TRIP_STARTED': 'Trip started',
     'DRIVER_ARRIVED': 'Driver arrived',
     'DRIVER_EN_ROUTE': 'Driver en route',
-    'WAITING_FOR_OFFERS': 'Waiting for offers',
+    'WAITING_FOR_OFFERS': 'Waiting For Offers',
     'OFFER_SELECTION': 'Offer selection',
     'PAYMENT_PENDING': 'Payment pending',
     'BOOKED': 'Booked',
@@ -134,10 +152,37 @@ String _humanizeStatusEnums(String text) {
     'PAYMENT_FAILED': 'Payment failed',
     'EXPIRED': 'Expired',
   };
-
   for (final entry in statusMap.entries) {
     result = result.replaceAll(entry.key, entry.value);
   }
+
+  // If the entire string is a single uppercase enum or code
+  if (RegExp(r'^[A-Z0-9_]+$').hasMatch(result.trim())) {
+    return formatStatus(result.trim());
+  }
+
+  // Replace remaining recognized uppercase status codes within text
+  result = result.replaceAllMapped(RegExp(r'\b[A-Z][A-Z0-9_]{2,}\b'), (match) {
+    final token = match.group(0)!;
+    const acronyms = {
+      'PIN',
+      'SMS',
+      'HTTP',
+      'HTTPS',
+      'API',
+      'GPS',
+      'CAD',
+      'USD',
+      'OTP',
+      'CRA',
+      'KYC',
+      'ID',
+    };
+    if (acronyms.contains(token)) return token;
+    if (!token.contains('_')) return token;
+    return formatStatus(token);
+  });
+
   return result;
 }
 

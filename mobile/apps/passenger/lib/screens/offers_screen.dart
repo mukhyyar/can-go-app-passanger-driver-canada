@@ -733,6 +733,14 @@ class _OffersScreenState extends State<OffersScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (ride != null) ...[
+                  Row(
+                    children: [
+                      ServiceTypeBadge(serviceType: ride.serviceType),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Text(
                   '${offers.length} offer${offers.length == 1 ? '' : 's'} available',
                   style: const TextStyle(

@@ -33,6 +33,14 @@ import {
   resolveIncludedWaitingMinutes,
 } from '../marketplace/cancellation-policy.service';
 import { LocationStoreService } from '../tracking/location-store.service';
+import {
+  MAPS_PROVIDER,
+  type MapsProvider,
+} from '../maps/maps-provider.interface';
+import {
+  computeEnRouteEligibility,
+  type EnRouteEligibility,
+} from './trip-schedule-gate.util';
 
 export const GEOFENCE_LIMITS = {
   DRIVER_ARRIVED_METERS: 300,
@@ -79,7 +87,41 @@ export class TripService {
     private readonly payments?: PaymentProvider,
     @Optional() private readonly cancellationPolicy?: CancellationPolicyService,
     @Optional() private readonly locationStore?: LocationStoreService,
+    @Optional()
+    @Inject(MAPS_PROVIDER)
+    private readonly maps?: MapsProvider,
   ) {}
+
+  async checkEnRouteEligibility(
+    rideId: string,
+    driverCoords?: { lat: number; lng: number } | null,
+  ): Promise<EnRouteEligibility | null> {
+    const ride = await this.prisma.ride.findUnique({
+      where: { id: rideId },
+      select: {
+        id: true,
+        pickupAt: true,
+        createdAt: true,
+        fromLat: true,
+        fromLng: true,
+        status: true,
+      },
+    });
+    if (!ride) return null;
+
+    let coords = driverCoords;
+    if (!coords && this.locationStore) {
+      const cached = await this.locationStore.getRideDriver(rideId);
+      if (cached && cached.lat != null && cached.lng != null) {
+        coords = { lat: cached.lat, lng: cached.lng };
+      }
+    }
+
+    return computeEnRouteEligibility(ride, {
+      driverCoords: coords,
+      maps: this.maps,
+    });
+  }
 
   private async resolveDriverCoordinates(
     rideId: string,
@@ -137,6 +179,46 @@ export class TripService {
     if (isAssignedDriver && toStatus === RideStatus.DRIVER_EN_ROUTE) {
       if (!user.driverProfile?.drivingEnabled) {
         throw new BadRequestException('You must be online to start a ride');
+      }
+
+      // Dynamic ETA & 2-Hour Activation Gate for Scheduled Rides
+      const coords = await this.resolveDriverCoordinates(
+        ride.id,
+        cancellationMeta?.lat,
+        cancellationMeta?.lng,
+      );
+      const eligibility = await computeEnRouteEligibility(
+        {
+          pickupAt: ride.pickupAt,
+          createdAt: ride.createdAt,
+          fromLat: ride.fromLat,
+          fromLng: ride.fromLng,
+        },
+        {
+          driverCoords: coords,
+          maps: this.maps,
+        },
+      );
+
+      if (!eligibility.canGoEnRoute) {
+        throw new BadRequestException({
+          code: 'RIDE_TOO_EARLY_FOR_EN_ROUTE',
+          message:
+            eligibility.reason ??
+            'Cannot start en route yet. Too early for scheduled pickup.',
+          details: {
+            scheduledPickupAt: eligibility.scheduledPickupAt.toISOString(),
+            activationOpensAt: eligibility.activationOpensAt.toISOString(),
+            allowedEnRouteAt: eligibility.allowedEnRouteAt.toISOString(),
+            isActivated: eligibility.isActivated,
+            driveEtaMinutes: eligibility.driveEtaMinutes,
+            bufferMinutes: eligibility.bufferMinutes,
+            leadTimeMinutes: eligibility.leadTimeMinutes,
+            remainingMinutesUntilUnlock: eligibility.remainingMinutesUntilUnlock,
+            remainingMinutesUntilActivation:
+              eligibility.remainingMinutesUntilActivation,
+          },
+        });
       }
     }
 

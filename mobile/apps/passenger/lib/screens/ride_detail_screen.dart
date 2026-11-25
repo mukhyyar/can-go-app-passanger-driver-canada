@@ -3220,12 +3220,22 @@ class _RideDetailScreenState extends State<RideDetailScreen> {
                           returnLabel: ride.returnLabel,
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          ride.datetimeLabel,
-                          style: const TextStyle(
-                            color: GtColors.textMuted,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                ride.datetimeLabel,
+                                style: const TextStyle(
+                                  color: GtColors.textMuted,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            ServiceTypeBadge(
+                              serviceType: ride.serviceType,
+                              compact: true,
+                            ),
+                          ],
                         ),
                       ],
                     ),

@@ -20,7 +20,9 @@ import {
   type AuthUser,
 } from '../auth/decorators/current-user.decorator';
 import { DriverWalletService } from './driver-wallet.service';
+import { DriverFinancialSummaryService } from './driver-financial-summary.service';
 import { WithdrawWalletDto } from './dto/wallet.dto';
+import { RequestFinancialSummaryDto } from './dto/financial-summary.dto';
 import {
   PAYOUT_PROVIDER,
   type PayoutProvider,
@@ -30,6 +32,7 @@ import {
 export class DriverWalletController {
   constructor(
     private readonly wallet: DriverWalletService,
+    private readonly financialSummary: DriverFinancialSummaryService,
     @Inject(PAYOUT_PROVIDER) private readonly payoutProvider: PayoutProvider,
   ) {}
 
@@ -78,6 +81,37 @@ export class DriverWalletController {
       idempotencyKey,
       req.ip,
     );
+  }
+
+  @Get('driver/me/wallet/financial-summary')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  getFinancialSummary(
+    @CurrentUser() user: AuthUser,
+    @Query() dto: RequestFinancialSummaryDto,
+  ) {
+    return this.financialSummary.generateSummaryForUser(user.id, dto);
+  }
+
+  @Post('driver/me/wallet/financial-summary/email')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.DRIVER)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  emailFinancialSummary(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: RequestFinancialSummaryDto,
+  ) {
+    return this.financialSummary.sendSummaryEmailForUser(user.id, dto);
+  }
+
+  @Post('admin/drivers/:driverId/financial-summary/email')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  adminEmailFinancialSummary(
+    @Param('driverId') driverId: string,
+    @Body() dto: RequestFinancialSummaryDto,
+  ) {
+    return this.financialSummary.sendSummaryEmail(driverId, dto);
   }
 
   /** Async payout provider webhooks (mirrors payments webhook pattern). */

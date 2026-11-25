@@ -827,10 +827,16 @@ class _ScheduledRideCard extends StatelessWidget {
                 ],
               ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              'Ride #${request.displayId}',
-              style: const TextStyle(color: GtColors.textMuted, fontSize: 12),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Text(
+                  'Ride #${request.displayId}',
+                  style: const TextStyle(color: GtColors.textMuted, fontSize: 12),
+                ),
+                const SizedBox(width: 8),
+                ServiceTypeBadge(serviceType: request.serviceType, compact: true),
+              ],
             ),
             if ((request.status ?? '').toUpperCase() != 'COMPLETED' &&
                 (request.passengerName ?? '').trim().isNotEmpty) ...[

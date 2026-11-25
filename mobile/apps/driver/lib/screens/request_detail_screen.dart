@@ -596,12 +596,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        Text(
-                          req.displayId,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              req.displayId,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ServiceTypeBadge(serviceType: req.serviceType, compact: true),
+                          ],
                         ),
                         if (age.isNotEmpty)
                           Text(
@@ -846,7 +853,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                                   ),
                                   const Spacer(),
                                   Text(
-                                    isCompleted ? 'COMPLETED' : myOffer.status,
+                                    formatStatus(isCompleted ? 'COMPLETED' : myOffer.status),
                                     style: TextStyle(
                                       color: (isCancelled || isRequestExpired || isOfferExpired)
                                           ? GtColors.red

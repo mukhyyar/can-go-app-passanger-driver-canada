@@ -20,5 +20,8 @@ export 'src/widgets.dart';
 export 'src/legal_document_view.dart';
 export 'src/emergency_safety_sheet.dart';
 export 'src/policy_links.dart';
+export 'src/status_formatter.dart';
+export 'src/badge_helper.dart';
+export 'src/service_type_badge.dart';
 
 

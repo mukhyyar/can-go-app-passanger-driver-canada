@@ -106,8 +106,44 @@ export class DriverWalletService {
     return normalizeMoney(raw, this.walletCurrency());
   }
 
-  private walletError(code: WalletErrorCode, message: string): never {
-    throw new BadRequestException({ code, message });
+  formatErrorCode(code?: string): string {
+    if (!code) return '';
+    const map: Record<string, string> = {
+      DRIVER_NOT_ELIGIBLE: 'Driver Not Eligible',
+      PAYOUT_METHOD_REQUIRED: 'Payout Method Required',
+      PAYOUT_METHOD_NOT_VERIFIED: 'Payout Method Not Verified',
+      INSUFFICIENT_FUNDS: 'Insufficient Funds',
+      BELOW_MINIMUM_WITHDRAWAL: 'Below Minimum Withdrawal',
+      ABOVE_MAXIMUM_WITHDRAWAL: 'Above Maximum Withdrawal',
+      DAILY_LIMIT_EXCEEDED: 'Daily Limit Exceeded',
+      PAYOUT_ALREADY_PROCESSING: 'Payout Already Processing',
+      CURRENCY_MISMATCH: 'Currency Mismatch',
+      IDEMPOTENCY_CONFLICT: 'Idempotency Conflict',
+      INVALID_AMOUNT: 'Invalid Amount',
+      IDEMPOTENCY_KEY_REQUIRED: 'Idempotency Key Required',
+    };
+    if (map[code]) return map[code];
+    return code
+      .split('_')
+      .map((w) =>
+        w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '',
+      )
+      .join(' ');
+  }
+
+  private walletError(
+    code: WalletErrorCode,
+    message: string,
+    subReason?: string,
+    openDisputesCount?: number,
+  ): never {
+    throw new BadRequestException({
+      code,
+      formattedCode: this.formatErrorCode(code),
+      message,
+      ...(subReason ? { subReason } : {}),
+      ...(openDisputesCount !== undefined ? { openDisputesCount } : {}),
+    });
   }
 
   private parsePayout(json: unknown): PayoutSettings {
@@ -641,6 +677,19 @@ export class DriverWalletService {
       maximumWithdrawal: moneyToString(this.maxWithdrawal(), currency),
       canWithdraw: eligibility.ok,
       cannotWithdrawReason: eligibility.ok ? null : eligibility.code,
+      cannotWithdrawMessage: eligibility.ok ? null : eligibility.message,
+      cannotWithdrawFormattedReason: eligibility.ok
+        ? null
+        : this.formatErrorCode(eligibility.code),
+      cannotWithdrawDetails: eligibility.ok
+        ? null
+        : {
+            code: eligibility.code,
+            formattedReason: this.formatErrorCode(eligibility.code),
+            message: eligibility.message,
+            subReason: eligibility.subReason ?? null,
+            openDisputesCount: eligibility.openDisputesCount ?? 0,
+          },
       payoutMethodConfigured: eligibility.payoutMethodConfigured,
       payoutMethodVerified: eligibility.payoutMethodVerified,
       nextAvailableAt: balances.nextAvailableAt?.toISOString() ?? null,
@@ -806,7 +855,12 @@ export class DriverWalletService {
           now,
         );
         if (!eligibility.ok) {
-          this.walletError(eligibility.code!, eligibility.message!);
+          this.walletError(
+            eligibility.code!,
+            eligibility.message!,
+            eligibility.subReason,
+            eligibility.openDisputesCount,
+          );
         }
 
         const processingCount = await tx.driverPayout.count({
@@ -2041,6 +2095,12 @@ export class DriverWalletService {
     ok: boolean;
     code?: WalletErrorCode;
     message?: string;
+    subReason?:
+      | 'ACCOUNT_SUSPENDED'
+      | 'NOT_ACTIVATED'
+      | 'APPROVAL_STATUS'
+      | 'OPEN_DISPUTES';
+    openDisputesCount?: number;
     payoutMethodConfigured: boolean;
     payoutMethodVerified: boolean;
   }> {
@@ -2053,7 +2113,8 @@ export class DriverWalletService {
       return {
         ok: false,
         code: 'DRIVER_NOT_ELIGIBLE',
-        message: 'Driver account is suspended',
+        subReason: 'ACCOUNT_SUSPENDED',
+        message: 'Driver account is suspended. Please contact partner support.',
         payoutMethodConfigured: false,
         payoutMethodVerified: false,
       };
@@ -2064,10 +2125,18 @@ export class DriverWalletService {
       driver.approvalStatus === DriverApprovalStatus.REJECTED ||
       driver.approvalStatus === DriverApprovalStatus.PENDING_KYC
     ) {
+      const msg = !driver.isActivated
+        ? 'Driver account is not activated yet. Complete your onboarding to enable payouts.'
+        : driver.approvalStatus === DriverApprovalStatus.PENDING_KYC
+          ? 'Driver identity verification (KYC) is pending approval.'
+          : driver.approvalStatus === DriverApprovalStatus.SUSPENDED
+            ? 'Driver profile is suspended. Please contact partner support.'
+            : 'Driver profile was not approved. Review your documents in Settings.';
       return {
         ok: false,
         code: 'DRIVER_NOT_ELIGIBLE',
-        message: 'Driver is not eligible for payouts',
+        subReason: !driver.isActivated ? 'NOT_ACTIVATED' : 'APPROVAL_STATUS',
+        message: msg,
         payoutMethodConfigured: false,
         payoutMethodVerified: false,
       };
@@ -2094,11 +2163,16 @@ export class DriverWalletService {
             },
           });
       if (openDisputes > 0) {
+        const disputeText =
+          openDisputes === 1
+            ? '1 open dispute'
+            : `${openDisputes} open disputes`;
         return {
           ok: false,
           code: 'DRIVER_NOT_ELIGIBLE',
-          message:
-            'Payouts are temporarily on hold due to an open ride dispute under review',
+          subReason: 'OPEN_DISPUTES',
+          openDisputesCount: openDisputes,
+          message: `Payouts are temporarily on hold because you have ${disputeText} under review. Please resolve open disputes to withdraw funds.`,
           payoutMethodConfigured: true,
           payoutMethodVerified: true,
         };

@@ -709,6 +709,7 @@ class RideRequest {
     this.originalDriverName,
     this.originalDriverPhone,
     this.vehicleClassIds = const [],
+    this.serviceType = 'RIDE',
   });
 
   final String id;
@@ -748,12 +749,39 @@ class RideRequest {
   final String? originalDriverName;
   final String? originalDriverPhone;
   final List<String> vehicleClassIds;
+  final String? serviceType;
+
+  /// Returns true if this request is a parcel delivery.
+  bool get isDelivery => (serviceType ?? '').toUpperCase() == 'DELIVERY';
+
+  /// Returns true if this request is an hourly rental / per-hour service.
+  bool get isPerHour => (serviceType ?? '').toUpperCase() == 'PER_HOUR';
+
+  /// Returns true if this request is a standard ride service.
+  bool get isRide => !isDelivery && !isPerHour;
+
+  /// Human-readable label: 'Per Hour', 'Delivery', or 'Ride'.
+  String get serviceTypeLabel {
+    switch ((serviceType ?? '').toUpperCase()) {
+      case 'PER_HOUR':
+        return 'Per Hour';
+      case 'DELIVERY':
+        return 'Delivery';
+      case 'CAR_RENTAL':
+        return 'Car Rental';
+      case 'EXPERIENCES':
+        return 'Experiences';
+      case 'RIDE':
+      default:
+        return 'Ride';
+    }
+  }
 
   bool get isEnquiryDiscountActive {
     if (isBooked || isCancelled) return false;
     final now = DateTime.now();
     final expires = requestExpiresAt ??
-        (pickupAt != null ? pickupAt!.add(const Duration(minutes: 60)) : null);
+        pickupAt?.add(const Duration(minutes: 60));
     if (expires != null) {
       if (!expires.isAfter(now)) return false;
       final remaining = expires.difference(now);
@@ -1194,6 +1222,8 @@ class DriverRequest {
     this.isOverdue = false,
     this.isChatLocked = false,
     this.originalDriverId,
+    this.enRouteEligibility,
+    this.serviceType = 'RIDE',
   });
 
   final String id;
@@ -1246,6 +1276,79 @@ class DriverRequest {
   final double? tipAmount;
   final bool isOverdue;
   final bool isChatLocked;
+  final Map<String, dynamic>? enRouteEligibility;
+  final String? serviceType;
+
+  /// Returns true if this request is a parcel delivery.
+  bool get isDelivery => (serviceType ?? '').toUpperCase() == 'DELIVERY';
+
+  /// Returns true if this request is an hourly rental / per-hour service.
+  bool get isPerHour => (serviceType ?? '').toUpperCase() == 'PER_HOUR';
+
+  /// Returns true if this request is a standard ride service.
+  bool get isRide => !isDelivery && !isPerHour;
+
+  /// Human-readable label: 'Per Hour', 'Delivery', or 'Ride'.
+  String get serviceTypeLabel {
+    switch ((serviceType ?? '').toUpperCase()) {
+      case 'PER_HOUR':
+        return 'Per Hour';
+      case 'DELIVERY':
+        return 'Delivery';
+      case 'CAR_RENTAL':
+        return 'Car Rental';
+      case 'EXPERIENCES':
+        return 'Experiences';
+      case 'RIDE':
+      default:
+        return 'Ride';
+    }
+  }
+
+  bool get canGoEnRoute {
+    if (enRouteEligibility != null &&
+        enRouteEligibility!['canGoEnRoute'] is bool) {
+      return enRouteEligibility!['canGoEnRoute'] as bool;
+    }
+    if (pickupAt == null) return true;
+    final now = DateTime.now();
+    if (!now.isBefore(pickupAt!)) return true;
+    return now.isAfter(pickupAt!.subtract(const Duration(minutes: 30)));
+  }
+
+  bool get isActivated {
+    if (enRouteEligibility != null &&
+        enRouteEligibility!['isActivated'] is bool) {
+      return enRouteEligibility!['isActivated'] as bool;
+    }
+    if (pickupAt == null) return true;
+    return DateTime.now().isAfter(pickupAt!.subtract(const Duration(hours: 2)));
+  }
+
+  DateTime? get allowedEnRouteAt {
+    if (enRouteEligibility != null &&
+        enRouteEligibility!['allowedEnRouteAt'] != null) {
+      try {
+        return DateTime.parse(
+            enRouteEligibility!['allowedEnRouteAt'].toString());
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  int? get driveEtaMinutes {
+    final v = enRouteEligibility?['driveEtaMinutes'];
+    if (v is num) return v.toInt();
+    if (v != null) return int.tryParse(v.toString());
+    return null;
+  }
+
+  int? get remainingMinutesUntilUnlock {
+    final v = enRouteEligibility?['remainingMinutesUntilUnlock'];
+    if (v is num) return v.toInt();
+    if (v != null) return int.tryParse(v.toString());
+    return null;
+  }
 
   bool get isOverdueBooking {
     if (isOverdue) return true;
@@ -1283,6 +1386,8 @@ class DriverRequest {
     double? tipAmount,
     bool? isOverdue,
     bool? isChatLocked,
+    Map<String, dynamic>? enRouteEligibility,
+    String? serviceType,
   }) {
     return DriverRequest(
       id: id,
@@ -1330,6 +1435,9 @@ class DriverRequest {
       tipAmount: tipAmount ?? this.tipAmount,
       isOverdue: isOverdue ?? this.isOverdue,
       isChatLocked: isChatLocked ?? this.isChatLocked,
+      originalDriverId: originalDriverId,
+      enRouteEligibility: enRouteEligibility ?? this.enRouteEligibility,
+      serviceType: serviceType ?? this.serviceType,
     );
   }
 }

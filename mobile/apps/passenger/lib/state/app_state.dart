@@ -368,6 +368,7 @@ class AppState extends ChangeNotifier {
     repo.passenger.phone = '';
     clearAvatarState();
     unreadNotificationCount = 0;
+    unawaited(BadgeHelper.clearBadge());
   }
 
   /// Legacy signed URL from `/auth/me` — not used for rendering.
@@ -654,12 +655,14 @@ class AppState extends ChangeNotifier {
   Future<int> refreshUnreadNotificationCount() async {
     if (!isAuthenticated) {
       unreadNotificationCount = 0;
+      unawaited(BadgeHelper.clearBadge());
       notifyListeners();
       return 0;
     }
     try {
       final raw = await api.notifications.unreadCount(appRole: 'PASSENGER');
       unreadNotificationCount = (raw['count'] as num?)?.toInt() ?? 0;
+      unawaited(BadgeHelper.updateBadge(unreadNotificationCount));
       notifyListeners();
       return unreadNotificationCount;
     } catch (e) {
@@ -673,6 +676,7 @@ class AppState extends ChangeNotifier {
     await api.notifications.markRead(id);
     if (unreadNotificationCount > 0) {
       unreadNotificationCount--;
+      unawaited(BadgeHelper.updateBadge(unreadNotificationCount));
       notifyListeners();
     } else {
       await refreshUnreadNotificationCount();
@@ -683,6 +687,7 @@ class AppState extends ChangeNotifier {
     if (!isAuthenticated) return;
     await api.notifications.markAllRead();
     unreadNotificationCount = 0;
+    unawaited(BadgeHelper.clearBadge());
     notifyListeners();
   }
 

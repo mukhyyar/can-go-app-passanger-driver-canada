@@ -55,6 +55,15 @@ import type {
 } from './dto/marketplace.dto';
 import { isAllowedOfferValidity, OFFER_OPTION_KEYS } from './offer.constants';
 import { TrackingGateway } from '../tracking/tracking.gateway';
+import { LocationStoreService } from '../tracking/location-store.service';
+import {
+  MAPS_PROVIDER,
+  type MapsProvider,
+} from '../maps/maps-provider.interface';
+import {
+  computeEnRouteEligibility,
+  formatTimeFriendly,
+} from '../trips/trip-schedule-gate.util';
 import { RideLifecycleService } from './ride-lifecycle.service';
 import {
   computeEnquiryDiscountState,
@@ -102,6 +111,10 @@ export class MarketplaceService {
     @Optional() private readonly emailEvents?: EmailEventsService,
     @Optional() private readonly cancellationPolicy?: CancellationPolicyService,
     @Optional() private readonly driverCancellation?: DriverCancellationService,
+    @Optional()
+    @Inject(MAPS_PROVIDER)
+    private readonly maps?: MapsProvider,
+    @Optional() private readonly locationStore?: LocationStoreService,
   ) {
     this.payTtlMs = loadRideLifecycleConfig().paymentTtlMs;
   }
@@ -2203,6 +2216,48 @@ export class MarketplaceService {
       Boolean(driver.stripeAccountId) &&
       Boolean(driver.stripePayoutsEnabled) &&
       driver.stripeAccountStatus === 'ACTIVE';
+
+    let enRouteEligibility: Record<string, unknown> | null = null;
+    const r = ride as Record<string, any>;
+    if (
+      r.assignedDriverId === driver.id &&
+      (r.status as RideStatus) === RideStatus.BOOKED
+    ) {
+      let driverCoords: { lat: number; lng: number } | null = null;
+      if (this.locationStore) {
+        const cached = await this.locationStore.getRideDriver(String(r.id));
+        if (cached && cached.lat != null && cached.lng != null) {
+          driverCoords = { lat: cached.lat, lng: cached.lng };
+        }
+      }
+      const elig = await computeEnRouteEligibility(
+        {
+          pickupAt: r.pickupAt,
+          createdAt: r.createdAt,
+          fromLat: Number(r.fromLat),
+          fromLng: Number(r.fromLng),
+        },
+        {
+          driverCoords,
+          maps: this.maps,
+        },
+      );
+      enRouteEligibility = {
+        canGoEnRoute: elig.canGoEnRoute,
+        isActivated: elig.isActivated,
+        isScheduled: elig.isScheduled,
+        scheduledPickupAt: elig.scheduledPickupAt.toISOString(),
+        activationOpensAt: elig.activationOpensAt.toISOString(),
+        allowedEnRouteAt: elig.allowedEnRouteAt.toISOString(),
+        driveEtaMinutes: elig.driveEtaMinutes,
+        bufferMinutes: elig.bufferMinutes,
+        leadTimeMinutes: elig.leadTimeMinutes,
+        remainingMinutesUntilUnlock: elig.remainingMinutesUntilUnlock,
+        remainingMinutesUntilActivation: elig.remainingMinutesUntilActivation,
+        reason: elig.reason,
+      };
+    }
+
     return {
       ...ride,
       passengerName: isCompleted
@@ -2212,6 +2267,7 @@ export class MarketplaceService {
       offerValidityOptions: this.offerValidityLabels(),
       stripePayoutsVerified,
       payoutVerificationRequired: !stripePayoutsVerified,
+      enRouteEligibility,
     };
   }
 
@@ -4292,6 +4348,13 @@ export class MarketplaceService {
       await this.lifecycle.detectAndNotifyOverdueBookings();
     const enquiryDiscountsActivated =
       (await this.lifecycle.processExpiringEnquiryDiscounts?.()) ?? 0;
+    const scheduledRemindersSent =
+      await this.notifyUpcomingScheduledRides().catch((err) => {
+        this.logger.debug(
+          `Scheduled ride notifications check failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return 0;
+      });
 
     return {
       expiredOffers: expiredOffers.count,
@@ -4300,7 +4363,89 @@ export class MarketplaceService {
       reopenedPayments: pay.reopenedPayments,
       overdueBookings,
       enquiryDiscountsActivated,
+      scheduledRemindersSent,
     };
+  }
+
+  /**
+   * Notifies drivers when their scheduled ride reaches its en-route activation window.
+   * Uses event deduplication on NotificationsService to send only once per ride.
+   */
+  async notifyUpcomingScheduledRides(): Promise<number> {
+    const now = new Date();
+    // Scan BOOKED rides scheduled within the next 2 hours
+    const windowEnd = new Date(now.getTime() + 120 * 60_000);
+    const scheduledRides = await this.prisma.ride.findMany({
+      where: {
+        status: RideStatus.BOOKED,
+        assignedDriverId: { not: null },
+        pickupAt: {
+          gte: new Date(now.getTime() - 15 * 60_000), // Up to 15m past due
+          lte: windowEnd,
+        },
+      },
+      include: {
+        passenger: true,
+      },
+      take: 50,
+    });
+
+    let sent = 0;
+    for (const ride of scheduledRides) {
+      if (!ride.assignedDriverId) continue;
+      const driver = await this.prisma.driverProfile.findUnique({
+        where: { id: ride.assignedDriverId },
+        include: { user: true },
+      });
+      if (!driver?.user) continue;
+
+      try {
+        let driverCoords: { lat: number; lng: number } | null = null;
+        if (this.locationStore) {
+          const cached = await this.locationStore.getRideDriver(ride.id);
+          if (cached && cached.lat != null && cached.lng != null) {
+            driverCoords = { lat: cached.lat, lng: cached.lng };
+          }
+        }
+
+        const eligibility = await computeEnRouteEligibility(
+          {
+            pickupAt: ride.pickupAt,
+            createdAt: ride.createdAt,
+            fromLat: ride.fromLat,
+            fromLng: ride.fromLng,
+          },
+          {
+            now,
+            driverCoords,
+            maps: this.maps,
+          },
+        );
+
+        if (eligibility.canGoEnRoute) {
+          const pickupTime = formatTimeFriendly(ride.pickupAt);
+          const passengerName = ride.passenger?.fullName || 'Passenger';
+          const res = await this.notifications.sendToUser({
+            userId: driver.user.id,
+            targetRole: UserRole.DRIVER,
+            title: 'Scheduled Ride Ready',
+            body: `Time to head out! Your scheduled pickup for ${passengerName} is at ${pickupTime}. Tap to start en route.`,
+            templateKey: 'driver_scheduled_enroute_ready',
+            eventId: `driver_enroute_ready_${ride.id}`,
+            data: {
+              rideId: ride.id,
+              type: 'scheduled_ride_ready',
+            },
+          });
+          if (res?.sent) sent++;
+        }
+      } catch (err) {
+        this.logger.debug(
+          `Failed sending en-route reminder for ride ${ride.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    return sent;
   }
 
   // ---------- helpers ----------

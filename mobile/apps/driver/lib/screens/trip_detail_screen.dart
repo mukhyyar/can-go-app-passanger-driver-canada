@@ -9,6 +9,7 @@ import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
 import 'package:gt_ui/gt_ui.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -436,7 +437,15 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     try {
       switch (_serverStatus) {
         case 'BOOKED':
-          await s.tripGoEnRoute(widget.rideId);
+          if (_ride != null && !_ride!.canGoEnRoute) {
+            _showTooEarlyEnRouteDialog();
+            return;
+          }
+          await s.tripGoEnRoute(
+            widget.rideId,
+            lat: _currentPosition?.latitude,
+            lng: _currentPosition?.longitude,
+          );
         case 'DRIVER_EN_ROUTE':
           Position? arrivedPos = _currentPosition;
           if (_ride?.fromLat != null && _ride?.fromLng != null) {
@@ -589,9 +598,161 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     }
   }
 
+  void _showTooEarlyEnRouteDialog() {
+    final r = _ride;
+    final reason = r?.enRouteEligibility?['reason']?.toString();
+    final allowedAt = r?.allowedEnRouteAt;
+    final timeStr = allowedAt != null
+        ? DateFormat('h:mm a').format(allowedAt.toLocal())
+        : 'the calculated travel time';
+    final eta = r?.driveEtaMinutes ?? 15;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.schedule, color: GtColors.brand, size: 24),
+            SizedBox(width: 8),
+            Text('Scheduled Pickup'),
+          ],
+        ),
+        content: Text(
+          reason ??
+              'It is too early to head out for this ride. Based on your estimated travel time (~$eta mins + 15m buffer), en route unlocks at $timeStr.',
+          style: const TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: GtColors.brand,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScheduledRideCard(DriverRequest r) {
+    final allowedAt = r.allowedEnRouteAt;
+    final unlockTimeStr = allowedAt != null
+        ? DateFormat('h:mm a').format(allowedAt.toLocal())
+        : null;
+    final minsUntilUnlock = r.remainingMinutesUntilUnlock;
+    final pickupStr = r.pickupAt != null
+        ? DateFormat('EEE, MMM d • h:mm a').format(r.pickupAt!.toLocal())
+        : r.datetimeLabel;
+    final eta = r.driveEtaMinutes;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.calendar_today_rounded,
+                color: Color(0xFF1D4ED8),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Scheduled Trip',
+                  style: TextStyle(
+                    color: Color(0xFF1E40AF),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDBEAFE),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  r.isActivated ? 'Activated' : 'Scheduled',
+                  style: const TextStyle(
+                    color: Color(0xFF1E40AF),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Pickup Time: $pickupStr',
+            style: const TextStyle(
+              color: Color(0xFF1E3A8A),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          if (eta != null) ...[
+            Text(
+              'Drive to pickup: ~$eta mins (+ 15m traffic buffer)',
+              style: const TextStyle(color: Color(0xFF2563EB), fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Row(
+            children: [
+              const Icon(Icons.lock_clock, color: Color(0xFF475569), size: 15),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  unlockTimeStr != null
+                      ? 'En route unlocks at $unlockTimeStr${minsUntilUnlock != null && minsUntilUnlock > 0 ? " (in ${minsUntilUnlock}m)" : ""}'
+                      : 'En route opens prior to pickup based on your travel ETA.',
+                  style: const TextStyle(
+                    color: Color(0xFF334155),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   String? get _primaryLabel {
     switch (_serverStatus) {
       case 'BOOKED':
+        final r = _ride;
+        if (r != null && !r.canGoEnRoute) {
+          final allowedAt = r.allowedEnRouteAt;
+          if (allowedAt != null) {
+            final formatted = DateFormat('h:mm a').format(allowedAt.toLocal());
+            return 'En route opens at $formatted';
+          }
+          final mins = r.remainingMinutesUntilUnlock;
+          if (mins != null && mins > 0) {
+            return 'En route opens in ${mins}m';
+          }
+          return 'En route locked';
+        }
         return 'Go en route';
       case 'DRIVER_EN_ROUTE':
         return 'Arrived at pickup';
@@ -941,6 +1102,8 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                     ],
                                   ),
                                 ),
+                              if (_serverStatus == 'BOOKED' && !r.canGoEnRoute)
+                                _buildScheduledRideCard(r),
                               if (_serverStatus == 'DRIVER_ARRIVED') ...[
                                 _buildWaitingForPassengerCard(r),
                                 const SizedBox(height: 12),
@@ -1010,7 +1173,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                         ),
                                       ),
                                     ],
-                                    const SizedBox(height: 14),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        ServiceTypeBadge(serviceType: r.serviceType),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
                                     GtRouteRow(
                                       from: r.from,
                                       to: r.to,
@@ -1302,10 +1471,30 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 10),
-                                GtGreenButton(
-                                  label: _acting ? 'Updating…' : _primaryLabel!,
-                                  onPressed: _acting ? null : _primaryAction,
-                                ),
+                                if (_serverStatus == 'BOOKED' && !r.canGoEnRoute)
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 48,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _acting
+                                          ? null
+                                          : _showTooEarlyEnRouteDialog,
+                                      icon: const Icon(Icons.lock_clock, size: 18),
+                                      label: Text(
+                                        _acting
+                                            ? 'Updating…'
+                                            : (_primaryLabel ?? 'En route locked'),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  GtGreenButton(
+                                    label: _acting ? 'Updating…' : _primaryLabel!,
+                                    onPressed: _acting ? null : _primaryAction,
+                                  ),
                                 if (_serverStatus == 'DRIVER_ARRIVED') ...[
                                   const SizedBox(height: 8),
                                   _buildNoShowButton(r),

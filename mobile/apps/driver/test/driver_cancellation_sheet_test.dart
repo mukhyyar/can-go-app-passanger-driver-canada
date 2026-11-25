@@ -52,10 +52,10 @@ void main() {
 
     // Verify Driver Cancellation Policy Card is present before ride cancel
     expect(find.text('Driver Cancellation Policy'), findsOneWidget);
-    expect(find.text('100% Passenger Refund'), findsOneWidget);
-    expect(find.text('Zero Payout (\$0.00 CAD)'), findsOneWidget);
-    expect(find.text('Safety Concerns Protected'), findsOneWidget);
-    expect(find.text('Repeated Unjustified Cancels'), findsOneWidget);
+    expect(find.textContaining('100% Passenger Refund', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Zero Payout (\$0.00 CAD)', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Safety Concerns Protected', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Repeated Unjustified Cancels', findRichText: true), findsOneWidget);
     expect(find.text('Full Policy'), findsOneWidget);
 
     // Verify all Section 15 safety reasons are present

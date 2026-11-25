@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gt_api/gt_api.dart';
+import 'package:gt_ui/gt_ui.dart';
 
 const String _tooManyRequestsMessage =
     'Too many attempts. Please wait a minute and try again.';
@@ -117,7 +118,8 @@ String _cleanRawString(String raw, {required String fallback}) {
 
 String _humanizeStatusEnums(String text) {
   var result = text;
-  final statusMap = <String, String>{
+
+  const statusMap = <String, String>{
     'IN_PROGRESS': 'In progress',
     'TRIP_STARTED': 'Trip started',
     'DRIVER_ARRIVED': 'Driver arrived',
@@ -134,10 +136,37 @@ String _humanizeStatusEnums(String text) {
     'PAYMENT_FAILED': 'Payment failed',
     'EXPIRED': 'Expired',
   };
-
   for (final entry in statusMap.entries) {
     result = result.replaceAll(entry.key, entry.value);
   }
+
+  // If the entire string is a single uppercase enum or code
+  if (RegExp(r'^[A-Z0-9_]+$').hasMatch(result.trim())) {
+    return formatStatus(result.trim());
+  }
+
+  // Replace remaining recognized uppercase status codes within text
+  result = result.replaceAllMapped(RegExp(r'\b[A-Z][A-Z0-9_]{2,}\b'), (match) {
+    final token = match.group(0)!;
+    const acronyms = {
+      'PIN',
+      'SMS',
+      'HTTP',
+      'HTTPS',
+      'API',
+      'GPS',
+      'CAD',
+      'USD',
+      'OTP',
+      'CRA',
+      'KYC',
+      'ID',
+    };
+    if (acronyms.contains(token)) return token;
+    if (!token.contains('_')) return token;
+    return formatStatus(token);
+  });
+
   return result;
 }
 

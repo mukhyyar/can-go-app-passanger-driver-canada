@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:gt_api/gt_api.dart';
 import 'package:gt_mock/gt_mock.dart';
+import 'package:gt_ui/gt_ui.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -854,12 +855,14 @@ class AppState extends ChangeNotifier {
   Future<int> refreshUnreadNotificationCount() async {
     if (!isAuthenticated) {
       unreadNotificationCount = 0;
+      unawaited(BadgeHelper.clearBadge());
       notifyListeners();
       return 0;
     }
     try {
       final raw = await api.notifications.unreadCount(appRole: 'DRIVER');
       unreadNotificationCount = (raw['count'] as num?)?.toInt() ?? 0;
+      unawaited(BadgeHelper.updateBadge(unreadNotificationCount));
       notifyListeners();
       return unreadNotificationCount;
     } catch (e) {
@@ -873,6 +876,7 @@ class AppState extends ChangeNotifier {
     await api.notifications.markRead(id);
     if (unreadNotificationCount > 0) {
       unreadNotificationCount--;
+      unawaited(BadgeHelper.updateBadge(unreadNotificationCount));
       notifyListeners();
     } else {
       await refreshUnreadNotificationCount();
@@ -883,6 +887,7 @@ class AppState extends ChangeNotifier {
     if (!isAuthenticated) return;
     await api.notifications.markAllRead();
     unreadNotificationCount = 0;
+    unawaited(BadgeHelper.clearBadge());
     notifyListeners();
   }
 
@@ -1233,6 +1238,19 @@ class AppState extends ChangeNotifier {
     return result;
   }
 
+  Future<Map<String, dynamic>> emailFinancialSummary({
+    required String type,
+    required int year,
+    int? month,
+  }) async {
+    if (!isAuthenticated) throw StateError('Not authenticated');
+    return api.driver.emailFinancialSummary(
+      type: type,
+      year: year,
+      month: month,
+    );
+  }
+
   // Prefer [savePaymentDetails] with an editable PATCH from the Payment screen.
   // completeOnboarding no longer auto-PATCHes payment (avoids empty/forged payloads).
 
@@ -1573,7 +1591,7 @@ class AppState extends ChangeNotifier {
   /// True if driver profile is held due to document verification / review.
   bool get isProfileOnHold {
     final st = approvalStatus.toUpperCase();
-    if (hasPendingDocuments || hasPendingRequiredDocuments) return true;
+    if (hasPendingRequiredDocuments) return true;
     if (st == 'IN_REVIEW') return true;
     if (st == 'PENDING_KYC' && documents.isNotEmpty) return true;
     return false;
@@ -1585,7 +1603,7 @@ class AppState extends ChangeNotifier {
     if (!isActivated) return false;
     if (hasExpiredDocuments) return false;
     if (hasReuploadRequest) return false;
-    if (!hasApprovedVehicle) return false;
+    if (vehicles.isNotEmpty && !hasApprovedVehicle) return false;
     if (requiresStripePayouts) return false;
     return approvalStatus.toUpperCase() == 'APPROVED';
   }
@@ -2409,6 +2427,7 @@ class AppState extends ChangeNotifier {
     authUserId = null;
     clearAvatarState();
     unreadNotificationCount = 0;
+    unawaited(BadgeHelper.clearBadge());
     documents = [];
     vehicles = [];
     openRequests = [];
@@ -2766,8 +2785,17 @@ class AppState extends ChangeNotifier {
   Future<DriverRequest> loadTripDetail(String rideId) async =>
       loadRequestDetail(rideId);
 
-  Future<Map<String, dynamic>> tripGoEnRoute(String rideId) async {
-    final res = await api.driver.enRoute(rideId);
+  Future<Map<String, dynamic>> tripGoEnRoute(
+    String rideId, {
+    double? lat,
+    double? lng,
+  }) async {
+    if (lat == null || lng == null) {
+      final pos = await _resolveCurrentPosition();
+      lat ??= pos?.latitude;
+      lng ??= pos?.longitude;
+    }
+    final res = await api.driver.enRoute(rideId, lat: lat, lng: lng);
     await refreshMyRides();
     notifyListeners();
     return res;

@@ -670,6 +670,33 @@ describe('Stripe Connect & Commercial Model End-to-End Flows (Document 2)', () =
       const summaryDisputed = await walletSvc.getWalletForUser('u1');
       expect(summaryDisputed.canWithdraw).toBe(false);
       expect(summaryDisputed.cannotWithdrawReason).toBe('DRIVER_NOT_ELIGIBLE');
+      expect(summaryDisputed.cannotWithdrawFormattedReason).toBe(
+        'Driver Not Eligible',
+      );
+      expect(summaryDisputed.cannotWithdrawMessage).toContain(
+        '1 open dispute under review',
+      );
+
+      // Verify specific 2 open disputes error messaging & details
+      mockPrisma.supportCase.count.mockResolvedValue(2);
+      mockPrisma.dispute.count.mockResolvedValue(2);
+      const summary2Disputes = await walletSvc.getWalletForUser('u1');
+      expect(summary2Disputes.canWithdraw).toBe(false);
+      expect(summary2Disputes.cannotWithdrawReason).toBe('DRIVER_NOT_ELIGIBLE');
+      expect(summary2Disputes.cannotWithdrawFormattedReason).toBe(
+        'Driver Not Eligible',
+      );
+      expect(summary2Disputes.cannotWithdrawMessage).toBe(
+        'Payouts are temporarily on hold because you have 2 open disputes under review. Please resolve open disputes to withdraw funds.',
+      );
+      expect(summary2Disputes.cannotWithdrawDetails).toEqual({
+        code: 'DRIVER_NOT_ELIGIBLE',
+        formattedReason: 'Driver Not Eligible',
+        message:
+          'Payouts are temporarily on hold because you have 2 open disputes under review. Please resolve open disputes to withdraw funds.',
+        subReason: 'OPEN_DISPUTES',
+        openDisputesCount: 2,
+      });
     });
   });
 
